@@ -63,6 +63,29 @@ func TestSyncSnapshotsDoNotExposeMutableState(t *testing.T) {
 	}
 }
 
+func TestThreadRangeWithNothingOlderEndsPaging(t *testing.T) {
+	sm := testSyncManager()
+	update := func(row *table.LSUpsertSyncGroupThreadsRange) {
+		t.Helper()
+		if err := sm.updateThreadRanges([]*table.LSUpsertSyncGroupThreadsRange{row}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update(&table.LSUpsertSyncGroupThreadsRange{SyncGroup: 95, HasMoreBefore: true, MinThreadKey: 123})
+	update(&table.LSUpsertSyncGroupThreadsRange{SyncGroup: 95, ParentThreadKey: 7})
+	if !sm.getSyncGroupKeyStore(95).HasMoreBefore {
+		t.Fatal("a range under one parent thread ended the whole list")
+	}
+	update(&table.LSUpsertSyncGroupThreadsRange{SyncGroup: 95})
+	current := sm.getSyncGroupKeyStore(95)
+	if current.HasMoreBefore {
+		t.Fatal("the list still claims older threads after Facebook said there are none")
+	}
+	if current.MinThreadKey != 123 {
+		t.Fatal("the end of the list moved the cursor")
+	}
+}
+
 func TestCursorRangeReadersAndSyncWorkersRunConcurrently(t *testing.T) {
 	sm := testSyncManager()
 	var workers sync.WaitGroup

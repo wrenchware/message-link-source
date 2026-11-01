@@ -118,7 +118,7 @@ func mediaWireFixture(t *testing.T) (*readOnlyAdapter, *mediaWire) {
 	if code != "" {
 		t.Fatal(code)
 	}
-	jar.IGWWWClaim = "synthetic-claim"
+	jar.SetWWWClaim("synthetic-claim")
 	client := newAppClient(jar, nil, func() {}).(*instameow.Client)
 	wire := &mediaWire{}
 	client.GetHTTP().SetTransportOverride(wire)

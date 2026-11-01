@@ -36,7 +36,15 @@ the encrypted-history dependencies), each applied as upstream wrote it to the li
 - `eb0b769` (lightspeed part only) a malformed `STORE_ARRAY` step no longer ends the process with `os.Exit(1)`;
 - `da314fc` (instameow `graphql.go` part) the reload after "please reload page" is not cancelled with its request;
 - `f37e982` (useragent part) Messenger Android 584.1.0.61.98;
-- `cea2e38` (instameow part) `LoadIndex` returns `ErrMailboxMissing` instead of dereferencing a missing mailbox.
+- `cea2e38` (instameow part) `LoadIndex` returns `ErrMailboxMissing` instead of dereferencing a missing mailbox;
+- `a29b2bc` (#409) the cookie map's JSON encoding and decoding take its lock, and the Instagram claim is read and written
+  through `GetWWWClaim` and `SetWWWClaim`;
+- `0b3104d` (`client.go` part, #476) a failed page reload keeps the working configs, and a suspended account is reported
+  like the other refusals. Its `checkAccountNotice` is left out on purpose: it reloads the page on its own after a
+  "content unavailable" answer, an unprompted Instagram read the owner has not agreed to. So are its GraphQL error log
+  fields, and the redirect path it adds to error text;
+- `5d72315` (the `updateThreadRanges` part, #433) a thread list range saying there is nothing older ends the paging.
+  The rest of that commit waits on ranges for the bridge's own backfill, which does not run here.
 
 When moving the pin these are already upstream and need no rebase.
 

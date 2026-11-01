@@ -365,10 +365,13 @@ func (sm *SyncManager) updateThreadRanges(ranges []*table.LSUpsertSyncGroupThrea
 	defer sm.mu.Unlock()
 	var err error
 	for _, syncGroupData := range ranges {
+		syncGroup := syncGroupData.SyncGroup
 		if !syncGroupData.HasMoreBefore {
+			if keyStore, ok := sm.keyStore[syncGroup]; ok && syncGroupData.ParentThreadKey == 0 {
+				keyStore.HasMoreBefore = false
+			}
 			continue
 		}
-		syncGroup := syncGroupData.SyncGroup
 		keyStore, ok := sm.keyStore[syncGroup]
 		if !ok {
 			err = fmt.Errorf("could not find keyStore by database ID %d", syncGroup)

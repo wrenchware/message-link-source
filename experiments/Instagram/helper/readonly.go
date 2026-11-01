@@ -275,7 +275,7 @@ func (a *readOnlyAdapter) call(ctx context.Context, r request) (result any, code
 		for k, v := range a.jar.GetAll() {
 			values[string(k)] = v
 		}
-		return savedSession{savedSessionVersion, a.key, values, a.jar.IGWWWClaim, append(json.RawMessage(nil), a.state...), a.seqID, a.seqTS}, ""
+		return savedSession{savedSessionVersion, a.key, values, a.jar.GetWWWClaim(), append(json.RawMessage(nil), a.state...), a.seqID, a.seqTS}, ""
 	default:
 		return nil, "unknown_method"
 	}
@@ -320,7 +320,7 @@ func (a *readOnlyAdapter) login(ctx context.Context, raw json.RawMessage) (any, 
 			return nil, "invalid_session"
 		}
 		resume = code == "" && s.SeqID > 0 && !s.SeqTS.IsZero()
-		jar.IGWWWClaim = s.Claim
+		jar.SetWWWClaim(s.Claim)
 	}
 	a.mu.Lock()
 	a.generation++
