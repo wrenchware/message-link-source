@@ -119,9 +119,9 @@ func (s *store) applyShares(tbl *table.LSTable, note func(int64, string)) {
 		rows.items[key] = &merged
 	}
 	for _, row := range tbl.LSInsertAttachmentCta {
-		logf("share cta chat=%s message=%s fbid=%v attachment=%s index=%d id=%v action=%v unknown=%d",
+		logf("share cta chat=%s message=%s fbid=%v attachment=%s index=%d id=%v action=%v type=%s titled=%v form=%s unknown=%d",
 			tag(row.ThreadKey), tagOf(row.MessageId), row.AttachmentFbid != "", tagOf(row.AttachmentFbid), row.AttachmentIndex,
-			row.CtaId != 0, row.ActionUrl != "", len(row.Unrecognized))
+			row.CtaId != 0, row.ActionUrl != "", ctaTypeWord(row.Type_), strings.TrimSpace(row.Title) != "", linkForm(row.ActionUrl), len(row.Unrecognized))
 		if row.MessageId == "" {
 			continue
 		}
@@ -274,17 +274,82 @@ func (rows *shareRows) ctaLink(attachment shareRowKey, ids ...int64) string {
 	if attachment.fbid == "" {
 		return ""
 	}
-	var found string
+	// A Marketplace listing names no CTA and carries two different actions (2026-10-31), and declining to choose drew
+	// it as a bare photo. All of them belong to this card, so take the one most like the button Messenger draws; the
+	// encrypted connection's cards already take their first web link.
+	var chosen *table.LSInsertAttachmentCta
+	actions := 0
 	for key, row := range rows.ctas {
 		if key.fbid != attachment.fbid || row.ActionUrl == "" {
 			continue
 		}
-		if found != "" && found != row.ActionUrl {
-			return ""
-		} // Multiple actions require an explicit CTA ID.
-		found = row.ActionUrl
+		actions++
+		if chosen == nil || betterCTA(row, chosen) {
+			chosen = row
+		}
 	}
-	return found
+	if chosen == nil {
+		return ""
+	}
+	if actions > 1 {
+		logf("share cta chosen attachment=%s actions=%d id=%s type=%s titled=%v form=%s", tagOf(attachment.fbid), actions,
+			tag(chosen.CtaId), ctaTypeWord(chosen.Type_), strings.TrimSpace(chosen.Title) != "", linkForm(chosen.ActionUrl))
+	}
+	return chosen.ActionUrl
+}
+
+func ctaRank(row *table.LSInsertAttachmentCta) int {
+	rank := 0
+	if shareWebLink(row.ActionUrl) != "" {
+		rank += 4
+	}
+	if row.Type_ == "xma_web_url" {
+		rank += 2
+	}
+	if strings.TrimSpace(row.Title) != "" {
+		rank++
+	}
+	return rank
+}
+
+// The rows live in a map, so ties break on the rows themselves: a card must not change destination between assemblies.
+func betterCTA(row, than *table.LSInsertAttachmentCta) bool {
+	if a, b := ctaRank(row), ctaRank(than); a != b {
+		return a > b
+	}
+	if row.CtaId != than.CtaId {
+		return row.CtaId < than.CtaId
+	}
+	return row.ActionUrl < than.ActionUrl
+}
+
+// Facebook's own word for a CTA, for the log. Anything but such a word is not repeated.
+func ctaTypeWord(value string) string {
+	if value == "" {
+		return "none"
+	}
+	if len(value) > 40 || strings.Trim(value, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+		return "other"
+	}
+	return value
+}
+
+// What kind of place an address is, for the log, which never holds the address.
+func linkForm(link string) string {
+	target := linkDestination(link)
+	if shareWebLink(target) == "" {
+		return "native"
+	}
+	lowered := strings.ToLower(target)
+	switch {
+	case strings.Contains(lowered, "facebook.com/marketplace/"):
+		return "marketplace"
+	case strings.Contains(lowered, "facebook.com/"):
+		return "facebook"
+	case strings.Contains(lowered, "messenger.com/"):
+		return "messenger"
+	}
+	return "other"
 }
 
 // Whether an address is somewhere that plays. Facebook marks this outright on the encrypted connection, and not at

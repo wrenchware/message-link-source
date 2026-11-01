@@ -330,6 +330,66 @@ func TestShareConflictingCTADestinationsStayUnresolved(t *testing.T) {
 	}
 }
 
+// The shape a Marketplace listing arrived in (2026-10-31, counts only): a container and an item with a picture and a
+// title, no CTA ids and no action of their own, and two CTAs with different actions.
+func TestShareWithSeveralActionsAndNoIdIsStillACard(t *testing.T) {
+	const button = "https://example.test/marketplace/item/1"
+	ctas := []*table.LSInsertAttachmentCta{
+		{ThreadKey: 4, MessageId: "share", AttachmentFbid: "item-id", CtaId: 71,
+			ActionUrl: "https://example.test/untitled", Type_: "xma_web_url"},
+		{ThreadKey: 4, MessageId: "share", AttachmentFbid: "item-id", CtaId: 72,
+			ActionUrl: "fb://native/1", Type_: "xma_web_url", Title: "Native"},
+		{ThreadKey: 4, MessageId: "share", AttachmentFbid: "item-id", CtaId: 73,
+			ActionUrl: button, Type_: "xma_web_url", Title: "View listing"},
+		{ThreadKey: 4, MessageId: "share", AttachmentFbid: "item-id", CtaId: 74,
+			ActionUrl: "https://example.test/other-kind", Type_: "xma_other", Title: "Other"},
+	}
+	for _, reverse := range []bool{false, true} {
+		s := newStore()
+		shareTestMessage(s, "share")
+		item := shareTestItem("share", "item-id")
+		item.DefaultActionUrl = ""
+		order := slices.Clone(ctas)
+		if reverse {
+			slices.Reverse(order)
+		}
+		s.apply(&table.LSTable{
+			LSInsertAttachmentItem: []*table.LSInsertAttachmentItem{item},
+			LSInsertAttachmentCta:  order,
+			LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{{ThreadKey: 4, MessageId: "share", AttachmentFbid: "item-id",
+				TitleText: item.TitleText, PreviewUrl: item.PreviewUrl, PreviewUrlMimeType: "image/jpeg"}},
+		})
+		// Repeated assembly must not make map iteration move the card to another destination.
+		for attempt := 0; attempt < 8; attempt++ {
+			media := shareTestMedia(t, s, "share", 1)[0]
+			if media.Link != button || media.Name != item.TitleText {
+				t.Fatalf("the card lost its button's destination or its title: %+v", media)
+			}
+			s.apply(&table.LSTable{LSInsertAttachmentCta: order})
+		}
+	}
+}
+
+func TestShareLogWordsCarryNoAddress(t *testing.T) {
+	for value, want := range map[string]string{"": "none", "xma_web_url": "xma_web_url", "https://example.test/a": "other", "Some Title": "other"} {
+		if got := ctaTypeWord(value); got != want {
+			t.Fatalf("ctaTypeWord(%q) = %q, want %q", value, got, want)
+		}
+	}
+	for link, want := range map[string]string{
+		"https://www.facebook.com/marketplace/item/1/":                            "marketplace",
+		"https://l.facebook.com/l.php?u=https%3A%2F%2Fexample.test%2Fa":           "other",
+		"https://www.facebook.com/share/p/1/":                                     "facebook",
+		"https://www.messenger.com/t/1":                                           "messenger",
+		"fb://marketplace_product_details_from_for_sale_item_id?for_sale_item_id": "native",
+		"": "native",
+	} {
+		if got := linkForm(link); got != want {
+			t.Fatalf("linkForm(%q) = %q, want %q", link, got, want)
+		}
+	}
+}
+
 func TestShareItemUpgradesLegacyAttachmentWithoutDuplicate(t *testing.T) {
 	s := newStore()
 	shareTestMessage(s, "share")
