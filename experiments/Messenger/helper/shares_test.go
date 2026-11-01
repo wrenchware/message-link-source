@@ -370,6 +370,18 @@ func TestShareWithSeveralActionsAndNoIdIsStillACard(t *testing.T) {
 	}
 }
 
+// As a listing arrives (2026-11-01, counts only): the button is an xma_open_native with a label and a web address.
+func TestShareLabelOutranksTheActionsType(t *testing.T) {
+	const button = "https://example.test/marketplace/item/1"
+	rows := &shareRows{ctas: map[shareCTAKey]*table.LSInsertAttachmentCta{}}
+	key := shareRowKey{"item-id", 0}
+	rows.ctas[shareCTAKey{key, 1}] = &table.LSInsertAttachmentCta{CtaId: 1, AttachmentFbid: "item-id", ActionUrl: "https://example.test/plain", Type_: "xma_web_url"}
+	rows.ctas[shareCTAKey{key, 2}] = &table.LSInsertAttachmentCta{CtaId: 2, AttachmentFbid: "item-id", ActionUrl: button, Type_: "xma_open_native", Title: "View listing"}
+	if link, title := rows.cardAction(key, "", ""); link != button || title != "View listing" {
+		t.Fatalf("got %q %q", link, title)
+	}
+}
+
 // A button's words name its action, so a card leading somewhere else does not take them.
 func TestShareButtonWordsGoWithTheirAction(t *testing.T) {
 	for _, test := range []struct {

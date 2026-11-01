@@ -320,14 +320,15 @@ func (rows *shareRows) cta(attachment shareRowKey, ids ...int64) *table.LSInsert
 }
 
 func ctaRank(row *table.LSInsertAttachmentCta) int {
+	// The label outranks the type: Marketplace's "View listing" is an xma_open_native with a web address (2026-11-01).
 	rank := 0
 	if shareWebLink(row.ActionUrl) != "" {
 		rank += 4
 	}
-	if row.Type_ == "xma_web_url" {
+	if strings.TrimSpace(row.Title) != "" {
 		rank += 2
 	}
-	if strings.TrimSpace(row.Title) != "" {
+	if row.Type_ == "xma_web_url" {
 		rank++
 	}
 	return rank
