@@ -145,7 +145,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
             {
                 list = firstPage ? GoogleDirectory.KeepUnlisted(merged, chats.Values, listedChatIds) : merged;
                 advanced = firstPage || merged.Any(c => !listedChatIds.Contains(c.Id));
-                foreach (var chat in merged) { chats[chat.Id] = chat; listedChatIds.Add(chat.Id); placeholders.TryRemove(chat.Id, out _); }
+                foreach (var chat in merged) { chats[chat.Id] = chat; listedChatIds.Add(chat.Id); LiftPlaceholder(chat.Id); }
             }
             GoogleMessagesLog.Write($"conversations inbox={inbox.Length} archived={archivedChats.Length} visible={list.Length} requested={count}{(list.Length > merged.Length ? $" unlisted_kept={list.Length - merged.Length}" : "")}");
             // 2026-10-26: the phone's own list gained a row and lost it again, more than once, and a placeholder thread came back
@@ -292,7 +292,9 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
             if (result.GetProperty("outcome").GetString() != "accepted" ||
                 result.GetProperty("chat").Deserialize<GoogleChat>(Json) is not { Id.Length: > 0 } created)
                 throw new SendException(true, "The chat may have been created. Check your conversations before trying again.");
-            chat = created;
+            // The person chose exactly who this goes to, so a conversation that had left the list comes back for it.
+            chat = created with { Hidden = false };
+            LiftPlaceholder(chat.Id);
         }
         catch (SendException) { throw; }
         catch { throw new SendException(true, "The chat may have been created. Check your conversations before trying again."); }

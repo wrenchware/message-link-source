@@ -104,11 +104,32 @@ func (a *adapter) sendCall(ctx context.Context, r request) (any, string) {
 			req.MessagePayload.MessageInfo = append(req.MessagePayload.MessageInfo, &gmproto.MessageInfo{Data: &gmproto.MessageInfo_MessageContent{MessageContent: &gmproto.MessageContent{Content: p.Text}}})
 		}
 	}
+	// A send waits behind the mutation before it, an upload perhaps for a minute, so what the app checked may no longer hold.
+	if _, held := a.heldSends.Load(p.ChatID); held {
+		return answer(map[string]any{"outcome": "rejected", "reason": "This conversation isn't in your list any more. Open the one you want from the list."})
+	}
 	result, code := submitText(ctx, req, a.client.SendMessage)
 	if code != "" {
 		return nil, code
 	}
 	return answer(result)
+}
+
+// A conversation left the list (or came back) while sends may be queued for it. Not a mutation, so it passes those queued: mutationMethod.
+func (a *adapter) holdSends(r request) (any, string) {
+	var p struct {
+		ChatID string `json:"chatId"`
+		Held   bool   `json:"held"`
+	}
+	if json.Unmarshal(r.Params, &p) != nil || p.ChatID == "" {
+		return nil, "invalid_input"
+	}
+	if p.Held {
+		a.heldSends.Store(p.ChatID, true)
+	} else {
+		a.heldSends.Delete(p.ChatID)
+	}
+	return true, ""
 }
 
 // Every SendMessage error used to be reported as pending, so a send Google's relay answered in 58 ms with an error, never

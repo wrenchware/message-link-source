@@ -170,6 +170,33 @@ func TestSendTrustsTheConversationForAMinute(t *testing.T) {
 	expectAnswer(t, "a send after the second lookup", result, code, "pending", "cached")
 }
 
+// A send the app checked, queued behind a slow upload while its conversation left the list (audit, 2026-11-01), goes nowhere, and is
+// said to be certainly not sent. The word has to pass the queue to arrive in time.
+func TestHeldConversationTakesNoSend(t *testing.T) {
+	a, relay, phone, _ := sendingAdapter(t, true)
+	phone.describes(rcsChat("chat", "sim-a"))
+	hold := func(held bool) {
+		params, _ := json.Marshal(map[string]any{"chatId": "chat", "held": held})
+		if _, code := a.serveCall(shortCall(t), request{Method: "ui.holdSends", Params: params}); code != "" {
+			t.Fatalf("holding sends answered %q", code)
+		}
+	}
+	if mutationMethod("ui.holdSends") {
+		t.Fatal("the word would wait behind the very sends it stops")
+	}
+	hold(true)
+	result, code := sendText(t, a, "ui.sendText", "chat")
+	if answer, _ := result.(map[string]any); code != "" || answer["outcome"] != "rejected" {
+		t.Fatalf("a held conversation's send answered %v %q", result, code)
+	}
+	if slices.Contains(relay.take(), gmproto.ActionType_SEND_MESSAGE) {
+		t.Fatal("a held conversation's send reached the phone")
+	}
+	hold(false)
+	result, code = sendText(t, a, "ui.sendText", "chat")
+	expectAnswer(t, "a send once let back in", result, code, "pending", "cached")
+}
+
 // Without a description from the last minute the send waits for the phone's answer, and a phone that does not answer
 // ends it as before: nothing sent, the same code.
 func TestSendWithoutARecentDescriptionAsksThePhoneFirst(t *testing.T) {

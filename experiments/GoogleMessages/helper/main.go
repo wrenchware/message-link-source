@@ -77,6 +77,8 @@ type adapter struct {
 	// The timer that lets go of finished downloads nobody reads any more (media.go). Held with downloads.
 	mediaSweep *time.Timer
 	upload     []byte
+	// Conversations the app has said take no more sends (send.go).
+	heldSends  sync.Map
 	simMu      sync.RWMutex
 	sims       map[string]*gmproto.SIMCard
 	// Attachments re-learned from a page of their conversation (media_relearn.go), and what tests stand in for its read
@@ -202,6 +204,8 @@ func (a *adapter) callContext(ctx context.Context, r request) (any, string) {
 		typingContext, stopTyping := context.WithTimeout(ctx, 3*time.Second)
 		defer stopTyping()
 		return a.typingCall(typingContext, r)
+	case "ui.holdSends":
+		return a.holdSends(r)
 	case "ui.sendPermission", "ui.sendText", "ui.sendMedia":
 		return a.sendCall(ctx, r)
 	case "hello":

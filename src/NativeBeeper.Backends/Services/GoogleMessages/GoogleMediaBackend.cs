@@ -160,6 +160,7 @@ internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, 
             if(offset!=file.Length) throw new IOException("File changed.");
             cancellationToken.ThrowIfCancellationRequested();
             staged=System.Diagnostics.Stopwatch.GetElapsedTime(began);
+            backend.ThrowIfGoneFromList(chatId);
             submitted=true; outcome="outcome unknown";
             var result=await backend.MediaCallAsync("ui.sendMedia",new {chatId=GoogleModels.Native(chatId),name=Path.GetFileName(file.Name),mime=file.MimeType,text=caption ?? ""},cancellationToken);
             outcome=result.GetProperty("outcome").GetString() ?? outcome;

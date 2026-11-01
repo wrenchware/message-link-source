@@ -250,12 +250,14 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
             }
             else if(kind=="chat" && value.Deserialize<GoogleChat>(Json) is { } c)
             {
+                // Google still describes a dropped placeholder. That does not bring it back: it would sit in the list refusing every send.
+                if (!c.Hidden && placeholders.ContainsKey(c.Id)) { GoogleMessagesLog.Write($"event=chat state=placeholder chat={GoogleMessagesLog.Tag(c.Id)}"); ArchiveChats([c with { Hidden = true }]); return; }
                 ArchiveChats([c]);
                 if (c.Hidden) { GoogleMessagesLog.Write($"event=chat state=deleted chat={GoogleMessagesLog.Tag(c.Id)}"); RemoveChat(c.Id,out _); ArrivalHold.Discard(c.Id); Publish(new(RealtimeKind.ChatDeleted,GoogleModels.Qualify(c.Id))); }
                 else { var was=chats.TryGetValue(c.Id,out var held) ? held.Unread : (bool?)null; GoogleMessagesLog.Write($"event=chat state=changed chat={GoogleMessagesLog.Tag(c.Id)} unread={c.Unread} was={(was?.ToString() ?? "unknown")}"); SetChat(c); ArrivalHold.Deliver(c.Id,new(RealtimeKind.ChatChanged,GoogleModels.Qualify(c.Id))); }
             }
             else if((kind=="message" || kind=="messageUpdate") && value.Deserialize<GoogleMessage>(Json) is { } m)
-            { var from=messages.TryGetValue(m.Id,out var before) && before.ChatId!=m.ChatId ? before.ChatId : null; var isNew=messages.TryAdd(m.Id,m); GoogleMessagesLog.Write($"event=message state={(isNew ? "new" : "updated")} chat={GoogleMessagesLog.Tag(m.ChatId)} message={GoogleMessagesLog.Tag(m.Id)} status={GoogleMessagesLog.Status(m.Status)} chatUnread={(chats.TryGetValue(m.ChatId,out var owner) ? owner.Unread.ToString() : "unknown")}{ReaderCounts([m],owner)}"); if(!isNew) RememberMessage(m); else ArchiveMessages([m]); if(isNew && kind=="message") NoteRealtimeMessage(); if(isNew) HoldIfUnsettled(m); ArrivalHold.Deliver(m.ChatId,new(RealtimeKind.MessageChanged,GoogleModels.Qualify(m.ChatId),[GoogleModels.Qualify(m.Id)],isNew && kind=="message",DateTimeOffset.UtcNow)); ReleaseIfSettled(m.ChatId); if(from is not null) MessageMoved(from,m); }
+            { var from=messages.TryGetValue(m.Id,out var before) && before.ChatId!=m.ChatId ? before.ChatId : null; var isNew=messages.TryAdd(m.Id,m); GoogleMessagesLog.Write($"event=message state={(isNew ? "new" : "updated")} chat={GoogleMessagesLog.Tag(m.ChatId)} message={GoogleMessagesLog.Tag(m.Id)} status={GoogleMessagesLog.Status(m.Status)} chatUnread={(chats.TryGetValue(m.ChatId,out var owner) ? owner.Unread.ToString() : "unknown")}{ReaderCounts([m],owner)}"); if(!isNew) RememberMessage(m); else ArchiveMessages([m]); if(isNew && kind=="message") NoteRealtimeMessage(); if(isNew) HoldIfUnsettled(m); ReinstateIfReal(m); ArrivalHold.Deliver(m.ChatId,new(RealtimeKind.MessageChanged,GoogleModels.Qualify(m.ChatId),[GoogleModels.Qualify(m.Id)],isNew && kind=="message",DateTimeOffset.UtcNow)); ReleaseIfSettled(m.ChatId); if(from is not null) MessageMoved(from,m); }
         }
         catch (Exception) { GoogleMessagesLog.Write("event=invalid action=resync"); Publish(new(RealtimeKind.ResyncRequired)); }
     }

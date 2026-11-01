@@ -232,6 +232,7 @@ internal sealed class PushNotifier : IAsyncDisposable
                         if (change.IsNewMessage != true) await MaybeReadAsync(chatId, token).ConfigureAwait(false);
                     }
                     else if (change.Kind is RealtimeKind.ChatChanged or RealtimeKind.MessageChanged) await MaybeReadAsync(chatId, token).ConfigureAwait(false);
+                    else if (change.Kind == RealtimeKind.ChatDeleted) Withdraw(chatId);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
                 catch (Exception failure)
@@ -331,6 +332,15 @@ internal sealed class PushNotifier : IAsyncDisposable
             // A phone in front reads the change itself.
             if (!inFront(device.DeviceId)) Enqueue(new(device.DeviceId, new PushMessage(1, "read", chatId), Urgent: false));
         }
+    }
+
+    // A conversation a phone was told of, gone from the list: a notification still offering Reply goes too (audit, 2026-11-01). Sent to a
+    // phone in front as well, whose list takes the change but leaves the notification.
+    private void Withdraw(string chatId)
+    {
+        foreach (var device in registry.All())
+            if (told.TryGetValue(device.DeviceId, out var chatsTold) && chatsTold.TryRemove(chatId, out _))
+                Enqueue(new(device.DeviceId, new PushMessage(1, "read", chatId), Urgent: false));
     }
 
     // A send in a burst: the device's wake waits until the sends stop for BurstQuiet.

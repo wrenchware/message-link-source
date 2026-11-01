@@ -21,6 +21,8 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
         // (conversation_cache.go). Trusting it for that minute was chosen on 2026-10-14: a lookup before every
         // send was about 250 ms of a 628 ms median send.
         var native = GoogleModels.Native(chatId);
+        if (!chats.ContainsKey(native) && !await SavedChatsReadAsync(cancellationToken)) return new(false, "Google Messages is still starting. Try again in a moment.");
+        if (GoneFromList(chatId)) return new(false, GoneFromListWords);
         if (connected && (chats.TryGetValue(native, out var known) ? known : archive.Chat(native)) is { ReadOnly: false, OutgoingId.Length: > 0 })
             return WithDefaultSmsCaution(new(true, "", 65536));
         for (var attempt = 0; ; attempt++)
@@ -28,6 +30,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
             try
             {
                 await ConnectAsync(cancellationToken);
+                if (GoneFromList(chatId)) return new(false, GoneFromListWords);
                 var result = await ReadAsync("ui.sendPermission", new { chatId = GoogleModels.Native(chatId) }, cancellationToken);
                 return WithDefaultSmsCaution(result.Deserialize<SendPermission>(Json) ?? new(false,"Couldn't verify Google Messages send permission."));
             }
@@ -58,6 +61,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
             // refused at the conversation lookup was reported as "outcome unknown" for a message that certainly never went.
             // Only the call itself is read this way; anything after it has an answer and keeps the uncertain wording. A helper
             // replaced by a renewal just before the call means the call never happened either.
+            ThrowIfGoneFromList(chatId);
             var connection = helper;
             if (connection is null)
             {

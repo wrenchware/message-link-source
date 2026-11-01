@@ -104,19 +104,40 @@ internal sealed class GoogleArchive(MessageArchive store)
         lock (sync)
         {
             if (profile == account && loading is not null && !loading.IsFaulted && !loading.IsCanceled) return loading;
-            if (profile != account) { documents.Clear(); mediaOwners.Clear(); chats.Clear(); crawl.Clear(); switches.Clear(); contacts = null; index.Clear(); ForgetWritten(); }
+            if (profile != account) { documents.Clear(); mediaOwners.Clear(); chats.Clear(); crawl.Clear(); switches.Clear(); contacts = null; index.Clear(); ForgetWritten(); chatsReadFor = null; }
             profile = account;
             return loading = Task.Run(() => LoadCoreAsync(account, beforeMessageBatch));
         }
+    }
+
+    // Whether this account's saved conversations are here, which a send asks before trusting that one is not hidden.
+    private string? chatsReadFor;
+    public bool ChatsRead(string account) { lock (sync) return chatsReadFor == account; }
+
+    // The saved conversations alone, ahead of the paced message load, as LoadCrawlStatesAsync reads its records. Rows already here are newer and stay.
+    public async Task<bool> LoadChatsAsync(string account)
+    {
+        try
+        {
+            foreach (var bytes in await store.ReadAllAsync(account, Kind.Chat))
+                if (Deserialize<GoogleChat>(bytes) is { Id.Length: > 0 } chat)
+                    lock (sync) if (profile == account) chats.TryAdd(chat.Id, chat);
+            lock (sync)
+            {
+                if (profile != account) return false;
+                chatsReadFor = account;
+                return true;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return false; }
     }
 
     private async Task<bool> LoadCoreAsync(string account, Func<Task>? beforeMessageBatch)
     {
         try
         {
-            foreach (var bytes in await store.ReadAllAsync(account, Kind.Chat))
-                if (Deserialize<GoogleChat>(bytes) is { Id.Length: > 0 } chat)
-                    lock (sync) if (profile == account) chats.TryAdd(chat.Id, chat); // Live data loaded meanwhile is newer.
+            if (!await LoadChatsAsync(account)) return false;
             await using (var batches = store.ReadBatchesAsync(account, Kind.Message).GetAsyncEnumerator())
             {
                 while (true)
@@ -276,7 +297,7 @@ internal sealed class GoogleArchive(MessageArchive store)
     {
         lock (sync)
         {
-            profile = null; loading = null;
+            profile = null; loading = null; chatsReadFor = null;
             documents.Clear(); mediaOwners.Clear(); chats.Clear(); crawl.Clear(); switches.Clear(); contacts = null; index.Clear(); pending.Clear(); ForgetWritten();
         }
         // A batch already taken is written first; its rows are cleared below.

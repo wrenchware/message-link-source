@@ -203,6 +203,7 @@ internal static class GoogleMessagesLog
         "ui.react" => "react",
         "ui.deleteMessage" => "delete_message",
         "ui.sendPermission" => "send_permission",
+        "ui.holdSends" => "hold_sends",
         "ui.sendText" => "send_text",
         "ui.sendMedia" => "send_media",
         "ui.startDirect" => "start_direct",
