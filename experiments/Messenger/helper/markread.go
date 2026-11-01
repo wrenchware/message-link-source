@@ -43,9 +43,9 @@ func (a *adapter) markRead(ctx context.Context, r request) (any, string) {
 	// Facebook keeps a conversation unread while the watermark it holds is short of the thread's own activity time, and
 	// that time can be a few milliseconds after the newest message's. Lifting only our own copy showed one read here
 	// while Messenger on the web, and this helper after the nightly restart, kept it unread (2026-10-22).
-	through := a.chats.readThrough(key, watermark)
+	through, activity := a.chats.readToTell(key, watermark, time.Now().UnixMilli())
 	if through != watermark {
-		logf("mark read chat=%s watermark lifted ms=%d", tag(key), through-watermark)
+		logf("mark read chat=%s watermark lifted ms=%d activity_ms=%d", tag(key), through-watermark, activity)
 	}
 	return a.acknowledgeRead(key, through, encrypted,
 		func() (any, string) { return a.markReadEncrypted(ctx, key, watermark) },
@@ -249,15 +249,36 @@ func (s *store) readThrough(key, watermark int64) int64 {
 
 func (s *store) readThroughLocked(key, watermark int64) int64 {
 	current, ok := s.threads[key]
-	if !ok {
+	if !ok || s.newerMessageLocked(key, watermark) {
 		return watermark
 	}
+	return max(watermark, current.lastActivity)
+}
+
+func (s *store) newerMessageLocked(key, watermark int64) bool {
 	for _, message := range s.messages[key] {
 		if !message.unsent && message.timestamp > watermark {
-			return watermark
+			return true
 		}
 	}
-	return max(watermark, current.lastActivity)
+	return false
+}
+
+// How far past the newest message a read is told to Facebook, in milliseconds. An encrypted message brings its own time
+// and not the thread's, which only a thread row says, and usually not before the next connect: the read went out short
+// of it, was accepted, and came back unread after the nightly restart (2026-11-01; the gaps seen ran 291-809 ms).
+const readMargin = 2000
+
+// What to tell Facebook for a read through watermark, never past now, and how far the activity time this copy knows
+// is past the watermark. Our own copy takes the same value, so a thread row bringing the real time finds it read.
+func (s *store) readToTell(key, watermark, now int64) (through, activity int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.threads[key]
+	if !ok || s.newerMessageLocked(key, watermark) {
+		return watermark, 0
+	}
+	return max(watermark, current.lastActivity, min(watermark+readMargin, now)), max(current.lastActivity-watermark, 0)
 }
 
 // Replying in a conversation reads it, as Messenger's own apps do. The ordinary connection sends that with the

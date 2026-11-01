@@ -73,6 +73,47 @@ func TestReadingTheNewestMessageClearsUnreadDespiteLaterActivity(t *testing.T) {
 	}
 }
 
+// An encrypted arrival brings no thread time, so a read has to clear it before this copy knows it: the thread row that
+// finally says it, at the next connect, must find the conversation read here and on Facebook.
+func TestReadClearsAThreadTimeNotYetKnown(t *testing.T) {
+	const at, long = 100_000, 900_000
+	s := newStore()
+	s.self = 1
+	s.get(7).readAt = 500
+	s.addEncrypted(7, "a", 2, "hello", "", at)
+	// Only as far as now: a watermark is never in the future, and a fast clock on Facebook's side never moves it back.
+	if through, _ := s.readToTell(7, at, at+300); through != at+300 {
+		t.Fatalf("a read just after arrival told through %d, want now", through)
+	}
+	if through, _ := s.readToTell(7, at, at-5000); through != at {
+		t.Fatalf("a clock behind the message told through %d, want the message", through)
+	}
+	through, activity := s.readToTell(7, at, long)
+	if through != at+readMargin || activity != 0 {
+		t.Fatalf("read told through %d with activity %d, want %d and 0", through, activity, at+readMargin)
+	}
+	if !s.markReadUpTo(7, through) || s.get(7).readAt != through {
+		t.Fatalf("our copy read through %d, Facebook told %d", s.get(7).readAt, through)
+	}
+	s.get(7).lastActivity = at + 809
+	if chat, _ := s.chatByKey(7); chat.Unread {
+		t.Fatal("the thread row's later activity time brought the read conversation back as unread")
+	}
+	// A known activity time past the margin is still reached, and said.
+	s.get(7).lastActivity = at + 9000
+	if through, activity := s.readToTell(7, at, long); through != at+9000 || activity != 9000 {
+		t.Fatalf("read told through %d with activity %d, want the activity time", through, activity)
+	}
+	// A newer message known here is not read by reading this one, however close behind it is.
+	s.addEncrypted(7, "b", 2, "again", "", at+500)
+	if through, activity := s.readToTell(7, at, long); through != at || activity != 0 {
+		t.Fatalf("the margin passed a newer message: %d", through)
+	}
+	if through, _ := s.readToTell(404, at, long); through != at {
+		t.Fatalf("a thread this copy does not hold was told through %d", through)
+	}
+}
+
 func TestOutgoingPreviewCannotRemainUnread(t *testing.T) {
 	s := newStore()
 	s.self = 1
