@@ -55,7 +55,7 @@ func TestOrdinaryShareLinkSurvivesDatabaseReopen(t *testing.T) {
 				t.Fatal(err)
 			}
 			item := &attachment{id: "share", name: "Shared reel", mime: "image/jpeg", width: 9, height: 16,
-				source: "https://example.test/reel.jpg", link: "https://example.test/reel"}
+				source: "https://example.test/reel.jpg", link: "https://example.test/reel", actionTitle: "View listing"}
 			kept.rememberAttachments(ctx, 7, "share-message", []*attachment{item}, nil)
 			if err := kept.db.Close(); err != nil {
 				t.Fatal(err)
@@ -72,7 +72,7 @@ func TestOrdinaryShareLinkSurvivesDatabaseReopen(t *testing.T) {
 			if len(page) != 1 || len(page[0].Media) != 1 {
 				t.Fatal("the share-only message and its thumbnail did not survive reopening")
 			}
-			if got := page[0].Media[0]; got.Link != item.link || got.Mime != item.mime || got.Video || got.Animated {
+			if got := page[0].Media[0]; got.Link != item.link || got.ActionTitle != item.actionTitle || got.Mime != item.mime || got.Video || got.Animated {
 				t.Fatal("the restored share lost its browser destination or thumbnail type")
 			}
 			if source, mime, ok := back.mediaSource(item.id); !ok || source != item.source || mime != item.mime {

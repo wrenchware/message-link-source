@@ -60,7 +60,7 @@ import (
 //	                          "transport", "at", "link"}],
 //	               "share": the retained share schema,
 //	               "attachments": [{"id", "name", "mime", "size", "width", "height", "video", "animated", "source",
-//	                                "preview", "playable", "previewSource", "link", "description"}],
+//	                                "preview", "playable", "previewSource", "link", "description", "actionTitle"}],
 //	               "reactions": [{"actor", "emoji"}]}],
 //	 "receipts":  [{"thread", "contact", "read", "readFrom", "readAt", "delivered"}],
 //	 "next": the cursor for the following page, "" on the last,
@@ -174,6 +174,7 @@ type backupAttachment struct {
 	PreviewSource string `json:"previewSource,omitempty"`
 	Link          string `json:"link,omitempty"`
 	Description   string `json:"description,omitempty"`
+	ActionTitle   string `json:"actionTitle,omitempty"`
 }
 
 type backupReaction struct {
@@ -917,7 +918,7 @@ func (e *backupExport) messageParts(ctx context.Context, after, last int64) (map
 		return nil, nil, err
 	}
 	rows, err = e.db.QueryContext(ctx, `SELECT x.message, x.id, x.name, x.mime, x.size, x.width, x.height, x.video, x.animated,
-		x.source, x.preview, x.playable, x.previewSource, x.link, x.description FROM message_attachment AS x `+inRange+`
+		x.source, x.preview, x.playable, x.previewSource, x.link, x.description, x.actionTitle FROM message_attachment AS x `+inRange+`
 		ORDER BY x.rowid`, after, last)
 	if err != nil {
 		return nil, nil, err
@@ -925,13 +926,13 @@ func (e *backupExport) messageParts(ctx context.Context, after, last int64) (map
 	for rows.Next() {
 		var owner string
 		var item backupAttachment
-		var sealed [8][]byte
+		var sealed [9][]byte
 		if err := rows.Scan(&owner, &item.ID, &sealed[0], &sealed[1], &item.Size, &item.Width, &item.Height, &item.Video,
-			&item.Animated, &sealed[2], &sealed[3], &sealed[4], &sealed[5], &sealed[6], &sealed[7]); err != nil {
+			&item.Animated, &sealed[2], &sealed[3], &sealed[4], &sealed[5], &sealed[6], &sealed[7], &sealed[8]); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
-		var plain [8]string
+		var plain [9]string
 		readable := true
 		for index := range sealed {
 			var err error
@@ -944,8 +945,8 @@ func (e *backupExport) messageParts(ctx context.Context, after, last int64) (map
 			unreadable[owner]++
 			continue
 		}
-		item.Name, item.Mime, item.Source, item.Preview, item.Playable, item.PreviewSource, item.Link, item.Description =
-			plain[0], plain[1], plain[2], plain[3], plain[4], plain[5], plain[6], plain[7]
+		item.Name, item.Mime, item.Source, item.Preview, item.Playable, item.PreviewSource, item.Link, item.Description, item.ActionTitle =
+			plain[0], plain[1], plain[2], plain[3], plain[4], plain[5], plain[6], plain[7], plain[8]
 		of(owner).Attachments = append(of(owner).Attachments, item)
 	}
 	if err := closeRows(rows); err != nil {
@@ -1286,7 +1287,7 @@ func planImport(ctx context.Context, db *sql.DB, messages []backupMessage) ([]*i
 			if item.ID == "" || attachments[item.ID] {
 				continue
 			}
-			sealed, err := protectStrings(item.Name, item.Mime, item.Source, item.Preview, item.Playable, item.PreviewSource, item.Link, item.Description)
+			sealed, err := protectStrings(item.Name, item.Mime, item.Source, item.Preview, item.Playable, item.PreviewSource, item.Link, item.Description, item.ActionTitle)
 			if err != nil {
 				return nil, err
 			}
@@ -1424,10 +1425,10 @@ func (a *adapter) importMessage(ctx context.Context, tx *sql.Tx, plan *importPla
 			continue
 		}
 		written, err := tx.ExecContext(ctx, `INSERT INTO message_attachment
-			(id, message, thread, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+			(id, message, thread, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description, actionTitle)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
 			item.ID, m.ID, plan.key, sealed[0], sealed[1], item.Size, item.Width, item.Height, item.Video, item.Animated,
-			sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7])
+			sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7], sealed[8])
 		if err != nil {
 			return err
 		}
@@ -1519,7 +1520,7 @@ func (a *adapter) showImported(plan *importPlan, shown *importChanges) bool {
 	for _, item := range plan.addedAttachments {
 		a.chats.restoreAttachment(m.ID, &attachment{id: item.ID, name: item.Name, mime: item.Mime, size: item.Size, width: item.Width,
 			height: item.Height, video: item.Video, animated: item.Animated, source: item.Source, preview: item.Preview,
-			playable: item.Playable, link: item.Link, description: item.Description}, item.PreviewSource)
+			playable: item.Playable, link: item.Link, description: item.Description, actionTitle: item.ActionTitle}, item.PreviewSource)
 		changed = true
 	}
 	if fresh && plan.addedShare {

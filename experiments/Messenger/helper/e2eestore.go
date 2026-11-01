@@ -234,7 +234,8 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 		playable TEXT NOT NULL,
 		previewSource TEXT NOT NULL,
 		link TEXT NOT NULL DEFAULT '',
-		description TEXT NOT NULL DEFAULT ''
+		description TEXT NOT NULL DEFAULT '',
+		actionTitle TEXT NOT NULL DEFAULT ''
 	)`); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -260,6 +261,18 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 	}
 	if hasDescription == 0 {
 		if _, err := db.ExecContext(ctx, `ALTER TABLE message_attachment ADD COLUMN description TEXT NOT NULL DEFAULT ''`); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
+	// And the words on a shared card's button, for stores made before cards carried them.
+	var hasActionTitle int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('message_attachment') WHERE name = 'actionTitle'`).Scan(&hasActionTitle); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if hasActionTitle == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE message_attachment ADD COLUMN actionTitle TEXT NOT NULL DEFAULT ''`); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
@@ -312,7 +325,7 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 		"encrypted_message":  {"body", "reply", "card_text"},
 		"encrypted_media":    {"name", "mime", "kind", "transport", "link"},
 		"encrypted_share":    {"payload"},
-		"message_attachment": {"name", "mime", "source", "preview", "playable", "previewSource", "link", "description"},
+		"message_attachment": {"name", "mime", "source", "preview", "playable", "previewSource", "link", "description", "actionTitle"},
 		"encrypted_reaction": {"emoji"},
 		"thread_identity":    {"identity"},
 		"thread_contact":     {"name", "picture"},
@@ -400,18 +413,18 @@ func (m *messageStore) rememberAttachmentsOn(ctx context.Context, on execer, thr
 		return
 	}
 	for _, item := range items {
-		sealed, err := protectStrings(item.name, item.mime, item.source, item.preview, item.playable, previews[item.preview], item.link, item.description)
+		sealed, err := protectStrings(item.name, item.mime, item.source, item.preview, item.playable, previews[item.preview], item.link, item.description, item.actionTitle)
 		if err != nil {
 			logf("an attachment could not be protected")
 			return
 		}
 		_, err = on.ExecContext(ctx,
-			`INSERT INTO message_attachment (id, message, thread, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO message_attachment (id, message, thread, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description, actionTitle)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(id) DO UPDATE SET source = excluded.source, preview = excluded.preview,
-			   playable = excluded.playable, previewSource = excluded.previewSource, link = excluded.link, description = excluded.description`,
+			   playable = excluded.playable, previewSource = excluded.previewSource, link = excluded.link, description = excluded.description, actionTitle = excluded.actionTitle`,
 			item.id, messageID, thread, sealed[0], sealed[1], item.size, item.width, item.height,
-			item.video, item.animated, sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7])
+			item.video, item.animated, sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7], sealed[8])
 		if err != nil {
 			logf("an attachment could not be kept")
 			return
@@ -421,7 +434,7 @@ func (m *messageStore) rememberAttachmentsOn(ctx context.Context, on execer, thr
 
 func (m *messageStore) restoreAttachments(ctx context.Context, into *store) {
 	rows, err := m.db.QueryContext(ctx,
-		`SELECT id, message, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description FROM message_attachment`)
+		`SELECT id, message, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description, actionTitle FROM message_attachment`)
 	if err != nil {
 		return
 	}
@@ -429,9 +442,9 @@ func (m *messageStore) restoreAttachments(ctx context.Context, into *store) {
 	for rows.Next() {
 		var item attachment
 		var messageID string
-		var values [8][]byte
+		var values [9][]byte
 		if rows.Scan(&item.id, &messageID, &values[0], &values[1], &item.size, &item.width, &item.height,
-			&item.video, &item.animated, &values[2], &values[3], &values[4], &values[5], &values[6], &values[7]) != nil {
+			&item.video, &item.animated, &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8]) != nil {
 			continue
 		}
 		plain := make([]string, len(values))
@@ -446,7 +459,7 @@ func (m *messageStore) restoreAttachments(ctx context.Context, into *store) {
 		if !valid {
 			continue
 		}
-		item.name, item.mime, item.source, item.preview, item.playable, item.link, item.description = plain[0], plain[1], plain[2], plain[3], plain[4], plain[6], plain[7]
+		item.name, item.mime, item.source, item.preview, item.playable, item.link, item.description, item.actionTitle = plain[0], plain[1], plain[2], plain[3], plain[4], plain[6], plain[7], plain[8]
 		copied := item
 		into.restoreAttachment(messageID, &copied, plain[5])
 	}

@@ -91,12 +91,10 @@ func encryptedGallery(gallery *waArmadilloApplication.Armadillo_Content_ImageGal
 // to ImageTransport. This is an embedded picture transport, not a Lightspeed attachment join.
 // See docs/research/MESSENGER_SHARED_LINKS.md for source/version evidence.
 func encryptedShare(content *waArmadilloXMA.ExtendedContentMessage, messageID string) (items []encryptedShareMedia, text string) {
-	link := ""
+	link, action := "", ""
 	for _, cta := range content.GetCtas() {
-		if link = linkDestination(shareWebLink(cta.GetNativeURL())); link != "" {
-			break
-		}
-		if link = linkDestination(shareWebLink(cta.GetActionURL())); link != "" {
+		if link = linkDestination(firstOf(shareWebLink(cta.GetNativeURL()), shareWebLink(cta.GetActionURL()))); link != "" {
+			action = strings.TrimSpace(cta.GetTitle())
 			break
 		}
 	}
@@ -127,7 +125,7 @@ func encryptedShare(content *waArmadilloXMA.ExtendedContentMessage, messageID st
 		}
 		item.width = int64(image.GetAncillary().GetWidth())
 		item.height = int64(image.GetAncillary().GetHeight())
-		item.link = link
+		item.link, item.actionTitle = link, action
 		items = append(items, encryptedShareMedia{item: item, held: held})
 	}
 	text = content.GetMessageText()

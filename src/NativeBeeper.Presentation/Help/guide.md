@@ -358,7 +358,7 @@ Saved files are marked as coming from the internet, as a browser marks a downloa
   Previews of recent links are ready when you open a conversation, including links you send from your phone. None are fetched for a conversation in Spam.
 - Fetching a preview tells the link's site that the message was opened, and from where. So a link from someone you don't know shows a small **Load preview** instead, and fetches nothing until you click it. Someone counts as known when they're a saved contact on your phone (Google Messages) or you've written in that conversation. With [private reading](#private-reading) on for a service, every link there waits for **Load preview**, except your own.
 - A link whose words read as one web address but would open another shows as plain text, so what you click is what you read.
-- **Shared reels and posts** from Instagram and Facebook show a preview with **Open in Instagram** or **Open in Facebook**.
+- **Shared reels and posts** from Instagram and Facebook show a preview with **Open in Instagram** or **Open in Facebook**. A card Facebook gives a button of its own, such as a Marketplace listing's **View listing**, shows that button too; clicking anywhere on the card opens it.
 - A message of one to three emoji shows them large, without a bubble.
 
 ### Voice messages {#voice-messages}

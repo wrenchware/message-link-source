@@ -118,12 +118,16 @@ func TestEncryptedShareRetentionUpdatesExistingMediaWithoutDuplicating(t *testin
 	kept.rememberMedia(ctx, 7, "share", 1700, items[0].item, items[0].held)
 	kept.rememberShare(ctx, "share", content)
 	content.Ctas[0].NativeURL = proto.String("https://example.test/reel-updated")
+	content.Ctas[0].Title = proto.String(" View listing ")
 	kept.rememberShare(ctx, "share", content)
 	back := newStore()
 	kept.restore(ctx, back)
 	page := back.history(7, 0)
 	if len(page) != 1 || len(page[0].Media) != 1 || page[0].Media[0].Link != content.Ctas[0].GetNativeURL() {
 		t.Fatal("re-decoding retained share must update the earlier thumbnail in place")
+	}
+	if got := page[0].Media[0].ActionTitle; got != "View listing" {
+		t.Fatalf("an already kept share did not gain its button's words: %q", got)
 	}
 }
 

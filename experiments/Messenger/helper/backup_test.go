@@ -89,7 +89,7 @@ func seedBackupSource(t *testing.T, a *adapter) {
 	kept.rememberReaction(ctx, 7, "m2", 555, backupHeart)
 	backupMust(t, kept.rememberChecked(ctx, 8, "m3", 555, "Private ordinary body", "", 3000, false))
 	kept.rememberAttachments(ctx, 8, "m3", []*attachment{{id: "att-1", name: "Private file", mime: "image/png",
-		source: "https://example.test/private-source.png", preview: "att-1-preview", description: "Private description"}},
+		source: "https://example.test/private-source.png", preview: "att-1-preview", description: "Private description", actionTitle: "Private action"}},
 		map[string]string{"att-1-preview": "https://example.test/private-preview.png"})
 	card, err := protectString("Private card text")
 	backupMust(t, err)
@@ -197,9 +197,9 @@ func viewOfStore(s *store) backupView {
 				if held := s.media[item.preview]; held != nil {
 					preview = held.source
 				}
-				view.Attached[id] = append(view.Attached[id], fmt.Sprintf("%s %q %q %d %dx%d %v %v %q %q %q %q %q %q %q",
+				view.Attached[id] = append(view.Attached[id], fmt.Sprintf("%s %q %q %d %dx%d %v %v %q %q %q %q %q %q %q %q",
 					item.id, item.name, item.mime, item.size, item.width, item.height, item.video, item.animated, item.source,
-					item.preview, item.playable, item.link, item.description, source, preview))
+					item.preview, item.playable, item.link, item.description, item.actionTitle, source, preview))
 				if held := s.files[item.id]; held != nil {
 					view.Files[item.id] = fmt.Sprintf("%x %s", held.transport, held.kind)
 				}

@@ -22,7 +22,8 @@ internal sealed record MessengerChat(string Id, string Title, MessengerPerson[] 
     // Who wrote the preview's words in a group, as its messages name them; none for this account and one-to-ones. Appended (2026-10-28).
     string? PreviewSender = null, string? PreviewName = null);
 internal sealed record MessengerMedia(string Id, string? Name, string? Mime, long Size, double Width, double Height, bool Video,
-    string? Preview = null, bool Animated = false, string? Link = null, bool Play = false, string? Description = null, string? Caption = null);
+    string? Preview = null, bool Animated = false, string? Link = null, bool Play = false, string? Description = null, string? Caption = null,
+    string? ActionTitle = null);
 internal sealed record MessengerMessage(string Id, string ChatId, string Sender, string? Name, string Text, DateTimeOffset At,
     bool Outgoing, bool Deleted, string? ReplyTo = null, long Status = 0, MessengerMedia[]? Media = null,
     MessengerReaction[]? Reactions = null,
@@ -155,7 +156,8 @@ internal static class MessengerModels
             item.Width == 0 ? null : item.Width, item.Height == 0 ? null : item.Height,
             // A shared reel or post: a picture of it, and where it leads when opened.
             Link: string.IsNullOrEmpty(item.Link) ? null : item.Link, Play: item.Play,
-            Description: string.IsNullOrWhiteSpace(item.Description) ? null : item.Description, Caption: item.Caption)).ToArray();
+            Description: string.IsNullOrWhiteSpace(item.Description) ? null : item.Description, Caption: item.Caption,
+            ActionTitle: string.IsNullOrWhiteSpace(item.ActionTitle) ? null : item.ActionTitle)).ToArray();
         return new(Qualify(message.Id), Qualify(message.ChatId), Person(message.Sender), message.Name, message.At,
             message.At.UtcTicks.ToString("D19"), message.Text, "text", message.Outgoing, message.Deleted, false,
             // Messenger reports a correction separately from the message, so "edited" is something the helper tells us

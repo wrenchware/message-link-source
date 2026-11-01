@@ -29,6 +29,8 @@ type viewMedia struct {
 	Animated bool `json:"animated,omitempty"`
 	// What a shared or linked page says about itself, for the line under the title in the card.
 	Description string `json:"description,omitempty"`
+	// What the button on a shared card says, in Facebook's words.
+	ActionTitle string `json:"actionTitle,omitempty"`
 }
 
 // Messenger has its own message shape: statuses are numbers, and senders are contact ids.

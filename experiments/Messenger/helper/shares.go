@@ -113,6 +113,7 @@ func (s *store) applyShares(tbl *table.LSTable, note func(int64, string)) {
 			merged.TitleText, merged.SubtitleText = firstOf(row.TitleText, previous.TitleText), firstOf(row.SubtitleText, previous.SubtitleText)
 			if row.DefaultActionUrl == "" && row.DefaultCtaId == 0 && row.AttachmentCta1Id == 0 && row.AttachmentCta2Id == 0 && row.AttachmentCta3Id == 0 {
 				merged.DefaultActionUrl, merged.DefaultCtaId = previous.DefaultActionUrl, previous.DefaultCtaId
+				merged.DefaultCtaTitle, merged.Cta1Title = previous.DefaultCtaTitle, previous.Cta1Title
 				merged.AttachmentCta1Id, merged.AttachmentCta2Id, merged.AttachmentCta3Id = previous.AttachmentCta1Id, previous.AttachmentCta2Id, previous.AttachmentCta3Id
 			}
 		}
@@ -221,11 +222,12 @@ func (rows *shareRows) thumbnails(message shareMessageKey) []shareThumbnail {
 		if source == "" {
 			continue
 		}
+		link, action := rows.cardAction(key, row.DefaultActionUrl, firstOf(row.Cta1Title, row.DefaultCtaTitle),
+			row.DefaultCtaId, row.AttachmentCta1Id, row.AttachmentCta2Id, row.AttachmentCta3Id)
 		result = append(result, shareThumbnail{attachment: &attachment{
 			id:   strconv.FormatInt(message.thread, 10) + ":" + message.message + ":xma-item:" + key.fbid + ":" + strconv.FormatInt(key.index, 10),
 			name: firstOf(row.TitleText, row.SubtitleText, "Shared link"), mime: previewType(row.PreviewUrlMimeType), source: source,
-			width: row.PreviewWidth, height: row.PreviewHeight,
-			link: linkDestination(firstOf(row.DefaultActionUrl, rows.ctaLink(key, row.DefaultCtaId, row.AttachmentCta1Id, row.AttachmentCta2Id, row.AttachmentCta3Id))),
+			width: row.PreviewWidth, height: row.PreviewHeight, link: link, actionTitle: action,
 			// A share with something to play behind it is a reel or a video; the picture gets a play badge for it.
 			play: row.PlayableUrl != "" || playableLink(linkDestination(row.DefaultActionUrl)),
 		}, legacyID: row.AttachmentFbid})
@@ -240,39 +242,61 @@ func (rows *shareRows) thumbnails(message shareMessageKey) []shareThumbnail {
 		if id == "" {
 			id = row.MessageId + ":xma:" + strconv.FormatInt(row.AttachmentIndex, 10)
 		}
+		link, action := rows.cardAction(key, row.ActionUrl, firstOf(row.Cta1Title, row.DefaultCtaTitle),
+			row.DefaultCtaId, row.AttachmentCta1Id, row.AttachmentCta2Id, row.AttachmentCta3Id)
 		result = append(result, shareThumbnail{attachment: &attachment{
 			id: id, name: firstOf(row.TitleText, row.SubtitleText, shareName(row, nil)),
 			mime: previewType(row.PreviewUrlMimeType), source: source, width: row.PreviewWidth, height: row.PreviewHeight,
-			link: linkDestination(firstOf(row.ActionUrl, rows.ctaLink(key, row.DefaultCtaId, row.AttachmentCta1Id, row.AttachmentCta2Id, row.AttachmentCta3Id))),
+			link: link, actionTitle: action,
 			play: row.PlayableUrl != "" || playableLink(linkDestination(row.ActionUrl)),
 		}, legacyID: id})
 	}
 	return result
 }
 
+// Where a card leads and what its button says. The button's words go with the action they name: a card's own address
+// beats its CTA's, and takes the CTA's words only when both lead to one place.
+func (rows *shareRows) cardAction(attachment shareRowKey, direct, rowTitle string, ids ...int64) (link, title string) {
+	action := rows.cta(attachment, ids...)
+	switch {
+	case direct == "" && action != nil:
+		link, title = action.ActionUrl, action.Title
+	case direct != "" && action != nil && sameLink(direct, action.ActionUrl):
+		link, title = direct, action.Title
+	default:
+		link = direct
+	}
+	if link == "" {
+		return "", ""
+	}
+	return linkDestination(link), strings.TrimSpace(firstOf(strings.TrimSpace(title), rowTitle))
+}
+
 // Explicit CTA IDs select the intended action when several buttons exist. The upstream WrapMessages fallback joins
 // CTA to XMA by AttachmentFbid; scope that lookup to the same message and never match empty FBIDs or invented IDs.
-func (rows *shareRows) ctaLink(attachment shareRowKey, ids ...int64) string {
+func (rows *shareRows) cta(attachment shareRowKey, ids ...int64) *table.LSInsertAttachmentCta {
 	for _, id := range ids {
 		if id == 0 {
 			continue
 		}
-		var found string
+		var found *table.LSInsertAttachmentCta
 		for key, row := range rows.ctas {
 			if key.id != id || row.ActionUrl == "" {
 				continue
 			}
-			if found != "" && found != row.ActionUrl {
-				return ""
+			if found != nil && found.ActionUrl != row.ActionUrl {
+				return nil
 			}
-			found = row.ActionUrl
+			if found == nil || betterCTA(row, found) {
+				found = row
+			}
 		}
-		if found != "" {
+		if found != nil {
 			return found
 		}
 	}
 	if attachment.fbid == "" {
-		return ""
+		return nil
 	}
 	// A Marketplace listing names no CTA and carries two different actions (2026-10-31), and declining to choose drew
 	// it as a bare photo. All of them belong to this card, so take the one most like the button Messenger draws; the
@@ -288,14 +312,11 @@ func (rows *shareRows) ctaLink(attachment shareRowKey, ids ...int64) string {
 			chosen = row
 		}
 	}
-	if chosen == nil {
-		return ""
-	}
-	if actions > 1 {
+	if chosen != nil && actions > 1 {
 		logf("share cta chosen attachment=%s actions=%d id=%s type=%s titled=%v form=%s", tagOf(attachment.fbid), actions,
 			tag(chosen.CtaId), ctaTypeWord(chosen.Type_), strings.TrimSpace(chosen.Title) != "", linkForm(chosen.ActionUrl))
 	}
-	return chosen.ActionUrl
+	return chosen
 }
 
 func ctaRank(row *table.LSInsertAttachmentCta) int {

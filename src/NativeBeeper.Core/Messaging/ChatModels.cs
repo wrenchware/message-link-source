@@ -97,7 +97,9 @@ public sealed record MessageAttachment(string? Name, string Type, string? MimeTy
     string? Description = null,
     string? Caption = null,
     // How long a recording runs, when the network says so before it is downloaded (a Google Voice voicemail). Appended.
-    double? DurationSeconds = null);
+    double? DurationSeconds = null,
+    // What the service's button on a shared card says ("View listing"), in its words. The card itself is what opens. Appended.
+    string? ActionTitle = null);
 public sealed record MessageReaction(string Key, string ParticipantId);
 public sealed record MessageDelivery(string? SendState, int? DeliveredParticipantCount,
     bool? Seen, DateTimeOffset? SeenAt, IReadOnlyDictionary<string, bool?> SeenBy,

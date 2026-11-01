@@ -196,6 +196,8 @@ type attachment struct {
 	link string
 	// What the linked page says about itself, for a preview of a link.
 	description string
+	// What the service's button on the card says ("View listing"), in the service's own words.
+	actionTitle string
 }
 
 func newStore() *store {
@@ -1278,7 +1280,7 @@ func (s *store) mediaFor(messageID string) []viewMedia {
 	for _, item := range list {
 		media = append(media, viewMedia{ID: item.id, Name: item.name, Mime: item.mime, Size: item.size,
 			Width: item.width, Height: item.height, Video: item.video, Preview: item.preview, Animated: item.animated,
-			Link: item.link, Play: item.play, Description: item.description})
+			Link: item.link, Play: item.play, Description: item.description, ActionTitle: item.actionTitle})
 	}
 	return media
 }

@@ -362,11 +362,36 @@ func TestShareWithSeveralActionsAndNoIdIsStillACard(t *testing.T) {
 		// Repeated assembly must not make map iteration move the card to another destination.
 		for attempt := 0; attempt < 8; attempt++ {
 			media := shareTestMedia(t, s, "share", 1)[0]
-			if media.Link != button || media.Name != item.TitleText {
-				t.Fatalf("the card lost its button's destination or its title: %+v", media)
+			if media.Link != button || media.Name != item.TitleText || media.ActionTitle != "View listing" {
+				t.Fatalf("the card lost its button's destination, its words or its title: %+v", media)
 			}
 			s.apply(&table.LSTable{LSInsertAttachmentCta: order})
 		}
+	}
+}
+
+// A button's words name its action, so a card leading somewhere else does not take them.
+func TestShareButtonWordsGoWithTheirAction(t *testing.T) {
+	for _, test := range []struct {
+		name, direct, rowTitle, ctaLink, ctaTitle, wantLink, wantTitle string
+	}{
+		{"from the cta", "", "", "https://example.test/a", " View listing ", "https://example.test/a", "View listing"},
+		{"same place", "https://example.test/a", "", "https://example.test/a", "Open", "https://example.test/a", "Open"},
+		{"elsewhere", "https://example.test/b", "", "https://example.test/a", "Open", "https://example.test/b", ""},
+		{"the row's own", "https://example.test/b", "Watch", "", "", "https://example.test/b", "Watch"},
+		{"no destination", "", "Watch", "", "", "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rows := &shareRows{ctas: map[shareCTAKey]*table.LSInsertAttachmentCta{}}
+			key := shareRowKey{"item-id", 0}
+			if test.ctaLink != "" {
+				rows.ctas[shareCTAKey{key, 7}] = &table.LSInsertAttachmentCta{CtaId: 7, AttachmentFbid: "item-id", ActionUrl: test.ctaLink, Title: test.ctaTitle}
+			}
+			link, title := rows.cardAction(key, test.direct, test.rowTitle)
+			if link != test.wantLink || title != test.wantTitle {
+				t.Fatalf("got %q %q, want %q %q", link, title, test.wantLink, test.wantTitle)
+			}
+		})
 	}
 }
 
