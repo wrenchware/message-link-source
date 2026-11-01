@@ -295,7 +295,7 @@ The emoji button beside Send opens a picker with three tabs.
 
 - Turn on **Undo send** in [Settings → Messaging](#settings-messaging): **5 seconds** or **10 seconds**.
 - A message you send then waits with an **Undo** link; with *Delivery status as text* on it reads "Not sent yet · Undo takes it back". **Undo** puts the text, and its reply, back in the box.
-- Only text from the message box waits. Photos, files, voice messages, scheduled sends and the console's sends go at once. Quitting doesn't send anything still waiting: it goes back to its conversation's draft.
+- Only text from the message box waits. Photos, files, voice messages, scheduled sends and the console's sends go at once. Quitting doesn't send anything still waiting: it goes back to its conversation's draft. So does anything waiting when the PC crashes or loses power, the next time Messages opens.
 
 ### Edit your last message {#edit-message}
 
@@ -907,7 +907,7 @@ When Messages uses a Messages Server, the server keeps the backups: **Settings �
 **Restoring** is done on the server's page, and only onto a server with no account signed in: a new server offers **Restore from a backup…**, and **Reset server…** (type `RESET`) signs every account out and deletes everything an existing one holds first. Choose the backup and type its password; nothing is written if the password is wrong or the file is damaged. Confirm the server the backup came from is turned off, since two servers with one identity would split your devices. Then review the devices the backup brings back, each with when it last connected: untick any you removed or no longer have, or forget them all for all-new equipment. The server starts again and restores before it opens anything.
 
 - Every device that's kept reconnects by itself, starts its copy of your conversations over and keeps its drafts. A device that joined after the backup was made is told **This server was restored from an earlier backup. Ask to join again.**
-- Scheduled messages whose time came are held for you to send or drop; later ones go as scheduled. Nothing that was sending is sent again.
+- Every scheduled message is held for you to send or drop, whether or not its time has come: the backup can't know which you cancelled or sent early since. Nothing that was sending is sent again.
 - Sign in to each account again on the server; it then fills in what arrived meanwhile, and adds Messenger's history once Messenger is signed in.
 - A backup made by a PC (before it used a server) restores onto a server too: its Messenger history and choices are added once those accounts are signed in on the server.
 - If the server moved to new hardware at a new address, **Settings → Accounts → Messages Server → Manage… → The server moved to a new address?** changes only the address and keeps this PC's pairing, once the old address no longer answers; the server's certificate proves it's the same server.

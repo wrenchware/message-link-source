@@ -76,8 +76,8 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     // Sends whose outcome is still open (sending, pending or unknown); a rejected send is settled and restorable.
     public IReadOnlyList<OutgoingMessage> Unsettled => messages.Values.Where(m => m.State != OutgoingState.Rejected).OrderBy(m => m.CreatedAt).ToArray();
 
-    public Task SendAsync(string chatId, string text, object? holdFor = null) =>
-        SendOperationAsync(chatId, text, ct => sender.SendTextAsync(chatId, text, ct), true, holdFor: holdFor);
+    public Task SendAsync(string chatId, string text, object? holdFor = null, Func<Task<bool>>? holdEnding = null, string? localId = null) =>
+        SendOperationAsync(chatId, text, ct => sender.SendTextAsync(chatId, text, ct), true, holdFor: holdFor, localId: localId, holdEnding: holdEnding);
 
     // Undo send. A send made with holdFor (the composer that made it) first waits here for Hold, on this PC only: until it
     // ends nothing has reached the provider, so Undo takes it back whole and hands it to that composer (Undone). When the
@@ -85,6 +85,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     // as Undo does (TakeHeld) and the words go to their conversation's saved draft (HeldSends, 2026-10-04): the wait is
     // there to take a message back, and quitting inside it is the last moment anyone could. Zero, the default, sends at once.
     public TimeSpan Hold { get; set; }
+    private static readonly TimeSpan HoldEndingLimit = TimeSpan.FromSeconds(2);
     private sealed record Holding(CancellationTokenSource Undo, object Owner);
     private readonly Dictionary<string, Holding> holds = [];
     public sealed record UndoneSend(OutgoingMessage Message, object Owner);
@@ -154,7 +155,10 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         string? replyToId = null, bool waitForConfirmation = true, IReadOnlyList<MessageAttachment>? attachments = null, object? holdFor = null,
         // Send later hands over the id its scheduled row already has, so the row the conversation shows stays the same row
         // as it starts sending, and a send it began before a crash is known by the same id (ScheduledSends).
-        string? localId = null)
+        string? localId = null,
+        // Undo send: asked as the wait ends and before the provider is, for the composer to take the words out of the saved draft they waited in. False, or no
+        // answer in time, and the send doesn't go, refused as any other is, with its banner and Restore: a sent message left in its draft could be sent again by someone who took it for unsent.
+        Func<Task<bool>>? holdEnding = null)
     {
         var version = generation;
         var hold = holdFor is not null && Hold > TimeSpan.Zero ? Hold : TimeSpan.Zero;
@@ -170,6 +174,20 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                     await Task.WhenAny(Task.Delay(hold, waiting.Token));
                 // Undone (by Undo or by quitting), or the outbox is ending: nothing reaches the provider.
                 if (holding.Undo.IsCancellationRequested || version != generation || lifetime.IsCancellationRequested || !messages.ContainsKey(item.LocalId)) return;
+                if (holdEnding is not null)
+                {
+                    bool ended;
+                    try { ended = await holdEnding().WaitAsync(HoldEndingLimit); }
+                    catch (Exception) { ended = false; }
+                    // Undo or quitting may have come while that was written.
+                    if (holding.Undo.IsCancellationRequested || version != generation || lifetime.IsCancellationRequested || !messages.ContainsKey(item.LocalId)) return;
+                    if (!ended)
+                    {
+                        messages[item.LocalId] = item with { State = OutgoingState.Rejected, Explanation = "The message wasn't sent. Messages couldn't update its saved draft." };
+                        Notify(chatId, item.LocalId);
+                        return;
+                    }
+                }
                 item = item with { State = OutgoingState.Sending };
                 messages[item.LocalId] = item; Restart(item.LocalId); Notify(chatId, item.LocalId);
                 await RunAsync(item, version, submit, waitForConfirmation);

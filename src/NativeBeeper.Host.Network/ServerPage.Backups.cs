@@ -114,7 +114,7 @@ internal sealed partial class ServerPage
         RestoreOutcomes.Restored =>
             $"Restored: {outcome.Messages.ToString("N0", CultureInfo.CurrentCulture)} messages, {outcome.Devices} device{(outcome.Devices == 1 ? "" : "s")} kept"
             + (outcome.Forgotten > 0 ? $", {outcome.Forgotten} forgotten" : "")
-            + (outcome.Held > 0 ? $". {outcome.Held} scheduled message{(outcome.Held == 1 ? " was" : "s were")} due and {(outcome.Held == 1 ? "is" : "are")} held: send or drop each in Messages" : "")
+            + (outcome.Held > 0 ? $". {outcome.Held} scheduled message{(outcome.Held == 1 ? " is" : "s are")} held and won't go by {(outcome.Held == 1 ? "itself" : "themselves")}: send or drop each in Messages" : "")
             + ". Sign in to each account again below; the server then fills in what arrived meanwhile.",
         RestoreOutcomes.Reset => "The server was reset. It holds nothing now: restore a backup, or sign in to your accounts.",
         RestoreOutcomes.ResetInUse => "The reset didn't run: an account was signed in on this server again before it started. Nothing was changed; reset again to sign it out.",
@@ -292,7 +292,7 @@ internal sealed partial class ServerPage
         body.Append(Para(preview.Kind == "pc"
             ? $"A PC backup from {When(preview.Created)}: Messenger history ({preview.MessengerPages} pages) and the PC's choices. This server's devices and settings stay as they are."
             : $"A server backup from {When(preview.Created)}: {preview.Conversations.ToString("N0", CultureInfo.CurrentCulture)} conversations, {preview.Messages.ToString("N0", CultureInfo.CurrentCulture)} messages, "
-              + $"{preview.Photos} saved photos{(preview.Scheduled > 0 ? $" and {preview.Scheduled} scheduled messages (those already due are held for you to send or drop)" : "")}."));
+              + $"{preview.Photos} saved photos{(preview.Scheduled > 0 ? $" and {preview.Scheduled} scheduled messages (held for you to send or drop)" : "")}."));
         body.Append("<form method=\"post\" action=\"/restore/review\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
             .Append("<input type=\"hidden\" name=\"choice\" value=\"").Append(Html(id)).Append("\">");
         if (preview.Kind == "server")

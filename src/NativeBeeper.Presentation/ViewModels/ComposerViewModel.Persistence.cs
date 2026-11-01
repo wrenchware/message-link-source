@@ -253,8 +253,44 @@ public sealed partial class ComposerViewModel
     private static bool IsEmpty(SavedDraft? draft) => draft is null || draft.Text.Length == 0 && draft.ReplyId is null;
     private SavedDraft CaptureDraft(string id)
     {
-        var body = id == chatId ? CurrentDraft : drafts.GetValueOrDefault(id, "");
-        return replies.TryGetValue(id, out var reply) ? new(body, reply.Id, reply.Preview) : new(body, null, null);
+        var body = DraftShown(id);
+        var reply = replies.TryGetValue(id, out var chosen) ? chosen : default;
+        // Another account's words stay out of this account's row, in the same thread under the same id. They are in the row they were saved to.
+        var owner = draftScopes.GetValueOrDefault(id);
+        var words = waiting.GetValueOrDefault(id)?.Where(word => word.Scope is null || owner is null || word.Scope == owner).ToArray() ?? [];
+        if (words.Length > 0)
+        {
+            // Each is a message of its own, so words typed the same as one that waits are still kept.
+            var waited = string.Join(Environment.NewLine, words.Select(word => word.Text));
+            var sole = words.Length == 1 && body.Length == 0 && reply.Id is null ? words[0] : null;
+            body = body.Length == 0 ? waited : waited + Environment.NewLine + body;
+            // A draft has one reply. Where the words have several, or some have none, a crash leaves them as plain words rather than a reply to something they don't answer.
+            reply = sole?.ReplyId is { } target ? (target, sole.ReplyPreview!) : default;
+        }
+        return reply.Id is not null ? new(body, reply.Id, reply.Preview) : new(body, null, null);
+    }
+    private string DraftShown(string id) => id == chatId ? CurrentDraft : drafts.GetValueOrDefault(id, "");
+
+    // Sends of this composer's in Undo send's wait, by conversation, oldest first. Their words are not in the box, and they stay in the saved draft (CaptureDraft), so that a crash
+    // or a power cut in the wait leaves an ordinary draft with nothing to recover, under whichever account and profile it was written. They leave it just before the send goes.
+    private readonly Dictionary<string, List<WaitingWords>> waiting = [];
+    /// <param name="LocalId">The send's id in the outbox: two sends can have the same words.</param>
+    private sealed record WaitingWords(string LocalId, string Text, string? ReplyId, string? ReplyPreview, string? Scope);
+
+    // The wait is over: the saved draft goes back to what is in the box. True once that is written.
+    private Task<bool> LetGoOfWaitingAsync(string id, WaitingWords words)
+    {
+        if (waiting.TryGetValue(id, out var left) && left.Remove(words) && left.Count == 0) waiting.Remove(id);
+        return FlushDraftAsync(id);
+    }
+
+    /// <summary>A send of this composer's has come back from its wait: true when its words were waiting here, and so are in the saved draft already.</summary>
+    public bool ForgetWaiting(OutgoingMessage message)
+    {
+        if (!waiting.TryGetValue(message.ChatId, out var left) || left.FirstOrDefault(word => word.LocalId == message.LocalId) is not { } words) return false;
+        left.Remove(words);
+        if (left.Count == 0) waiting.Remove(message.ChatId);
+        return true;
     }
     // Storing a draft that is empty leaves a row behind for every conversation ever opened; removing it keeps the saved
     // drafts to the conversations that actually have one.
@@ -426,7 +462,7 @@ public sealed partial class ComposerViewModel
         if (draftPending == id) { draftPending = null; draftDelay?.Cancel(); }
         // A conversation this composer never loaded has no draft here, only the one saved on disk: capturing it would read
         // as empty and the write would erase that saved draft (popping a conversation out from the list menu did).
-        if (id != chatId && !loadedDrafts.Contains(id) && !drafts.ContainsKey(id) && !replies.ContainsKey(id)) return true;
+        if (id != chatId && !loadedDrafts.Contains(id) && !drafts.ContainsKey(id) && !replies.ContainsKey(id) && !waiting.ContainsKey(id)) return true;
         await EnsureOwnersAsync([id]);
         var draft = CaptureDraft(id);
         var profile = FiledUnder(id);
@@ -446,7 +482,8 @@ public sealed partial class ComposerViewModel
             var skipped = Unchanged(profile, id, draft);
             if (!skipped) await SaveAndSettleAsync(profile, id, draft);
             NotePut(profile, id, draft, wrote: !skipped);
-            draftIndex?.Saved(id, draft.Text, owner);
+            // Words in their wait are not a draft the person has: the list doesn't call them one.
+            draftIndex?.Saved(id, waiting.ContainsKey(id) ? DraftShown(id) : draft.Text, owner);
             // Words that could not be saved when their conversation was opened as another account are tried again with this.
             var parkedSaved = await SaveParkedLockedAsync();
             // Every other loaded draft was written when its conversation was left, so saving the open one saves them all.
@@ -479,7 +516,7 @@ public sealed partial class ComposerViewModel
                 var skipped = Unchanged(profile, id, draft);
                 if (!skipped) await SaveAndSettleAsync(profile, id, draft);
                 NotePut(profile, id, draft, wrote: !skipped);
-                draftIndex?.Saved(id, draft.Text, draftScopes.GetValueOrDefault(id));
+                draftIndex?.Saved(id, waiting.ContainsKey(id) ? DraftShown(id) : draft.Text, draftScopes.GetValueOrDefault(id));
             }
             kept &= await SaveParkedLockedAsync();
             DraftsSaved = kept; DraftStorageStatus = kept ? "Text drafts saved." : "Could not save text drafts. Keep the app open to preserve them.";
@@ -565,6 +602,8 @@ public sealed partial class ComposerViewModel
             if (owners is not null) await owners.ForgetAllUnfiledAsync();
             draftIndex?.ClearAll();
             DraftStorageStatus = "Saved drafts cleared.";
+            // Words in Undo send's wait aren't drafts the person has: this took their only safe copy. Written again once the gate is free.
+            foreach (var id in waiting.Keys.ToArray()) _ = FlushDraftAsync(id);
             return true;
         }
         catch (Exception) { DraftStorageStatus = "Could not clear the saved drafts."; return false; }

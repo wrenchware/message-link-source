@@ -46,8 +46,8 @@ internal sealed class RestoreUnfinishedException(Exception inner) : Exception("T
 /// before that list leaves the old stores as they were and the staged ones swept at the next start, which starts the restore again from its plan; a stop after it
 /// finishes the moves at the next start. The server opens nothing in between.</para>
 /// <para><b>Every copy starts over.</b> The shared state and the whole history are made anew under new epochs, and the list's revisions are not carried: every client's
-/// copy from before the restore names an epoch the server no longer has, so it is read again whole (stage 9's start-over). A scheduled send whose time has come, or
-/// that was being sent, is held as not sent for the person to send or drop; the outbox is never carried, so no send is repeated.</para>
+/// copy from before the restore names an epoch the server no longer has, so it is read again whole (stage 9's start-over). Every scheduled send that has not gone
+/// is held as not sent for the person to send or drop (owner, 2026-11-01); the outbox is never carried, so no send is repeated.</para>
 /// <para><b>A PC's backup</b> brings no identity: its Messenger history and its choices wait (<c>Restore/pending</c>) until the accounts they belong to are signed in
 /// again, and are then taken in once (<see cref="PendingImports"/>).</para>
 /// <para>Logged as <c>server restore ...</c> with fixed words and counts; never a file name, a password or a device's name.</para>
@@ -397,7 +397,7 @@ internal static class ServerRestore
         foreach (var row in contents.ReadPart<PlainRow>(ServerBackupArchive.Parts.State))
             if (LocalStateBackup.Categories.ContainsKey(row.Key.Split(':')[0]) && await state.AddAsync(row.Key, row.Value, cancellationToken).ConfigureAwait(false)) rows++;
 
-        // The shared state, under a new epoch, scheduled sends that are due held for the person.
+        // The shared state, under a new epoch, every scheduled send held for the person.
         var held = 0;
         var sharedRows = new List<SharedStateStore.SealedRow>();
         var sizes = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -405,7 +405,7 @@ internal static class ServerRestore
         {
             if (ServerBackupExport.SharedLeftOut.Any(prefix => row.Key.StartsWith(prefix, StringComparison.Ordinal))) continue;
             var value = row.Value;
-            if (row.Key.StartsWith(Protocol.SharedCategories.Scheduled + ":", StringComparison.Ordinal) && HoldIfDue(value, now) is { } heldValue) { value = heldValue; held++; }
+            if (row.Key.StartsWith(Protocol.SharedCategories.Scheduled + ":", StringComparison.Ordinal) && HoldScheduled(value, now) is { } heldValue) { value = heldValue; held++; }
             sharedRows.Add(new(row.Key, Seal(value), row.Since));
             sizes[row.Key] = value.Length;
             rows++;
@@ -499,18 +499,18 @@ internal static class ServerRestore
     }
 
     /// <summary>
-    /// A scheduled message's row, held as not sent when its time has come or it was being sent (never sent by the restored server by itself); null when it waits for a
-    /// time still to come, or is not a message of the schedule.
+    /// A scheduled message's row, held as not sent, never sent by the restored server by itself; null when it is held already or is not a message of the schedule. A message
+    /// still to come is held too (owner, 2026-11-01): the backup cannot know it was cancelled since, which sent it anyway, or sent early, which sent it twice. It has no reason
+    /// of its own, as a client of an older version must know any word a row holds, so the clients word no reason as this one (ScheduledSendRows.Describe).
     /// </summary>
-    internal static byte[]? HoldIfDue(byte[] value, DateTimeOffset now)
+    internal static byte[]? HoldScheduled(byte[] value, DateTimeOffset now)
     {
         ScheduledSend? item;
         try { item = JsonSerializer.Deserialize<ScheduledSend>(value); }
         catch (JsonException) { return null; }
-        if (item is not { Id.Length: > 0, ChatId.Length: > 0 }) return null;
-        if (item.State == ScheduledSendState.Sending || item.State == ScheduledSendState.Waiting && item.Due <= now)
-            return JsonSerializer.SerializeToUtf8Bytes(item with { State = ScheduledSendState.NotSent, Reason = ScheduledSendReason.Closed, SendingAt = null });
-        return null;
+        if (item is not { Id.Length: > 0, ChatId.Length: > 0 } || item.State is not (ScheduledSendState.Sending or ScheduledSendState.Waiting)) return null;
+        var reason = item.State == ScheduledSendState.Sending || item.Due <= now ? ScheduledSendReason.Closed : ScheduledSendReason.None;
+        return JsonSerializer.SerializeToUtf8Bytes(item with { State = ScheduledSendState.NotSent, Reason = reason, SendingAt = null });
     }
 
     // The deletes first, then the commit list again without them (so a resumed finish never deletes what a move has since put there), then the moves, each made once: a

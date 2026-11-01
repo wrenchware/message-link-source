@@ -49,6 +49,8 @@ public static class ScheduledSendRows
             "ACCOUNT" => "Not sent — a different account is signed in now",
             "MOVED" => "Not sent — scheduled for " + at + " on this PC, before Messages moved to its server",
             "UNCONFIRMED" => "Not sent — the server never confirmed it was scheduled for " + at,
+            // ScheduledSendReason.None: held by a restore before its time (ServerRestore.HoldScheduled). The only way to not sent without a reason.
+            "NONE" => "Not sent — held after a restore. It was scheduled for " + at,
             _ => "",
         };
     }

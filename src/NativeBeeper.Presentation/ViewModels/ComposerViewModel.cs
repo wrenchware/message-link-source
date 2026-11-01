@@ -385,9 +385,12 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
     {
         if (!ReferenceEquals(undone.Owner, this)) return;
         var message = undone.Message;
+        var waited = ForgetWaiting(message);
         if (message.ReplyToId is not null && !replies.ContainsKey(message.ChatId))
         { replies[message.ChatId] = (message.ReplyToId, "Reply to an earlier message"); NotifyReply(); }
         RestoreSubmittedText(message.ChatId, message.Text);
+        // At once rather than at the next pause: an Undo as the wait ended may meet its draft being cleared, and the gate puts this write after that one.
+        if (!waited && chatId == message.ChatId) _ = FlushDraftAsync(message.ChatId);
     }
     /// <summary>
     /// Undo send at quit (2026-10-04): a message still in its wait when Messages quits goes back to its conversation's
@@ -494,6 +497,10 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
         if (!CanSend() || chatId is null) return;
         var target = chatId; var body = Text;
         var reply = replies.TryGetValue(target, out var selectedReply) ? selectedReply : default;
+        // With Undo send on the words stay in the saved draft until the wait ends: a crash in it lost them when the draft was cleared here (audit, 2026-11-01).
+        var words = outbox.Hold > TimeSpan.Zero && privateState is not null && draftProfile is not null ? new WaitingWords("local:" + Guid.NewGuid().ToString("N"), body, reply.Id, reply.Preview, draftScopes.GetValueOrDefault(target)) : null;
+        if (words is not null) { if (!waiting.TryGetValue(target, out var already)) waiting[target] = already = []; already.Add(words); }
+        Func<Task<bool>>? holdEnding = words is null ? null : () => LetGoOfWaitingAsync(target, words);
         replies.Remove(target); NotifyReply();
         Text = ""; drafts.Remove(target);
         // The pending message is added to the outbox — and so to the conversation — before anything is awaited, so it
@@ -503,11 +510,11 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
         try
         {
             if (reply.Id is not null && messageActions is not null)
-                await outbox.SendOperationAsync(target, body, ct => messageActions.ReplyAsync(target, reply.Id, body, ct), true, reply.Id, holdFor: this);
-            else await outbox.SendAsync(target, body, this);
+                await outbox.SendOperationAsync(target, body, ct => messageActions.ReplyAsync(target, reply.Id, body, ct), true, reply.Id, holdFor: this, localId: words?.LocalId, holdEnding: holdEnding);
+            else await outbox.SendAsync(target, body, this, holdEnding, words?.LocalId);
             await cleared;
         }
-        catch (Exception) { drafts[target] = body; if (reply.Id is not null) replies.TryAdd(target, reply); NotifyReply(); if (chatId == target && Text.Length == 0) Text = body; Status = "Review pending sends before sending more messages."; }
+        catch (Exception) { if (words is not null) waiting.GetValueOrDefault(target)?.Remove(words); drafts[target] = body; if (reply.Id is not null) replies.TryAdd(target, reply); NotifyReply(); if (chatId == target && Text.Length == 0) Text = body; Status = "Review pending sends before sending more messages."; }
     }
     [RelayCommand(CanExecute = nameof(CanRestore))]
     private void RestoreRejected()
@@ -524,7 +531,7 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
     public void Clear()
     {
         draftSelection++; draftDelay?.Cancel(); draftPending = null; draftProfile = null; loadedDrafts.Clear(); draftScopes.Clear(); queuedSend = null; editing = null;
-        edited.Clear(); held.Clear();
+        edited.Clear(); held.Clear(); waiting.Clear();
         generation++; permissionRequest?.Cancel(); drafts.Clear(); chatId = null; Text = ""; allowed = false; HasConversation = false; IsReady = false;
         replies.Clear(); NotifyEditing();
         IsChecking = false; Advisory("Select a conversation to write a message."); SendCommand.NotifyCanExecuteChanged();
