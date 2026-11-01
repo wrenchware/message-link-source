@@ -440,7 +440,7 @@ public sealed partial class ComposerViewModel
             {
                 // No account to file it under yet: kept for none, and only a failure to keep it is a failure to save.
                 var kept = await KeepUnfiledAsync(id, draft);
-                if (id == chatId) { DraftsSaved = kept; DraftStorageStatus = kept ? "Text drafts saved on this PC." : "Could not save text drafts. Keep the app open to preserve them."; }
+                if (id == chatId) { DraftsSaved = kept; DraftStorageStatus = kept ? "Text drafts saved." : "Could not save text drafts. Keep the app open to preserve them."; }
                 return kept;
             }
             var skipped = Unchanged(profile, id, draft);
@@ -451,7 +451,7 @@ public sealed partial class ComposerViewModel
             var parkedSaved = await SaveParkedLockedAsync();
             // Every other loaded draft was written when its conversation was left, so saving the open one saves them all.
             if (!parkedSaved) { DraftsSaved = false; DraftStorageStatus = "Could not save text drafts. Keep the app open to preserve them."; }
-            else if (id == chatId) { DraftsSaved = true; DraftStorageStatus = "Text drafts saved on this PC."; }
+            else if (id == chatId) { DraftsSaved = true; DraftStorageStatus = "Text drafts saved."; }
             return true;
         }
         catch { DraftsSaved = false; DraftStorageStatus = "Could not save text drafts. Keep the app open to preserve them."; return false; }
@@ -482,7 +482,7 @@ public sealed partial class ComposerViewModel
                 draftIndex?.Saved(id, draft.Text, draftScopes.GetValueOrDefault(id));
             }
             kept &= await SaveParkedLockedAsync();
-            DraftsSaved = kept; DraftStorageStatus = kept ? "Text drafts saved on this PC." : "Could not save text drafts. Keep the app open to preserve them.";
+            DraftsSaved = kept; DraftStorageStatus = kept ? "Text drafts saved." : "Could not save text drafts. Keep the app open to preserve them.";
             return kept;
         }
         catch { DraftsSaved = false; DraftStorageStatus = "Could not save text drafts. Keep the app open to preserve them."; return false; }
@@ -564,7 +564,7 @@ public sealed partial class ComposerViewModel
             parked.Clear();
             if (owners is not null) await owners.ForgetAllUnfiledAsync();
             draftIndex?.ClearAll();
-            DraftStorageStatus = "Saved drafts cleared from this PC.";
+            DraftStorageStatus = "Saved drafts cleared.";
             return true;
         }
         catch (Exception) { DraftStorageStatus = "Could not clear the saved drafts."; return false; }

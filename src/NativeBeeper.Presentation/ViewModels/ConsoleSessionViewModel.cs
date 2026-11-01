@@ -1200,7 +1200,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
             foreach (var member in target.Members) mutedHere[member.Id] = muted;
             Rebuild();
         }
-        Say(ConsoleLineKind.Info, muted ? $"Muted {target.Title} on this PC. /filter muted shows its lines." : $"Unmuted {target.Title}.");
+        Say(ConsoleLineKind.Info, muted ? $"Muted {target.Title} in Messages. /filter muted shows its lines." : $"Unmuted {target.Title}.");
     }
 
     private void Filter(IReadOnlyList<string> args)

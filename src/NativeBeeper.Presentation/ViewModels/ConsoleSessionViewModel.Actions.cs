@@ -212,13 +212,13 @@ public sealed partial class ConsoleSessionViewModel
             case "save":
                 if (item.Message.IsDeleted || item.Message.IsHidden) { Fail("A deleted message can't be saved."); return; }
                 Report("save", provider, await Safely(() => host.SaveMessageAsync(item.Chat, item.Message)),
-                    $"Saved {Whose(item)} in Saved Messages, on this PC.", "Couldn't save it. Check that its account is still signed in.");
+                    $"Saved {Whose(item)} in Saved Messages.", "Couldn't save it. Check that its account is still signed in.");
                 return;
             case "remind":
                 if (ConsoleCommandParser.When(rest, clock.GetUtcNow(), clock.LocalTimeZone) is not { } at)
                 { Fail($"“{rest}” isn't a time to remind you. Use 30m, 1h, tonight, tomorrow or a time like 17:30."); return; }
                 Report("remind", provider, await Safely(() => host.RemindAsync(item.Chat, item.Message, at)),
-                    $"You'll be reminded about {Whose(item)} {Moment(at)}. It's in Saved Messages, on this PC.", "Couldn't set the reminder. Check that its account is still signed in.");
+                    $"You'll be reminded about {Whose(item)} {Moment(at)}. It's in Saved Messages.", "Couldn't set the reminder. Check that its account is still signed in.");
                 return;
         }
         var what = verb switch { "edit" => "edit", "unreact" => "change reactions on", _ => "react to" };
@@ -322,7 +322,7 @@ public sealed partial class ConsoleSessionViewModel
             {
                 var archived = verb == "archive";
                 if (row.IsArchived == archived) { Out(archived ? $"{target.Title} is already archived." : $"{target.Title} isn't archived.", ConsoleTone.Dim); return; }
-                var where = KeptHere(row) ? "on this PC" : "on " + Service(row);
+                var where = KeptHere(row) ? "in Messages" : "on " + Service(row);
                 var why = row.Network == "Instagram" && !MergedConversations.IsMerged(row.Id) ? " (Instagram can't archive from Messages)" : "";
                 Report(verb, provider, await Safely(() => host.SetArchivedAsync(row, archived)),
                     (archived ? "Archived " : "Unarchived ") + target.Title + " " + where + why + ".", "Not changed. Check your phone before trying again.");
@@ -332,14 +332,14 @@ public sealed partial class ConsoleSessionViewModel
             {
                 var pinned = verb == "pin";
                 if (row.IsPinned == pinned) { Out(pinned ? $"{target.Title} is already pinned." : $"{target.Title} isn't pinned.", ConsoleTone.Dim); return; }
-                Report(verb, provider, await Safely(() => host.SetPinnedAsync(row, pinned)), (pinned ? "Pinned " : "Unpinned ") + target.Title + " on this PC.", "Not changed.");
+                Report(verb, provider, await Safely(() => host.SetPinnedAsync(row, pinned)), (pinned ? "Pinned " : "Unpinned ") + target.Title + " in Messages.", "Not changed.");
                 return;
             }
             case "unread":
                 // The menu offers Mark as unread only where nothing is unread already.
                 if (row.IsMarkedUnread) { Out($"{target.Title} is already marked unread.", ConsoleTone.Dim); return; }
                 if (row.UnreadCount > 0) { Out($"{target.Title} already has unread messages.", ConsoleTone.Dim); return; }
-                Report("unread", provider, await Safely(() => host.MarkUnreadAsync(row)), $"Marked {target.Title} unread on this PC. The service isn't told.", "Not changed.");
+                Report("unread", provider, await Safely(() => host.MarkUnreadAsync(row)), $"Marked {target.Title} unread in Messages. The service isn't told.", "Not changed.");
                 return;
             case "label" or "unlabel":
             {
@@ -349,7 +349,7 @@ public sealed partial class ConsoleSessionViewModel
                 { Fail($"There's no label called “{rest}”. Yours: {string.Join(", ", names)}."); return; }
                 var on = verb == "label";
                 Report(verb, provider, await Safely(() => host.SetLabelAsync(row, label, on)),
-                    on ? $"Labelled {target.Title} {label}, on this PC." : $"Took {label} off {target.Title}.", "Not changed.");
+                    on ? $"Labelled {target.Title} {label}, in Messages." : $"Took {label} off {target.Title}.", "Not changed.");
                 return;
             }
             case "snooze":
@@ -359,7 +359,7 @@ public sealed partial class ConsoleSessionViewModel
                     (until = ConsoleCommandParser.When(rest, clock.GetUtcNow(), clock.LocalTimeZone)) is null)
                 { Fail($"“{rest}” isn't a time. Use 30m, 1h, tonight, tomorrow, a time like 17:30, or off."); return; }
                 Report("snooze", provider, await Safely(() => host.SnoozeAsync(row, until)),
-                    until is { } at ? $"Snoozed {target.Title}: notifications wait, and you'll be reminded {Moment(at)}. On this PC." : $"Called off the reminder for {target.Title}.",
+                    until is { } at ? $"Snoozed {target.Title}: notifications wait, and you'll be reminded {Moment(at)}. In Messages." : $"Called off the reminder for {target.Title}.",
                     "Couldn't save it. Try again.");
                 return;
             }

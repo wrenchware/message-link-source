@@ -32,7 +32,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
         {
             if (!archive.IsLoaded) return "Messages and conversations loaded in this session";
             var (done, known) = archive.CrawlProgress();
-            var saved = $"{archive.MessageCount:N0} messages saved on this PC";
+            var saved = $"{archive.MessageCount:N0} messages saved";
             return IsIndexing ? $"{saved} · indexing older history ({done:N0} of {known:N0} conversations)"
                 : known > 0 && done >= known ? $"{saved} · full history indexed" : saved;
         }

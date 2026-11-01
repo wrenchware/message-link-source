@@ -192,11 +192,11 @@ Right-click a conversation, or use the **⋯** button in its header. You'll see,
 6. **Labels**: tick your labels, **New label…** or **Manage labels…**
 7. **Remind me later**: In 30 minutes, In 1 hour, In 3 hours, or At 6:00 PM (At 8:00 AM tomorrow when 6 PM is near). With a reminder set it reads **Cancel reminder**.
 8. **Mark as unread** (on a chat with nothing unread) or **Mark as read** (on one you marked unread).
-9. **Send read receipt**, after [private reading](#private-reading) kept a chat read on this PC only.
+9. **Send read receipt**, after [private reading](#private-reading) kept a chat read in Messages only.
 10. **Choose contact photo…** (or **Choose conversation photo…** for a group), and **Remove custom photo**.
 11. **Not spam**, for a Google Voice chat in Spam.
-12. **Archive** or **Unarchive**. Instagram's reads **Archive on this PC**.
-13. **Delete…**, where the service allows it: Google Messages ("will be deleted from your phone"), Messenger ("deleted from Messenger, along with its history on this PC") and Google Voice ("deleted from your Google Voice account"; the people in it keep theirs).
+12. **Archive** or **Unarchive**. Instagram's reads **Archive in Messages**.
+13. **Delete…**, where the service allows it: Google Messages ("will be deleted from your phone"), Messenger ("deleted from Messenger, along with the history Messages keeps of it") and Google Voice ("deleted from your Google Voice account"; the people in it keep theirs).
 
 ### Compact list {#compact-list}
 
@@ -208,7 +208,7 @@ A normal launch opens your first conversation once. A start with Windows, which 
 
 ## 5. Organizing conversations {#organizing}
 
-Pins, mutes, labels, reminders, unread marks and the names and photos you give conversations stay **on this PC**. They never change anything on your phone or in the services' own apps.
+Pins, mutes, labels, reminders, unread marks and the names and photos you give conversations stay **in Messages**. They never change anything in the services or their own apps. With a Messages Server, your other devices that use it share them.
 
 ### Pins {#pins}
 
@@ -236,7 +236,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 
 ### Archive and spam {#archive-and-spam}
 
-- **Archive** moves a conversation out of your inbox. On Google Messages, Messenger and Google Voice it archives on the service too. Instagram can't be archived from outside its own app, so Messages hides it **on this PC only**, and merged conversations are archived here only.
+- **Archive** moves a conversation out of your inbox. On Google Messages, Messenger and Google Voice it archives on the service too. Instagram can't be archived from outside its own app, so Messages hides it **in Messages only**, and merged conversations are archived in Messages only.
 - An archived conversation comes back by itself when a new message arrives.
 - **Spam** holds Google Voice's spam and Instagram's filtered chats. Spam never notifies and never counts as unread. **Not spam** moves a Google Voice chat back; there is no "mark as spam".
 
@@ -244,7 +244,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 
 - **Save** in a message's menu keeps a copy in **Saved Messages**. Open the list from the View dropdown (**Saved**), Commands, or a conversation's details, where it shows only that conversation.
 - Search them, **Copy**, **Unsave**, **Cancel reminder** or **Open conversation**, which opens the original message in its place.
-- Text and attachment details are kept on this PC. Saving a message keeps full-size copies of its photos on this PC, so they still open if the service no longer has them. Unsaving removes them.
+- Text and attachment details are kept in Messages. Saving a message keeps full-size copies of its photos, so they still open if the service no longer has them. Unsaving removes them.
 
 ### Message reminders {#message-reminders}
 
@@ -254,7 +254,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 ### Your own names and photos {#custom-names}
 
 - **Under a conversation's title** is the person's number (an RCS number first, then how many more they have), or their username where the service has no number, and a group's size. The small dots beside it are its services, each in your message colour for it; the first is where your next message goes. Point at them for their names, and at a linked conversation's number for every number and service.
-- **Right-click a conversation's title** in its header for **Name this conversation**, plus Copy name, Copy number and Copy account name. Your name is kept on this PC only, up to 128 characters. A person's name follows them across their one-to-one chats; a group keeps its own. **Remove name** puts the service's back. (One-to-one Google Messages chats take their names from your phone's contacts instead.)
+- **Right-click a conversation's title** in its header for **Name this conversation**, plus Copy name, Copy number and Copy account name. Your name is kept in Messages only, up to 128 characters. A person's name follows them across their one-to-one chats; a group keeps its own. **Remove name** puts the service's back. (One-to-one Google Messages chats take their names from your phone's contacts instead.)
 - **Choose contact photo…** in the conversation menu sets your own picture (PNG, JPG or WEBP); **Remove custom photo** undoes it.
 
 ## 6. Writing and sending {#writing-and-sending}
@@ -272,7 +272,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 
 ### Drafts {#drafts}
 
-- Unsent text saves itself a moment after you stop typing, encrypted on this PC, and is waiting when you come back, even after a restart. A reply you'd chosen is kept with it.
+- Unsent text saves itself a moment after you stop typing, encrypted, and is waiting when you come back, even after a restart. A reply you'd chosen is kept with it. With a Messages Server, your other devices that use it share your drafts.
 - The list shows **Draft: …** in that conversation's preview, and the **Drafts** view lists them all.
 - **Settings → Storage and backup → Saved drafts** clears every draft at once.
 
@@ -289,7 +289,7 @@ The emoji button beside Send opens a picker with three tabs.
 - Right-click **Send**, or press <kbd>Ctrl+Shift+Enter</kbd>, and choose: **Send in 1 hour**, **Send this evening, 8:00 PM** (before 7 PM), **Send tomorrow morning, 8:00 AM**, or **Choose a time…** for a date and time in five-minute steps.
 - The message appears in the conversation as **Scheduled for 8:00 PM**, with **Send now**, **Edit** (back into the box, unsent) and **Cancel** links. Right-click it for the same, plus Copy.
 - Send later takes text and replies, not photos, and isn't offered while you edit a message. Up to 200 messages can be scheduled.
-- **Messages has to be running** at the time. If it was closed, the message goes when Messages next starts, but only within about ten minutes of its time; after that it stays in the conversation, clearly **Not sent — Messages was closed at …**, for you to send or cancel. Nothing goes without you knowing. A scheduled message only ever sends from the account it was scheduled on.
+- With a Messages Server, the server sends it at its time, even with Messages closed everywhere. Without one, **Messages has to be running** at the time. If it was closed, the message goes when Messages next starts, but only within about ten minutes of its time; after that it stays in the conversation, clearly **Not sent — Messages was closed at …**, for you to send or cancel. Nothing goes without you knowing. A scheduled message only ever sends from the account it was scheduled on.
 
 ### Undo send {#undo-send}
 
@@ -442,8 +442,8 @@ Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when 
 - Half a second after you reach the bottom, and only while the window is in front with nothing covering it (Settings, New chat, the viewer, a dialog).
 - Never while you're looking at an older stretch opened from search.
 - After a notification or a share brings Messages forward, it waits until you click, type or scroll.
-- With [private reading](#private-reading) on for that service, it's marked read on this PC only.
-- **Mark as unread** in the conversation menu marks it unread on this PC.
+- With [private reading](#private-reading) on for that service, it's marked read in Messages only.
+- **Mark as unread** in the conversation menu marks it unread in Messages.
 
 ### Calls and voicemail {#calls-and-voicemail}
 
@@ -461,7 +461,7 @@ Click the conversation's title, or **Details** in its menu, for a panel beside t
 
 - the photo and **Accounts**, with copy buttons for names, usernames and numbers;
 - counts of **Media**, **Links**, **Files** and **Audio** in what's loaded, each opening the gallery;
-- **Search conversation**, **Saved messages** and **Mute notifications**. A Messenger conversation muted on your phone shows as muted; **Unmute notifications on this PC (muted in Messenger)** leaves your phone muted;
+- **Search conversation**, **Saved messages** and **Mute notifications**. A Messenger conversation muted on your phone shows as muted; **Unmute notifications in Messages (muted in Messenger)** leaves it muted in Messenger;
 - for a merged conversation, a suggestion when the same person is also on another service;
 - for an ordinary Messenger group: **Rename group…**, **Add people…** and the **People** list, with **Remove** if you're one of its admins. Each asks first, because everyone in the group sees the change. End-to-end encrypted groups can't be changed here.
 
@@ -480,14 +480,14 @@ Click the conversation's title, or **Details** in its menu, for a panel beside t
 
 ## 10. Merged conversations {#linked-conversations}
 
-When the same person is on several services, you can merge your one-to-one conversations with them into one history on this PC. Nothing changes on the services, and you can unmerge any time.
+When the same person is on several services, you can merge your one-to-one conversations with them into one history in Messages. Nothing changes on the services, and you can unmerge any time.
 
 - **Merge with another conversation…** in the conversation menu opens **Merge conversations**: give it a name if you like, then pick from **Suggested** and **All conversations** (search with "Find a conversation"). Matching Google Voice calls and voicemail are included. Up to eight conversations can be merged. If the phone numbers differ, Messages warns you to merge only if they're the same person.
 - The same dialog also lists your **Merged conversations**. Choose one to add this chat to it; the merged conversation keeps its name and settings. A merged conversation is found by any of its conversations' names.
 - One timeline shows everything in order, each message tagged with its service. **Show one service** in the header filters it to one, on this PC only.
 - **Sending**: a reply goes out where the person last wrote to you. The **Send using** button beside the box (<kbd>Alt+Down</kbd>) picks another service; tick **Always send with *service* to *name*** to keep that choice. Replying to a particular message always uses that message's service.
 - **Add a conversation…**, **Remove a conversation…** (it goes back to the list with its messages and drafts) and **Unmerge conversations…** are in the menu.
-- Pins, mutes, labels and reminders apply to the merged conversation as a whole. Archiving it is local to this PC, and it can't be deleted.
+- Pins, mutes, labels and reminders apply to the merged conversation as a whole. Archiving it stays in Messages, and it can't be deleted.
 - Only one-to-one conversations can be merged, and not while one is open in its own window or has unsaved text.
 
 ## 11. Search {#search}
@@ -510,9 +510,9 @@ Open it with **Search messages…** (More options or Commands), <kbd>Ctrl+F</kbd
 
 ### What search covers {#search-coverage}
 
-- **Google Messages**: Messages quietly downloads your older texts into an encrypted archive on this PC, so they're searchable even offline. Turn that off with **Search older Google Messages** in [Storage and backup](#settings-storage); what's saved stays searchable.
-- **Messenger**: all the history Messenger keeps on this PC.
-- **Instagram** and **Google Voice**: what's been loaded, recent conversations kept on this PC, and Voice's call records. A result older than the newest 1,000 messages in a conversation can't be jumped to.
+- **Google Messages**: Messages quietly downloads your older texts into an encrypted archive, on your Messages Server if you use one, so they're searchable even offline. Turn that off with **Search older Google Messages** in [Storage and backup](#settings-storage); what's saved stays searchable.
+- **Messenger**: all the history Messages keeps for it.
+- **Instagram** and **Google Voice**: what's been loaded, recent conversations Messages keeps, and Voice's call records. A result older than the newest 1,000 messages in a conversation can't be jumped to.
 - Opening a result never marks a conversation read.
 
 ## 12. New chats and groups {#new-chats-and-groups}
@@ -576,10 +576,10 @@ Messages shows Windows notifications while it's running, including from the tray
 
 To tell them after all: **Send read receipt** in the conversation menu, **Mark read** on a notification, or `/read` in the console.
 
-### What stays on this PC {#what-stays-local}
+### What stays in Messages {#what-stays-local}
 
-- Pins, mutes, labels, reminders, unread marks, saved messages, quick replies, drafts, and the names and photos you give conversations live on this PC only.
-- Drafts, saved history, sign-ins, the Google search archive and your GIPHY key are stored protected for your Windows user.
+- Pins, mutes, labels, reminders, unread marks, saved messages, quick replies, drafts, and the names and photos you give conversations live in Messages, never on the services. Without a Messages Server that means this PC only. With one, they're on the server and your other devices that use it share them.
+- On this PC, drafts, saved history, sign-ins, the Google search archive and your GIPHY key are stored protected for your Windows user.
 - Diagnostic logs hold steps, counts and states: no message text, contact details or sign-in information.
 - Search results, saved messages and the gallery never mark anything read.
 
@@ -653,7 +653,7 @@ For keyboard people: <kbd>Ctrl+`</kbd> opens the chat console, a terminal of its
 | `/open name` | Opens the conversation in Messages (where reading it marks it read, as usual) |
 | `/next` | Opens the newest conversation with unread messages |
 | `/read name` | Marks a conversation read on the service without opening it |
-| `/mute name`, `/unmute name` | Mutes on this PC |
+| `/mute name`, `/unmute name` | Mutes in Messages |
 | `/reply m3 text` | Replies quoting a message, in that message's conversation; `/reply text` alone is `/r` |
 | `/react m3 👍`, `/like m3`, `/unreact m3` | Reacts to a message (or by name: `/react m3 heart`), likes it with the service's own like (👍, or ❤️ on Instagram), or takes your reaction back |
 | `/edit m3 text`, `/unsend m3` | Changes the words of a message you sent, or removes it for everyone, where the service can |
@@ -668,13 +668,13 @@ To send a line that starts with a slash, start it with `//`; one that starts wit
 
 | Command | What it does |
 |---|---|
-| `/archive name`, `/unarchive name` | Archives on the service for Google Messages, Messenger and Google Voice; Instagram and linked conversations are archived on this PC, and the console says which |
-| `/pin name`, `/unpin name` | Pins on this PC |
-| `/unread name` | Marks it unread on this PC, as **Mark as unread** does; the service isn't told |
+| `/archive name`, `/unarchive name` | Archives on the service for Google Messages, Messenger and Google Voice; Instagram and linked conversations are archived in Messages, and the console says which |
+| `/pin name`, `/unpin name` | Pins in Messages |
+| `/unread name` | Marks it unread in Messages, as **Mark as unread** does; the service isn't told |
 | `/delete name` | Deletes a conversation where its menu offers **Delete…** (in two steps, below) |
 | `/label name Family`, `/unlabel name Family` | Puts one of your labels on it, or takes it off |
 | `/snooze name 1h` | **Remind me later**: `30m`, `1h`, `tonight`, `tomorrow`, a time like `17:30`, or `off` |
-| `/copy m3`, `/save m3`, `/remind m3 tonight` | Copies a message's words, keeps it in Saved Messages, or reminds you about it later, all on this PC |
+| `/copy m3`, `/save m3`, `/remind m3 tonight` | Copies a message's words, keeps it in Saved Messages, or reminds you about it later, all in Messages |
 
 ### Acting on a conversation or message {#console-acting}
 
@@ -768,10 +768,10 @@ Each service's card shows the account and a status: **Connected**, **Signed in**
 - **Messenger**: **Connect**, **Reconnect**, **Refresh** and **Sign out**. **Encrypted conversations** shows **On**, or a **Turn on encrypted conversations** button if it didn't turn on by itself. While they're on but their connection isn't, it reads **Connecting**, **Not connected**, **Removed** (Facebook no longer lists this PC) or **Keys missing** (this PC's encrypted-conversation keys are gone; Messages never adds a Messenger device by itself, so the button to turn encrypted conversations on comes back for you to press), with a line saying what to do. After **Sign out** it reads **Off**: the keys stay, so signing in again uses the same device.
 - **Instagram**: Connect, Reconnect, Refresh and Sign out.
 - **Google Voice**: **Add Google Voice account**, then a row per number with its state, its recent conversations and its own **Sign out**.
-- **Service limits → View…** lists what each service can't do, and which settings stay on this PC. See [What each service can do](#services).
+- **Service limits → View…** lists what each service can't do, and which settings stay in Messages. See [What each service can do](#services).
 - **Messages Server → Manage…** connects Messages to a Messages Server you run yourself, and moves to it. See [Using a Messages Server](#messages-server).
 
-Signing out deletes that service's saved sign-in on this PC; scheduled messages for it stay, unsent.
+Signing out deletes that service's saved sign-in on this PC; scheduled messages for it stay, unsent. With a Messages Server it signs out on the server, so the service leaves every device that uses it, and Messages asks first.
 
 ### Using a Messages Server {#messages-server}
 
@@ -926,7 +926,7 @@ When Messages uses a Messages Server, the server keeps the backups: **Settings �
 
 ### Reset Google Messages local data {#google-reset}
 
-For when Google Messages conversations show the wrong person, or your phone renumbered its conversations (Messages then stops Google sends and says so). It clears this PC's pins, labels, drafts, reminders, saved pictures and search copy for Google Messages, and takes Google conversations out of merges. Nothing on your phone is deleted, and names and photos you set for people are kept.
+For when Google Messages conversations show the wrong person, or your phone renumbered its conversations (Messages then stops Google sends and says so). It clears what Messages keeps for Google Messages (pins, labels, drafts, reminders, saved pictures and the search copy), on every device if you use a Messages Server, and takes Google conversations out of merges. Nothing in Google Messages on your phone is deleted, and names and photos you set for people are kept.
 
 ### Where your data lives {#data-folder}
 
@@ -959,7 +959,7 @@ Everything is in `%LOCALAPPDATA%\Messages for Windows` on your PC. Uninstalling 
 - **Older Messenger encrypted messages are missing**: encrypted messages from before this PC was registered stay in Messenger's own backup and can't come here.
 - **No notifications**: Messages must be running (keep it in the tray, or start it with Windows). Check Settings → Notifications, the service's switch in Sounds and privacy, the conversation's mute, and whether notifications are paused. Then try **Send test**.
 - **An option is missing from a menu**: that service doesn't offer it; see Service limits.
-- **Pins or mutes didn't reach my phone**: they're kept on this PC by design.
+- **Pins or mutes didn't show in a service's own app**: they stay in Messages by design. Without a Messages Server, they're on this PC only and don't reach Messages on your phone either.
 - **Windows warns about the installer**: the installer isn't signed, so Windows doesn't recognise it; choose **More info → Run anyway**.
 - **"Messages closed unexpectedly last time"**: choose **Save logs** and send the file to whoever helps you.
 

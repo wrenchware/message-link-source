@@ -13,7 +13,7 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
 
     public async Task<ChatSummary> SetAsync(string chatId, ChatSetting setting, bool value, CancellationToken cancellationToken = default)
     {
-        if (setting != ChatSetting.Archived) throw new BackendException(BackendFailure.Unsupported, "Pin and mute are saved on this PC.");
+        if (setting != ChatSetting.Archived) throw new BackendException(BackendFailure.Unsupported, "Pin and mute are saved in Messages.");
         var native = GoogleModels.Native(chatId);
         var outcome = await UpdateChatAsync(native, value ? "archive" : "unarchive", cancellationToken);
         if (outcome == "rejected") throw new SendException(false, value ? "Google Messages didn't archive this conversation." : "Google Messages didn't unarchive this conversation.");
