@@ -119,7 +119,8 @@ public sealed partial class ConversationViewModel
         try
         {
             var readStarted = System.Diagnostics.Stopwatch.GetTimestamp();
-            var read = await windows.ReadWindowAsync(shown.ChatId, shown.Messages[^1].Timestamp.AddMilliseconds(1), 0, WindowPage, selection.Token);
+            // Just past it, no further: Google's times are finer than a millisecond, so the next message can be less than one away.
+            var read = await windows.ReadWindowAsync(shown.ChatId, shown.Messages[^1].Timestamp.AddTicks(1), 0, WindowPage, selection.Token);
             var readDone = System.Diagnostics.Stopwatch.GetTimestamp();
             if (version != generation || !ReferenceEquals(window, shown)) return;
             var rows = Union(shown.Messages, read.Messages);

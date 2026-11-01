@@ -27,6 +27,8 @@ public sealed record UnifiedSearchRow(string Title, string Detail = "", SearchHi
 public sealed class UnifiedSearchViewModel(ISearchBackend searches, IContactBackend contacts, RemoteContactCache? remoteCache = null)
 {
     private const int ConversationLimit = 4, MessageLimit = 12, ContactLimit = 4;
+    // Give fast message searches one paint with their conversations; slow searches must not hide an already found chat.
+    public TimeSpan ConversationRevealDelay { get; init; } = TimeSpan.FromMilliseconds(120);
     private static UnifiedSearchRow Header(string title) => new(title) { Kind = UnifiedSearchRowKind.Header };
     private static string PhoneKey(string? value)
     {
@@ -115,7 +117,15 @@ public sealed class UnifiedSearchViewModel(ISearchBackend searches, IContactBack
 
         var contactsTask = ContactsAsync();
         var conversations = await ConversationsAsync();
-        var messages = await MessagesAsync();
+        token.ThrowIfCancellationRequested();
+        var messagesTask = MessagesAsync();
+        if (publish is not null && conversations.Count > 0 && !messagesTask.IsCompleted)
+        {
+            await Task.WhenAny(messagesTask, Task.Delay(ConversationRevealDelay, token));
+            token.ThrowIfCancellationRequested();
+            if (!messagesTask.IsCompleted) await publish([.. conversations, new("Searching…")]);
+        }
+        var messages = await messagesTask.WaitAsync(token);
         token.ThrowIfCancellationRequested();
         var footer = searches is ISearchScopeInfo scope ? new UnifiedSearchRow(scope.SearchScopeDescription) : null;
         List<UnifiedSearchRow> Compose(IEnumerable<UnifiedSearchRow> people, bool pending)
@@ -126,10 +136,10 @@ public sealed class UnifiedSearchViewModel(ISearchBackend searches, IContactBack
             if (footer is not null) rows.Add(footer);
             return rows;
         }
-        if (publish is not null) await publish(Compose([], true));
+        if (publish is not null && !contactsTask.IsCompleted) await publish(Compose([], true));
         token.ThrowIfCancellationRequested();
 
-        var found = await contactsTask;
+        var found = await contactsTask.WaitAsync(token);
         token.ThrowIfCancellationRequested();
         // People already shown as a direct conversation are not repeated as contacts.
         var known = conversations.Where(row => row.Hit?.Chat is { Type: not "group" })
@@ -142,6 +152,7 @@ public sealed class UnifiedSearchViewModel(ISearchBackend searches, IContactBack
         if (contactRows.Count > 0) contactRows.Insert(0, Header("Contacts"));
         if (found.Unavailable) contactRows.Add(new("Some accounts could not be searched"));
         var final = Compose(contactRows, false);
+        token.ThrowIfCancellationRequested();
         if (publish is not null) await publish(final);
         return final;
     }

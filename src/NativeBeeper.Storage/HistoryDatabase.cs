@@ -144,14 +144,6 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
     public Task<IReadOnlyList<HistoryRow>> ReadNewestAsync(string chatId, int limit, CancellationToken cancellationToken = default) =>
         ReadAsync(chatId, "removed=0 ORDER BY ord DESC LIMIT $limit", command => command.Parameters.AddWithValue("$limit", limit), cancellationToken);
 
-    /// <summary>Messages held at or before <paramref name="order"/>, newest first, at most <paramref name="limit"/>; the caller orders ties within a moment.</summary>
-    public Task<IReadOnlyList<HistoryRow>> ReadAtOrBeforeAsync(string chatId, long order, int limit, CancellationToken cancellationToken = default) =>
-        ReadAsync(chatId, "removed=0 AND ord<=$ord ORDER BY ord DESC LIMIT $limit", command =>
-        {
-            command.Parameters.AddWithValue("$ord", order);
-            command.Parameters.AddWithValue("$limit", limit);
-        }, cancellationToken);
-
     /// <summary>Messages held from <paramref name="order"/> on, oldest first, at most <paramref name="limit"/>.</summary>
     public Task<IReadOnlyList<HistoryRow>> ReadAtOrAfterAsync(string chatId, long order, int limit, CancellationToken cancellationToken = default) =>
         ReadAsync(chatId, "removed=0 AND ord>=$ord ORDER BY ord ASC LIMIT $limit", command =>
@@ -159,6 +151,25 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
             command.Parameters.AddWithValue("$ord", order);
             command.Parameters.AddWithValue("$limit", limit);
         }, cancellationToken);
+
+    /// <summary>A time-ordered slice including every message in its boundary millisecond. The caller can then order
+    /// the encrypted timestamps, sort keys and ids without a SQL limit cutting through a tie.</summary>
+    public Task<IReadOnlyList<HistoryRow>> ReadTimeSliceAsync(string chatId, long from, long to, bool newestFirst, int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        var direction = newestFirst ? "DESC" : "ASC";
+        var boundary = newestFirst ? "MIN" : "MAX";
+        var comparison = newestFirst ? ">=" : "<=";
+        return ReadAsync(chatId, $"removed=0 AND ord BETWEEN $from AND $to AND ord{comparison}" +
+            $"(SELECT {boundary}(ord) FROM (SELECT ord FROM messages WHERE chat=$chat AND removed=0 AND ord BETWEEN $from AND $to " +
+            $"ORDER BY ord {direction} LIMIT $limit)) ORDER BY ord {direction}", command =>
+            {
+                command.Parameters.AddWithValue("$from", from);
+                command.Parameters.AddWithValue("$to", to);
+                command.Parameters.AddWithValue("$limit", limit);
+            }, cancellationToken);
+    }
 
     /// <summary>Every message held between two moments, both included (removed ones too), oldest first.</summary>
     public Task<IReadOnlyList<HistoryRow>> ReadBetweenAsync(string chatId, long from, long to, int limit, CancellationToken cancellationToken = default) =>
@@ -667,6 +678,10 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
                     $"PRAGMA user_version={Version};";
                 command.ExecuteNonQuery();
             }
+            // The whole-store feed has no chat predicate. Keep this additive index on existing files too, without
+            // raising their format version and preventing an older server from reopening them.
+            command.CommandText = "CREATE INDEX IF NOT EXISTS messages_seq ON messages(seq);";
+            command.ExecuteNonQuery();
             connection = opened;
         }
         catch { opened.Dispose(); throw; }

@@ -528,10 +528,11 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
         if (await IsReadyAsync(cancellationToken).ConfigureAwait(false) && held.TryGetValue(chatId, out var chat) && chat.State is { Filled: true } state
             && (state.Floor is null || at.UtcTicks > state.Floor.Value.Ticks))
         {
-            var before = await HeldBeforeAsync(chatId, state, new Position(at.UtcTicks, "", ""), older + 1, cancellationToken).ConfigureAwait(false);
+            var before = await HeldBeforeAsync(chatId, state, new Position(at.UtcTicks, "", ""), older + 1, cancellationToken, wholeMoments: true).ConfigureAwait(false);
             var after = await NewerAsync(chatId, state, at, newer, cancellationToken).ConfigureAwait(false);
-            var moreOlder = before.Count > older || !state.Complete;
-            return new HistoryWindow([.. before.TakeLast(older), .. after.Messages], moreOlder, after.More);
+            var selected = TakeMoments(before, older, newestFirst: true);
+            var moreOlder = before.Count > selected.Count || !state.Complete;
+            return new HistoryWindow([.. selected, .. after.Messages], moreOlder, after.More);
         }
         return windows is null ? throw new NotSupportedException() : await windows.ReadWindowAsync(chatId, at, older, newer, cancellationToken).ConfigureAwait(false);
     }
@@ -1046,20 +1047,17 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     }
 
     // The held messages strictly before a position (and not below the floor), oldest first, at most `limit`.
-    private async Task<IReadOnlyList<ChatMessage>> HeldBeforeAsync(string chatId, State state, Position before, int limit, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ChatMessage>> HeldBeforeAsync(string chatId, State state, Position before, int limit, CancellationToken cancellationToken,
+        bool wholeMoments = false)
     {
-        // A moment can hold several messages, ordered by sort key and id within it: read a little more than asked and order them here.
-        var rows = await db.ReadAtOrBeforeAsync(chatId, new DateTimeOffset(before.Ticks, TimeSpan.Zero).ToUnixTimeMilliseconds(), limit + 64, cancellationToken)
-            .ConfigureAwait(false);
-        return Sorted(rows.Select(Message).OfType<ChatMessage>()
-                .Where(message => Position.Of(message).CompareTo(before) < 0 && AboveFloor(state, message)))
-            .TakeLast(limit).ToArray();
+        return await ReadOrderedAsync(chatId, state, long.MinValue, new DateTimeOffset(before.Ticks, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+            newestFirst: true, limit, message => Position.Of(message).CompareTo(before) < 0, cancellationToken, wholeMoments).ConfigureAwait(false);
     }
 
     private async Task<(IReadOnlyList<ChatMessage> Messages, bool More)> NewestAsync(string chatId, State state, int limit, CancellationToken cancellationToken)
     {
-        var rows = await db.ReadNewestAsync(chatId, limit + 65, cancellationToken).ConfigureAwait(false);
-        var messages = Sorted(rows.Select(Message).OfType<ChatMessage>().Where(message => AboveFloor(state, message)));
+        var messages = await ReadOrderedAsync(chatId, state, long.MinValue, long.MaxValue, newestFirst: true, limit + 1, _ => true, cancellationToken)
+            .ConfigureAwait(false);
         return (messages.TakeLast(limit).ToArray(), messages.Count > limit || !state.Complete);
     }
 
@@ -1068,17 +1066,58 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
         bool newestFirst = false)
     {
         var ticks = at.UtcTicks;
-        var rows = newestFirst
-            ? await db.ReadNewestAsync(chatId, limit + 65, cancellationToken).ConfigureAwait(false)
-            : await db.ReadAtOrAfterAsync(chatId, at.ToUnixTimeMilliseconds(), limit + 65, cancellationToken).ConfigureAwait(false);
-        var messages = Sorted(rows.Select(Message).OfType<ChatMessage>().Where(message => message.Timestamp.UtcTicks >= ticks && AboveFloor(state, message)));
+        var messages = await ReadOrderedAsync(chatId, state, at.ToUnixTimeMilliseconds(), long.MaxValue, newestFirst, limit + 1,
+            message => message.Timestamp.UtcTicks >= ticks, cancellationToken, wholeMoments: !newestFirst).ConfigureAwait(false);
         if (newestFirst)
         {
-            // Read newest down: there is more after the moment when the newest read did not reach back to it.
-            var reachedBack = rows.Count < limit + 65 || rows.Any(row => row.Order < at.ToUnixTimeMilliseconds());
-            return (messages.TakeLast(limit).ToArray(), messages.Count > limit || !reachedBack);
+            return (messages.TakeLast(limit).ToArray(), messages.Count > limit);
         }
-        return (messages.Take(limit).ToArray(), messages.Count > limit);
+        var selected = TakeMoments(messages, limit, newestFirst: false);
+        return (selected, messages.Count > selected.Count);
+    }
+
+    private async Task<IReadOnlyList<ChatMessage>> ReadOrderedAsync(string chatId, State state, long from, long to, bool newestFirst,
+        int limit, Func<ChatMessage, bool> accepts, CancellationToken cancellationToken, bool wholeMoments = false)
+    {
+        if (state.Floor is { } floor) from = Math.Max(from, new DateTimeOffset(floor.Ticks, TimeSpan.Zero).ToUnixTimeMilliseconds());
+        var messages = new List<ChatMessage>();
+        var lookedBeyond = false;
+        while ((messages.Count < limit || wholeMoments && !lookedBeyond) && from <= to)
+        {
+            // SQL knows only milliseconds, not the encrypted within-millisecond order. Finish each boundary group before
+            // choosing a page. If the cursor/floor excludes that group, continue at the next millisecond, not a fixed allowance.
+            if (messages.Count >= limit) lookedBeyond = true;
+            var rows = await db.ReadTimeSliceAsync(chatId, from, to, newestFirst, Math.Max(1, limit - messages.Count), cancellationToken).ConfigureAwait(false);
+            if (rows.Count == 0) break;
+            messages.AddRange(rows.Select(Message).OfType<ChatMessage>().Where(message => AboveFloor(state, message) && accepts(message)));
+            if (newestFirst)
+            {
+                var oldest = rows.Min(row => row.Order);
+                if (oldest == long.MinValue) break;
+                to = oldest - 1;
+            }
+            else
+            {
+                var newest = rows.Max(row => row.Order);
+                if (newest == long.MaxValue) break;
+                from = newest + 1;
+            }
+        }
+        var ordered = Sorted(messages);
+        // A time-only window may consume the entire boundary group, including the usual extra row. Keep a look-ahead
+        // beyond that group so it can still say whether another window follows.
+        if (wholeMoments) return ordered;
+        return (newestFirst ? ordered.TakeLast(limit) : ordered.Take(limit)).ToArray();
+    }
+
+    // Window cursors name only a time, unlike normal history cursors. Never cut through that time or the next window
+    // would step past the rest of its messages. The window port explicitly allows a larger page for these ties.
+    private static IReadOnlyList<ChatMessage> TakeMoments(IReadOnlyList<ChatMessage> messages, int limit, bool newestFirst)
+    {
+        if (limit <= 0) return [];
+        if (messages.Count <= limit) return messages;
+        var boundary = messages[newestFirst ? messages.Count - limit : limit - 1].Timestamp;
+        return messages.Where(message => newestFirst ? message.Timestamp >= boundary : message.Timestamp <= boundary).ToArray();
     }
 
     private static bool AboveFloor(State state, ChatMessage message) => state.Floor is not { } floor || Position.Of(message).CompareTo(floor) >= 0;

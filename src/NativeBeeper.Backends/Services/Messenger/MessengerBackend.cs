@@ -695,7 +695,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         var result = await started.CallAsync("ui.messageWindow", new
         {
             chatId = MessengerModels.Native(chatId),
-            at = at.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            at = WindowMoment(at),
             older = Math.Clamp(older, 0, 200),
             newer = Math.Clamp(newer, 0, 200),
         }, cancellationToken);
@@ -707,6 +707,11 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             $"more_older={window.MoreOlder} more_newer={window.MoreNewer}");
         return new(messages.Select(MessengerModels.Map).ToArray(), window.MoreOlder, window.MoreNewer);
     }
+
+    // Messenger's times are whole milliseconds, and a window splits at "before" and "from" a moment that can be finer (just past a message, or a merged
+    // Google message's time): rounded up, every message lands on the side it did with the finer moment.
+    internal static string WindowMoment(DateTimeOffset at) =>
+        at.AddTicks(TimeSpan.TicksPerMillisecond - 1).ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     public async Task LoadLinkPreviewsAsync(string chatId, IReadOnlyList<string> messageIds, CancellationToken cancellationToken = default)
     {

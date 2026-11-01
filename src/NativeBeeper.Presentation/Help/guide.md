@@ -495,6 +495,7 @@ When the same person is on several services, you can merge your one-to-one conve
 ### The search box {#search-box}
 
 - **Search (Ctrl+E)** in the title bar suggests as you type: up to 4 **conversations**, 12 **messages** (with the words and who sent them) and 4 **contacts** you could start a chat with, marked **New chat**.
+- If message search takes longer, conversations appear first. Messages and contacts follow below them without moving the results already shown.
 - Choosing a conversation or message opens it there; choosing a contact opens [New chat](#new-chats-and-groups) ready to go.
 - A line at the bottom says what the search covered, or "Some accounts could not be searched". "More messages match" means another word would narrow it.
 
