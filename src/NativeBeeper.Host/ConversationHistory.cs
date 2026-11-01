@@ -90,6 +90,16 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     /// <summary>How long after starting the first walk of the list begins, and how often it repeats.</summary>
     public TimeSpan WalkDelay { get; init; } = TimeSpan.FromSeconds(20);
     public TimeSpan WalkEvery { get; init; } = TimeSpan.FromMinutes(30);
+    /// <summary>
+    /// How many pages of the list a routine read takes, between each the wait below. Reading all of it each walk was 200 pages every half hour of Google Voice's call records
+    /// alone, about 9,600 calls a day to a real account, unpaced, for rows that almost never change (audit, 2026-11-01). The newest pages are where a list changes, and a read that
+    /// stops short is never taken for the whole list, so it drops nothing.
+    /// </summary>
+    public int ListPages { get; init; } = 10;
+    /// <summary>How far the read goes once a day, for the rows below those: read in stretches of <see cref="ListPages"/>, so rows waiting to be written are not held behind it.</summary>
+    public int DeepListPages { get; init; } = 200;
+    public TimeSpan DeepListEvery { get; init; } = TimeSpan.FromHours(24);
+    public TimeSpan ListPagePace { get; init; } = TimeSpan.FromMilliseconds(500);
     /// <summary>A conversation opened after this long without a read of its newest page has it read again behind the answer.</summary>
     public TimeSpan OpenRefreshAfter { get; init; } = TimeSpan.FromMinutes(10);
     /// <summary>
@@ -1330,7 +1340,7 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
             int listedRows = 0, filling = 0, checking = 0;
             try
             {
-                var rows = await ReadListAsync(stop.Token).ConfigureAwait(false) ?? [];
+                var rows = await (await DeepListDueAsync().ConfigureAwait(false) ? ReadDeepListAsync(stop.Token) : ReadListAsync(stop.Token)).ConfigureAwait(false) ?? [];
                 foreach (var row in rows)
                 {
                     // Spam is read only when someone opens it.
@@ -1351,6 +1361,35 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
             try { await Task.Delay(WalkEvery, stop.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
         }
+    }
+
+    private const string DeepListNote = "deep_list_at";
+
+    // Kept with the store: the server restarts more often than a day, and a deep read at each start would be the same calls again. A first start has no rows, so it reads deep.
+    private async Task<bool> DeepListDueAsync()
+    {
+        var note = await db.ReadNoteAsync(DeepListNote, stop.Token).ConfigureAwait(false);
+        return !DateTimeOffset.TryParse(note, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var at) || DateTimeOffset.UtcNow - at >= DeepListEvery;
+    }
+
+    // How far a read of the list got: true when it reached the list's end or the most it may read with every service answering.
+    private sealed class ListCoverage { public bool Covered; }
+
+    private int deepReading;
+
+    // A deep read, noted as done only if it was: a service down for it (a retry cursor, not a failure) would otherwise leave its older rows a day behind, restarts included
+    // (review, 2026-11-01). Not noted, the next walk reads deep again, paced as ever. One at a time: the walk can come due while a first start's is still reading.
+    private async Task<IReadOnlyList<ChatSummary>?> ReadDeepListAsync(CancellationToken cancellationToken)
+    {
+        if (Interlocked.Exchange(ref deepReading, 1) == 1) return await ReadListAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var coverage = new ListCoverage();
+            var rows = await ReadListAsync(cancellationToken, deep: true, coverage).ConfigureAwait(false);
+            if (coverage.Covered) await db.WriteNoteAsync(DeepListNote, DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
+            return rows;
+        }
+        finally { Volatile.Write(ref deepReading, 0); }
     }
 
     // ---- The list rows (stage 9, B1 and B2) ----
@@ -1409,8 +1448,10 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
                 if (listDue)
                 {
                     listDue = false;
-                    if (Environment.TickCount64 - Interlocked.Read(ref listReadAt) >= ListReadEvery || !rowsReady.Task.IsCompleted)
-                        await ReadListAsync(stop.Token).ConfigureAwait(false);
+                    // A new store (no note of a deep read) reads deep before it says it is ready: a client's first read takes the rows it finds and is told of no more later, so a
+                    // phone joining a new server would hold only the newest pages (review, 2026-11-01). A restart has its rows already, and its deep read comes when it is due.
+                    if (!rowsReady.Task.IsCompleted) await (await DeepListDueAsync().ConfigureAwait(false) ? ReadDeepListAsync(stop.Token) : ReadListAsync(stop.Token)).ConfigureAwait(false);
+                    else if (Environment.TickCount64 - Interlocked.Read(ref listReadAt) >= ListReadEvery) await ReadListAsync(stop.Token).ConfigureAwait(false);
                 }
                 await rowsGate.WaitAsync(stop.Token).ConfigureAwait(false);
                 try
@@ -1446,46 +1487,60 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     private HashSet<string> missingOnce = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Reads the services' whole list, keeps every row for the feed, and lets go of rows no longer on it (only for a service that answered with some rows,
-    /// and only those two whole reads in a row left out). Null when it could not be read.
+    /// Reads the services' list, its newest <see cref="ListPages"/> pages or with <paramref name="deep"/> up to <see cref="DeepListPages"/>, keeps every row for the feed, and lets go
+    /// of rows no longer on it (only when the whole list was read, only for a service that answered with some rows, and only those two whole reads in a row left out). Null when it
+    /// could not be read.
     /// </summary>
-    private async Task<IReadOnlyList<ChatSummary>?> ReadListAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ChatSummary>?> ReadListAsync(CancellationToken cancellationToken, bool deep = false, ListCoverage? coverage = null)
     {
         var clock = Stopwatch.GetTimestamp();
-        await rowsGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var most = deep ? DeepListPages : ListPages;
+        string? cursor = null;
+        var rows = new Dictionary<string, ChatSummary>(StringComparer.Ordinal);
+        var unavailable = new HashSet<string>(StringComparer.Ordinal);
+        var (whole, done, pages, changed, gone) = (false, false, 0, 0, 0);
         try
         {
             Interlocked.Exchange(ref listReadAt, Environment.TickCount64);
-            string? cursor = null;
-            var rows = new Dictionary<string, ChatSummary>(StringComparer.Ordinal);
-            var unavailable = new HashSet<string>(StringComparer.Ordinal);
-            var whole = false;
-            for (var pages = 0; pages < 200; pages++)
+            // A stretch of pages at a time under the gate: rows from events wait on it, and a feed read waits on them.
+            while (!done)
             {
-                var page = await chats.GetChatsAsync(cursor, cancellationToken).ConfigureAwait(false);
-                var added = 0;
-                foreach (var row in page.Items) if (rows.TryAdd(row.Id, row)) added++;
-                unavailable.UnionWith(page.UnavailableScopes ?? []);
-                if (!page.HasMore) { whole = true; break; }
-                // A service that did not answer hands back a retry cursor for as long as it does not (ConversationSync does the same).
-                if (page.OldestCursor is null || page.OldestCursor == cursor || unavailable.Count > 0 && added == 0) break;
-                cursor = page.OldestCursor;
+                await rowsGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var stretch = new List<ChatSummary>();
+                    for (var inStretch = 0; inStretch < Math.Max(1, ListPages) && !done; inStretch++)
+                    {
+                        if (pages > 0 && ListPagePace > TimeSpan.Zero) await Task.Delay(ListPagePace, cancellationToken).ConfigureAwait(false);
+                        var page = await chats.GetChatsAsync(cursor, cancellationToken).ConfigureAwait(false);
+                        pages++;
+                        var added = 0;
+                        foreach (var row in page.Items) if (rows.TryAdd(row.Id, row)) { added++; stretch.Add(row); }
+                        unavailable.UnionWith(page.UnavailableScopes ?? []);
+                        if (!page.HasMore) { whole = true; done = true; break; }
+                        // A service that did not answer hands back a retry cursor for as long as it does not (ConversationSync does the same).
+                        if (page.OldestCursor is null || page.OldestCursor == cursor || unavailable.Count > 0 && added == 0) { done = true; break; }
+                        cursor = page.OldestCursor;
+                        if (pages >= most) done = true;
+                    }
+                    foreach (var row in stretch) listed[row.Id] = row;
+                    changed += await StoreRowsAsync(stretch, cancellationToken).ConfigureAwait(false);
+                    if (whole)
+                    {
+                        var answered = rows.Keys.Select(Service).ToHashSet(StringComparer.Ordinal);
+                        var missing = (await db.ReadListedAsync(cancellationToken).ConfigureAwait(false))
+                            .Where(id => !rows.ContainsKey(id) && answered.Contains(Service(id)) && !unavailable.Any(scope => id.StartsWith(scope, StringComparison.Ordinal)))
+                            .ToHashSet(StringComparer.Ordinal);
+                        var left = missing.Where(missingOnce.Contains).ToArray();
+                        missingOnce = missing;
+                        foreach (var id in left) listed.TryRemove(id, out _);
+                        gone = (await db.WriteRowsAsync([.. left.Select(id => new HistoryListRow(id, null))], cancellationToken).ConfigureAwait(false)).Count;
+                    }
+                }
+                finally { rowsGate.Release(); }
             }
-            foreach (var row in rows.Values) listed[row.Id] = row;
-            var changed = await StoreRowsAsync([.. rows.Values], cancellationToken).ConfigureAwait(false);
-            var gone = 0;
-            if (whole)
-            {
-                var answered = rows.Keys.Select(Service).ToHashSet(StringComparer.Ordinal);
-                var missing = (await db.ReadListedAsync(cancellationToken).ConfigureAwait(false))
-                    .Where(id => !rows.ContainsKey(id) && answered.Contains(Service(id)) && !unavailable.Any(scope => id.StartsWith(scope, StringComparison.Ordinal)))
-                    .ToHashSet(StringComparer.Ordinal);
-                var left = missing.Where(missingOnce.Contains).ToArray();
-                missingOnce = missing;
-                foreach (var id in left) listed.TryRemove(id, out _);
-                gone = (await db.WriteRowsAsync([.. left.Select(id => new HistoryListRow(id, null))], cancellationToken).ConfigureAwait(false)).Count;
-            }
-            log($"history rows listed={rows.Count} changed={changed} gone={gone} whole={(whole ? 1 : 0)} unavailable={unavailable.Count} ms={Ms(clock)}");
+            if (coverage is not null) coverage.Covered = unavailable.Count == 0 && (whole || pages >= most);
+            log($"history rows listed={rows.Count} changed={changed} gone={gone} whole={(whole ? 1 : 0)} unavailable={unavailable.Count} pages={pages} deep={(deep ? 1 : 0)} ms={Ms(clock)}");
             return [.. rows.Values];
         }
         catch (Exception failure) when (failure is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -1493,11 +1548,8 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
             log($"history rows failed error={failure.GetType().Name}");
             return null;
         }
-        finally
-        {
-            rowsGate.Release();
-            rowsReady.TrySetResult();
-        }
+        // Not a short read while a first deep one is still going: that one is what the first client waits for.
+        finally { if (deep || Volatile.Read(ref deepReading) == 0) rowsReady.TrySetResult(); }
     }
 
     // Keeps rows as built, and with [announce] puts each that changed in the event sequence for clients of 25 (EventKinds.Row): what a row did by itself (its

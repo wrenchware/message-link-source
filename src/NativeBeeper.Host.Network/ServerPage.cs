@@ -439,7 +439,7 @@ internal sealed partial class ServerPage
                 DesktopSignInPost(context, form!);
                 return;
             case SignInPath:
-                await SignInViewAsync(context, token).ConfigureAwait(false);
+                await SignInViewAsync(context, form, token).ConfigureAwait(false);
                 return;
             case { } door when IsTailnetPath(door):
                 await TailnetAsync(context, door, form, token).ConfigureAwait(false);

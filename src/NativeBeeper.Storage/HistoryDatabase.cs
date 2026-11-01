@@ -693,6 +693,34 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
         if (connection is null || key.Length != 64) throw new InvalidOperationException("The history store is not open.");
     }
 
+    /// <summary>A note of the store's own, kept with it (a time a piece of work was last done): null when there is none.</summary>
+    public async Task<string?> ReadNoteAsync(string name, CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Ready();
+            return await Task.Run(() => Convert.ToString(Meta("note:" + name)), cancellationToken).ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task WriteNoteAsync(string name, string value, CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Ready();
+            await Task.Run(() =>
+            {
+                using var transaction = connection!.BeginTransaction();
+                SetMeta(transaction, "note:" + name, value);
+                transaction.Commit();
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
+    }
+
     private object? Meta(string name)
     {
         using var command = connection!.CreateCommand();

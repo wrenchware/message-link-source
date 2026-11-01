@@ -12,7 +12,9 @@ namespace NativeBeeper.Host.Network;
 //
 // The view is a page of its own (SignInPath) whose few lines of script, allowed by their hash alone, open a socket to the page's own address (SignInSocketPath). The socket is the page's,
 // never the client door's: it takes the page's sign-in cookie, the page's form token and the page's own origin, all three, from the home network only (the door's FromTrustedNetwork),
-// and the client socket still refuses anything that names an origin. A signed-in page counts as the server's owner. The sign-in itself runs through the host's one
+// and the client socket still refuses anything that names an origin. A signed-in page counts as the server's owner, but opening the browser asks for the password again, as
+// every other dangerous step on the page does: it can open on a copy of the kept Google profile, Voice's web app included, and a cookie alone reaches any HTTPS service on this
+// address (audit, 2026-11-01). The answer is a pass the socket spends: one use, this browser's session and this service, for two minutes. The sign-in itself runs through the host's one
 // RemoteSignInSessions, as the app's does, so one sign-in is open at a time across the app and the page and input reaches it only from the socket that started it.
 //
 // Logged: `page sign-in service= outcome=` with fixed words only (a refused socket the first time and then one in a hundred). Never a picture, a key, typed text, a cookie or a token.
@@ -116,12 +118,12 @@ internal sealed partial class ServerPage
 
     // ---- The view ----
 
-    private async Task SignInViewAsync(HttpContext context, string token)
+    private async Task SignInViewAsync(HttpContext context, IFormCollection? form, string token)
     {
         var request = context.Request;
         var service = request.Query["service"].ToString();
         // The Windows server signs in on its own desktop (ServerPage.Desktop.cs), never in a view here.
-        if (!HttpMethods.IsGet(request.Method) || !RemoteSignInServices.Known(service) || DesktopSignIn is not null)
+        if (!RemoteSignInServices.Known(service) || DesktopSignIn is not null)
         {
             Redirect(context.Response, "/#accounts");
             return;
@@ -138,9 +140,18 @@ internal sealed partial class ServerPage
                 .ConfigureAwait(false);
             return;
         }
+        var action = SignInPath + "?service=" + service + (walkthrough ? "&amp;from=welcome" : "");
+        string Ask(string? problem) => AskBody(action, token, "This opens the server's own browser, which can hold your signed-in accounts, so it asks for the server password again.", "Continue", problem);
+        if (form is null)
+        {
+            await PageAsync(context, StatusCodes.Status200OK, title, Ask(null)).ConfigureAwait(false);
+            return;
+        }
+        if (!await PasswordAgainAsync(context, form, "open_browser", title, Ask).ConfigureAwait(false)) return;
+        var grant = SignInGrant(Session(request)!, service);
         var meta = RemoteSignInServices.EndsWithDone(service);
         var body = new StringBuilder("<style>").Append(SignInStyle).Append("</style>");
-        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-form=\"").Append(Html(token)).Append("\" data-ready=\"")
+        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-form=\"").Append(Html(token)).Append("\" data-grant=\"").Append(grant).Append("\" data-ready=\"")
             .Append(Html(ReadyWords(service))).Append("\">")
             .Append("<p id=\"status\" role=\"status\" aria-live=\"polite\">Starting the server's browser…</p>")
             .Append("<div id=\"emoji\" class=\"emoji\" hidden><p id=\"emoji-text\" class=\"emoji-big\" aria-live=\"assertive\"></p><p>In Google Messages on your phone, tap this emoji.</p></div>")
@@ -161,6 +172,34 @@ internal sealed partial class ServerPage
         body.Append("<script>").Append(SignInScript).Append("</script>");
         context.Response.Headers.ContentSecurityPolicy = SignInPolicy(request);
         await PageAsync(context, StatusCodes.Status200OK, title, body.ToString()).ConfigureAwait(false);
+    }
+
+    // ---- The pass the password buys ----
+
+    /// <summary>How long a pass waits for its socket: the view opens it as it loads.</summary>
+    internal TimeSpan SignInGrantLife { get; set; } = TimeSpan.FromMinutes(2);
+
+    private readonly Dictionary<string, (string Session, string Service, DateTimeOffset Until)> signInGrants = new(StringComparer.Ordinal);
+
+    private static string GrantKey(string grant) => Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(grant)));
+
+    private string SignInGrant(string session, string service)
+    {
+        var grant = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var now = time.GetUtcNow();
+        lock (signInGrants)
+        {
+            foreach (var key in signInGrants.Where(pair => pair.Value.Until <= now).Select(pair => pair.Key).ToArray()) signInGrants.Remove(key);
+            signInGrants[GrantKey(grant)] = (session, service, now + SignInGrantLife);
+        }
+        return grant;
+    }
+
+    // Spent by the asking: right or wrong, it is not asked of again.
+    private bool TakeSignInGrant(string grant, string session, string service)
+    {
+        lock (signInGrants)
+            return signInGrants.Remove(GrantKey(grant), out var held) && held.Session == session && held.Service == service && time.GetUtcNow() < held.Until;
     }
 
     private static string ReadyWords(string service) => service switch
@@ -204,6 +243,7 @@ internal sealed partial class ServerPage
             : !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(request.Query["form"].ToString()), Encoding.ASCII.GetBytes(FormToken(session))) ? (StatusCodes.Status403Forbidden, "token")
             : !known ? (StatusCodes.Status400BadRequest, "service")
             : DesktopSignIn is not null || services is null || !RemoteSignInSessions.Offers(services, service) ? (StatusCodes.Status404NotFound, "not_supported")
+            : !TakeSignInGrant(request.Query["grant"].ToString(), session, service) ? (StatusCodes.Status403Forbidden, "grant")
             : (0, null);
         if (refusal is not null)
         {
@@ -392,7 +432,7 @@ var svc=v.getAttribute('data-service'),tok=v.getAttribute('data-form'),ready=v.g
 var cv=$('screen'),cx=cv.getContext('2d'),keys=$('keys'),st=$('status'),stage=$('stage'),frame=$('frame'),em=$('emoji'),emt=$('emoji-text'),out=$('outcome'),
 outh=$('outcome-title'),outt=$('outcome-text'),bar=$('bar'),done=$('done'),cancel=$('cancel'),kb=$('keyboard'),zoom=$('zoom'),hint=$('hint');
 var W=cv.width,H=cv.height,ended=false,shown=false,q=[],pend=null,timer=0,held=0,clicks=0,lastDown=0,lastAt=null,touch=null,downs={},composing=false,justComposed=false;
-var ws=new WebSocket('wss://'+location.host+'/page/sign-in?service='+encodeURIComponent(svc)+'&form='+encodeURIComponent(tok));
+var ws=new WebSocket('wss://'+location.host+'/page/sign-in?service='+encodeURIComponent(svc)+'&form='+encodeURIComponent(tok)+'&grant='+encodeURIComponent(v.getAttribute('data-grant')));
 ws.binaryType='blob';
 function say(t){st.textContent=t}
 function finish(title,text,ok){if(ended)return;ended=true;v.hidden=true;$('again').hidden=!!ok;
