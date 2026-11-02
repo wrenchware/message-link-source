@@ -60,7 +60,7 @@ public static class TrayMenuModel
         items.Add(new(SettingsId, "Settings", TrayCommand.Settings));
         // A PC that runs its own Messages Server (owner D13, 2026-10-30): Quit closes Messages only, and the server goes on serving the phone and keeping Google
         // signed in; Stop Messages Server closes both. The page is the server's own, on this PC.
-        if (ownServer) items.Add(new(ServerPageId, "Open server page", TrayCommand.ServerPage));
+        if (ownServer) items.Add(new(ServerPageId, "Manage server", TrayCommand.ServerPage));
         items.Add(Separator());
         items.Add(new(QuitId, "Quit Messages", TrayCommand.Quit));
         if (ownServer) items.Add(new(StopServerId, "Stop Messages Server", TrayCommand.StopServer));

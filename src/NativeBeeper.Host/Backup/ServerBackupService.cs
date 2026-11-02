@@ -94,9 +94,9 @@ internal sealed class ServerBackupService : IServerBackup
     }
 
     /// <summary>
-    /// Backups go to <paramref name="chosen"/> from the next one on: a full path to a folder that is there now (the server never makes one, as a share that is not
-    /// mounted would otherwise fill the PC's own disk). Kept for the next start. Answers <c>chosen</c>, or with nothing changed why not: <c>fixed</c> (this host's folder
-    /// is its mapping), <c>not_full</c>, <c>missing</c> or <c>unsaved</c>.
+    /// Backups go to <paramref name="chosen"/> from the next one on: a full path, on a drive or share that is there now. A folder that is not there yet is made (only here: a Windows
+    /// path names its drive or share, so one that is not mounted fails rather than filling the PC's own disk, and a Docker server's folder is its mapping), and is checked by writing to it.
+    /// Kept for the next start. Answers <c>chosen</c>, or with nothing changed why not: <c>fixed</c> (this host's folder is its mapping), <c>not_full</c>, <c>missing</c>, <c>denied</c> or <c>unsaved</c>.
     /// </summary>
     public string ChooseFolder(string? chosen)
     {
@@ -106,13 +106,18 @@ internal sealed class ServerBackupService : IServerBackup
         try
         {
             chosen = Path.TrimEndingDirectorySeparator(Path.GetFullPath(chosen));
-            if (!Directory.Exists(chosen)) return "missing";
+            if (Path.GetPathRoot(chosen) is not { Length: > 0 } root || !Directory.Exists(root)) return "missing";
+            Directory.CreateDirectory(chosen);
+            var probe = Path.Combine(chosen, ".messages-write-check");
+            File.WriteAllBytes(probe, []);
+            File.Delete(probe);
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             var temporary = file + ".tmp";
             File.WriteAllText(temporary, chosen);
             File.Move(temporary, file, overwrite: true);
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return "unsaved"; }
+        catch (UnauthorizedAccessException) { return "denied"; }
+        catch (Exception failure) when (failure is IOException or ArgumentException or NotSupportedException) { return "unsaved"; }
         folder = chosen;
         Update(current => current);
         log("server backup folder chosen");

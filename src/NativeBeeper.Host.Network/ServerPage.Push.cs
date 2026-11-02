@@ -10,9 +10,8 @@ internal sealed partial class ServerPage
 {
     private const string FirebaseConsole = "https://console.firebase.google.com/";
 
-    // Each version of Messages is its own Android app, and the project needs one for each version in use (a Play install is the first; test builds the second).
-    private static readonly (string Package, string Who)[] MessagesApps =
-        [("com.wrenchware.messages", "Messages from Google Play"), ("com.wrenchware.messages.dev", "test builds of Messages")];
+    // The Android app a project needs, and what to call the project: any name works, but people ask what to type.
+    private const string MessagesApp = "com.wrenchware.messages", ProjectName = "Messages Notifications";
 
     // A Firebase project's own page (settings/general, settings/serviceaccounts/adminsdk), or the console's front page while no project is known.
     private static string FirebasePage(string? project, string page) =>
@@ -32,7 +31,7 @@ internal sealed partial class ServerPage
         if (card.Switch.Current is not { } setup)
         {
             body.Append(Para("Messages on a phone can show new messages as notifications. They go through a Firebase project of your own, so no one else's service is in between, and each is sealed for your phone: Google carries it without being able to read it."))
-                .Append(Para("Setting it up takes about five minutes in Firebase: a project, an app for each version of Messages, and two files to drop here."))
+                .Append(Para("Setting it up takes about five minutes in Firebase: a project, the Messages app, and two files to drop here."))
                 .Append("<form method=\"get\" action=\"/push\"><button type=\"submit\">Set up notifications…</button></form></section>");
             return;
         }
@@ -202,17 +201,16 @@ internal sealed partial class ServerPage
         body.Append(Para(replacing
             ? "These replace the files the server has now, at once. With another project's files every phone signs up again by itself: phones with Messages open at once, the others when Messages next connects."
             : "Notifications start as soon as the two files are in; nothing needs restarting."));
+        body.Append("<p>").Append(Link(JoinLink.FirebaseGuide, "See these steps with pictures")).Append("</p>");
         body.Append("<ol class=\"steps\">")
             .Append("<li><strong>Make a Firebase project.</strong> ").Append(Link(FirebaseConsole, "Open Firebase"))
-            .Append("<span class=\"quiet block\">Sign in with a personal Google account, add a project, and accept Firebase's terms when it asks (only the first time). It's free, and Google Analytics isn't needed.</span></li>")
-            .Append("<li><strong>Add an Android app for each version of Messages.</strong><span class=\"quiet block\">In the project, add an Android app with each of these package names. You can skip the steps after each is registered.</span><ul class=\"packages\">");
-        foreach (var (package, who) in MessagesApps)
-            body.Append("<li><span class=\"copy\">").Append(Html(package)).Append("</span><button type=\"button\" class=\"quiet small\" data-copy=\"").Append(Html(package)).Append("\">Copy</button>")
-                .Append("<span class=\"quiet\">").Append(Html(who)).Append("</span></li>");
+            .Append("<span class=\"quiet block\">Sign in with a personal Google account, add a project named <strong>").Append(ProjectName).Append("</strong>, and accept Firebase's terms when it asks (only the first time). It's free, and Google Analytics isn't needed.</span></li>")
+            .Append("<li><strong>Add the Android app.</strong><span class=\"quiet block\">In the project, add an Android app with this package name. You can skip the steps after it's registered.</span><ul class=\"packages\">")
+            .Append("<li><span class=\"copy\">").Append(MessagesApp).Append("</span><button type=\"button\" class=\"quiet small\" data-copy=\"").Append(MessagesApp).Append("\">Copy</button></li>");
         body.Append("</ul></li>")
             .Append("<li><strong>Download google-services.json</strong> from ")
             .Append("<a data-firebase=\"").Append(GeneralPage).Append("\" href=\"").Append(Html(FirebasePage(project, GeneralPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings, General</a>")
-            .Append(", after adding the apps, so it names them.</li>")
+            .Append(", after adding the app, so it names it.</li>")
             .Append("<li><strong>Make a private key</strong> in ")
             .Append("<a data-firebase=\"").Append(KeysPage).Append("\" href=\"").Append(Html(FirebasePage(project, KeysPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings, Service accounts</a>")
             .Append(" with <strong>Generate new private key</strong>. That file is a secret: give it only to this server.</li>")
@@ -244,7 +242,7 @@ internal sealed partial class ServerPage
     /// </summary>
     internal const string PushScript = """
 (function(){
-var C='https://console.firebase.google.com/',P=['com.wrenchware.messages','com.wrenchware.messages.dev'];
+var C='https://console.firebase.google.com/',P=['com.wrenchware.messages'];
 document.querySelectorAll('button[data-copy]').forEach(function(b){b.addEventListener('click',function(){var w=b.textContent;var t=b.getAttribute('data-copy');
 if(navigator.clipboard)navigator.clipboard.writeText(t).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent=w},1500)},function(){});});});
 var input=document.getElementById('files'),drop=document.getElementById('drop'),found=document.getElementById('found');
@@ -263,7 +261,7 @@ var s=rs.filter(function(r){return r.k==='s'})[0],a=rs.filter(function(r){return
 rs.forEach(function(r){if(r.k==='s')say(r.n+': google-services.json for '+r.p+'.',true);else if(r.k==='a')say(r.n+': the private key for '+r.p+'.',true);
 else if(r.k==='big')say(r.n+' is too large to be one of Firebase\'s files.');else say(r.n+' isn\'t one of Firebase\'s files.')});
 point((s||a||{}).p);
-if(s){var none=P.every(function(p){return s.apps.indexOf(p)<0});P.forEach(function(p){if(s.apps.indexOf(p)<0&&!none)say('No app for '+p+' in this project yet: that version of Messages won\'t get notifications. Add it, then download google-services.json again.')});
+if(s){var none=P.every(function(p){return s.apps.indexOf(p)<0});
 if(none)say('This project has no app for Messages. Add '+P[0]+', then download google-services.json again.')}
 if(!s)say('Still needed: google-services.json, from Project settings, General.');if(!a)say('Still needed: the private key, from Project settings, Service accounts.');
 if(s&&a)say(s.p===a.p?'Both files are here. Type the password and turn it on.':'The two files are from different projects. Use both from the same one.',s.p===a.p);});}

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using NativeBeeper.Protocol;
 
 namespace NativeBeeper.Host.Network;
 
@@ -49,14 +50,23 @@ internal sealed partial class ServerPage
     private static bool IsDesktopPath(string? path) => path is "/signin/desktop";
 
     // The Accounts card's Connect buttons, for a signed-in browser on this PC only: the window opens on this PC's desktop, so a browser elsewhere is not offered it.
-    private void DesktopSignInForms(StringBuilder body, HttpContext context, string token)
+    // Once an account is connected the rest wait behind one button, and a service connected and well isn't offered again; Google Voice takes more than one number.
+    private void DesktopSignInForms(StringBuilder body, HttpContext context, string token, IReadOnlyList<ServerAccount>? accounts)
     {
         if (DesktopSignIn is null || !OnThisPc(context)) return;
+        var any = accounts is { Count: > 0 };
+        if (any) body.Append("<details><summary class=\"button\">Connect another service</summary>");
         body.Append("<p class=\"quiet\">Connect opens the service's own sign-in in Messages on this PC.</p><div class=\"actions\">");
         foreach (var (service, name) in DesktopServices)
+        {
+            var mine = accounts?.Where(account => Provider(account.Provider) == name).ToArray() ?? [];
+            if (service != "google-voice" && mine.Length > 0 && mine.All(account => Tone(account.State) == "ok")) continue;
+            var words = mine.Length == 0 ? "Connect " + name : service == "google-voice" ? "Add another Google Voice number" : "Sign in again to " + name;
             body.Append("<form method=\"post\" action=\"/signin/desktop\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
-                .Append("<button type=\"submit\" name=\"service\" value=\"").Append(service).Append("\" class=\"quiet\">Connect ").Append(Html(name)).Append("</button></form>");
+                .Append("<button type=\"submit\" name=\"service\" value=\"").Append(service).Append("\" class=\"quiet\">").Append(Html(words)).Append("</button></form>");
+        }
         body.Append("</div>");
+        if (any) body.Append("</details>");
     }
 
     private void DesktopSignInPost(HttpContext context, IFormCollection form)

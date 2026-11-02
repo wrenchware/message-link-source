@@ -57,7 +57,7 @@ internal sealed partial class ServerPage
         // The Windows server (10.7) signs in with Messages' native windows on its own desktop (owner D2): Connect there, from a browser on that PC, and nowhere else.
         if (DesktopSignIn is not null)
         {
-            DesktopSignInForms(body, context, token);
+            DesktopSignInForms(body, context, token, accounts);
             if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Messages there (Settings → Accounts), or with Connect on this page in a browser on that PC."));
             return;
         }

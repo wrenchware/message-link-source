@@ -702,12 +702,6 @@ internal sealed partial class ServerPage
             "backup_busy" => "A backup is already running, or there's no password yet.",
             "backup_checking" => "Reading the latest backup back now. Reload in a minute to see what it found.",
             "backup_password" => "The backup password is set. Keep it safe: without it the backups can't be read.",
-            // The Windows server's folder, typed on the Backups card (ServerBackupService.ChooseFolder).
-            "backup_folder" => "Backups go to that folder now.",
-            "backup_folder_not_full" => "Type the whole path, starting with a drive letter, or with \\\\ for a network share.",
-            "backup_folder_missing" => "That folder doesn't exist. Check the path and try again.",
-            "backup_folder_unsaved" => "The server couldn't save that choice. Try again.",
-            "backup_folder_fixed" => "This server's backup folder is set where it was installed, so it can't be changed here.",
             "desktop_sign_in" => "The sign-in opened in Messages on this PC.",
             "desktop_sign_in_failed" => "Messages couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
             _ => TailnetNotice(done),
@@ -785,7 +779,7 @@ internal sealed partial class ServerPage
         if (pushes is not null) PushCard(body, pushes, token);
         if (tailnet is not null) TailnetCard(body, tailnet, token);
 
-        if (backups is not null) await BackupsCardAsync(body, token, cancellationToken).ConfigureAwait(false);
+        if (backups is not null) await BackupsCardAsync(body, token, request, cancellationToken).ConfigureAwait(false);
 
         if (history is not null) await CopiesCardAsync(body, token, cancellationToken).ConfigureAwait(false);
 

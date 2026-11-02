@@ -55,6 +55,15 @@ public static class TourSteps
             "Closing the window leaves Messages in the tray, still notifying. **Start with Windows**, a shortcut to show it " +
             "from anywhere (<kbd>Ctrl+Alt+Shift+M</kbd>) and pop-out windows (<kbd>Ctrl+Shift+N</kbd>) are a click away in Settings.",
             null, "living-on-your-desktop"),
+        new("taskbar", "Right-click the taskbar button",
+            "The jump list has your pinned conversations, a few it thinks you'll want now, **New chat** and **Search**, " +
+            "with your contacts' photos beside them. Pin Messages to the taskbar to keep it handy.", null, "taskbar"),
+        new("keep", "Save it, or be reminded",
+            "Right-click a message: **Save** keeps a copy in **Saved Messages**, and **Remind me** brings that exact message " +
+            "back at the time you choose, even if Messages was closed.", null, "saved-messages"),
+        new("private", "Read without telling them",
+            "**Private reading**, in **Settings → Messaging**, turns off read receipts and typing, per service. A conversation " +
+            "you read stays unread for the other person until you choose to tell them.", null, "private-reading"),
         new("console", "For keyboard people",
             "<kbd>Ctrl+`</kbd> opens the chat console: every service's messages as one live terminal, with a prompt. " +
             "Try `/help` and `/chats`. Only what you type as a message is ever sent.", null, "the-chat-console"),

@@ -16,6 +16,9 @@ public static class JoinLink
     /// <summary>Where the link points: the website's join page, which says to open it in Messages.</summary>
     public const string Page = "https://wrenchware.github.io/messages/join";
 
+    /// <summary>The website's pictured guide to the Firebase project a phone's notifications need, which the server's page links to.</summary>
+    public const string FirebaseGuide = "https://wrenchware.github.io/messages/firebase/";
+
     /// <summary>The only version written and read.</summary>
     public const string Version = "1";
 

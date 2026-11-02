@@ -67,7 +67,7 @@ internal sealed class StoredPassword
 // one-time setup code to its container's output (PairingCodes, as a pairing code is) and the page shows only the setup screen, to the home network and the tailnet
 // alone (NetworkHost): the code, then the password, which is kept as a hash with the keys. The code is taken by the first right try, as a pairing code is, and its tries
 // are paced the same way; the password must then be chosen in the same browser within half an hour (a cookie only that browser holds, tied to this screen's form).
-// Then one screen each, every one skippable: Tailscale, your accounts, a phone, notifications, a PC, backups. A checklist on the front page keeps what is left, each
+// Then one screen each, every one skippable: Tailscale, your accounts, notifications, a phone, a PC, backups. A phone comes after notifications because it needs them (owner, 2026-11-02). A checklist on the front page keeps what is left, each
 // line reopening its screen, until everything is done or the owner hides it.
 internal sealed partial class ServerPage
 {
@@ -90,7 +90,7 @@ internal sealed partial class ServerPage
     public const string ChecklistFile = "server-page.checklist";
 
     /// <summary>The walkthrough's screens, in order.</summary>
-    public static readonly string[] Steps = ["tailscale", "accounts", "phone", "notifications", "pc", "backups"];
+    public static readonly string[] Steps = ["tailscale", "accounts", "notifications", "phone", "pc", "backups"];
 
     /// <summary>Whether the page still waits for its first password (the harness's view).</summary>
     internal bool SettingUp => settingUp;
@@ -306,6 +306,12 @@ internal sealed partial class ServerPage
     {
         var body = new StringBuilder();
         body.Append("<p class=\"quiet\">Step ").Append(index + 1).Append(" of ").Append(Steps.Length).Append(" · every step can be skipped and done later from the server's page.</p>");
+        // The owner's words (2026-11-02): why this is more work than an app from a store, before the first thing it asks for.
+        if (index == 0)
+            body.Append("<section><h2>A small nerd alert</h2>")
+                .Append(Para("This takes about 20 minutes and a couple of free accounts, but you won't write any code. Each step says exactly what to click, and you can skip anything and come back later."))
+                .Append(Para("It's do-it-yourself on purpose. Messages has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
+                .Append("</section>");
         var done = false;
         var waiting = false;
         switch (step)
@@ -324,17 +330,26 @@ internal sealed partial class ServerPage
                 done = await AccountsStepAsync(body, request.HttpContext, token, cancellationToken).ConfigureAwait(false);
                 break;
             case "phone":
-                body.Append("<section>").Append(Para("Messages on your phone joins by scanning a code from this page: no codes to type or match. Install Messages on the phone first."))
-                    .Append(Para("The code holds a one-time pairing code, so the server's password is asked for before it's shown."))
-                    .Append(PasswordForm("/phone", token, "Show the code")).Append("</section>");
+                body.Append("<section>");
+                if (PhoneWaitsForNotifications) body.Append(Para(PhoneNeedsNotifications)).Append("<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p>");
+                else
+                {
+                    body.Append(Para("Messages on your phone joins by scanning a code from this page: no codes to type or match. Install Messages on the phone first."))
+                        .Append(Para("The code holds a one-time pairing code, so the server's password is asked for before it's shown."))
+                        .Append(PasswordForm("/phone", token, "Show the code"));
+                }
+                body.Append("</section>");
                 done = PhonesPaired() > 0;
                 break;
             case "notifications":
-                body.Append("<section>").Append(Para("Messages on a phone can show new messages as notifications even while it isn't open. They go through a Firebase project of your own; the server walks you through making one."));
+                body.Append("<section>").Append(Para("Messages on a phone needs this. Without it, the phone only gets new messages while the app is open. Notifications go through a Firebase project of your own; the server walks you through making one."));
                 if (pushes is null) body.Append(Para("This server doesn't send notifications."));
                 else if (PushesReady()) { body.Append(Para("Notifications are on, and a phone gets them.")); done = true; }
-                else if (pushes.Switch.Current is not null) body.Append(Para("Notifications are on. Open Messages on your phone once: it signs up for them by itself."))
-                    .Append("<p><a class=\"button quiet\" href=\"/#push\">See the notifications card</a></p>");
+                else if (pushes.Switch.Current is not null)
+                {
+                    body.Append(Para("Notifications are on. A phone signs up for them by itself when it joins."));
+                    done = true;
+                }
                 else body.Append("<p><a class=\"button\" href=\"/push\">Set up notifications…</a></p>");
                 body.Append("</section>");
                 break;
@@ -346,7 +361,7 @@ internal sealed partial class ServerPage
             default:
                 if (backups is not null)
                 {
-                    await BackupsCardAsync(body, token, cancellationToken).ConfigureAwait(false);
+                    await BackupsCardAsync(body, token, request, cancellationToken).ConfigureAwait(false);
                     done = BackupsReady();
                 }
                 else body.Append("<section>").Append(Para("Backups need a folder. " + MapBackups)).Append("</section>");
@@ -355,9 +370,11 @@ internal sealed partial class ServerPage
         // Forms elsewhere on the screen end at "Cancel"; the walkthrough's own way on is below them.
         body.Append("<nav class=\"steps\">");
         if (index > 0) body.Append("<a href=\"/welcome?step=").Append(Steps[index - 1]).Append("\">Back</a>");
-        var next = index + 1 < Steps.Length ? "/welcome?step=" + Steps[index + 1] : "/";
+        // Skipping notifications is saying there is no phone, so the phone's step is passed too.
+        var noPhone = step == "notifications" && !done && pushes is not null;
+        var next = noPhone ? "/welcome?step=pc" : index + 1 < Steps.Length ? "/welcome?step=" + Steps[index + 1] : "/";
         body.Append("<a class=\"button").Append(done ? "" : " quiet").Append("\" href=\"").Append(next).Append("\">")
-            .Append(index + 1 < Steps.Length ? done ? "Next" : "Skip for now" : "Finish").Append("</a></nav>");
+            .Append(noPhone ? "I don't use a phone" : index + 1 < Steps.Length ? done ? "Next" : "Skip for now" : "Finish").Append("</a></nav>");
         return (body.ToString(), waiting && !done);
     }
 
@@ -390,6 +407,10 @@ internal sealed partial class ServerPage
     // Notifications are set up once pushes are on and a phone has signed up for them.
     private bool PushesReady() => pushes is { Switch.Current: not null } card && card.Registry.All().Any(registration => card.Registry.Paired(registration.DeviceId));
 
+    // A server that can send notifications but has none set up yet shows no phone's code: the phone would get nothing while its app is closed (owner, 2026-11-02).
+    private bool PhoneWaitsForNotifications => pushes is { Switch.Current: null };
+    private const string PhoneNeedsNotifications = "Set up notifications first. Without them, the phone only gets new messages while the app is open.";
+
     // Backups are set up once a good one exists in the mapped folder.
     private bool BackupsReady() => backups?.Service.Status() is { HasFolder: true, LastGood: not null };
 
@@ -410,10 +431,10 @@ internal sealed partial class ServerPage
         {
             ("tailscale", tailnet is { Enabled: true } ? "Reach it away from home with Tailscale" : "Reach it away from home", tailnet?.Latest is { AllDone: true }, null),
             ("accounts", "Connect your accounts", accounts > 0, null),
-            ("phone", "Add a phone", phones > 0, null),
         };
         if (pushes is not null)
-            items.Add(("notifications", "Turn on notifications", PushesReady(), pushes.Switch.Current is not null && !PushesReady() ? "On; no phone has signed up yet. Open Messages on your phone once." : null));
+            items.Add(("notifications", "Turn on notifications", pushes.Switch.Current is not null, null));
+        items.Add(("phone", "Add a phone", phones > 0, null));
         items.Add(("pc", "Add a PC", devices.Count - phones > 0, null));
         items.Add(BackupsMapped
             ? ("backups", "Back up the server", BackupsReady(), null)
@@ -433,6 +454,11 @@ internal sealed partial class ServerPage
     {
         const string title = "Add a phone";
         string Ask(string? problem) => AskBody("/phone", token, "The code lets a phone read every conversation on the server, so the server's password is asked for again.", "Show the code", problem);
+        if (PhoneWaitsForNotifications)
+        {
+            await PageAsync(context, StatusCodes.Status200OK, title, "<section>" + Para(PhoneNeedsNotifications) + "<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p></section>").ConfigureAwait(false);
+            return;
+        }
         if (form is null)
         {
             await PageAsync(context, StatusCodes.Status200OK, title, Ask(null)).ConfigureAwait(false);
@@ -465,9 +491,11 @@ internal sealed partial class ServerPage
         if (tailnet is { Enabled: true } && view is null)
             body.Append(Notice("Away from home the phone reaches the server through Tailscale, which isn't finished yet. At home it can join now."))
                 .Append("<p><a href=\"/welcome?step=tailscale\">Set up Tailscale</a></p>");
+        else if (tailnet is not { Enabled: true })
+            body.Append(Notice("This server has no Tailscale, so the phone can only reach it on your home network."));
         else if (view is not null && view.Owner is { Length: > 0 } owner)
             body.Append("<p class=\"quiet\">The phone signs in to Tailscale as ").Append(Html(owner)).Append(", the account this server uses.</p>");
-        body.Append("</section><nav class=\"steps\"><a href=\"/\">Back to the server</a><a class=\"button quiet\" href=\"/welcome?step=notifications\">Next: notifications</a></nav>");
+        body.Append("</section><nav class=\"steps\"><a href=\"/\">Back to the server</a><a class=\"button quiet\" href=\"/welcome?step=pc\">Next: add a PC</a></nav>");
         log("server page phone_code shown");
         await PageAsync(context, StatusCodes.Status200OK, title, body.ToString()).ConfigureAwait(false);
     }
@@ -478,7 +506,7 @@ internal sealed partial class ServerPage
         + ".qr.small{width:150px}.qr svg{display:block;width:100%;height:auto}"
         + "nav.steps{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:4px 0 16px}nav.steps a.button:only-child{margin-left:auto}"
         + "section.checklist{border-color:var(--accent)}.fix{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}.fix h3{font-size:14px;margin:0 0 8px}"
-        + "details{margin:6px 0 0}summary{cursor:pointer;color:var(--accent)}.actions .button{margin:0 8px 6px 0}a.button.quiet{background:transparent;color:var(--accent);border:1px solid var(--accent)}"
+        + "details{margin:6px 0 0}summary{cursor:pointer;color:var(--accent)}summary.button{display:inline-block;padding:6px 14px;border-radius:4px;border:1px solid var(--accent);list-style:none;margin:0 0 8px}.actions .button{margin:0 8px 6px 0}a.button.quiet{background:transparent;color:var(--accent);border:1px solid var(--accent)}"
         + ".copy.line{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin:0 0 12px}"
         + "input[type=text]{font:inherit;padding:6px 8px;width:100%;max-width:360px;box-sizing:border-box;margin:0 0 12px;display:block}"
         + "@media(max-width:520px){.qr-card{flex-direction:column;align-items:stretch}.qr{width:100%;max-width:300px;align-self:center}.qr.small{max-width:200px}}";

@@ -28,8 +28,23 @@ internal sealed partial class ServerPage
 
     private static bool IsBackupPath(string? path) => path is "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset";
 
-    private async Task BackupsCardAsync(StringBuilder body, string token, CancellationToken cancellationToken)
+    // What became of a folder typed on the card, said on the card: at the top of the page, above where it jumps to, it went unseen and the box looked as if nothing had happened (2026-11-02).
+    private static string? FolderWords(string? done) => done switch
     {
+        "backup_folder" => "Backups go to that folder now.",
+        "backup_folder_not_full" => "Type the whole path, starting with a drive letter, or with \\\\ for a network share.",
+        "backup_folder_missing" => "That drive or network share isn't available. Check the path and try again.",
+        "backup_folder_denied" => "Messages can't write to that folder. Choose another one.",
+        "backup_folder_unsaved" => "The server couldn't save that choice. Try again.",
+        "backup_folder_fixed" => "This server's backup folder is set where it was installed, so it can't be changed here.",
+        _ => null,
+    };
+
+    private async Task BackupsCardAsync(StringBuilder body, string token, HttpRequest request, CancellationToken cancellationToken)
+    {
+        var done = request.Query["done"].ToString();
+        var tried = done is "backup_folder" ? null : request.Query["tried"].ToString() is { Length: > 0 } typed ? typed : null;
+        var fromSteps = request.Path == "/welcome";
         var service = backups!.Service;
         // A restore is offered only while no account is signed in; a server that cannot say counts as signed in.
         var accounts = 1;
@@ -37,6 +52,7 @@ internal sealed partial class ServerPage
         catch (Exception failure) when (failure is not OperationCanceledException) { }
         var status = service.Status();
         body.Append("<section id=\"backups\"><h2>Backups</h2>");
+        if (FolderWords(done) is { } folderSaid) body.Append(Notice(folderSaid));
         if (ServerRestore.LastOutcome(service.Paths) is { } outcome && time.GetUtcNow() - outcome.At < TimeSpan.FromDays(2))
             body.Append(Notice(OutcomeWords(outcome)));
         // A reset or a restore chosen while the server could not start again by itself waits for the next start; it can be called off until then.
@@ -49,7 +65,7 @@ internal sealed partial class ServerPage
             if (service.FolderChoiceFile is not null)
             {
                 body.Append(Para("Backups are off until you choose a folder for them: any folder on this PC, a mapped drive, a network share such as \\\\nas\\backups, or a OneDrive folder."))
-                    .Append(FolderForm(token, null));
+                    .Append(FolderForm(token, tried, fromSteps));
                 body.Append("</section>");
                 return;
             }
@@ -80,7 +96,7 @@ internal sealed partial class ServerPage
             .Append("<button type=\"submit\" name=\"do\" value=\"").Append(status.Enabled ? "off" : "on").Append("\" class=\"quiet\">").Append(status.Enabled ? "Turn off daily backups" : "Turn on daily backups").Append("</button></form>")
             .Append("<form method=\"get\" action=\"/backups/password\"><button type=\"submit\" class=\"quiet\">").Append(status.HasPassword ? "Change the password…" : "Set a password…").Append("</button></form>");
         body.Append("<p class=\"quiet\">Each backup holds your conversations, the server's settings and its devices, never a sign-in: after a restore you sign in to each account again.</p>");
-        if (service.FolderChoiceFile is not null) body.Append("<details><summary>Use another folder</summary>").Append(FolderForm(token, service.Folder)).Append("</details>");
+        if (service.FolderChoiceFile is not null) body.Append(tried is null ? "<details><summary>" : "<details open><summary>").Append("Use another folder</summary>").Append(FolderForm(token, tried ?? service.Folder, fromSteps)).Append("</details>");
         // A restore goes only onto a server with no service signed in; one in use is reset first.
         if (accounts == 0)
             body.Append("<form method=\"get\" action=\"/restore\"><button type=\"submit\">Restore from a backup…</button></form>");
@@ -152,7 +168,9 @@ internal sealed partial class ServerPage
             case "folder":
                 var chosen = service.ChooseFolder(form["folder"].ToString());
                 log($"server page backup folder outcome={chosen}");
-                Redirect(context.Response, chosen == "chosen" ? "/?done=backup_folder#backups" : "/?done=backup_folder_" + chosen + "#backups");
+                // Back where the form was, with what was typed when it needs typing again.
+                var from = form["from"].ToString() == "steps" ? "/welcome?step=backups&done=" : "/?done=";
+                Redirect(context.Response, chosen == "chosen" ? from + "backup_folder#backups" : from + "backup_folder_" + chosen + "&tried=" + Uri.EscapeDataString(form["folder"].ToString()) + "#backups");
                 return;
             default:
                 Redirect(context.Response, "/");
@@ -161,8 +179,9 @@ internal sealed partial class ServerPage
     }
 
     // The Windows server's folder, typed as a path: the server runs as the person, so whatever they can open in File Explorer it can write to.
-    private static string FolderForm(string token, string? current) =>
+    private static string FolderForm(string token, string? current, bool fromSteps) =>
         new StringBuilder("<form method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
+            .Append(fromSteps ? "<input type=\"hidden\" name=\"from\" value=\"steps\">" : "")
             .Append("<label for=\"folder\">Folder</label><input id=\"folder\" name=\"folder\" type=\"text\" required maxlength=\"1024\" spellcheck=\"false\" placeholder=\"D:\\Backups\\Messages\" value=\"")
             .Append(Html(current ?? "")).Append("\">")
             .Append("<button type=\"submit\" name=\"do\" value=\"folder\">Use this folder</button></form>").ToString();
