@@ -29,7 +29,9 @@ public static class HeldSends
             // Words that waited in their saved draft (ComposerViewModel.CaptureDraft) are already where they are going. Added to it by a composer that isn't the one they
             // waited in, they would be there twice.
             var owner = held.Owner as ComposerViewModel;
-            if (owner?.ForgetWaiting(held.Message) == true && !ReferenceEquals(owner, composer)) { saved++; continue; }
+            // Nor does another account's box take words its own draft holds, whichever composer it is.
+            var otherAccount = owner?.WaitingAsOtherAccount(held.Message) == true;
+            if (owner?.ForgetWaiting(held.Message) == true && (otherAccount || !ReferenceEquals(owner, composer))) { saved++; continue; }
             // One draft that will not write must not keep the rest from theirs.
             try { if (await composer.ReturnHeldAsync(held.Message)) saved++; }
             catch (Exception) { }

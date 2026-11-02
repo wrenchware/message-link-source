@@ -59,6 +59,22 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
     {
         lock (delayLock) { deliveries.Enqueue((DateTimeOffset.UtcNow, outcome)); while (deliveries.Count > 8) deliveries.Dequeue(); }
     }
+    /// <summary>The record ids of the notifications Windows still shows for this app; null when unknown.</summary>
+    public Func<Task<IReadOnlyCollection<string>?>>? LiveIds { get; set; }
+
+    // A conversation that left the list takes its notifications with it: a Reply on one is refused, and it opens nothing (audit, 2026-11-01). A reminder stays, as the person
+    // asked for it. From the records, so a notification from before a restart goes as well.
+    private async Task WithdrawAsync(RealtimeEvent change, CancellationToken token)
+    {
+        var gone = (change.Ids ?? []).Append(change.ChatId).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        if (gone.Count == 0 || LiveIds is null || await LiveIds() is not { } live) return;
+        foreach (var id in live)
+        {
+            var record = await store.UpdateAsync(id, prior => (prior, prior), token);
+            if (record is { IsTest: false, IsReminder: false } && gone.Contains(record.ChatId)) await presenter.RemoveAsync(id);
+        }
+    }
+
     /// <param name="unarchiving">The host is returning this conversation to the inbox for this arrival (stage 6 slice 9, <see cref="UnarchiveOutcome.LeftToHost"/>), and
     /// its answer comes after this decision: the arrival is judged as not archived. Should the host's unarchive fail, it was still shown, the safer mistake.</param>
     public async Task ObserveAsync(RealtimeEvent change, CancellationToken token, bool unarchiving = false)
@@ -82,6 +98,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
             else { connectedScopes.Clear(); connectedAt = DateTimeOffset.UtcNow; }
             return;
         }
+        if (change.Kind == RealtimeKind.ChatDeleted) { await WithdrawAsync(change, token); return; }
         if (!preferences.Enabled || change.Kind != RealtimeKind.MessageChanged || change.ChatId is null || change.IsNewMessage == false) return;
         var profile = await NotificationIdentity.ProfileAsync(tokens, token);
         if (profile is null) return;

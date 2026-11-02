@@ -385,7 +385,10 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
     {
         if (!ReferenceEquals(undone.Owner, this)) return;
         var message = undone.Message;
+        // Written as an account replaced since: the words are in its draft, where it finds them when it is back. This box is another account's.
+        var otherAccount = WaitingAsOtherAccount(message);
         var waited = ForgetWaiting(message);
+        if (otherAccount) return;
         if (message.ReplyToId is not null && !replies.ContainsKey(message.ChatId))
         { replies[message.ChatId] = (message.ReplyToId, "Reply to an earlier message"); NotifyReply(); }
         RestoreSubmittedText(message.ChatId, message.Text);

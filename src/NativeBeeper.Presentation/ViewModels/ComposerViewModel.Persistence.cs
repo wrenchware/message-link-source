@@ -278,11 +278,72 @@ public sealed partial class ComposerViewModel
     private sealed record WaitingWords(string LocalId, string Text, string? ReplyId, string? ReplyPreview, string? Scope);
 
     // The wait is over: the saved draft goes back to what is in the box. True once that is written.
-    private Task<bool> LetGoOfWaitingAsync(string id, WaitingWords words)
+    private async Task<bool> LetGoOfWaitingAsync(string id, WaitingWords words)
     {
+        if (words.Scope is { } scope && draftScopes.GetValueOrDefault(id) != scope && draftProfile is { } profile && privateState is not null)
+            return await LetGoOfOtherAccountAsync(profile, id, scope, words);
         if (waiting.TryGetValue(id, out var left) && left.Remove(words) && left.Count == 0) waiting.Remove(id);
-        return FlushDraftAsync(id);
+        return await FlushDraftAsync(id);
     }
+
+    // The account that wrote them has been replaced in the wait. Their copy is in that account's row, which no save of this account's reaches, and left there it would come
+    // back as a draft of a message that went. A row changed since (not holding the words as they were) is left as it is. False when it can't be written: the send doesn't go.
+    private async Task<bool> LetGoOfOtherAccountAsync(string profile, string id, string scope, WaitingWords words)
+    {
+        var filed = DraftOwners.FileUnder(profile, id, scope);
+        await draftGate.WaitAsync();
+        try
+        {
+            SavedDraft? before = null, after = null;
+            var wasParked = parked.TryGetValue((id, scope), out var back);
+            if (wasParked) parked[(id, scope)] = back! with { Draft = WithoutWords(back.Draft, words) ?? back.Draft };
+            else
+            {
+                before = await privateState!.ReadAsync<SavedDraft>(filed, "draft", id);
+                after = before is null ? null : WithoutWords(before, words);
+                if (after is not null) await WriteRowAsync(after);
+            }
+            // Undone while that was written: the words stay in the row after all.
+            if (waiting.GetValueOrDefault(id)?.Contains(words) != true)
+            {
+                if (wasParked) parked[(id, scope)] = back!;
+                else if (after is not null) await WriteRowAsync(before!);
+                return true;
+            }
+            if (waiting[id].Remove(words) && waiting[id].Count == 0) waiting.Remove(id);
+            return true;
+
+            async Task WriteRowAsync(SavedDraft draft)
+            {
+                await SaveDraftAsync(filed, id, draft);
+                NotePut(filed, id, draft, wrote: true);
+                draftIndex?.Saved(id, draft.Text, scope);
+            }
+        }
+        catch (Exception)
+        {
+            if (waiting.TryGetValue(id, out var left) && left.Remove(words) && left.Count == 0) waiting.Remove(id);
+            return false;
+        }
+        finally { draftGate.Release(); }
+    }
+
+    // The draft without these words, each message being a line of its own in it (CaptureDraft); null when it doesn't hold them so.
+    private static SavedDraft? WithoutWords(SavedDraft draft, WaitingWords words)
+    {
+        var line = Environment.NewLine;
+        string? rest = null;
+        if (draft.Text == words.Text) rest = "";
+        else if (draft.Text.StartsWith(words.Text + line, StringComparison.Ordinal)) rest = draft.Text[(words.Text.Length + line.Length)..];
+        else if (draft.Text.IndexOf(line + words.Text + line, StringComparison.Ordinal) is >= 0 and var at) rest = draft.Text.Remove(at, line.Length + words.Text.Length);
+        else if (draft.Text.EndsWith(line + words.Text, StringComparison.Ordinal)) rest = draft.Text[..^(line.Length + words.Text.Length)];
+        if (rest is null) return null;
+        return draft.ReplyId is not null && draft.ReplyId == words.ReplyId ? new(rest, null, null) : draft with { Text = rest };
+    }
+
+    /// <summary>In the wait, and written as another account than the one this conversation is held for now.</summary>
+    public bool WaitingAsOtherAccount(OutgoingMessage message) =>
+        waiting.GetValueOrDefault(message.ChatId)?.FirstOrDefault(word => word.LocalId == message.LocalId)?.Scope is { } scope && scope != draftScopes.GetValueOrDefault(message.ChatId);
 
     /// <summary>A send of this composer's has come back from its wait: true when its words were waiting here, and so are in the saved draft already.</summary>
     public bool ForgetWaiting(OutgoingMessage message)
