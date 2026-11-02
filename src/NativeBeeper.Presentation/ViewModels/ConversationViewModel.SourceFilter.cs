@@ -90,7 +90,7 @@ public sealed partial class ConversationViewModel
     // Whether a load of earlier messages reads another page before drawing: only under a filter, only while there is more,
     // the page came back whole, and it has not yet brought FilteredPageFill of the shown rows in FilteredPageBound pages.
     private bool ReadOnForFilter(HistorySnapshot loaded, int shownBefore, int pages, Page<ChatMessage> page) =>
-        sourceFilter is not null && loaded.HasMore && loaded.Cursor is not null && page.Warning is null && !loaded.AtLimit && !loaded.PaginationStalled &&
+        sourceFilter is not null && !Unanswered(page) && loaded.HasMore && loaded.Cursor is not null && page.Warning is null && !loaded.AtLimit && !loaded.PaginationStalled &&
         pages < FilteredPageBound && ShownCount(loaded) - shownBefore < FilteredPageFill;
 
     /// <summary>

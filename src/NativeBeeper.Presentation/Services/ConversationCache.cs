@@ -15,7 +15,8 @@ public sealed class ConversationCache(PrivateState? state = null)
         {
             var profile = await state.ProfileAsync(); if (profile is null) return null;
             var saved = await state.ReadAsync<Saved>(profile, "cache", "history:" + chatId);
-            return saved is null || saved.Chat.Id != chatId ? null : new(ReceiptRules.FromSaved(saved.Chat), saved.Messages, saved.Cursor, saved.HasMore, saved.Seen.ToHashSet(), saved.AtLimit, saved.Stalled,
+            // One saved with its paging stopped says nothing about the next run: it is read afresh rather than opened saying it cannot go back (2026-11-02).
+            return saved is null || saved.Chat.Id != chatId || saved.Stalled ? null : new(ReceiptRules.FromSaved(saved.Chat), saved.Messages, saved.Cursor, saved.HasMore, saved.Seen.ToHashSet(), saved.AtLimit, saved.Stalled,
                 KeptAfter: saved.KeptAfter);
         }
         catch { return null; } // Cache is expendable; fall through to authoritative network reads.
@@ -24,7 +25,7 @@ public sealed class ConversationCache(PrivateState? state = null)
     // keep its place here: only opening one counts as using it.
     public async Task SaveAsync(HistorySnapshot snapshot, bool keepPlace = false)
     {
-        if (state is null) return;
+        if (state is null || snapshot.PaginationStalled) return;
         try
         {
             var profile = await state.ProfileAsync(); if (profile is null) return;

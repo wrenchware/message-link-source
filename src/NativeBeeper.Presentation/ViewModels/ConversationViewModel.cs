@@ -471,6 +471,7 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
                 Render(true, needsRecovery);
                 TimedPage("older", readTicks, readDone, (int)rowsRead, pageCount);
                 if (page.Warning is not null && !(IsMerged && needsRecovery)) Status = page.Warning;
+                OlderLoadFailed = Unanswered(page);
             }
             await cache.SaveAsync(loaded);
         }
@@ -479,8 +480,14 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
         finally { if (version == generation) IsBusy = false; IsLoadingOlder = false; }
     }
 
+    // A page that says there is more and brings nothing. The server answers so while the service is still refreshing the page it would read, and a later
+    // ask finds it (2026-11-01: half a second after a refresh began, in a group whose history the server held). It is not the end of paging: the place is
+    // kept, and the list's link tries again. Taken for a repeated cursor, it ended paging and was saved with the conversation, so every open said so.
+    private static bool Unanswered(Page<ChatMessage> page) => page.HasMore && page.Items.Count == 0 && page.OldestCursor is null;
+
     private static HistorySnapshot Merge(HistorySnapshot snapshot, Page<ChatMessage> page)
     {
+        if (Unanswered(page)) return snapshot;
         var byId = snapshot.Messages.ToDictionary(MessageIdentity.Key);
         foreach (var message in page.Items) byId[MessageIdentity.Key(message)] = message;
         var messages = byId.Values.OrderBy(m => m.Timestamp).ThenBy(m => m.SortKey, StringComparer.Ordinal)

@@ -93,10 +93,10 @@ public static class HistoryMerge
     // Whether paging goes on from where the kept history had got to. A merged conversation whose members changed can:
     // its paging token follows the change (MergedChatReader.Reconcile), where starting again from every service's newest
     // page re-read everything already on screen, an Instagram request per page among them. With no token left there is
-    // nothing to follow, so paging starts again from the fresh page.
+    // nothing to follow, so paging starts again from the fresh page. So it does from paging that had stopped: a fresh read is the "Refresh to try again".
     private static bool Continues(HistorySnapshot saved, HistorySnapshot fresh) =>
-        !MergedConversations.IsMerged(fresh.Chat.Id) || saved.Cursor is not null ||
-        saved.Chat.MemberChatIds.ToHashSet(StringComparer.Ordinal).SetEquals(fresh.Chat.MemberChatIds);
+        !saved.PaginationStalled && (!MergedConversations.IsMerged(fresh.Chat.Id) || saved.Cursor is not null ||
+        saved.Chat.MemberChatIds.ToHashSet(StringComparer.Ordinal).SetEquals(fresh.Chat.MemberChatIds));
 
     // A link card a helper made for the address in a message's words (Google Messages', and Messenger's, generated
     // previews: ids under "link-preview:"). Google's helper keeps the cards it made in memory only, so after a restart a

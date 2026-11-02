@@ -89,6 +89,7 @@ public sealed partial class ConversationViewModel
                 var page = await reader.GetMessagesAsync(snapshot.Chat.Id, snapshot.Cursor, token);
                 if (version != generation) return pages;
                 pages++;
+                if (Unanswered(page)) { OlderLoadFailed = true; break; }
                 warning = page.Warning ?? warning;
                 // Built on the history as it is now: a message that arrived during the read is already in current.
                 var latest = current ?? snapshot;
