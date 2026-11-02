@@ -9,7 +9,7 @@
 # the tag and the digest together.
 
 # ---- Messenger helper (Go). The version is experiments/Messenger/helper/go.mod's "go" line. ---------------------------
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS helper
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS helper
 # Static binary (modernc sqlite needs no cgo), built for the image's platform. GOTOOLCHAIN=local stops go.mod from
 # fetching a different toolchain than the pinned image; -mod=readonly refuses a go.sum that does not match.
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
@@ -25,7 +25,7 @@ RUN go test ./... go.mau.fi/mautrix-meta/pkg/messagix \
 
 # ---- Instagram helper (Go). The same image and rules as the Messenger helper's; its go.mod's "go" line is the same. ---
 # A stage of its own, so each helper's module download is cached apart and the two build side by side under BuildKit.
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS instagram-helper
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS instagram-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 # go.mod replaces go.mau.fi/mautrix-meta with the same ../../../third_party/mautrix-meta (pkg/instameow).
 COPY third_party/mautrix-meta/ /source/third_party/mautrix-meta/
@@ -40,7 +40,7 @@ RUN go test ./... \
 # ---- Tailnet door (Go): the server's own node on the owner's tailnet (SWITCHBOARD.md 4.7, TailnetDoor.cs), run only with MESSAGES_TAILNET=1. -------
 # Tailscale's tsnet: userspace networking, so the container needs no capability or tun device for it. The licence files of every module it links (and
 # Go's own) are copied beside it, as the app's THIRD_PARTY_NOTICES.md lists only what the PC installer ships; a module without one stops the build.
-FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS tailnet-door
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS tailnet-door
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 WORKDIR /source/experiments/Tailnet/door
 COPY experiments/Tailnet/door/go.mod experiments/Tailnet/door/go.sum ./
@@ -60,7 +60,7 @@ RUN go test ./... \
       if [ "$found" != 1 ]; then echo "Tailnet door: no licence file in $module" >&2; exit 1; fi; \
     done
 
-# ---- Server (.NET). The SDK is global.json's; the runtime is the runtime image's below (10.0.13), not the SDK's. ---------------------
+# ---- Server (.NET). The SDK is global.json's; the runtime is the runtime image's below (10.0.14), not the SDK's. ---------------------
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302-noble@sha256:72dd743782f2ae7e5476fd64f6a460045e3998dc862218b80e6944cba79a01b0 AS server
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 WORKDIR /source
@@ -94,7 +94,7 @@ RUN dotnet publish src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.cspro
     fi
 
 # ---- Runtime ----------------------------------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-noble@sha256:d5633778c754e89a386882eddf8dbee6942447a8a4b8267c19cf1e1158d0b0ac AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.14-noble@sha256:de0ee358cdd672f7017a003bed21e9ac9ed48a27c922a59b18175b6e82fa7fee AS runtime
 LABEL org.opencontainers.image.title="Messages Server" \
       org.opencontainers.image.description="Messages Server: the Messages backends on a home server, reached by paired devices over TLS."
 

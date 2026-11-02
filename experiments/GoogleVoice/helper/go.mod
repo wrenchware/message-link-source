@@ -1,6 +1,6 @@
 module nativebeeper.local/googlevoice-helper
 
-go 1.27.2
+go 1.27.3
 
 require (
 	go.mau.fi/mautrix-gvoice v0.2605.1-0.20261006180600-8775ef52af27

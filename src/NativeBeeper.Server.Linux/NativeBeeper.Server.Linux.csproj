@@ -20,7 +20,7 @@
     <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../NativeBeeper.App/NativeBeeper.App.csproj')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <!-- Google Voice's photo re-encoder (SkiaPhotoReencoder; SWITCHBOARD.md 4.4). MIT, with Skia's own codecs inside the native library. The
          NoDependencies build links its few libraries in statically, so it loads on the runtime image (glibc only) without fontconfig or anything
          installed beside it. SkiaSharp also brings its Windows and macOS natives; they are excluded, as this program never runs there and a

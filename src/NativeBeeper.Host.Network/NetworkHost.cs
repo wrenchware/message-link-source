@@ -289,6 +289,7 @@ internal sealed class NetworkHost : IAsyncDisposable
             {
                 if (Interlocked.Exchange(ref started, 1) == 0) host.Own(notifier = new PushNotifier(events, chats, sender, pushes, pushSwitch, presence.InFront, options.Log, services.SharedState,
                     quietFor: presence.AtAnotherDevice, health: health));
+                if (services.Scheduled is HostScheduledSends schedule) schedule.OnHeld(chatId => notifier?.ScheduledHeld(chatId));
             }
             // Two days without a good backup (stage 10): every phone signed up for notifications is told; with none, nobody is, and the backup asks again later.
             if (options.Backups?.Service is { } backup) backup.StaleNotice = _ => Task.FromResult(notifier?.BackupStale() > 0);

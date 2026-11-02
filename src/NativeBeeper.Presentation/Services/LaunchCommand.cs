@@ -26,6 +26,9 @@ public sealed record LaunchCommand(LaunchAction Action, string? ChatId = null, s
     // Asked by tools (tools\Stop-Messages.ps1) before a build or an install: the running Messages quits as the tray's Quit
     // does, so the next launch does not take it for a crash. Not a command either; only Program.Main and App act on it.
     public const string QuitArgument = "--quit";
+    // A person asking, from the taskbar's jump list: the tray's Quit, which shows what is keeping it open or asks about unsaved messages. --quit refuses those cases in the log
+    // alone, for a tool to go on from, and for a person that was a menu item that did nothing (audit, 2026-11-01).
+    public const string QuitFromMenuArgument = "--quit-from-menu";
 
     // Exactly the argument, quoted or not; "--background=1" and "--backgroundx" are not it.
     public static bool IsBackground(IEnumerable<string> arguments)

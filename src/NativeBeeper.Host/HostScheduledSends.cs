@@ -66,6 +66,7 @@ internal sealed class HostScheduledSends : IScheduledCommands, IDisposable
         var conditions = new Conditions(sender, chats, identity);
         custody = new Custody(options.Custody);
         engine = new ScheduledSendEngine(rows, outlet, conditions, custody, clock, serial, log) { NumbersAttempts = true, KeepsRejected = true };
+        engine.Held += Held;
     }
 
     /// <summary>
@@ -99,6 +100,38 @@ internal sealed class HostScheduledSends : IScheduledCommands, IDisposable
             catch (OperationCanceledException) { return; }
             wait = TimeSpan.FromSeconds(Math.Min(60, wait.TotalSeconds * 2));
         }
+    }
+
+    // Held before anyone was listening, as the commonest hold comes at the start: the server was off at the time. Only those from the last hour are told, so that pushes turned on
+    // days later don't announce old news.
+    private static readonly TimeSpan HeldTellable = TimeSpan.FromHours(1);
+    private readonly object heldLock = new();
+    private readonly List<(string ChatId, DateTimeOffset At)> heldUntold = [];
+    private Action<string>? heldListener;
+
+    /// <summary>Who to tell of a message held as not sent, by its conversation. Given once; what was held just before it is told at once.</summary>
+    public void OnHeld(Action<string> listener)
+    {
+        string[] told;
+        lock (heldLock)
+        {
+            heldListener = listener;
+            var now = clock.GetUtcNow();
+            told = [.. heldUntold.Where(held => now - held.At < HeldTellable).Select(held => held.ChatId)];
+            heldUntold.Clear();
+        }
+        foreach (var chatId in told) listener(chatId);
+    }
+
+    private void Held(ScheduledSend item)
+    {
+        Action<string>? listener;
+        lock (heldLock)
+        {
+            listener = heldListener;
+            if (listener is null) heldUntold.Add((item.ChatId, clock.GetUtcNow()));
+        }
+        listener?.Invoke(item.ChatId);
     }
 
     /// <summary>The messages the schedule holds, for the harness and the diagnostics' count (read on the schedule's own thread, which owns the list).</summary>

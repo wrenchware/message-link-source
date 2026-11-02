@@ -48,6 +48,15 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
     {
         await ConnectAsync(cancellationToken);
         var connection = Volatile.Read(ref connectionNumber);
+        // A refresh behind the list holds the gate through the phone's read, about 6 s, which every list after the first then waited out, and with it the other
+        // services' rows: the launch's second caller, each time (audit, 2026-11-01). The phone is being asked already, and what it says differently goes out as row changes.
+        if (olderThan is null && Volatile.Read(ref refreshingList) == 1 && Volatile.Read(ref lastList) is { } during &&
+            GoogleDirectory.CanAnswerHeld(false, during.Connection, connection, during.Count, chatLimit, System.Diagnostics.Stopwatch.GetElapsedTime(during.At)))
+        {
+            var kept = GoogleDirectory.HeldList(during.Ids, chats, during.Known);
+            GoogleMessagesLog.Write($"conversations reused visible={kept.Length} during=refresh");
+            return new(kept.Select(Summary).ToArray(), during.Next is not null, during.Next, null);
+        }
         await directoryGate.WaitAsync(cancellationToken);
         try
         {

@@ -277,10 +277,12 @@ internal static class ServerRestore
 
     /// <summary>
     /// Resets the server, keeping nothing of what it held: every store, sign-in and paired device in the data folder, and in the keys folder Messenger's helper store,
-    /// Google's browser profiles, the certificate, the Firebase files and the join pause. Kept: the keys themselves and their id (a master key is never replaced), the
+    /// Google's browser profiles, the certificate, the Firebase files, the join pause and the Tailscale admin credential (audit, 2026-11-01: it can change the owner's machines and access rules, and stayed on hardware reset to be given away). Kept: the keys themselves and their id (a master key is never replaced), the
     /// devices' generation (a list from before the reset must never be taken back), the page's own key, the tailnet door's identity, and whatever <paramref name="keep"/>
     /// names in the data folder (the log, the lease, the run marker). A plan to restore waiting beside it is dropped: a reset is a fresh start.
     /// </summary>
+    // TailscaleAdmin.FileName, in the project above this one.
+    private const string TailscaleAdminFile = "tailscale-oauth.protected";
     private static RestoreOutcome Reset(ServerBackupPaths paths, IReadOnlySet<string> keep, TimeProvider time, Action<string> log)
     {
         int removed = 0;
@@ -292,7 +294,7 @@ internal static class ServerRestore
             removed++;
         }
         if (!string.Equals(Path.GetFullPath(paths.Keys), Path.GetFullPath(paths.Data), StringComparison.Ordinal))
-            foreach (var entry in new[] { "Messenger", "Google", "tls", "push", "join-requests-paused" }.Select(name => Path.Combine(paths.Keys, name)))
+            foreach (var entry in new[] { "Messenger", "Google", "tls", "push", "join-requests-paused", TailscaleAdminFile }.Select(name => Path.Combine(paths.Keys, name)))
             {
                 if (Directory.Exists(entry)) { Directory.Delete(entry, recursive: true); removed++; }
                 else if (File.Exists(entry)) { File.Delete(entry); removed++; }

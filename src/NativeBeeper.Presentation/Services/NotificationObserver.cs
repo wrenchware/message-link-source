@@ -208,6 +208,32 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         return ReminderOutcome.Shown;
     }
 
+    /// <summary>
+    /// A scheduled message held as not sent (ScheduledHeldNotices): asked for by being scheduled, so it is raised while the window has focus and when that service's own notifications are off.
+    /// Once for each, across a restart. True when nothing is left to do for it, shown or not; false to be asked again.
+    /// </summary>
+    public async Task<bool> ScheduledHeldAsync(ChatSummary chat, string scheduledId, CancellationToken token = default)
+    {
+        if (!preferences.Enabled) { RecordDelivery("held scheduled message not shown (notifications off)"); return true; }
+        if (await NotificationIdentity.ProfileAsync(tokens, token) is not { } profile) return false;
+        var sourceScope = accountScopes is null ? null : await accountScopes.ForSourceAsync(chat, token);
+        // Not known yet, or another account's now: asked again at the next change. Shown with none, a click would be refused as out of date.
+        if (accountScopes is not null && sourceScope is null) return false;
+        var id = NotificationIdentity.Hash(profile + "\n" + scheduledId + "\nscheduled-held");
+        var record = new NotificationRecord(id, profile, chat.Id, scheduledId, DateTimeOffset.UtcNow, false, false,
+            GroupId: NotificationIdentity.Hash(profile + "\n" + (merges?.DisplayId(chat.Id) ?? chat.Id)), SourceScope: sourceScope, IsReminder: true);
+        if (!await store.UpdateAsync(id, prior => prior is null ? (record, true) : (prior, false), token)) return true;
+        var options = preferences.Options;
+        var title = options.Detail == NotificationDetail.None ? "Messages" : chat.Title;
+        const string Words = "Your scheduled message wasn't sent. Open it to send or drop it.";
+        var content = new NotificationContent(record, Clip(title, 100), Words, chat.Network, Silent: preferences.AwayReason() is not null,
+            Attribution: "Send later", Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)));
+        try { await presenter.ShowMessageAsync(content); }
+        catch (Exception) { RecordDelivery("held scheduled message not shown (Windows notifications unavailable)"); return true; }
+        RecordDelivery("held scheduled message shown");
+        return true;
+    }
+
     // The identity of a message reminder, the same whoever shows it: the app, or Windows while Messages is closed.
     public static string MessageReminderId(string profile, string sourceScope, string chatId, string messageId, DateTimeOffset remindAt) =>
         NotificationIdentity.Hash(profile + "\n" + sourceScope + "\n" + chatId + "\n" + messageId + "\nmessage-reminder\n" + remindAt.ToUnixTimeSeconds());

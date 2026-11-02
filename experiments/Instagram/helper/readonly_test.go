@@ -68,7 +68,7 @@ func (c *fakeReadClient) Disconnect() {}
 
 func testReadAdapter() (*readOnlyAdapter, *fakeReadClient, *bytes.Buffer) {
 	var buffer bytes.Buffer
-	fake := &fakeReadClient{viewer: "123", username: "dave.eiler", fullName: "Dave Eiler"}
+	fake := &fakeReadClient{viewer: "123", username: "sam.okafor", fullName: "Sam Okafor"}
 	a := &readOnlyAdapter{out: &output{encoder: json.NewEncoder(&buffer)}}
 	a.factory = func(_ *cookies.Cookies, handler instameow.EventHandler, _ func()) readClient {
 		fake.handler = handler
@@ -215,11 +215,11 @@ func TestReadOnlyNamesTheSignedInAccount(t *testing.T) {
 	a, first, diagnostics := testReadAdapter()
 	defer a.close()
 	login := callRead(t, a, "login", loginParams()).(readSnapshot)
-	if login.Account != "dave.eiler" || login.AccountName != "Dave Eiler" || first.indexCalls != 1 {
+	if login.Account != "sam.okafor" || login.AccountName != "Sam Okafor" || first.indexCalls != 1 {
 		t.Fatal("fresh login did not name the account from the viewer it just read")
 	}
 	callRead(t, a, "connect", nil)
-	if got := callRead(t, a, "snapshot", nil).(snapshotReply); got.Account != "dave.eiler" {
+	if got := callRead(t, a, "snapshot", nil).(snapshotReply); got.Account != "sam.okafor" {
 		t.Fatal("connecting lost the account")
 	}
 	session := callRead(t, a, "session", nil).(savedSession)
@@ -229,14 +229,14 @@ func TestReadOnlyNamesTheSignedInAccount(t *testing.T) {
 	defer b.close()
 	params, _ := json.Marshal(map[string]any{"session": session})
 	restored := callRead(t, b, "login", params).(readSnapshot)
-	if restored.Account != "dave.eiler" || restored.AccountName != "Dave Eiler" {
+	if restored.Account != "sam.okafor" || restored.AccountName != "Sam Okafor" {
 		t.Fatal("a resumed session did not name the account")
 	}
 	if second.indexCalls != 0 {
 		t.Fatal("naming the account cost a round trip on resume")
 	}
 	// It is an identity, so it travels the private pipe and nothing else.
-	if strings.Contains(diagnostics.String(), "dave.eiler") || strings.Contains(diagnostics.String(), "Dave Eiler") {
+	if strings.Contains(diagnostics.String(), "sam.okafor") || strings.Contains(diagnostics.String(), "Sam Okafor") {
 		t.Fatal("the account's name reached diagnostics")
 	}
 

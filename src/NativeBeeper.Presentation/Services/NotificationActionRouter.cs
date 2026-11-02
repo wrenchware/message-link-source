@@ -1,4 +1,4 @@
-﻿using NativeBeeper.Core.Services;
+using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.Presentation.Services;
 
@@ -9,6 +9,12 @@ public sealed class NotificationActionRouter(INotificationStore store, IAccessTo
     // Hands a snooze made here to Windows when Messages is closed (NotificationSnoozeService.HandOffAsync). Appended.
     NotificationSnoozeService? snoozeReminders = null)
 {
+    /// <summary>
+    /// Puts the words of a reply certainly not sent in their conversation's draft, answering whether they are there: typing them again was the only way back (audit, 2026-11-01). Set by a
+    /// window. A process with none, started only for this action, says what it always has. Never for an uncertain outcome: words in a draft read as unsent, and could go twice.
+    /// </summary>
+    public Func<string, string, Task<bool>>? KeepNotSentWords { get; set; }
+
     public async Task<NotificationRecord?> OpenAsync(string id)
     {
         if (!NotificationIdentity.IsValidId(id)) return null;
@@ -133,6 +139,7 @@ public sealed class NotificationActionRouter(INotificationStore store, IAccessTo
         {
             stateAfter = ex.OutcomeUnknown ? NotificationActionState.Unknown : NotificationActionState.Failed;
             result = ex.OutcomeUnknown ? "Reply outcome unknown. Open the conversation and check history before sending again."
+                : await KeptAsDraftAsync(record, text) ? "Reply not sent. Your words are in its draft."
                 : "Reply not sent. Open the conversation to try again.";
         }
         catch (Exception)
@@ -150,6 +157,13 @@ public sealed class NotificationActionRouter(INotificationStore store, IAccessTo
         if (!record.IsTest && stateAfter is NotificationActionState.Accepted or NotificationActionState.Complete)
         { await presenter.RemoveAsync(record.Id); return; }
         await presenter.ShowResultAsync(record, result);
+    }
+    private async Task<bool> KeptAsDraftAsync(NotificationRecord record, string? words)
+    {
+        if (KeepNotSentWords is not { } keep || string.IsNullOrWhiteSpace(words)) return false;
+        // The draft is filed under the account signed in now: another account's words aren't its to find, in a thread with one id under each.
+        try { return await AccountCurrentAsync(record) && await keep(record.ChatId, words); }
+        catch (Exception) { return false; }
     }
     private async Task<bool> AccountCurrentAsync(NotificationRecord record) => record.IsTest ||
         record.Profile == await NotificationIdentity.ProfileAsync(tokens) &&

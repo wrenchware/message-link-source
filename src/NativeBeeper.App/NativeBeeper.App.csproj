@@ -44,7 +44,7 @@
     <ProjectReference Include="../NativeBeeper.Host/NativeBeeper.Host.csproj" />
     <ProjectReference Include="../NativeBeeper.Windows/NativeBeeper.Windows.csproj" />
     <ProjectReference Include="../NativeBeeper.Windows.Browser/NativeBeeper.Windows.Browser.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
 
   </ItemGroup>
   <ItemGroup>

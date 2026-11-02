@@ -44,6 +44,8 @@ internal sealed class GoogleMessagesAccountPort(GoogleMessagesBackend google, Go
     public Task SetHistoryIndexingAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         google.HistoryIndexingEnabled = enabled;
+        // Saved here, where the backend runs, because that is where its next start reads it. Saved by the window it went to the PC's folder, and a server came back with the download on (audit, 2026-11-01).
+        NativeBeeper.App.Services.SearchIndexPreference.Save(enabled);
         return Task.CompletedTask;
     }
 

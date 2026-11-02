@@ -29,7 +29,7 @@
     <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../NativeBeeper.App/NativeBeeper.App.csproj')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />
     <ProjectReference Include="../NativeBeeper.Protocol/NativeBeeper.Protocol.csproj" />
     <ProjectReference Include="../NativeBeeper.Backends/NativeBeeper.Backends.csproj" />

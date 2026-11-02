@@ -361,7 +361,7 @@ internal sealed partial class ServerPage
             var body = new StringBuilder("<section>");
             if (problem is not null) body.Append(Notice(problem));
             body.Append(Para("This signs every account out of the server and deletes everything it holds: conversations, settings and paired devices. Backups in the backups folder are kept. The server starts again empty, ready to restore a backup or to be set up as new."))
-                .Append(Para("Google Messages is unpaired here only; remove the pairing on your phone too."))
+                .Append(Para("Google Messages is unpaired here only; remove the pairing on your phone too. The server's password and its name on your tailnet stay, so you can reach this page again."))
                 .Append("<form method=\"post\" action=\"/reset\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
                 .Append("<label for=\"word\">Type RESET to confirm</label><input id=\"word\" name=\"word\" autocomplete=\"off\" required>")
                 .Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")

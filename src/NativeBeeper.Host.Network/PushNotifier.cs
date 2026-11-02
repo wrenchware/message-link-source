@@ -397,6 +397,19 @@ internal sealed class PushNotifier : IAsyncDisposable
         return queued;
     }
 
+    /// <summary>
+    /// A scheduled message held as not sent (audit, 2026-11-01: it waited in its conversation, and nobody found out until the moment had gone): kind <c>scheduled</c>, naming only the
+    /// conversation, so the phone words it and finds the name it keeps. A phone built before it shows nothing, as for <see cref="BackupStale"/>. Quiet for one whose owner is at a PC.
+    /// </summary>
+    public int ScheduledHeld(string chatId)
+    {
+        var push = new PushMessage(1, "scheduled", chatId);
+        var queued = registry.All().Where(device => registry.Paired(device.DeviceId))
+            .Count(device => Enqueue(new(device.DeviceId, quietFor?.Invoke(device.DeviceId) == true ? push with { Quiet = true } : push, Urgent: true)));
+        log($"push scheduled held queued devices={queued}");
+        return queued;
+    }
+
     private bool Enqueue(Outgoing next)
     {
         Interlocked.Increment(ref queued);

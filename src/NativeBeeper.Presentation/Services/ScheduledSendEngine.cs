@@ -50,6 +50,8 @@ public sealed class ScheduledSendEngine : IDisposable
     // custody only reads, so it is judged at the first pass that has custody again.
     private bool loaded, judged, stopped;
     public event EventHandler<string>? Changed;
+    /// <summary>A message has just stopped waiting to go, held as not sent, so the person may want to know: once for each, as a hold happens once.</summary>
+    public event Action<ScheduledSend>? Held;
 
     /// <summary>
     /// Counts hand-overs (<see cref="ScheduledSend.Attempt"/>): each one is written, with the row marked sending, as one more than the last, so a host can send
@@ -111,6 +113,7 @@ public sealed class ScheduledSendEngine : IDisposable
             return;
         }
         var now = clock.GetUtcNow();
+        var heldAtStart = new List<ScheduledSend>();
         foreach (var item in items.ToArray())
         {
             if (item.State == ScheduledSendState.Sending)
@@ -126,9 +129,11 @@ public sealed class ScheduledSendEngine : IDisposable
             {
                 Replace(item with { State = ScheduledSendState.NotSent, Reason = ScheduledSendReason.Closed });
                 Log("overdue_held", item, "reason=closed");
+                heldAtStart.Add(item);
             }
         }
         await SaveAsync();
+        foreach (var item in heldAtStart) Held?.Invoke(item);
         Changed?.Invoke(this, "");
         alarm.WakeAt(clock.GetUtcNow());
     }
@@ -365,6 +370,7 @@ public sealed class ScheduledSendEngine : IDisposable
         Replace(item with { State = ScheduledSendState.NotSent, Reason = reason });
         await SaveAsync();
         Log("overdue_held", item, "reason=" + reason.ToString().ToLowerInvariant());
+        Held?.Invoke(item);
         Changed?.Invoke(this, item.ChatId);
     }
 

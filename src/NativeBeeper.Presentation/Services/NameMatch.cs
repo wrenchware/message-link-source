@@ -14,7 +14,7 @@ public static class NameMatch
         // was typed — the last ten digits are what identifies a number everywhere else in this app.
         if (digits.Length >= 7 && PhoneKey(phone) == PhoneKey(digits)) return NewChatRank.ExactLocal;
         if (name.StartsWith(text, StringComparison.OrdinalIgnoreCase)) return NewChatRank.PrefixLocal;
-        // Any word of the name, so "eiler" finds "Lauren Eiler" as strongly as "lauren" does.
+        // Any word of the name, so "okafor" finds "Sam Okafor" as strongly as "sam" does.
         if (name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Any(word => word.StartsWith(text, StringComparison.OrdinalIgnoreCase))) return NewChatRank.PrefixLocal;
         if (name.Contains(text, StringComparison.OrdinalIgnoreCase)) return NewChatRank.ExistingConversation;
