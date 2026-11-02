@@ -47,7 +47,7 @@ public static class PipeEndpoint
     /// <remarks>
     /// On Windows this is an explicit access list rather than <see cref="PipeOptions.CurrentUserOnly"/>, which the framework refuses to combine
     /// with one; the list says what that option would (the current user, nobody else) and adds the NETWORK deny. The client still sets
-    /// <c>CurrentUserOnly</c>, which checks that the pipe's owner is the user, so <see cref="CreateSecurity"/> names the user as owner.
+    /// <c>CurrentUserOnly</c>, which checks that the pipe's owner is this process's own, so <see cref="CreateSecurity"/> names that owner.
     /// </remarks>
     public static NamedPipeServerStream CreateServer(string pipeName, bool first)
     {
@@ -62,7 +62,9 @@ public static class PipeEndpoint
     public static PipeSecurity CreateSecurity()
     {
         var security = new PipeSecurity();
-        security.SetOwner(WindowsIdentity.GetCurrent().User!);
+        // The owner a process's new objects get, which is what CurrentUserOnly compares: the user, except under an elevated token, where it is Administrators. Naming the
+        // user there had an elevated window hang up on its own elevated server every time (Windows Sandbox, 2026-11-02: reason=handshake, reconnect outcome=refused).
+        security.SetOwner(WindowsIdentity.GetCurrent().Owner!);
         security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, PipeAccessRights.FullControl, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkSid, null), PipeAccessRights.FullControl, AccessControlType.Deny));
         return security;

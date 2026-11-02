@@ -41,12 +41,13 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 ### Your first run {#first-run}
 
 - **The welcome** is the first screen until something is set up. It says what Messages is and offers three ways in:
-  - **Connect your accounts** opens Settings → Accounts; see [Connecting your services](#connecting).
-  - **Use a Messages Server you have** joins a server that keeps your accounts connected on a computer at home, for this PC and your phone alike; see [Using a Messages Server](#messages-server).
-  - **Look around with sample conversations** shows Messages with made-up people; see [Sample conversations](#sample-conversations).
-- **Until something is set up**, whatever needs an account says so where you're looking, with **Connect your accounts** beside it: **New chat** (<kbd>Ctrl+N</kbd>), search, the tray menu's **New chat** and the taskbar's tasks. The tray's **Open Messages** brings back the welcome, and **Settings** opens Settings.
+  - **Sign in on this PC** opens Settings → Accounts to sign in here; see [Connecting your services](#connecting).
+  - **Connect to a Messages Server** joins a server you already run, which keeps your accounts connected on a computer at home, for this PC and your phone alike; see [Using a Messages Server](#messages-server).
+  - **Try sample conversations** shows Messages with made-up people; see [Sample conversations](#sample-conversations).
+- **Until something is set up**, whatever needs an account says so where you're looking, with **Sign in on this PC** beside it: **New chat** (<kbd>Ctrl+N</kbd>), search, the tray menu's **New chat** and the taskbar's tasks. The tray's **Open Messages** brings back the welcome, and **Settings** opens Settings.
 - **Once an account connects** or you join a server, the welcome is gone for good. If you later sign out of everything, the conversation list offers **Add an account** instead.
-- **The welcome's last line** says Messages is on Android phones too, through a Messages Server; **Learn more** opens the Messages website.
+- **The welcome's last line** says Messages is also available for Android, with a Messages Server; **Learn more** opens the Messages website.
+- **The title bar** has no search or navigation controls until something is set up, because they act on your conversations.
 - **The tour** is offered once: after your first account connects and your conversations are on screen, or while you look around the sample conversations. It never runs over the welcome. **Not now** skips it; you can take it any time from **More options → Take the tour**, the command palette, Settings → About, or this guide.
 - **Closing the window** the first time leaves Messages running in the system tray, and a quiet notification says so: "Messages is still running." Choose **Quit Messages** from the tray icon to exit.
 - **After your first account connects**, Messages asks once whether to start when you sign in to Windows. It starts in the tray, so new messages reach you before you open it.
@@ -54,7 +55,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 
 ### Sample conversations {#sample-conversations}
 
-**Look around with sample conversations** on the welcome lets you try Messages before connecting anything.
+**Try sample conversations** on the welcome lets you try Messages before connecting anything.
 
 - Messages closes and opens again over made-up people and chats on all four services: friends, family and groups, one person on two services linked into one conversation, three labels, and archived and spam conversations. A banner across the top says "Sample conversations — nothing here is real".
 - **Nothing is sent.** The message box says so instead of sending, and a reaction, a new chat or a new group says the same rather than happening. Settings won't sign in to a service, join a server, restore a backup or check for updates here.

@@ -346,8 +346,10 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
                 refusedLast = !ok && lastRefusedForGood;
                 if (refusedLast)
                     refusedPause = refusedPause is { } last ? TimeSpan.FromTicks(Math.Min(last.Ticks * 2, MaxRefusedReconnectDelay.Ticks)) : RefusedReconnectDelay;
-                log?.Invoke($"protocol reconnect attempt={attempt} ms={(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} outcome={(ok ? "ok" : refusedLast ? "refused" : "failed")}" +
-                    (refusedLast ? $" wait_s={(long)refusedPause!.Value.TotalSeconds}" : ""));
+                // The first few, then one in a hundred: a window waiting on a server of its own tries eight times a second, and a server that never answers filled the log with them.
+                if (ok || refusedLast || attempt <= 10 || attempt % 100 == 0)
+                    log?.Invoke($"protocol reconnect attempt={attempt} ms={(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} outcome={(ok ? "ok" : refusedLast ? "refused" : "failed")}" +
+                        (refusedLast ? $" wait_s={(long)refusedPause!.Value.TotalSeconds}" : ""));
                 if (ok)
                 {
                     Raise(Reconnected);

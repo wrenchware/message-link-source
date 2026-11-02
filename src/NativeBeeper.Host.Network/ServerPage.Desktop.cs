@@ -44,7 +44,7 @@ internal sealed partial class ServerPage
     internal Func<string, bool>? DesktopSignIn { get; set; }
 
     private static readonly (string Service, string Name)[] DesktopServices =
-        [("google-messages", "Google Messages"), ("messenger", "Messenger"), ("instagram", "Instagram"), ("google-voice", "Google Voice")];
+        [("google-messages", "Google Messages"), ("messenger", "Messenger"), ("google-voice", "Google Voice"), ("instagram", "Instagram")];
 
     private static bool IsDesktopPath(string? path) => path is "/signin/desktop";
 
