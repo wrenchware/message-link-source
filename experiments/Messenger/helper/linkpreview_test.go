@@ -573,6 +573,73 @@ func TestLinkPreviewsAreNotQueuedByRestoreOrHistory(t *testing.T) {
 	}
 }
 
+// Facebook's card for a pasted Instagram profile does not carry the words' address (2026-11-01: the words had a ?xtok=
+// share code), so the two compare as different links. Its card is still the message's one card, in either order.
+func TestLinkPreviewServiceCardWithAnotherAddressIsTheCard(t *testing.T) {
+	const words = "https://www.instagram.com/synthetic?xtok=c3ludGhldGlj"
+	const card = "https://www.instagram.com/synthetic/"
+	native := func() *attachment {
+		return &attachment{id: "native-card", name: "synthetic", mime: "image/jpeg", source: "https://example.test/native.jpg", link: card}
+	}
+	shown := func(s *store) []viewMedia {
+		t.Helper()
+		history := s.history(7, 0)
+		if len(history) != 1 {
+			t.Fatalf("messages=%d", len(history))
+		}
+		return history[0].Media
+	}
+
+	s := newStore()
+	s.addEncrypted(7, "native-first", 4, words, "", 1700)
+	s.restoreAttachment("native-first", native(), "")
+	if s.attachLinkPreview(7, "native-first", words, fixturePreview()) != nil {
+		t.Fatal("a second card was drawn under Facebook's own")
+	}
+	if media := shown(s); len(media) != 1 || media[0].ID != "native-card" {
+		t.Fatalf("cards after a refused preview: %+v", media)
+	}
+
+	// Facebook's card landing after ours replaces it, as does one restored over a kept generated row.
+	s = newStore()
+	s.addEncrypted(7, "generated-first", 4, words, "", 1700)
+	generated := s.attachLinkPreview(7, "generated-first", words, fixturePreview())
+	if generated == nil {
+		t.Fatal("no preview for a message without a card")
+	}
+	s.restoreAttachment("generated-first", native(), "")
+	if media := shown(s); len(media) != 1 || media[0].ID != "native-card" {
+		t.Fatalf("cards after Facebook's arrived: %+v", media)
+	}
+	if _, kept := s.media[generated.id]; kept {
+		t.Fatal("the replaced preview's picture is still served")
+	}
+
+	// A photo carries no link and is no card: the words' link still gets its preview.
+	s = newStore()
+	s.addEncrypted(7, "photo", 4, words, "", 1700)
+	s.restoreAttachment("photo", &attachment{id: "a-photo", name: "Photo", mime: "image/jpeg", source: "https://example.test/photo.jpg"}, "")
+	if s.attachLinkPreview(7, "photo", words, fixturePreview()) == nil {
+		t.Fatal("a photo stopped the words' link getting a preview")
+	}
+
+	// The worker's own request is refused before anything is fetched.
+	var calls atomic.Int32
+	a, _ := previewAdapter(t, func(context.Context, string) (*linkPreviewResult, error) {
+		calls.Add(1)
+		return fixturePreview(), nil
+	})
+	a.chats.addEncrypted(7, "asked", 4, words, "", 1700)
+	a.chats.restoreAttachment("asked", native(), "")
+	a.loadLinkPreviews(7, []string{"asked"})
+	a.previewJobs.mu.Lock()
+	queued := len(a.previewJobs.pending) + len(a.previewJobs.attempted)
+	a.previewJobs.mu.Unlock()
+	if queued != 0 || calls.Load() != 0 {
+		t.Fatal("the page was asked for a message Facebook had already carded")
+	}
+}
+
 // Facebook's card for a shared page links through its l.facebook.com redirect while the words hold the page itself;
 // the two once read as different links, so the helper drew its own card under Facebook's (2026-10-18).
 func TestLinkPreviewFacebookRedirectCardIsTheSameLink(t *testing.T) {

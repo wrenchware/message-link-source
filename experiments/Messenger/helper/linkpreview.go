@@ -38,6 +38,16 @@ func firstPreviewURL(text string) string {
 
 func generatedLinkPreview(id string) bool { return strings.HasPrefix(id, linkPreviewPrefix) }
 
+// A card the service made for this message's link. Its address need not match the words: for a pasted Instagram profile
+// Facebook's card and the typed address (with its ?xtok= share code) differ, and comparing them drew a second card under
+// Facebook's own (2026-11-01). The service makes one card a message, so any card of its own carrying a link is that one.
+func serviceLinkCard(id, link string) bool { return link != "" && !generatedLinkPreview(id) }
+
+// Whether a message already holding this card needs none made for link.
+func cardCovers(id, cardLink, link string) bool {
+	return sameLink(cardLink, link) || serviceLinkCard(id, cardLink)
+}
+
 type linkPreviewTarget struct {
 	thread         int64
 	id, text, link string
@@ -106,7 +116,7 @@ func (a *adapter) loadLinkPreviews(key int64, ids []string) {
 		}
 		pictured := false
 		for _, item := range current.Media {
-			if sameLink(item.Link, link) {
+			if cardCovers(item.ID, item.Link, link) {
 				pictured = true
 				break
 			}
@@ -195,7 +205,7 @@ func (jobs *linkPreviewJobs) work() {
 			current, exists := jobs.a.chats.messageByID(target.thread, target.id)
 			needed := exists && !current.Deleted && current.Text == target.text
 			for _, media := range current.Media {
-				if sameLink(media.Link, target.link) {
+				if cardCovers(media.ID, media.Link, target.link) {
 					needed = false
 					break
 				}
@@ -248,7 +258,7 @@ func (s *store) attachLinkPreview(key int64, id, originalText string, result *li
 		return nil
 	}
 	for _, existing := range s.attached[id] {
-		if sameLink(existing.link, link) {
+		if cardCovers(existing.id, existing.link, link) {
 			return nil
 		}
 	}

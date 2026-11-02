@@ -37,7 +37,8 @@ public static class SharedLinkPresentation
     public static bool IsReel(Uri? uri) => InstagramKind(uri) == "Reel" || FacebookKind(uri) == "Reel";
     // The line under a shared item saying what it is, where the service is known; null leaves the card's host.
     public static string? ShareLabel(Uri? uri) =>
-        InstagramKind(uri) is { } kind ? "Instagram · " + kind : FacebookKind(uri) == "Reel" ? "Facebook · Reel" : null;
+        InstagramKind(uri) is { } kind ? kind == GenericInstagramKind ? "Instagram" : "Instagram · " + kind :
+        FacebookKind(uri) == "Reel" ? "Facebook · Reel" : null;
 
     // Whether a message's words are only the address a reel card under them already stands for, so the bubble above the
     // card can go. Ordinary link previews keep their address (MessageBubble: a link you cannot read is worse than a
@@ -80,8 +81,10 @@ public static class SharedLinkPresentation
             "p" => "Post",
             "stories" => "Story",
             "music" or "audio" => "Music",
-            _ => "Instagram share"
+            _ => GenericInstagramKind
         };
+
+    private const string GenericInstagramKind = "Instagram share";
 
     // What the helpers call a preview that arrived without a title of its own. The conversation's card hides it too.
     public const string UntitledPreview = "Shared link";

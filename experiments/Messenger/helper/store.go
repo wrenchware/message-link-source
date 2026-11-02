@@ -922,10 +922,10 @@ func (s *store) attach(messageID string, item *attachment) {
 		list := s.attached[messageID]
 		kept := make([]*attachment, 0, len(list))
 		for _, old := range list {
-			if sameLink(old.link, item.link) && generatedLinkPreview(item.id) && !generatedLinkPreview(old.id) {
+			if generatedLinkPreview(item.id) && serviceLinkCard(old.id, old.link) {
 				return
 			}
-			if sameLink(old.link, item.link) && !generatedLinkPreview(item.id) && generatedLinkPreview(old.id) {
+			if generatedLinkPreview(old.id) && serviceLinkCard(item.id, item.link) {
 				delete(s.media, old.id)
 				continue
 			}
