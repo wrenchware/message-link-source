@@ -116,8 +116,40 @@ func TestBlockAndReportIsForOnePerson(t *testing.T) {
 	if len(block.ProtoReflect().GetUnknown()) == 0 {
 		t.Fatal("the block carries no conversation identity")
 	}
+	wire, err := proto.Marshal(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[protowire.Number]uint64{}
+	for raw := wire; len(raw) > 0; {
+		number, kind, n := protowire.ConsumeTag(raw)
+		if n < 0 {
+			t.Fatal("unreadable block request")
+		}
+		raw = raw[n:]
+		size := protowire.ConsumeFieldValue(number, kind, raw)
+		if size < 0 {
+			t.Fatal("unreadable block request")
+		}
+		if kind == protowire.VarintType {
+			fields[number], _ = protowire.ConsumeVarint(raw)
+		} else if number == 5 {
+			body, _ := protowire.ConsumeBytes(raw)
+			// Field 2 of field 5 is where the block was asked for: 1, the conversation's details.
+			if len(body) != 2 || body[0] != 0x10 || body[1] != 1 {
+				t.Fatalf("block source = %x", body)
+			}
+			fields[number] = 1
+		}
+		raw = raw[size:]
+	}
+	if fields[2] != 8 || fields[5] != 1 || fields[8] != 3 || fields[9] != 3 {
+		t.Fatalf("block request is not the website's: %v", fields)
+	}
 	if un := conversationUpdate(person, "unblock"); un == nil || un.GetAction() != gmproto.ConversationActionStatus_UNBLOCK {
 		t.Fatalf("not unblocked: %v", un)
+	} else if un.GetAction5() != nil {
+		t.Fatal("the website's unblock names no source")
 	}
 	group := &gmproto.Conversation{ConversationID: "g", IsGroupChat: true, Participants: []*gmproto.Participant{me, them}}
 	if conversationUpdate(group, "blockAndReport") != nil {
@@ -125,5 +157,23 @@ func TestBlockAndReportIsForOnePerson(t *testing.T) {
 	}
 	if conversationUpdate(&gmproto.Conversation{ConversationID: "n"}, "blockAndReport") != nil {
 		t.Fatal("a conversation with no number must not be blocked")
+	}
+}
+
+func TestRefusalReasonIsNumbersOnly(t *testing.T) {
+	refusal := func(field protowire.Number, code uint64) []byte {
+		body := protowire.AppendVarint(protowire.AppendTag(nil, 1, protowire.VarintType), code)
+		return protowire.AppendBytes(protowire.AppendTag(nil, field, protowire.BytesType), body)
+	}
+	if got := refusalReason(nil); got != "refused" {
+		t.Fatalf("plain refusal = %q", got)
+	}
+	if got := refusalReason(refusal(4, 1)); got != "refused_f4e1" {
+		t.Fatalf("location refusal = %q", got)
+	}
+	// Field 3 is the website's undo record, which names the conversation: it never reaches the log.
+	undo := protowire.AppendString(protowire.AppendTag(nil, 3, protowire.BytesType), "+15550100")
+	if got := refusalReason(append(undo, refusal(5, 3)...)); got != "refused_f5e3" {
+		t.Fatalf("mixed refusal = %q", got)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -85,7 +86,28 @@ func archiveConversationUpdate(c *gmproto.Conversation, action gmproto.Conversat
 	return req
 }
 
-// Archive and unarchive match the current Google Messages Web action request. Delete matches
+// Current Google Messages Web adds three things to a block that archive does not carry (the bundle
+// served on 2026-11-03; docs/research/google-messages-archive-wire.md): field 5 says where the block
+// was asked for, 1 being the conversation's details, the one place that needs no message named;
+// fields 8 and 9 are the choices about shared location and extensions, 3 meaning none was made.
+const blockChoiceNone = 3
+
+func blockAndReportUpdate(c *gmproto.Conversation) *gmproto.UpdateConversationRequest {
+	req := archiveConversationUpdate(c, gmproto.ConversationActionStatus_BLOCK_AND_REPORT)
+	if req == nil {
+		return nil
+	}
+	req.Action5 = &gmproto.ConversationAction5{Field2: true}
+	unknown := req.ProtoReflect().GetUnknown()
+	for _, field := range []protowire.Number{8, 9} {
+		unknown = protowire.AppendTag(unknown, field, protowire.VarintType)
+		unknown = protowire.AppendVarint(unknown, blockChoiceNone)
+	}
+	req.ProtoReflect().SetUnknown(unknown)
+	return req
+}
+
+// Archive, unarchive and unblock match the current Google Messages Web action request. Delete matches
 // libgm DeleteConversation, including the other participant's number for one-to-one conversations;
 // groups send no number, as upstream does.
 func conversationUpdate(c *gmproto.Conversation, action string) *gmproto.UpdateConversationRequest {
@@ -99,7 +121,7 @@ func conversationUpdate(c *gmproto.Conversation, action string) *gmproto.UpdateC
 		if c.GetIsGroupChat() || otherParticipantNumber(c) == "" {
 			return nil
 		}
-		return archiveConversationUpdate(c, gmproto.ConversationActionStatus_BLOCK_AND_REPORT)
+		return blockAndReportUpdate(c)
 	case "unblock":
 		return archiveConversationUpdate(c, gmproto.ConversationActionStatus_UNBLOCK)
 	case "archive":
@@ -134,7 +156,7 @@ func (a *adapter) updateChatCall(ctx context.Context, r request) (any, string) {
 	}
 	req := conversationUpdate(c, p.Action)
 	if req == nil {
-		return map[string]string{"outcome": "rejected"}, ""
+		return map[string]string{"outcome": "rejected", "reason": "not_sent"}, ""
 	}
 	// A lost response may still have changed the conversation. Never retry automatically.
 	resp, err := a.client.UpdateConversation(ctx, req)
@@ -142,9 +164,56 @@ func (a *adapter) updateChatCall(ctx context.Context, r request) (any, string) {
 		return map[string]string{"outcome": "unknown"}, ""
 	}
 	if !resp.GetSuccess() {
-		return map[string]string{"outcome": "rejected"}, ""
+		return map[string]string{"outcome": "rejected", "reason": refusalReason(resp.ProtoReflect().GetUnknown())}, ""
 	}
 	return map[string]string{"outcome": "accepted"}, ""
+}
+
+// Why Google refused, as numbers alone: the pinned protocol declares only success, and the website reads
+// an error code from field 1 of response fields 4 and 5.
+func refusalReason(raw []byte) string {
+	reason := "refused"
+	for len(raw) > 0 {
+		number, kind, n := protowire.ConsumeTag(raw)
+		if n < 0 {
+			break
+		}
+		raw = raw[n:]
+		size := protowire.ConsumeFieldValue(number, kind, raw)
+		if size < 0 {
+			break
+		}
+		if (number == 4 || number == 5) && kind == protowire.BytesType {
+			if body, m := protowire.ConsumeBytes(raw[:size]); m >= 0 {
+				reason += "_f" + strconv.Itoa(int(number)) + "e" + strconv.FormatUint(firstVarint(body), 10)
+			}
+		}
+		raw = raw[size:]
+	}
+	return reason
+}
+
+func firstVarint(raw []byte) uint64 {
+	for len(raw) > 0 {
+		number, kind, n := protowire.ConsumeTag(raw)
+		if n < 0 {
+			return 0
+		}
+		raw = raw[n:]
+		if number == 1 && kind == protowire.VarintType {
+			value, m := protowire.ConsumeVarint(raw)
+			if m < 0 {
+				return 0
+			}
+			return value
+		}
+		size := protowire.ConsumeFieldValue(number, kind, raw)
+		if size < 0 {
+			return 0
+		}
+		raw = raw[size:]
+	}
+	return 0
 }
 
 // The phone field is optional since upstream 612eadb: an empty one is sent as none, as upstream's own

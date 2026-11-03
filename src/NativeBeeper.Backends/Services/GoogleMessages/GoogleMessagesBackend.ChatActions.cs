@@ -58,7 +58,9 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
         try
         {
             var result = await MediaCallAsync("ui.updateChat", new { chatId = nativeChat, action }, cancellationToken);
-            return result.GetProperty("outcome").GetString() ?? "unknown";
+            var outcome = result.GetProperty("outcome").GetString() ?? "unknown";
+            if (result.TryGetProperty("reason", out var reason)) GoogleMessagesLog.Write($"chat update action={action} outcome={outcome} reason={reason.GetString()}");
+            return outcome;
         }
         // Helper error codes are returned before any change is submitted.
         catch (InvalidOperationException ex) { throw new SendException(false, GoogleReadFailure.Map(ex.Message).Message); }
