@@ -195,7 +195,7 @@ Right-click a conversation, or use the **⋯** button in its header. You'll see,
 8. **Mark as unread** (on a chat with nothing unread) or **Mark as read** (on one you marked unread).
 9. **Send read receipt**, after [private reading](#private-reading) kept a chat read in Messages only.
 10. **Choose contact photo…** (or **Choose conversation photo…** for a group), and **Remove custom photo**.
-11. **Not spam**, for a Google Voice chat in Spam.
+11. **Block and report spam…**, for one person's Google Messages chat, or **Not spam** for a Google Messages or Google Voice chat in Spam.
 12. **Archive** or **Unarchive**. Instagram's reads **Archive in Messages**.
 13. **Delete…**, where the service allows it: Google Messages ("will be deleted from your phone"), Messenger ("deleted from Messenger, along with the history Messages keeps of it") and Google Voice ("deleted from your Google Voice account"; the people in it keep theirs).
 
@@ -239,7 +239,9 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 
 - **Archive** moves a conversation out of your inbox. On Google Messages, Messenger and Google Voice it archives on the service too. Instagram can't be archived from outside its own app, so Messages hides it **in Messages only**, and merged conversations are archived in Messages only.
 - An archived conversation comes back by itself when a new message arrives.
-- **Spam** holds Google Voice's spam and Instagram's filtered chats. Spam never notifies and never counts as unread. **Not spam** moves a Google Voice chat back; there is no "mark as spam".
+- **Spam** holds Google Messages' Spam & blocked folder, Google Voice's spam and Instagram's filtered chats. Spam never notifies and never counts as unread.
+- **Block and report spam…** blocks a Google Messages number on your phone, reports it to Google and moves the chat to Spam. Google Messages has no way to mark spam without blocking. Group chats can't be blocked from Messages, and the other services have no "mark as spam" here.
+- **Not spam** moves a Google Messages or Google Voice chat back, and unblocks a Google Messages number.
 
 ### Saved messages {#saved-messages}
 

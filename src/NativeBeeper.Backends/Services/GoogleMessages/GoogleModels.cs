@@ -4,7 +4,9 @@ namespace NativeBeeper.App.Services.GoogleMessages;
 
 // First is appended: this record is built positionally. It is how Google names a group's readers.
 internal sealed record GooglePerson(string Id, string Name, bool Self, string NativeId, string? Phone = null, string? First = null);
-internal sealed record GoogleChat(string Id, string Title, GooglePerson[] Participants, string Preview, DateTimeOffset At, bool Unread, bool Group, bool ReadOnly = true, bool PreviewOutgoing = false, string? Transport = null, string? OutgoingId = null, string? ExpectedTransport = null, bool Archived = false, bool Hidden = false, string? AvatarColor = null, string? PreviewSender = null);
+internal sealed record GoogleChat(string Id, string Title, GooglePerson[] Participants, string Preview, DateTimeOffset At, bool Unread, bool Group, bool ReadOnly = true, bool PreviewOutgoing = false, string? Transport = null, string? OutgoingId = null, string? ExpectedTransport = null, bool Archived = false, bool Hidden = false, string? AvatarColor = null, string? PreviewSender = null,
+    // In Google's Spam & blocked folder. Appended.
+    bool Spam = false);
 // FullSize: the attachment has its full-size media ID; false means only a thumbnail or inline preview so far.
 internal sealed record GoogleMedia(string Id, string Name, string Mime, long Size, double Width, double Height, bool Thumbnail = false, bool FullSize = true,
     // Where a generated link preview leads, and whether it stands for something that plays. Appended: this record is
@@ -95,7 +97,7 @@ internal static class GoogleModels
                 c.Group && !p.Self && !string.IsNullOrEmpty(p.NativeId) ? "google-avatar:" + c.Id + "|" + p.NativeId : null, p.Self, p.Phone,
                 // A saved contact as GoogleIncomingCards reads one; a short code or a named sender never counts as one.
                 IsContact: !p.Self && GoogleIncomingCards.SavedContact(p) && GoogleIncomingCards.IsPersonNumber(p.Id))).ToArray(),c.Participants.Length,c.ExpectedTransport,c.AvatarColor,
-            IsEncrypted: SendsAsText(c) ? false : null);
+            IsEncrypted: SendsAsText(c) ? false : null, IsSpam: c.Spam);
     }
     // The one participant (not this account) a line's writer name belongs to, by full or first name; none when the name is shared or unknown.
     private static GooglePerson? PreviewWriter(GoogleChat c, string name)

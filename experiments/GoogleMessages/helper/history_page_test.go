@@ -28,14 +28,17 @@ func TestPageCursorFallsBackToOldestMessage(t *testing.T) {
 	}
 }
 
-func TestListFolderAllowsOnlyInboxAndArchive(t *testing.T) {
+func TestListFolderAllowsOnlyTheThreeFolders(t *testing.T) {
 	if f, ok := listFolder(""); !ok || f != gmproto.ListConversationsRequest_INBOX {
 		t.Fatal("default folder must be inbox")
 	}
 	if f, ok := listFolder("archive"); !ok || f != gmproto.ListConversationsRequest_ARCHIVE {
 		t.Fatal("archive folder missing")
 	}
-	if _, ok := listFolder("spam"); ok {
-		t.Fatal("spam must not be listed")
+	if f, ok := listFolder("spam"); !ok || f != gmproto.ListConversationsRequest_SPAM_BLOCKED {
+		t.Fatal("spam folder missing")
+	}
+	if _, ok := listFolder("trash"); ok {
+		t.Fatal("an unknown folder must not be listed")
 	}
 }

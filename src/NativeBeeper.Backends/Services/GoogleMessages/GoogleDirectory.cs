@@ -11,6 +11,8 @@ internal sealed record GoogleContact(string Id, string Name, string Phone);
 internal static class GoogleDirectory
 {
     public const int MaximumConversationCount = 2000;
+    // Google's Spam & blocked folder, newest first: one read a whole list, enough to catch a mistake, and never a page of its own.
+    public const int SpamConversationCount = 100;
 
     // The helper's whole-list answer: the contacts, and each request it made for them as counts, logged so the log says
     // which way of asking the phone honours (contacts_list.go). "1/350/50:50+50" is the request's three numbers, the rows
@@ -115,12 +117,14 @@ internal static class GoogleDirectory
     public static GoogleChat[] KeepNewer(GoogleChat[] list, long asked, IReadOnlyDictionary<string, long> written, IReadOnlyDictionary<string, GoogleChat> current) =>
         [.. list.Select(chat => !written.TryGetValue(chat.Id, out var at) || at <= asked ? chat : current.GetValueOrDefault(chat.Id)).OfType<GoogleChat>()];
 
-    public static GoogleChat[] MergeConversations(IEnumerable<GoogleChat> inbox, IEnumerable<GoogleChat> archived)
+    public static GoogleChat[] MergeConversations(IEnumerable<GoogleChat> inbox, IEnumerable<GoogleChat> archived, IEnumerable<GoogleChat>? spam = null)
     {
-        var hidden = inbox.Concat(archived).Where(chat => chat.Hidden).Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
+        spam ??= [];
+        var hidden = inbox.Concat(archived).Concat(spam).Where(chat => chat.Hidden).Select(chat => chat.Id).ToHashSet(StringComparer.Ordinal);
         var merged = new Dictionary<string, GoogleChat>(StringComparer.Ordinal);
         foreach (var chat in inbox.Where(chat => !chat.Hidden)) merged[chat.Id] = chat;
         foreach (var chat in archived.Where(chat => !chat.Hidden)) merged[chat.Id] = chat with { Archived = true };
+        foreach (var chat in spam.Where(chat => !chat.Hidden)) merged[chat.Id] = chat with { Archived = false, Spam = true };
         return [.. merged.Values.Where(chat => !hidden.Contains(chat.Id))];
     }
 

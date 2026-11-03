@@ -93,14 +93,37 @@ func TestConversationUpdatePayloads(t *testing.T) {
 }
 
 func TestChatFolderFlags(t *testing.T) {
-	for status, want := range map[gmproto.ConversationStatus][2]bool{
-		gmproto.ConversationStatus_ACTIVE: {false, false}, gmproto.ConversationStatus_ARCHIVED: {true, false},
-		gmproto.ConversationStatus_KEEP_ARCHIVED: {true, false}, gmproto.ConversationStatus_DELETED: {false, true},
-		gmproto.ConversationStatus_SPAM_FOLDER: {false, true}, gmproto.ConversationStatus_BLOCKED_FOLDER: {false, true},
+	for status, want := range map[gmproto.ConversationStatus][3]bool{
+		gmproto.ConversationStatus_ACTIVE: {false, false, false}, gmproto.ConversationStatus_ARCHIVED: {true, false, false},
+		gmproto.ConversationStatus_KEEP_ARCHIVED: {true, false, false}, gmproto.ConversationStatus_DELETED: {false, true, false},
+		gmproto.ConversationStatus_SPAM_FOLDER: {false, false, true}, gmproto.ConversationStatus_BLOCKED_FOLDER: {false, false, true},
 	} {
 		v := mapChat(&gmproto.Conversation{ConversationID: "c", Status: status})
-		if v.Archived != want[0] || v.Hidden != want[1] {
-			t.Fatalf("status %v mapped to archived=%v hidden=%v", status, v.Archived, v.Hidden)
+		if v.Archived != want[0] || v.Hidden != want[1] || v.Spam != want[2] {
+			t.Fatalf("status %v mapped to archived=%v hidden=%v spam=%v", status, v.Archived, v.Hidden, v.Spam)
 		}
+	}
+}
+
+func TestBlockAndReportIsForOnePerson(t *testing.T) {
+	me := &gmproto.Participant{IsMe: true, ID: &gmproto.SmallInfo{ParticipantID: "me"}}
+	them := &gmproto.Participant{ID: &gmproto.SmallInfo{ParticipantID: "them", Number: "+15550100"}}
+	person := &gmproto.Conversation{ConversationID: "c", Participants: []*gmproto.Participant{me, them}}
+	block := conversationUpdate(person, "blockAndReport")
+	if block == nil || block.GetAction() != gmproto.ConversationActionStatus_BLOCK_AND_REPORT {
+		t.Fatalf("one person's conversation not blocked and reported: %v", block)
+	}
+	if len(block.ProtoReflect().GetUnknown()) == 0 {
+		t.Fatal("the block carries no conversation identity")
+	}
+	if un := conversationUpdate(person, "unblock"); un == nil || un.GetAction() != gmproto.ConversationActionStatus_UNBLOCK {
+		t.Fatalf("not unblocked: %v", un)
+	}
+	group := &gmproto.Conversation{ConversationID: "g", IsGroupChat: true, Participants: []*gmproto.Participant{me, them}}
+	if conversationUpdate(group, "blockAndReport") != nil {
+		t.Fatal("a group must not be blocked")
+	}
+	if conversationUpdate(&gmproto.Conversation{ConversationID: "n"}, "blockAndReport") != nil {
+		t.Fatal("a conversation with no number must not be blocked")
 	}
 }

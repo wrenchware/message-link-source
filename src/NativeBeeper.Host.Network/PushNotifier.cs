@@ -325,6 +325,8 @@ internal sealed class PushNotifier : IAsyncDisposable
         var waiting = told.Where(pair => pair.Value.ContainsKey(chatId)).Select(pair => pair.Key).ToArray();
         if (waiting.Length == 0) return;
         var chat = await chats.GetChatAsync(chatId, token).ConfigureAwait(false);
+        // Filed as spam after its arrival was told (Google's filter takes seconds): nothing about it notifies, so that one goes too.
+        if (chat.IsSpam) { Withdraw(chatId); return; }
         if (chat.UnreadCount > 0) return;
         foreach (var device in registry.All().Where(r => waiting.Contains(r.DeviceId)))
         {

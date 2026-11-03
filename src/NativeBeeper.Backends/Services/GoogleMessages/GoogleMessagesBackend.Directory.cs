@@ -144,7 +144,20 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
             }
             catch (Exception ex) when (ex is not OperationCanceledException && ex is not BackendException { Failure: BackendFailure.AuthenticationRequired })
             { /* The inbox still loads; archived conversations appear on a later refresh. */ }
-            var merged = GoogleDirectory.MergeConversations(inbox, archivedChats);
+            // 2026-11-03: Google filed a stranger's first text as spam 2.6 s after it arrived, and it was in no list from then on.
+            // Not read, what this server already holds as spam stays there rather than leaving the view.
+            GoogleChat[] spamChats = [];
+            if (firstPage)
+            {
+                try
+                {
+                    var spamFolder = await ReadAsync("ui.chatList", new { count = Math.Min(count, GoogleDirectory.SpamConversationCount), folder = "spam" }, cancellationToken);
+                    spamChats = spamFolder.Deserialize<GoogleChat[]>(Json) ?? [];
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException && ex is not BackendException { Failure: BackendFailure.AuthenticationRequired })
+                { spamChats = [.. chats.Values.Where(c => c.Spam)]; }
+            }
+            var merged = GoogleDirectory.MergeConversations(inbox, archivedChats, spamChats);
             var phoneListed = merged;
             merged = GoogleDirectory.KeepNewer(merged, asked, chatWritten, chats);
             GoogleChat[] list;
@@ -156,7 +169,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
                 advanced = firstPage || merged.Any(c => !listedChatIds.Contains(c.Id));
                 foreach (var chat in merged) { chats[chat.Id] = chat; listedChatIds.Add(chat.Id); LiftPlaceholder(chat.Id); }
             }
-            GoogleMessagesLog.Write($"conversations inbox={inbox.Length} archived={archivedChats.Length} visible={list.Length} requested={count}{(list.Length > merged.Length ? $" unlisted_kept={list.Length - merged.Length}" : "")}");
+            GoogleMessagesLog.Write($"conversations inbox={inbox.Length} archived={archivedChats.Length} spam={spamChats.Length} visible={list.Length} requested={count}{(list.Length > merged.Length ? $" unlisted_kept={list.Length - merged.Length}" : "")}");
             // 2026-10-26: the phone's own list gained a row and lost it again, more than once, and a placeholder thread came back
             // with it; which conversation it was could not be told. Each whole list says, by tag, what came and went since the last.
             if (firstPage && archiveRead)

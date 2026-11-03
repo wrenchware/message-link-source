@@ -35,6 +35,7 @@ type viewChat struct {
 	// Who wrote a group's newest message, as Google names them beside its words: the list's line then says who it was
 	// from the start, as the message itself does once read. Empty for the account's own and outside groups.
 	PreviewSender string `json:"previewSender,omitempty"`
+	Spam          bool   `json:"spam,omitempty"`
 }
 type viewMessage struct {
 	ReplyTo   string         `json:"replyTo,omitempty"`
@@ -96,7 +97,7 @@ func mapChat(c *gmproto.Conversation) viewChat {
 	if title == "" {
 		title = "Conversation"
 	}
-	return viewChat{expectedTransport(c), c.GetType().String(), c.GetDefaultOutgoingID(), strings.HasPrefix(c.GetLatestMessage().GetLatestMessageStatus().GetStatus().String(), "OUTGOING_"), c.GetReadOnly(), c.GetConversationID(), title, participants, c.GetLatestMessage().GetDisplayContent(), time.UnixMicro(c.GetLastMessageTimestamp()).UTC(), c.GetUnread(), c.GetIsGroupChat(), chatArchived(c), chatHidden(c), avatarColor(c), previewSender(c)}
+	return viewChat{expectedTransport(c), c.GetType().String(), c.GetDefaultOutgoingID(), strings.HasPrefix(c.GetLatestMessage().GetLatestMessageStatus().GetStatus().String(), "OUTGOING_"), c.GetReadOnly(), c.GetConversationID(), title, participants, c.GetLatestMessage().GetDisplayContent(), time.UnixMicro(c.GetLastMessageTimestamp()).UTC(), c.GetUnread(), c.GetIsGroupChat(), chatArchived(c), chatHidden(c), avatarColor(c), previewSender(c), chatSpam(c)}
 }
 
 func previewSender(c *gmproto.Conversation) string {

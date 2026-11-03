@@ -4,7 +4,7 @@ using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.App.Services.GoogleMessages;
 
-// Archive and delete change the conversation on the phone. Pin and mute stay local
+// Archive, spam and delete change the conversation on the phone. Pin and mute stay local
 // preferences (LocalChatPreferenceStore). Uncertain outcomes are never retried.
 internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, IChatDeletion
 {
@@ -13,12 +13,29 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
 
     public async Task<ChatSummary> SetAsync(string chatId, ChatSetting setting, bool value, CancellationToken cancellationToken = default)
     {
+        if (setting == ChatSetting.Spam) return await SetSpamAsync(chatId, value, cancellationToken);
         if (setting != ChatSetting.Archived) throw new BackendException(BackendFailure.Unsupported, "Pin and mute are saved in Messages.");
         var native = GoogleModels.Native(chatId);
         var outcome = await UpdateChatAsync(native, value ? "archive" : "unarchive", cancellationToken);
         if (outcome == "rejected") throw new SendException(false, value ? "Google Messages didn't archive this conversation." : "Google Messages didn't unarchive this conversation.");
         if (outcome != "accepted") throw new SendException(true, "The archive change is unknown. Check your phone before trying again.");
         var chat = (chats.TryGetValue(native, out var known) ? known : await RefreshChatAsync(chatId, cancellationToken)) with { Archived = value };
+        SetChat(chat);
+        ArchiveChats([chat]);
+        Publish(new(RealtimeKind.ChatChanged, chatId));
+        return Summary(chat);
+    }
+
+    // Google has no "spam" alone: its action blocks the number and reports it, and moves the conversation to Spam & blocked.
+    // Not spam is its Unblock. Google's own event or the next list read corrects this if the phone did otherwise.
+    private async Task<ChatSummary> SetSpamAsync(string chatId, bool value, CancellationToken cancellationToken)
+    {
+        var native = GoogleModels.Native(chatId);
+        var outcome = await UpdateChatAsync(native, value ? "blockAndReport" : "unblock", cancellationToken);
+        GoogleMessagesLog.Write($"spam change chat={GoogleMessagesLog.Tag(chatId)} to={value} outcome={outcome}");
+        if (outcome == "rejected") throw new SendException(false, value ? "Google Messages didn't block this conversation." : "Google Messages didn't take this conversation out of spam.");
+        if (outcome != "accepted") throw new SendException(true, value ? "The block is unknown. Check your phone before trying again." : "The Not spam result is unknown. Check your phone before trying again.");
+        var chat = (chats.TryGetValue(native, out var known) ? known : await RefreshChatAsync(chatId, cancellationToken)) with { Spam = value, Archived = false };
         SetChat(chat);
         ArchiveChats([chat]);
         Publish(new(RealtimeKind.ChatChanged, chatId));

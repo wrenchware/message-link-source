@@ -29,13 +29,15 @@ func pageCursor(result *gmproto.ListMessagesResponse) *gmproto.Cursor {
 	return cursor
 }
 
-// Inbox and archive only; spam/blocked conversations are deliberately not listed.
+// The three folders the list and the Spam view read.
 func listFolder(name string) (gmproto.ListConversationsRequest_Folder, bool) {
 	switch name {
 	case "", "inbox":
 		return gmproto.ListConversationsRequest_INBOX, true
 	case "archive":
 		return gmproto.ListConversationsRequest_ARCHIVE, true
+	case "spam":
+		return gmproto.ListConversationsRequest_SPAM_BLOCKED, true
 	}
 	return gmproto.ListConversationsRequest_UNKNOWN, false
 }

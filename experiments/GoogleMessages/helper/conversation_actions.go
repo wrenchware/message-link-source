@@ -19,10 +19,15 @@ func chatArchived(c *gmproto.Conversation) bool {
 	return c.GetStatus() == gmproto.ConversationStatus_ARCHIVED || c.GetStatus() == gmproto.ConversationStatus_KEEP_ARCHIVED
 }
 
-// Deleted, spam and blocked conversations leave the conversation list, as in the upstream connector.
+// Deleted conversations leave the conversation list.
 func chatHidden(c *gmproto.Conversation) bool {
+	return c.GetStatus() == gmproto.ConversationStatus_DELETED
+}
+
+// What Google's Spam & blocked folder holds, listed only in the Spam view.
+func chatSpam(c *gmproto.Conversation) bool {
 	switch c.GetStatus() {
-	case gmproto.ConversationStatus_DELETED, gmproto.ConversationStatus_SPAM_FOLDER, gmproto.ConversationStatus_BLOCKED_FOLDER:
+	case gmproto.ConversationStatus_SPAM_FOLDER, gmproto.ConversationStatus_BLOCKED_FOLDER:
 		return true
 	}
 	return false
@@ -89,6 +94,14 @@ func conversationUpdate(c *gmproto.Conversation, action string) *gmproto.UpdateC
 		return nil
 	}
 	switch action {
+	case "blockAndReport":
+		// A person's number is what is blocked; a group has none to block.
+		if c.GetIsGroupChat() || otherParticipantNumber(c) == "" {
+			return nil
+		}
+		return archiveConversationUpdate(c, gmproto.ConversationActionStatus_BLOCK_AND_REPORT)
+	case "unblock":
+		return archiveConversationUpdate(c, gmproto.ConversationActionStatus_UNBLOCK)
 	case "archive":
 		return archiveConversationUpdate(c, conversationActionArchive)
 	case "unarchive":
