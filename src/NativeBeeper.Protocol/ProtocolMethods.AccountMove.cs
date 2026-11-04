@@ -7,6 +7,8 @@ namespace NativeBeeper.Protocol;
 // login is made. Google Messages and Google Voice are never carried; the server signs those in itself. The PC drives, and the server keeps one record per provider,
 // sealed with its own key: none -> installing -> installed -> active, and held after a move back. A provider runs on the server only when it is active.
 //
+//   accounts.move.authorize    Not journaled, from protocol 28. The server's password, which lets this device use the methods below (all but status) for the next hour, whichever
+//                              connection it uses. Never logged, kept or put in an answer.
 //   accounts.move.status       Read. What the server holds of each provider (state, move id, the pieces staged and their digests, how much history, whether it is connected).
 //   accounts.move.stage        Journaled. One piece of one provider (the session, the encrypted-device database, the encrypted flag, Instagram's session envelope), handed up
 //                              as an upload (media.upload*) and written to a staging place nothing runs from. Its SHA-256 must match what the PC says it sent.
@@ -40,6 +42,7 @@ public static partial class ProtocolMethods
     public const string AccountMoveHistoryGet = "accounts.move.history.get";
     public const string AccountMoveRelease = "accounts.move.release";
     public const string AccountMoveResume = "accounts.move.resume";
+    public const string AccountMoveAuthorize = "accounts.move.authorize";
 
     private static Entry[] AccountMoveEntries() =>
     [
@@ -54,6 +57,7 @@ public static partial class ProtocolMethods
         new(AccountMoveHistoryGet, "IAccountMove.GetHistoryAsync", typeof(AccountMoveHistoryGetParams), typeof(AccountMoveHistoryPage)),
         new(AccountMoveRelease, "IAccountMove.ReleaseAsync", typeof(AccountMoveReleaseParams), typeof(AccountMoveStatus), true),
         new(AccountMoveResume, "IAccountMove.ResumeAsync", typeof(AccountMoveResumeParams), typeof(AccountMoveStatus), true),
+        new(AccountMoveAuthorize, "IPairedDevices.AuthorizeMoveAsync", typeof(AccountMoveAuthorizeParams), typeof(AccountMoveAuthorized)),
     ];
 }
 
@@ -238,6 +242,29 @@ public sealed record AccountMoveReleaseParams(string ClientOpId, string MoveId, 
 
 /// <summary>A move back gives the named providers back (protocol 19): each must be held by this move and not released (its copies are still on the server), and the server runs it again.</summary>
 public sealed record AccountMoveResumeParams(string ClientOpId, string MoveId, IReadOnlyList<string> Providers) : MutationParams(ClientOpId);
+
+/// <summary>The server's password, for <see cref="ProtocolMethods.AccountMoveAuthorize"/>.</summary>
+public sealed record AccountMoveAuthorizeParams(string Password)
+{
+    /// <summary>Never the password, should the record ever be written anywhere.</summary>
+    public override string ToString() => nameof(AccountMoveAuthorizeParams);
+}
+
+/// <summary>How the password went (<see cref="AccountMoveAuthorizeWords"/>).</summary>
+public sealed record AccountMoveAuthorized(string Outcome);
+
+/// <summary>The words <see cref="AccountMoveAuthorized.Outcome"/> takes.</summary>
+public static class AccountMoveAuthorizeWords
+{
+    /// <summary>The right password: this device may move accounts for the next hour.</summary>
+    public const string Right = "right";
+    public const string Wrong = "wrong";
+    /// <summary>Too many tries: wait, then try again. The try was not looked at.</summary>
+    public const string Paced = "paced";
+    /// <summary>The server's page has no password yet, so nothing can be moved until it does.</summary>
+    public const string NoPassword = "no_password";
+    public static IReadOnlyList<string> All { get; } = [Right, Wrong, Paced, NoPassword];
+}
 
 /// <summary>
 /// The server's end of an account move, as the dispatcher serves it: the Linux server's own, or a client's proxy. A host that cannot take accounts (the Windows server, the app's

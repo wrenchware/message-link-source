@@ -165,17 +165,7 @@ internal sealed class DeviceRegistry
 
     public IReadOnlyList<PairedDevice> List(string? current)
     {
-        lock (gate) return [.. devices.Select((device, index) => new PairedDevice(device.Id, device.Name, device.Created, device.LastSeen, device.Id == current, index == 0))];
-    }
-
-    /// <summary>
-    /// Whether <paramref name="id"/> is the owner: the device paired first of those still paired (the list keeps pairing order, on disk too). The first
-    /// device the owner pairs is the owner's own; one paired later, even with a stolen code, never outranks it. When the owner revokes itself, the next
-    /// oldest is the owner.
-    /// </summary>
-    public bool IsOwner(string id)
-    {
-        lock (gate) return devices.Count > 0 && devices[0].Id == id;
+        lock (gate) return [.. devices.Select(device => new PairedDevice(device.Id, device.Name, device.Created, device.LastSeen, device.Id == current))];
     }
 
     /// <summary>A new device and its token, kept before this returns; null when <see cref="MaxDevices"/> are paired already. The token is in nothing this keeps.</summary>

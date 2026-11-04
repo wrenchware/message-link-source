@@ -6,7 +6,7 @@ namespace NativeBeeper.Host.Network;
 
 /// <summary>
 /// The devices asking to join (protocol 21, SWITCHBOARD.md 4.6): a device with nothing but the server's address connects without a token on a join connection
-/// (<see cref="JoinSession"/>), and the request is held here until the owner approves it (on the server's page, or with <c>devices.approveJoin</c> from the owner device),
+/// (<see cref="JoinSession"/>), and the request is held here until the owner approves it on the server's page,
 /// turns it away, it runs out after <see cref="Lifetime"/>, or the device leaves. Nobody could otherwise reach anything without a token, so the door is narrow: at most
 /// <see cref="MaxWaiting"/> join connections at once, one per source (an IPv4 address, or an IPv6 /64, as <see cref="PairingCodes.Key"/> counts them), a source asking
 /// again only after <see cref="SourceSpacing"/> (longer after an unanswered request), and any two let in <see cref="GlobalSpacing"/> apart. A request is shown only
@@ -179,7 +179,7 @@ internal sealed class JoinRequests(TimeProvider time, Action<string> log, string
         var request = Answerable(id);
         if (request is null) return new(false);
         string? finish;
-        // Under the gate, so two approvals at once (the page and the owner device) cannot both make a code: the second finds the first's answer and leaves its code alone.
+        // Under the gate, so two approvals at once (two of the page's tabs) cannot both make a code: the second finds the first's answer and leaves its code alone.
         // Made before the session can see the approval, so it proves the code the owner was given; a refusal that wins meanwhile leaves a code nothing reads.
         lock (gate)
         {

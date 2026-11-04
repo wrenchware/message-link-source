@@ -28,11 +28,10 @@ namespace NativeBeeper.Protocol;
 /// <paramref name="Scheduled"/> serves <c>scheduled.*</c> and <c>outbox.dismiss</c> (slice 11); only a server fires its clients' scheduled sends, and the app's in-process host and the loopback leave it null.
 /// <paramref name="Imports"/> serves <c>state.import</c> (slice 13, protocol 11): a PC's choices taken into the shared state once; only a server with a shared state has one.
 /// <paramref name="RemoteSignIn"/> serves <c>accounts.google.remoteSignIn*</c> (protocol 12): a Google sign-in made in the host's own browser; only the Linux server run with Google Messages and a headed browser has one.
-/// <paramref name="QrPairing"/> serves <c>accounts.google.qrPairing*</c> (protocol 13): Google Messages paired by QR code; the Linux server run with Google Messages has one.
 /// <paramref name="AccountMove"/> serves <c>accounts.move.*</c> (protocol 16): Messenger and Instagram moving with the PC; only the Linux server has one.
 /// <paramref name="VoiceRemoteSignIn"/> serves <c>accounts.voice.remoteSignIn</c> (protocol 15): a Google Voice sign-in made in the host's own browser, shown and driven as the Google Messages one is; only the Linux server run with Google Chrome has one.
-/// <paramref name="Logs"/> serves <c>host.logs</c> (protocol 18): the host's own logs, by name, to the owner device; only the Linux server has one.
-/// <paramref name="Admin"/> serves <c>host.status</c>, <c>host.accounts</c> and <c>host.removeAccount</c> (SWITCHBOARD.md 4.6) to the owner device; only the Linux server has one.
+/// <paramref name="Logs"/> serves <c>host.logs</c> (protocol 18): the host's own logs, by name, to any paired device; only a server has one.
+/// <paramref name="Admin"/> serves <c>host.status</c>, <c>host.accounts</c> and <c>host.removeAccount</c> (SWITCHBOARD.md 4.6): the reads to any paired device, the removal to the page; only a server has one.
 /// <paramref name="Backup"/> serves <c>server.backup.*</c> (protocol 26): the server's own backup; only the Linux server has one.
 /// <paramref name="MetaRemoteSignIn"/> serves Messenger and Instagram on <c>accounts.remoteSignIn</c> (protocol 27): their sign-in in the host's own browser; only the Linux server run with its own Chrome has one.
 /// </summary>
@@ -72,7 +71,7 @@ public sealed record ProtocolServices(
     IHostShutdown? Shutdown = null, RestoreOnce? Restores = null, Action? GoogleSignedIn = null, IPairedDevices? Devices = null,
     ISharedState? SharedState = null, ConnectionRoster? Connections = null,
     Action<string, string?>? AccountEnded = null, IScheduledCommands? Scheduled = null, IStateImport? Imports = null, IRemoteSignInHost? RemoteSignIn = null,
-    IQrPairingHost? QrPairing = null, IRemoteSignInHost? VoiceRemoteSignIn = null, IAccountMove? AccountMove = null, IHostLogs? Logs = null, IServerAdmin? Admin = null,
+    IRemoteSignInHost? VoiceRemoteSignIn = null, IAccountMove? AccountMove = null, IHostLogs? Logs = null, IServerAdmin? Admin = null,
     IPushService? Push = null, ConversationSync? ConversationSync = null, IWholeHistory? WholeHistory = null, IServerBackup? Backup = null,
     IRemoteCookieSignInHost? MetaRemoteSignIn = null)
 {

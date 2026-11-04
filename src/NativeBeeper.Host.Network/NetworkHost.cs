@@ -158,6 +158,7 @@ internal sealed class NetworkHost : IAsyncDisposable
         if (page is not null)
         {
             page.OnceSignIn = options.OnceSignIn;
+            page.UseStorage(options.DataFolder, keys);
             page.DesktopTrust = options.DesktopTrust;
             page.DesktopSignIn = options.DesktopSignIn;
         }
@@ -517,14 +518,14 @@ internal sealed class NetworkHost : IAsyncDisposable
         }
         else if (request.Headers.TryGetValue(NetworkPairing.JoinHeader, out var join) && join.Count == 1 && join[0] == "1")
         {
-            // Asking to join (protocol 21), from the home network only, as the page is: nobody elsewhere may put a request in front of the owner. A server nobody could
-            // approve a request on (no paired device, no page) says so, and the first device pairs with the printed code.
+            // Asking to join (protocol 21), from the home network only, as the page is: nobody elsewhere may put a request in front of the owner. Only the page answers one, so a server
+            // without a page ready says so at once, and a device pairs with the printed code.
             if (!FromTrustedNetwork(context))
             {
                 await RefuseAsync(context, StatusCodes.Status403Forbidden, "join_not_home").ConfigureAwait(false);
                 return;
             }
-            if (devices.Count == 0 && (page is null || page.SettingUp))
+            if (page is null || page.SettingUp)
             {
                 await RefuseAsync(context, StatusCodes.Status409Conflict, "join_no_approver").ConfigureAwait(false);
                 return;
@@ -578,7 +579,7 @@ internal sealed class NetworkHost : IAsyncDisposable
 
     private async Task ServeDeviceAsync(string device, WebSocketFrameChannel channel, long? arrived, bool relayed)
     {
-        var admitted = new Admitted(device, channel, new DeviceView(devices, device, pairing, joins, log, address => JoinLinkFor(address))) { Serial = Interlocked.Increment(ref admissions) };
+        var admitted = new Admitted(device, channel, new DeviceView(devices, device, joins, log, MayMove, AuthorizeMove)) { Serial = Interlocked.Increment(ref admissions) };
         // Seen before serve starts the dispatcher: from then on the device's requests are answered on other threads while this one carries on below, so a
         // devices.list among its first could list the device asking as never connected (the harness caught it under load, 2026-10-16).
         devices.Seen(device);
@@ -709,87 +710,75 @@ internal sealed class NetworkHost : IAsyncDisposable
         return new(link, address is null ? null : JoinLink.Line(address, Fingerprint, code), code, (int)PairingCodes.Lifetime.TotalSeconds, Fingerprint, address, view?.Name);
     }
 
-    // One connection's devices.*: the host's list with this device marked. A device token is never an admin's (SWITCHBOARD.md's harvest rule): any device
-    // may revoke (which ends this connection once the answer is written) or rename itself, and only the owner, the device paired first of those still paired
-    // (DeviceRegistry.Owner), may revoke or rename another or open a code for a new one.
-    private sealed class DeviceView(DeviceRegistry devices, string current, PairingCodes pairing, JoinRequests joins, Action<string> log, Func<string?, JoinLinkIssued> joinLink)
+    // One connection's devices.*: the host's list with this device marked. A device token is never an admin's (SWITCHBOARD.md's harvest rule): any device may revoke (which ends this
+    // connection once the answer is written) or rename itself, and may see who is asking to join so that its person can be told; everything else about devices is the page's (owner, 2026-11-03).
+    private sealed class DeviceView(DeviceRegistry devices, string current, JoinRequests joins, Action<string> log, Func<string, bool> mayMove, Func<string, string, string> authorizeMove)
         : IPairedDevices
     {
-        public Task<JoinLinkIssued> JoinLinkAsync(string? address, CancellationToken cancellationToken = default)
+        private NativeBeeper.Core.Backend.BackendException OnPage(string what, string sentence)
         {
-            if (!devices.IsOwner(current))
-            {
-                log("server pairing refused reason=not_owner");
-                throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden,
-                    "Only the device paired first with this server can pair another device.");
-            }
-            // An address a person could not have typed is no address: the line and the link carry it to another device.
-            if (address is { Length: > 0 } given && (given.Length > 300 || given.Any(c => char.IsWhiteSpace(c) || c is '/' or '#' or '?' or '@'))) address = null;
-            return Task.FromResult(joinLink(address));
+            log($"server {what} refused reason=on_page");
+            return new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden, sentence);
         }
 
-        // Asking to join (protocol 21): the requests, and answering them, are the owner's as a new code is.
-        public Task<IReadOnlyList<JoinRequest>> JoinRequestsAsync(CancellationToken cancellationToken = default)
-        {
-            RequireOwner("list");
-            return Task.FromResult(joins.Waiting());
-        }
+        private const string AddOnPage = "New devices are added on the server's page.";
+        private const string AnswerOnPage = "Requests to join are answered on the server's page.";
 
-        public Task<JoinApproved> ApproveJoinAsync(string id, CancellationToken cancellationToken = default)
-        {
-            RequireOwner("approve");
-            return joins.ApproveAsync(id, "app");
-        }
+        public Task<JoinLinkIssued> JoinLinkAsync(string? address, CancellationToken cancellationToken = default) => throw OnPage("pairing", AddOnPage);
 
-        public Task<JoinDenied> DenyJoinAsync(string id, CancellationToken cancellationToken = default)
-        {
-            RequireOwner("deny");
-            return Task.FromResult(joins.Deny(id, "app"));
-        }
+        public Task<IReadOnlyList<JoinRequest>> JoinRequestsAsync(CancellationToken cancellationToken = default) => Task.FromResult(joins.Waiting());
 
-        private void RequireOwner(string what)
-        {
-            if (devices.IsOwner(current)) return;
-            log($"server join {what} refused reason=not_owner");
-            throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden,
-                "Only the device paired first with this server can answer requests to join.");
-        }
+        public Task<JoinApproved> ApproveJoinAsync(string id, CancellationToken cancellationToken = default) => throw OnPage("join approve", AnswerOnPage);
+
+        public Task<JoinDenied> DenyJoinAsync(string id, CancellationToken cancellationToken = default) => throw OnPage("join deny", AnswerOnPage);
 
         public Task<IReadOnlyList<PairedDevice>> ListAsync(CancellationToken cancellationToken = default) => Task.FromResult(devices.List(current));
 
         public async Task<DeviceRevoked> RevokeAsync(string id, CancellationToken cancellationToken = default)
         {
-            if (!string.Equals(id, current, StringComparison.Ordinal) && !devices.IsOwner(current))
-            {
-                log("server device revoke refused reason=not_owner");
-                throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden,
-                    "Only the device paired first with this server can remove other devices.");
-            }
+            if (!string.Equals(id, current, StringComparison.Ordinal)) throw OnPage("device revoke", "Other devices are removed on the server's page.");
             return new(await devices.RevokeAsync(id).ConfigureAwait(false));
         }
 
-        // The same rule as a revoke: a device may rename itself, and only the owner another. No such device answers false with the name asked for, cleaned.
+        // The same rule as a revoke. No such device answers false with the name asked for, cleaned.
         public async Task<DeviceRenamed> RenameAsync(string id, string name, CancellationToken cancellationToken = default)
         {
-            if (!string.Equals(id, current, StringComparison.Ordinal) && !devices.IsOwner(current))
-            {
-                log("server device rename refused reason=not_owner");
-                throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden,
-                    "Only the device paired first with this server can rename other devices.");
-            }
+            if (!string.Equals(id, current, StringComparison.Ordinal)) throw OnPage("device rename", "Other devices are renamed on the server's page.");
             return await devices.RenameAsync(id, name).ConfigureAwait(false) is { } kept ? new(true, kept) : new(false, DeviceRegistry.CleanName(name));
         }
 
-        public Task<PairingCodeIssued> PairNewAsync(CancellationToken cancellationToken = default)
+        public Task<PairingCodeIssued> PairNewAsync(CancellationToken cancellationToken = default) => throw OnPage("pairing", AddOnPage);
+
+        public Task<bool> MayMoveAsync(CancellationToken cancellationToken = default) => Task.FromResult(mayMove(current));
+
+        public Task<string> AuthorizeMoveAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(authorizeMove(current, password));
+    }
+
+    // ---- The password a move asks for ----
+
+    /// <summary>How long after the password, or after its last use, a device may go on moving accounts. Long enough for a large move, a lost connection and a retry.</summary>
+    internal TimeSpan MoveGrantLife { get; set; } = TimeSpan.FromHours(1);
+
+    // In memory: a restart asks again, and nothing about it is worth keeping on disk.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> moveGrants = new(StringComparer.Ordinal);
+
+    private bool MayMove(string device)
+    {
+        var now = options.Time.GetUtcNow();
+        if (!moveGrants.TryGetValue(device, out var until) || now >= until || !devices.Has(device))
         {
-            if (!devices.IsOwner(current))
-            {
-                log("server pairing refused reason=not_owner");
-                throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden,
-                    "Only the device paired first with this server can pair another device.");
-            }
-            // Printed in the server's log as every code is, and handed to the owner who asked.
-            return Task.FromResult(new PairingCodeIssued(pairing.Issue(), (int)PairingCodes.Lifetime.TotalSeconds));
+            moveGrants.TryRemove(device, out _);
+            return false;
         }
+        moveGrants[device] = now + MoveGrantLife;
+        return true;
+    }
+
+    private string AuthorizeMove(string device, string password)
+    {
+        var outcome = page?.CheckMovePassword(device, password) ?? AccountMoveAuthorizeWords.NoPassword;
+        if (outcome == AccountMoveAuthorizeWords.Right) moveGrants[device] = options.Time.GetUtcNow() + MoveGrantLife;
+        log($"server move password outcome={outcome}");
+        return outcome;
     }
 }

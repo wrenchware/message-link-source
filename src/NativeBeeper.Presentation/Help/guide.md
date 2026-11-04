@@ -27,21 +27,21 @@ In a narrow window (under 800 pixels wide) Messages shows one pane at a time, th
 
 ### Connecting your services {#connecting}
 
-Open **Settings** (<kbd>Ctrl+,</kbd>). It opens on **Accounts**, where each service has a card with a status: **Connected**, **Signed in** (a saved sign-in that isn't connected right now; Google Messages says **Paired**) or **Not connected**.
+Open **Settings** (<kbd>Ctrl+,</kbd>). It opens on **Accounts**, where each service has a card with a row for each account and its status: **Connected**, **Signed in** (a saved sign-in that isn't connected right now; Google Messages says **Paired**) or **Not connected**.
 
 - **Google Messages**: choose **Pair**. On your phone, open Google Messages, tap your account picture, then choose **Device pairing**. Sign in with the same Google account in the window that opens, then tap the emoji on your phone that matches the one Messages shows. Your phone then lists this PC as **Messages for Windows**. It needs an Android phone; an iPhone can't pair.
 - **Messenger**: choose **Connect** and sign in to Facebook in the window that opens, then choose **Done**. Encrypted conversations turn on by themselves after a new sign-in.
 - **Instagram**: choose **Connect** and sign in with your Instagram username and password. *Log in with Facebook* isn't supported.
 - **Google Voice**: choose **Add Google Voice account** and sign in at voice.google.com. Add more numbers with **Add another Google Voice account**; each signs in separately.
 
-When Messages uses a Messages Server with a browser of its own, these sign in through that browser instead; see [Signing in on the server](#server-sign-in).
+On a PC that uses a Messages Server, you do this on the server's page instead; see [Signing in on the server](#server-sign-in).
 
 Each service's details, limits and fixes are in [What each service can do](#services).
 
 ### Your first run {#first-run}
 
 - **The welcome** is the first screen until something is set up. It says what Messages is and offers three ways in:
-  - **Sign in on this PC** opens Settings → Accounts to sign in here; see [Connecting your services](#connecting).
+  - **Sign in on this PC** opens Settings → Connections to sign in here; see [Connecting your services](#connecting).
   - **Connect to a Messages Server** joins a server you already run, which keeps your accounts connected on a computer at home, for this PC and your phone alike; see [Using a Messages Server](#messages-server).
   - **Try sample conversations** shows Messages with made-up people; see [Sample conversations](#sample-conversations).
 - **Until something is set up**, whatever needs an account says so where you're looking, with **Sign in on this PC** beside it: **New chat** (<kbd>Ctrl+N</kbd>), search, the tray menu's **New chat** and the taskbar's tasks. The tray's **Open Messages** brings back the welcome, and **Settings** opens Settings.
@@ -67,7 +67,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 - <kbd>F1</kbd> opens this guide from the main window or the chat console. Search it with the box above the contents (<kbd>Ctrl+F</kbd> or <kbd>Ctrl+E</kbd> there), and go back to the previous chapter with <kbd>Alt+Left</kbd>.
 - <kbd>Ctrl+/</kbd> lists the keyboard shortcuts, with a few mouse tricks.
 - **More options → Take the tour** replays the tour.
-- **Settings → Accounts → Service limits** lists what each service can't do.
+- [What each service can do](#services) lists what each service can and can't do.
 - In the chat console, `/help` lists commands and `/help command` shows a command's manual page.
 - **Settings → Troubleshooting** has the diagnostic logs and Connection health; see [Troubleshooting](#troubleshooting).
 
@@ -134,7 +134,7 @@ Press <kbd>Ctrl+/</kbd> any time for the list inside the app. Shortcuts don't ru
 <kbd>Ctrl+K</kbd> opens **Commands**: type part of what you want and press <kbd>Enter</kbd>. Every word you type must appear in the command's name; up to 40 matches show, with their shortcut on the right. It offers:
 
 - **Search messages**, **Chat console**, **Saved messages**, **New chat**, **Open unread**, and **Quick replies…**
-- **Settings**, and each Settings page by name: *Settings → Accounts*, *Notifications*, *Messaging*, *Appearance*, *Startup and tray*, *Storage and backup*, *Troubleshooting*, *About*.
+- **Settings**, and each Settings page by name: *Settings → Connections*, *Notifications*, *Messaging*, *Appearance*, *Startup and tray*, *Storage and backup*, *Troubleshooting*, *About*.
 - **Check for updates**, **Connection health**, **Show service badges** or **Hide service badges**, **Keyboard shortcuts**, **Help guide** and **Take the tour**.
 - **Pause notifications for 1 hour**, **Pause notifications until tomorrow morning**, or **Resume notifications** while paused.
 - **Open Instagram in browser**, and the same for Messenger, Google Messages and Google Voice.
@@ -513,7 +513,7 @@ Open it with **Search messages…** (More options or Commands), <kbd>Ctrl+F</kbd
 
 ### What search covers {#search-coverage}
 
-- **Google Messages**: Messages quietly downloads your older texts into an encrypted archive, on your Messages Server if you use one, so they're searchable even offline. Turn that off with **Search older Google Messages** in [Storage and backup](#settings-storage); what's saved stays searchable.
+- **Google Messages**: Messages quietly downloads your older texts into an encrypted archive, on your Messages Server if you use one, so they're searchable even offline.
 - **Messenger**: all the history Messages keeps for it.
 - **Instagram** and **Google Voice**: what's been loaded, recent conversations Messages keeps, and Voice's call records. A result older than the newest 1,000 messages in a conversation can't be jumped to.
 - Opening a result never marks a conversation read.
@@ -765,53 +765,45 @@ Back to conversations reverses the navigation: Settings moves down and the inbox
 
 ### Accounts {#settings-accounts}
 
-Each service's card shows the account and a status: **Connected**, **Signed in** (**Paired** for Google Messages) or **Not connected**.
+Each service's card has a row for each of its accounts, in the same way for every service: the account (the phone's number for Google Messages, the account name for Messenger and Instagram, the number for Google Voice), with a status beside it: **Connected**, **Signed in** (**Paired** for Google Messages) or **Not connected**. A service with no account says **No account**.
 
 - **Google Messages**: **Pair** the first time, then **Renew sign-in** (which keeps the pairing on your phone) or **Pair again** if your phone dropped this PC. **Connect**, **Reconnect** or **Refresh** reconnects. There's no Sign out: unpair from your phone. A red line warns when Google Messages isn't the default SMS app on your phone.
-- **Messenger**: **Connect**, **Reconnect**, **Refresh** and **Sign out**. **Encrypted conversations** shows **On**, or a **Turn on encrypted conversations** button if it didn't turn on by itself. While they're on but their connection isn't, it reads **Connecting**, **Not connected**, **Removed** (Facebook no longer lists this PC) or **Keys missing** (this PC's encrypted-conversation keys are gone; Messages never adds a Messenger device by itself, so the button to turn encrypted conversations on comes back for you to press), with a line saying what to do. After **Sign out** it reads **Off**: the keys stay, so signing in again uses the same device.
+- **Messenger**: **Connect**, **Reconnect**, **Refresh** and **Sign out**. Encrypted conversations turn on by themselves when you sign in, and the card mentions them only if something is wrong. While they're on but their connection isn't, it reads **Connecting**, **Not connected**, **Removed** (Facebook no longer lists this PC) or **Keys missing** (this PC's encrypted-conversation keys are gone; Messages never adds a Messenger device by itself, so the button to turn encrypted conversations on comes back for you to press), with a line saying what to do. After **Sign out** it reads **Off**: the keys stay, so signing in again uses the same device.
 - **Instagram**: Connect, Reconnect, Refresh and Sign out.
-- **Google Voice**: **Add Google Voice account**, then a row per number with its state, its recent conversations and its own **Sign out**.
-- **Service limits → View…** lists what each service can't do, and which settings stay in Messages. See [What each service can do](#services).
-- **Messages Server → Manage…** connects Messages to a Messages Server you run yourself, and moves to it. See [Using a Messages Server](#messages-server).
+- **Google Voice**: **Add Google Voice account**, then a row per number with its status and its own **Sign out**.
+- **Messages Server → Manage…** is the first card. It connects Messages to a Messages Server you run yourself; on a PC that already uses one, it opens the server's page, where accounts are connected and removed. See [Using a Messages Server](#messages-server).
 
 Signing out deletes that service's saved sign-in on this PC; scheduled messages for it stay, unsent. With a Messages Server it signs out on the server, so the service leaves every device that uses it, and Messages asks first.
 
 ### Using a Messages Server {#messages-server}
 
-**Settings → Accounts → Messages Server → Manage…**
+**Settings → Connections → Messages Server → Manage…**
 
-A Messages Server is a small program you run at home so Messages stays connected all day. The dialog has three states.
+A Messages Server is a small program you run at home so Messages stays connected all day. The dialog has two states; once your accounts run on the server, **Manage…** opens its page with no dialog.
 
-- **Not set up.** Enter the server's **Address** (its name or address and its port, like `server.lan:8787`) and choose **Ask to join**. The server's owner approves this PC on the server's page, or in **Manage server…** on the PC that manages the server. While it waits, this PC shows a short code, and the owner approves only if the code there is the same. Once approved, the owner is given a **finish code**: type it here and choose **Finish** (within 5 minutes). It proves the approval came from the real server, so this PC keeps nothing until it matches. The request holds for 10 minutes, and **Cancel** stops asking. Asking works only from the server's home network. Or choose **Use a pairing code instead**, enter the server's **Fingerprint** and a **Pairing code** from its page or from Manage server, and choose **Connect**. Have the line from the server's **Add a PC** (on its page, or **Make a pairing code** in Manage server on the PC that manages it)? Paste it into **Address**: the address, fingerprint and pairing code fill in by themselves, and **Connect** joins. A phone's join link pasted there works the same way. Either way Messages checks that the server answers, then remembers it. Nothing moves yet. A new server with no device yet takes requests only once its page has a password; otherwise its first device uses the pairing code shown when the server was installed.
-- **Connected.** A card shows the server, with **Manage server…**. **Move to this server…** puts your accounts and your choices (pins, mutes, names and the like) on it; from then on every account is used through the server. Messenger and Instagram move as this PC's own sign-ins: nothing signs in again and no new Messenger device is added (Messenger keeps its encrypted-conversation keys and its saved history). Once the server runs them they are removed from this PC. Google Messages and Google Voice are not carried over; sign them in on the server itself. Your messages still come from the services themselves, and this PC keeps its own copy of your choices. **Forget this server** removes the saved details.
-- **Moved.** The card says all your accounts run on the server. **Move back to this PC…** undoes the move: your choices, Messenger and Instagram come back here and Messages goes back to using every account on this PC. If the server can't be reached, nothing changes and the accounts stay on it.
+- **Not set up.** Enter the server's **Address** (its name or address and its port, like `server.lan:8787`) and choose **Ask to join**. The server's owner approves this PC on the server's page. While it waits, this PC shows a short code, and the owner approves only if the code there is the same. Once approved, the owner is given a **finish code**: type it here and choose **Finish** (within 5 minutes). It proves the approval came from the real server, so this PC keeps nothing until it matches. The request holds for 10 minutes, and **Cancel** stops asking. Asking works only from the server's home network. Or choose **Use a pairing code instead**, enter the server's **Fingerprint** and a **Pairing code** from its page, and choose **Connect**. Have the line from **Add a PC** on the server's page? Paste it into **Address**: the address, fingerprint and pairing code fill in by themselves, and **Connect** joins. A phone's join link pasted there works the same way. Either way Messages checks that the server answers, then remembers it. Nothing moves yet. A new server takes requests only once its page has a password; until then a device uses the pairing code shown when the server was installed.
+- **Connected.** A card shows the server, with **Manage server…**, which opens its page. **Forget this server** removes the saved details.
 
-The move refuses, and changes nothing, while the server has a Messenger or Instagram sign-in of its own (sign it out of the server first), or while Messenger's saved data on this PC was left half-written (open Messages once and quit it from the tray). **If the server is gone for good**, press Windows+R, type `Messages.exe --move-back --without-server` and press Enter (it asks you to type `DISCARD`). This PC goes back to its own copy of your choices, but Messenger and Instagram were removed from this PC when the server took them, so you sign in to them again here; signing in to Messenger again adds a new device, and the server's old one may stay in your Facebook device list for you to remove.
+**If the server is gone for good**, set up a new server, restore its latest backup from the new server's page, and connect your accounts there. Signing in to Messenger again adds a new device, and the old one may stay in your Facebook device list for you to remove. If Messages says a move didn't finish, it offers to finish it when it opens.
 
-**If a move stops half way** (the PC lost power, or the server stopped answering), Messages offers to finish a move to the server the next time it opens, and **Move back to this PC…** finishes a move back when you choose it again. Should neither be offered, press Windows+R and run `Messages.exe --move-to-server` to finish a move there, or `Messages.exe --move-back` to finish a move back.
-
-Only the PC paired with the server first can sign accounts in or out of it (in **Settings → Accounts**), pair Google Messages there or turn on Messenger's encrypted conversations there. Other devices read and send as usual, and are told so if they try. How a sign-in on the server looks is in [Signing in on the server](#server-sign-in).
+Accounts are connected and removed on the server's page, and nowhere else: on a PC that uses a server, **Settings → Connections** shows how each one stands, and choosing one, or **Manage…** on the Messages Server card, takes you there. No device outranks another, whichever joined first: each reads and sends, and managing the server takes the page's password. How a sign-in on the server looks is in [Signing in on the server](#server-sign-in).
 
 Moving, either way, asks first, then closes Messages the way **Quit** in the tray does (drafts are saved, and you are asked about anything still sending), does the move, tells you how it went and opens Messages again by itself. If you have scheduled messages waiting, or changes that haven't reached the server yet, the move stops and says so; nothing changes and Messages opens as it was.
 
-**Manage server…** (the button on the server's card), in the Connected and Moved states, is for the PC that was paired with the server first (any other PC is told so). It shows:
+**Manage…** (the button on the server's card) opens the server's page in your browser, which warns about the page's certificate the first time because the server makes its own. While Messages runs on a server, a notice says when a device asks to join. **More options** beside it holds **This PC was removed from the server?**, which takes a new pairing code from the page and joins again, and **The server moved to a new address?**.
 
-- **Waiting to join**, when a device has asked: its name, the code it shows, the network address it asked from, and **Approve…** and **Deny**. Approve only a device that shows the same code; you are asked once more, with the code in front of you. Approving gives you a finish code for that device's person to type there; it joins once they do. While Messages runs on the server, a notice says when a device asks to join.
-- **Server**: how long it has been running and its version.
-- **Notifications on phones**, from a server that sends them: one line saying whether they are on, when one last went, how many phones signed up, and any phone that is failing, whose version of Messages the server's Firebase project has no app for, or that never signed up. They are set up and tested on the server's own page, which walks you through Firebase and sends a test to a phone of your choosing.
-- **Devices**: every device paired with the server, with **Rename** and **Remove** (a removed device stops connecting at once; nothing on it is deleted, and a PC that used the server for its accounts has to join again). This PC has no **Remove**: use **Forget this server** to stop using the server here. **Add a phone** shows a QR code to scan with Messages on the phone (choose **I have a server**, then **Scan your server's code**): it holds the server's address, its name on your Tailscale network, its fingerprint and a one-time pairing code, so the phone joins with nothing to type or match. The code works once, for 10 minutes; **New code** makes another in its place, and **Copy the link** copies it as text. **Make a pairing code** shows a one-time pairing code with the server's address and fingerprint, and the same three as one line to paste into a new PC's **Address**. A PC the server no longer knows is told so in its own **Manage server…**, and enters a new code there with **Pair again**.
-- **Accounts**, each with **Remove** after a confirmation. Removing an account takes it off the server: the server signs out of it and forgets what it kept, so every device that uses the server stops showing it until it is signed in on the server again. Nothing changes at the service itself or on your phone, and your saved messages stay. For Messenger, the server would join as a new device if you signed in there again. Google Messages is removed by unpairing the server on your phone (Google Messages → Device pairing). An account in an unfinished move can't be removed there. Once **Move back to this PC…** finishes, **Remove** can forget the server's moved-away copy; the account and its saved messages on this PC stay as they are.
+The server also has a page of its own, for a browser on your home network: open `https://` and the server's address with port 8787. Its first visit asks for the setup code the server printed when it started, then sets the page's password, and walks through Tailscale, your accounts, a phone, notifications, a PC and backups (each can be skipped; a checklist on the page keeps what is left). It shows the devices waiting to join (approving one asks for the password again and gives you a finish code for that device's person to type there), the server's version and its address and fingerprint, its accounts and devices, what the server keeps on disk (**Storage**), removes an account or a device (each asks for the password again), renames a device, and has **Add a phone** and **Add a PC**. Its **Tailscale** card signs the server in to your Tailscale network, ticks off each setting it needs, and can do them for you with **Fix it for me**. **Pause requests** on that page stops requests to join, including those already waiting, until you choose **Allow requests**. The pause survives a server restart; paired devices and pairing codes still work. A device denied or abandoned must wait five minutes before asking again.
 
-The server also has a page of its own, for a browser on your home network: open `https://` and the server's address with port 8787. Its first visit asks for the setup code the server printed when it started, then sets the page's password, and walks through Tailscale, your accounts, a phone, notifications, a PC and backups (each can be skipped; a checklist on the page keeps what is left). It shows the devices waiting to join (approving one asks for the password again), the server's version and its address and fingerprint, its accounts and devices, removes a device (useful when the PC that managed the server is gone), and has **Add a phone** and **Add a PC**. Its **Tailscale** card signs the server in to your Tailscale network, ticks off each setting it needs, and can do them for you with **Fix it for me**. **Pause requests** on that page stops requests to join, including those already waiting, until you choose **Allow requests**. The pause survives a server restart; paired devices and pairing codes still work. A device denied or abandoned must wait five minutes before asking again.
+Removing an account takes it off the server: the server signs out of it and forgets what it kept, so every device that uses the server stops showing it until you connect it again. Nothing changes at the service itself or on your phone, and your saved messages stay. For Messenger, the server would join as a new device if you signed in there again. Google Messages is removed by unpairing the server on your phone (Google Messages → Device pairing). An account in an unfinished move can't be removed. Once **Move back to this PC…** finishes, **Remove** forgets the server's paused copy; the account and its saved messages on the PC stay as they are.
 
 ### Signing in on the server {#server-sign-in}
 
-A Messages Server that has a browser of its own signs your accounts in there, so the sign-in belongs to the server rather than to this PC. **Pair** (Google Messages), **Add Google Voice account**, and **Connect** for Messenger and Instagram then open that browser in a window here, headed "This is Messages Server's own browser". You sign in on the service's own page as you would anywhere.
+A Messages Server signs your accounts in in its own browser, so the sign-in belongs to the server rather than to any PC. **Connect** on the Accounts card of the server's page opens that browser on the page. You sign in on the service's own page as you would anywhere.
 
 - **Google Messages and Google Voice** finish by themselves once you're signed in; the window can stay up to half a minute longer while the server notices.
 - **Messenger and Instagram** wait for you: choose **Done** once the service has finished with you (it may still ask whether to trust the browser, or for a code). The server then closes its browser, checks the sign-in and connects the account; Messenger turns on encrypted conversations by itself, as on this PC. If you choose Done too early, Settings says the sign-in didn't finish: choose **Connect** to start again.
 - **Cancel**, or closing the window, stops the sign-in, and the server keeps nothing of it. Each Messenger or Instagram sign-in uses a fresh, empty browser on the server that is deleted afterwards. Instagram's inbox stays blocked in it, so nothing is marked read.
-- A server without a browser of its own (a Windows server, or an older one) opens this PC's own sign-in window instead, as before.
+- A Windows server has no browser of its own: **Connect** on its page, in a browser on that PC, opens Messages' own sign-in window there. A Linux server needs Google Chrome and a network of its own, and its page says so if it lacks them.
 
 ### This PC's own Messages Server {#own-server}
 
@@ -820,7 +812,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 - **Switching.** Once a version of Messages turns this on, a PC that runs Messages on its own switches by itself the next time Messages opens: it first copies what the server will use into the `Backups` folder of the Messages data folder, then moves your choices onto the server, which signs in with the same accounts already on this PC (nothing to sign in again). If anything is scheduled or still sending, it waits for a later launch. If it can't switch, Messages runs as before and says so once.
 - **Starting.** The server starts when you sign in to Windows (it appears as "Messages Server" in Task Manager's Startup apps, where you can turn it off). **Start with Windows** still starts Messages itself in the tray, which is what shows your notifications.
 - **Quitting.** **Quit Messages** in the tray closes Messages only. **Stop Messages Server** closes both.
-- **Its page.** **Manage server** in the tray, or in **Settings → Accounts → Messages Server** (which says this PC runs its own server, at `127.0.0.1`), opens the server's page in your browser, already signed in. Your browser warns that the page's certificate isn't one it knows, because the server makes its own; it's on this PC only. The page is where phones join (approve requests and remove devices there), where Tailscale is turned on or off, and where notifications and backups are set up. **Connect** on its Accounts card opens the service's own sign-in in Messages.
+- **Its page.** **Manage server** in the tray, or in **Settings → Connections → Messages Server** (which says this PC runs its own server, at `127.0.0.1`), opens the server's page in your browser, already signed in. Your browser warns that the page's certificate isn't one it knows, because the server makes its own; it's on this PC only. The page is where phones join (approve requests and remove devices there), where Tailscale is turned on or off, and where notifications and backups are set up. **Connect** on its Accounts card opens the service's own sign-in in Messages.
 - **Backups.** The server backs up once a day into the folder you choose in the page's **Backups** card: any folder on this PC, a mapped drive, a network share like `\\nas\backups`, or a OneDrive folder. A PC that already backed up keeps its folder and password.
 - **Your phone** reaches the server through Tailscale once the server's door on your Tailscale network is turned on.
 
@@ -840,7 +832,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 | **Undo send** | Off, 5 seconds or 10 seconds to take a message back. See [Undo send](#undo-send) | Off |
 | **New texts** | Which service New chat uses for phone numbers when it searches all services. Shown when Google Messages and Google Voice are both connected. See [New chats](#new-chats-and-groups) | Google Messages |
 | **Private reading** | Per service: read without sending read receipts or typing. See [Private reading](#private-reading) | Off |
-| **GIF search** | Your free GIPHY API key, saved securely, turns on the GIF tab. **Save key** / **Remove key** | No key |
+| **GIF search** | **Add key…** saves your free GIPHY key, which turns on the GIF tab. **Remove key…** takes it away | Off |
 
 ### Appearance {#settings-appearance}
 
@@ -869,7 +861,6 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 |---|---|---|
 | **Backup and restore** | **Manage…** opens Backup. See [Backup](#backup-and-restore) | Off |
 | **Storage** | **Manage…** shows disk use and clears cached pictures. See [Storage](#storage) | |
-| **Search older Google Messages** | Downloads older texts gradually into an encrypted search archive on this PC | On |
 | **Saved drafts** | How many conversations have unsent text, and **Clear drafts…** | |
 
 ### Troubleshooting {#settings-troubleshooting}
@@ -878,7 +869,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 |---|---|---|
 | **Diagnostic logs** | **View logs** and **Connection health**. See [Troubleshooting](#troubleshooting) | |
 | **Record diagnostics** | Save troubleshooting information while Messages runs | On |
-| **Reset Google Messages local data** | **Reset…**, for when Google Messages conversations show the wrong person | |
+| **Reset Google Messages local data** | **Reset…**, shown only when Google sends have stopped because your phone renumbered its conversations | |
 
 ### About {#settings-about}
 
@@ -900,7 +891,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 
 ### Your Messages Server's backup {#server-backup}
 
-When Messages uses a Messages Server, the server keeps the backups: **Settings → Storage and backup → Backup and restore** shows how its backup stands (the last backup and its size, or why it failed), and **Manage…** opens it.
+When Messages uses a Messages Server, the server keeps the backups and its page manages them. **Settings → Storage and backup → Backup and restore** appears only when they want a look: it shows how the backup stands (the last backup and its size, or why it failed), and **Manage…** opens it.
 
 - Once a day the server writes one encrypted file into the folder it was given (with Docker, a folder mapped to `/backups`, such as an Unraid share). It holds your conversations, the server's own settings, its certificate and its devices, saved photos, scheduled messages, and Messenger's history. It never holds a sign-in: after a restore you sign in to each account again.
 - The server keeps its five newest backups, and never removes the newest one that holds Messenger's history. It reads the newest back a day after writing it, then weekly.
@@ -914,7 +905,7 @@ When Messages uses a Messages Server, the server keeps the backups: **Settings �
 - Every scheduled message is held for you to send or drop, whether or not its time has come: the backup can't know which you cancelled or sent early since. Nothing that was sending is sent again.
 - Sign in to each account again on the server; it then fills in what arrived meanwhile, and adds Messenger's history once Messenger is signed in.
 - A backup made by a PC (before it used a server) restores onto a server too: its Messenger history and choices are added once those accounts are signed in on the server.
-- If the server moved to new hardware at a new address, **Settings → Accounts → Messages Server → Manage… → The server moved to a new address?** changes only the address and keeps this PC's pairing, once the old address no longer answers; the server's certificate proves it's the same server.
+- If the server moved to new hardware at a new address, **Settings → Connections → Messages Server → More options → The server moved to a new address?** changes only the address and keeps this PC's pairing, once the old address no longer answers; the server's certificate proves it's the same server.
 
 ### Export a conversation {#export}
 
@@ -928,9 +919,11 @@ When Messages uses a Messages Server, the server keeps the backups: **Settings �
 - **Clear pictures…** removes cached pictures and videos; they download again when next shown, though some older ones may no longer be available from the service.
 - **Saved photos** are the copies kept for saved messages. **Clear saved photos…** removes them without unsaving anything; Clear pictures never touches them.
 
+A PC that uses a Messages Server lists only what is on the PC, and **See what your server keeps** opens the server's page, which shows the rest.
+
 ### Reset Google Messages local data {#google-reset}
 
-For when Google Messages conversations show the wrong person, or your phone renumbered its conversations (Messages then stops Google sends and says so). It clears what Messages keeps for Google Messages (pins, labels, drafts, reminders, saved pictures and the search copy), on every device if you use a Messages Server, and takes Google conversations out of merges. Nothing in Google Messages on your phone is deleted, and names and photos you set for people are kept.
+If your phone renumbers its conversations, Messages stops Google sends and says so, and this appears in **Settings → Troubleshooting**. It clears what Messages keeps for Google Messages (pins, labels, drafts, reminders, saved pictures and the search copy), on every device if you use a Messages Server, and takes Google conversations out of merges. Nothing in Google Messages on your phone is deleted, and names and photos you set for people are kept.
 
 ### Where your data lives {#data-folder}
 
@@ -940,18 +933,17 @@ Everything is in `%LOCALAPPDATA%\Messages for Windows` on your PC. Uninstalling 
 
 ### Tools {#troubleshooting-tools}
 
-- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source** (Messages, each service, the run before this one, and Google Messages' sign-in history; on the PC that manages a Messages Server, the server's logs too). **Following** keeps it live; **Copy**, and **Save all logs…** into one file to send to whoever helps you. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
+- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source** (Messages, each service, the run before this one, and Google Messages' sign-in history; on a PC that uses a Messages Server, the server's logs too). **Following** keeps it live; **Copy**, and **Save all logs…** into one file to send to whoever helps you. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
 - **Connection health** (also in Commands) shows each service's state, its last activity and last message sent, and how long its connection has been running. **Restart** reconnects from the saved sign-in; it waits for any message still sending and asks before leaving one's outcome unknown. It never pairs again or signs in afresh.
 - **Send test** (Settings → Notifications) checks notifications without contacting anyone.
 - The console's `/diag` and `/status` summarize everything at once.
 
 ### Common problems {#common-problems}
 
-- **"Google stopped accepting this computer's sign-in"**: Settings → Accounts → **Renew sign-in**, with the same Google account. Messages normally keeps it renewed by itself; your phone keeps the pairing.
+- **"Google stopped accepting this computer's sign-in"**: Settings → Connections → **Renew sign-in**, with the same Google account. Messages normally keeps it renewed by itself; your phone keeps the pairing.
 - **"Google Messages is no longer paired" / Pair again**: if **Messages for Windows** is still under Device pairing on your phone, choose **Renew sign-in**; if it's gone, **Pair as a new device**.
 - **Google sends fail with "couldn't reach your phone"**: get your phone online, with Google Messages able to run.
 - **"Not the default SMS app"**: make Google Messages the default SMS app on your phone.
-- **Google Messages conversations show the wrong person**: [Reset Google Messages local data](#google-reset).
 - **A message says "May not have sent"**: check the conversation on another device before sending again. Messages never resends by itself.
 - **Facebook wants to confirm it's you**: finish its steps at facebook.com, then **Connect**.
 - **"Facebook has signed Messages out"** or **"Instagram has signed Messages out"**: **Sign out**, then **Connect**.
@@ -959,10 +951,10 @@ Everything is in `%LOCALAPPDATA%\Messages for Windows` on your PC. Uninstalling 
 - **Instagram messages arrive late**: by design, Instagram is checked every few seconds — up to about 20 seconds, a minute while Messages is hidden or the PC is locked, and up to ten minutes for older conversations.
 - **An Instagram conversation stays unread**: it's a spam or request conversation, which Messages never marks read so the sender isn't told.
 - **An Instagram message request is missing**: requests aren't shown; open Instagram to see and accept them.
-- **A Messenger encrypted chat can't send**: turn on encrypted conversations in Settings → Accounts, or wait for Messenger to reconnect.
+- **A Messenger encrypted chat can't send**: wait for Messenger to reconnect. If Settings → Connections says encrypted conversations aren't on, sign in to Messenger again on the server's page.
 - **Older Messenger encrypted messages are missing**: encrypted messages from before this PC was registered stay in Messenger's own backup and can't come here.
 - **No notifications**: Messages must be running (keep it in the tray, or start it with Windows). Check Settings → Notifications, the service's switch in Sounds and privacy, the conversation's mute, and whether notifications are paused. Then try **Send test**.
-- **An option is missing from a menu**: that service doesn't offer it; see Service limits.
+- **An option is missing from a menu**: that service doesn't offer it; see [What each service can do](#services).
 - **Pins or mutes didn't show in a service's own app**: they stay in Messages by design. Without a Messages Server, they're on this PC only and don't reach Messages on your phone either.
 - **Windows warns about the installer**: the installer isn't signed, so Windows doesn't recognise it; choose **More info → Run anyway**.
 - **"Messages closed unexpectedly last time"**: choose **Save logs** and send the file to whoever helps you.
@@ -990,31 +982,31 @@ Everything is in `%LOCALAPPDATA%\Messages for Windows` on your PC. Uninstalling 
 | Accounts | One phone | One | Many numbers | One |
 | New messages arrive | At once (phone online) | At once | At once | Within about 20 seconds |
 
-Everywhere: Messages doesn't place or answer calls, and can rename a group or change its members only in Messenger's ordinary groups. Pins, mutes, unread marks, labels and your names for people stay on this PC.
+Everywhere: Messages doesn't place or answer calls, and can rename a group or change its members only in Messenger's ordinary groups. Search can't jump to a result older than a conversation's newest 1,000 messages on Instagram or Google Voice, or in a Google Messages conversation that's still being indexed, though it still finds it. Pins, mutes, labels, unread marks, reminders and names you give conversations stay in Messages and change nothing in the services or their own apps; devices that use the same server share them. A conversation muted in Messenger's own app shows muted here too, and unmuting it here leaves it muted there.
 
 ### Google Messages {#service-google-messages}
 
 - **Needs** an Android phone with Google Messages, kept online, and Google Messages as its default SMS app.
-- **Pairing**: Settings → Accounts → **Pair**, then Device pairing on the phone and the matching emoji. The phone shows the PC as **Messages for Windows**; Messages for web keeps working beside it.
+- **Pairing**: **Connect** on the server's page, then Device pairing on the phone and the matching emoji. The phone shows the PC as **Messages for Windows**; Messages for web keeps working beside it.
 - **Sign-in**: Messages keeps the Google sign-in renewed by itself. If that ever fails, **Renew sign-in** keeps the pairing.
 - **Works**: texts, MMS and RCS, photos (each its own message), GIFs, files, voice messages, replies in RCS chats, reactions, delete for me, read receipts in RCS, typing, archive, delete a conversation, new chats and groups up to 20, encryption locks, link previews, contact photos, the sending SIM as a chip in the composer on dual-SIM phones, and a searchable archive of older texts.
 - **Doesn't**: edit, unsend, a "New messages" line, choosing RCS or SMS (your phone decides), choosing a SIM (the chip only shows it), or managing groups.
 
 ### Messenger {#service-messenger}
 
-- **Sign in** with Facebook in its own window; Messages reconnects by itself at every start. Encrypted conversations turn on after a new sign-in, registering this PC as a Messenger device.
+- **Sign in** with Facebook on the server's page; Messages reconnects by itself at every start. Encrypted conversations turn on after a new sign-in, registering this PC as a Messenger device.
 - **Works**: ordinary and encrypted chats, photos, albums, videos, files and GIFs, voice messages, replies, reactions, edit, unsend, read receipts, typing, a "New messages" line, archive, delete a conversation (with its history on this PC), new chats, groups up to 50, renaming ordinary groups and adding or removing their members, and mutes set on your phone. History is kept on this PC, searchable, and included in backups.
-- **Doesn't**: encrypted messages from before this PC was registered, encrypted groups (groups made here are ordinary, and encrypted ones can't be renamed or changed), @mentions, Meta AI, or online status. On encrypted chats a photo's caption goes as a separate message. Shared reels show a preview and a link.
+- **Doesn't**: encrypted messages from before this PC was registered (they stay in Messenger's backup), encrypted groups (groups made here are ordinary, and encrypted ones can't be renamed or changed), removing someone from a group unless you're one of its admins, @mentions, Meta AI, or online status and last-active time. On encrypted chats a photo's caption goes as a separate message. Shared reels show a preview and a link.
 
 ### Google Voice {#service-google-voice}
 
-- **Add** each number with **Add Google Voice account** and sign in at voice.google.com. Each number has its own filter, notification switch and sign-out, and reconnects by itself if it stops.
+- **Add** each number on the server's page and sign in at voice.google.com. Each number has its own filter, notification switch and sign-out, and reconnects by itself if it stops.
 - **Works**: texts, photos up to 2 MB, read state both ways, archive, delete a conversation (from your Google Voice account), Not spam, call history, voicemail with transcripts (played and saved on demand), new chats to contacts or any number, and contact photos.
-- **Doesn't**: voice messages, replies, reactions, edits, unsend, read receipts, groups, marking spam, or placing calls. Spam stays out of every other view, count and notification.
+- **Doesn't**: voice messages, replies, reactions, edits, unsend, read receipts, groups, GIFs over 2 MB, marking spam, or placing calls. Spam stays out of every other view, count and notification.
 
 ### Instagram {#service-instagram}
 
-- **Sign in** with your Instagram username and password (not Facebook). Messages reconnects at every start.
+- **Sign in** on the server's page with your Instagram username and password (not Facebook). Messages reconnects at every start.
 - **Works**: text, photos, files and video, replies, six reactions, editing your own text, unsend for everyone, read receipts, typing in inbox chats, a "New messages" line, received voice messages, GIFs and stickers, people search, new chats (sending a first message where none exists) and groups up to 32.
-- **Doesn't**: message requests (not shown at all), archiving on Instagram (archive hides it on this PC), deleting a conversation, taking a chat out of spam, recording voice messages, or showing an encryption lock. Spam and requests are never marked read.
+- **Doesn't**: message requests (not shown at all: open Instagram to see or accept one, since replying accepts it), archiving on Instagram (archive hides it on this PC), deleting a conversation, taking a chat out of spam, going to a quoted message that isn't loaded yet (scroll up to load it), playing shared reels (they show a preview and a link), recording voice messages, or showing an encryption lock. Spam and requests are never marked read.
 - **Timing**: new messages take up to about 20 seconds, about a minute while Messages is hidden or the PC is locked, and changes in older conversations up to ten minutes. Nothing that arrived while Messages was closed is announced as a notification.

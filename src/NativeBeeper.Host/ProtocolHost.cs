@@ -35,24 +35,22 @@ namespace NativeBeeper.Host;
 /// <param name="Scheduled">Given (the two servers), with a shared state and an identity, the host keeps its clients' scheduled sends and fires them itself, with every
 /// client closed, and serves <c>scheduled.*</c> (stage 6 slice 11, owner D6, <see cref="HostScheduledSends"/>). Null (the app's in-process host and the loopback, whose
 /// window keeps and fires its own schedule) fires none.</param>
-/// <param name="RemoteSignIn">Given (the Linux server run with Google Messages and a headed browser), the host signs Google Messages in in a browser of its own, shown in the client's window
-/// (<c>accounts.google.remoteSignIn</c>, protocol 12, SWITCHBOARD.md 5.4), and says so in its state. Null serves neither method and says nothing.</param>
+/// <param name="RemoteSignIn">Given (the Linux server run with Google Messages and a headed browser), the host signs Google Messages in in a browser of its own, shown on the server's page
+/// (SWITCHBOARD.md 5.4 and 10.6). Null offers none.</param>
 /// <param name="BrowserOutOfDate">Given (the Linux server run with its own Chrome), asked every time the state is built whether that Chrome has gone unrenewed past its age (protocol 14), whether or not the sign-in in it
 /// is offered. Null, and the sign-in port's own answer, say nothing.</param>
-/// <param name="QrPairing">Given (the Linux server run with Google Messages), the host pairs Google Messages by QR code (<c>accounts.google.qrPairing</c>, protocol 13, SWITCHBOARD.md 5.4), needing
-/// no browser, and says so in its state. Null serves neither method and says nothing.</param>
 /// <param name="AccountMove">Given (the Linux server), the host takes Messenger and Instagram as the PC's own device and session (<c>accounts.move.*</c>, protocol 16, SWITCHBOARD.md stage 6 slice 13). Null serves none.</param>
 /// <param name="AccountGate">Given with <paramref name="AccountMove"/>, asked before the Messenger and Instagram ports connect, restore, turn encryption on or sign in: false while a move is staged or the account has moved away. Null runs both as before.</param>
-/// <param name="VoiceRemoteSignIn">Given (the Linux server run with its own Chrome), the host signs Google Voice in in that Chrome on a profile of the account's own, shown in the client's window (<c>accounts.voice.remoteSignIn</c>, protocol 15), and says so in
+/// <param name="VoiceRemoteSignIn">Given (the Linux server run with its own Chrome), the host signs Google Voice in in that Chrome on a profile of the account's own, shown on the server's page (<c>accounts.voice.remoteSignIn</c>, protocol 15), and says so in
 /// its state. Null serves no such method and says nothing.</param>
 /// <param name="SavedPhotos">Given with a shared state (the two servers), the host keeps the originals of its clients' saved messages' photos itself and serves them to
 /// whichever device opens one (stage 6 slice 8, <see cref="HostSavedPhotos"/>). Null (the app's in-process host, whose window keeps its own) keeps none.</param>
-/// <param name="Logs">Given (the Linux server), the host gives its own logs, by a name from a fixed list, to its owner device (<c>host.logs</c>, protocol 18). Null serves none.</param>
-/// <param name="Admin">Given (the Linux server), the host serves its owner device its status, its accounts and their removal (<c>host.status</c>, <c>host.accounts</c>, <c>host.removeAccount</c>, protocol 20). Null serves none.</param>
+/// <param name="Logs">Given (the Linux server), the host gives its own logs, by a name from a fixed list, to any paired device (<c>host.logs</c>, protocol 18). Null serves none.</param>
+/// <param name="Admin">Given (the Linux server), the host serves its status, its accounts and their removal (<c>host.status</c>, <c>host.accounts</c>, <c>host.removeAccount</c>, protocol 20). Null serves none.</param>
 /// <param name="WholeHistory">Given (the two servers), the host keeps every conversation whole in this store (<see cref="ConversationHistory"/>, SWITCHBOARD.md stage 8), answers its
 /// clients' history reads from it and serves <c>history.*</c> (protocol 24). Null (the app's in-process host and the loopback) keeps none and reads the services as before.</param>
 /// <param name="Backup">Given (the Linux server), the host serves its own backup (<c>server.backup.*</c>, protocol 26). Null serves none.</param>
-/// <param name="MetaRemoteSignIn">Given (the Linux server run with its own Chrome), the host signs Messenger and Instagram in in that Chrome on a throwaway profile, shown in the client's window
+/// <param name="MetaRemoteSignIn">Given (the Linux server run with its own Chrome), the host signs Messenger and Instagram in in that Chrome on a throwaway profile, shown on the server's page
 /// (<c>accounts.remoteSignIn</c>, protocol 27), and says which in its state. Null serves neither and says nothing.</param>
 internal sealed record ProtocolHostOptions(
     MessagingRouter Messaging, DirectoryRouter Directory, MediaRouter Media, TypingRouter Typing,
@@ -61,7 +59,7 @@ internal sealed record ProtocolHostOptions(
     IAccessTokenStore? HostTokens = null, IOperationJournalStore? JournalStore = null, IKeptHistorySearch? KeptHistory = null, IIncomingCards? IncomingCards = null,
     HostClientState? ClientState = null, string? UploadFolder = null, RestoreOnce? Restores = null, HostUnavailablePorts? Unavailable = null,
     SharedStateStore? SharedState = null, HostUnarchive? IncomingUnarchive = null, SavedPhotos? SavedPhotos = null, HostScheduled? Scheduled = null,
-    IRemoteSignInHost? RemoteSignIn = null, IQrPairingHost? QrPairing = null, Func<bool>? BrowserOutOfDate = null, IRemoteSignInHost? VoiceRemoteSignIn = null,
+    IRemoteSignInHost? RemoteSignIn = null, Func<bool>? BrowserOutOfDate = null, IRemoteSignInHost? VoiceRemoteSignIn = null,
     IAccountMove? AccountMove = null, IAccountGate? AccountGate = null, IHostLogs? Logs = null, IServerAdmin? Admin = null, IPrivateStateStore? ConversationSyncStore = null,
     NativeBeeper.Storage.HistoryDatabase? WholeHistory = null, IServerBackup? Backup = null, IRemoteCookieSignInHost? MetaRemoteSignIn = null);
 
@@ -207,9 +205,8 @@ internal sealed class ProtocolHost : IDisposable
         var builder = new HostStateBuilder(new HostStatePorts(messaging, messaging, messaging, media, media, messaging, directory, directory, messengerAccount,
             instagramAccount, googleAccount, voiceAccounts, options.Typing, identity,
             GoogleAbsent: unavailable?.GoogleAbsent == true, VoiceAbsent: unavailable?.VoiceAbsent == true, InstagramAbsent: unavailable?.Instagram is not null,
-            UnarchivesChats: unarchivesChats, FiresScheduled: scheduled is not null, RemoteGoogleSignIn: options.RemoteSignIn is not null, QrPairing: options.QrPairing is not null,
-            ChromeOutOfDate: () => options.RemoteSignIn?.BrowserOutOfDate == true || options.BrowserOutOfDate?.Invoke() == true, RemoteVoiceSignIn: options.VoiceRemoteSignIn is not null,
-            RemoteMessengerSignIn: options.MetaRemoteSignIn?.Offers(RemoteSignInServices.Messenger) == true, RemoteInstagramSignIn: options.MetaRemoteSignIn?.Offers(RemoteSignInServices.Instagram) == true),
+            UnarchivesChats: unarchivesChats, FiresScheduled: scheduled is not null,
+            ChromeOutOfDate: () => options.RemoteSignIn?.BrowserOutOfDate == true || options.BrowserOutOfDate?.Invoke() == true),
             AttachmentBatchRules.ItemLimit);
         var statePublisher = new StatePublisher(eventLog, builder.Build, write: log);
         publisher = statePublisher;
@@ -243,7 +240,7 @@ internal sealed class ProtocolHost : IDisposable
             Diagnostics: options.Diagnostics,
             HelperRestarts: GateRestarts(unavailable?.HelperRestarts ?? new HostHelperRestarter(google, options.Keeper, options.Messenger, options.Instagram, options.VoiceAccounts, log), options.AccountGate), KeptHistory: options.KeptHistory,
             MediaPreparer: media, IncomingCards: options.IncomingCards, ClientState: options.ClientState, Restores: options.Restores,
-            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: options.AccountMove, Logs: options.Logs, Admin: options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, RemoteSignIn: options.RemoteSignIn, QrPairing: options.QrPairing, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
+            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: options.AccountMove, Logs: options.Logs, Admin: options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, RemoteSignIn: options.RemoteSignIn, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
             AccountEnded: (account, key) =>
             {
                 savedPhotos?.Ended(account, key);

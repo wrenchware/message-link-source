@@ -1,8 +1,7 @@
 namespace NativeBeeper.Protocol;
 
-// The server's own administration (SWITCHBOARD.md 4.6), for its owner's Settings → Messages Server → Manage server: what the server is, the accounts it holds,
-// and removing one of them from it. Only the owner device is served (as for host.logs and the account move), only on a connection that negotiated
-// ProtocolVersion.ServerAdmin, and only by a host that has an IServerAdmin (the Linux server). The status and the list are reads; a removal is a journaled
+// The server's own administration (SWITCHBOARD.md 4.6), for its page and for any paired device's reads: what the server is, the accounts it holds,
+// and removing one of them from it, which is the page's alone on a server. Only on a connection that negotiated ProtocolVersion.ServerAdmin, and only by a host that has an IServerAdmin. The status and the list are reads; a removal is a journaled
 // mutation, at most once per operation id and never retried by the host. The answers carry fixed words, counts and times, and the list carries the account
 // names a client already shows in Settings (never logged on either end). Pairing devices, renaming and revoking them are devices.* (ProtocolMethods.Devices.cs).
 public static partial class ProtocolMethods
@@ -88,8 +87,8 @@ public static class AccountRemoveWords
 }
 
 /// <summary>
-/// The host's side of the administration methods. Only the Linux server has one; every other host answers not supported. Who may ask is the dispatcher's business (the
-/// owner device); this port does what it is asked.
+/// The host's side of the administration methods. Only the Linux server has one; every other host answers not supported. Who may ask is the dispatcher's business and the
+/// page's; this port does what it is asked.
 /// </summary>
 public interface IServerAdmin
 {

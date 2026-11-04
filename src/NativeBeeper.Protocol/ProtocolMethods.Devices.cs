@@ -6,8 +6,7 @@ namespace NativeBeeper.Protocol;
 // itself (NetworkPairing.ClaimMethod) is not here: no dispatcher serves it, only the network host's door, to a connection that has no token yet and may do
 // nothing else.
 //
-// A device token is never an admin's: any device may revoke or rename itself, and only the owner (the device paired first of those still paired, PairedDevice.Owner)
-// may revoke or rename another device or open a code for a new one. Anyone else is answered forbidden.
+// A device token is never an admin's: any device may revoke or rename itself. Another device, and a code for a new one, are the page's (protocol 28): every device is answered forbidden.
 public static partial class ProtocolMethods
 {
     /// <summary>The paired devices, the one asking marked <see cref="PairedDevice.Current"/> and the owner <see cref="PairedDevice.Owner"/>.</summary>
@@ -26,7 +25,7 @@ public static partial class ProtocolMethods
     public const string DevicesDenyJoin = "devices.denyJoin";
     /// <summary>
     /// A new pairing code (replacing any open one) as the join link a phone scans and the line a PC pastes (protocol <see cref="ProtocolVersion.JoinLinks"/>, SWITCHBOARD.md
-    /// 10.4): the server's Tailscale machine name and account, the address given or the server's own, its fingerprint and the code. The owner only.
+    /// 10.4): the server's Tailscale machine name and account, the address given or the server's own, its fingerprint and the code. Refused to every device from protocol 28: the page adds devices.
     /// </summary>
     public const string DevicesJoinLink = "devices.joinLink";
 
@@ -62,7 +61,7 @@ public sealed record JoinDenied(bool Denied);
 /// <summary>One paired device as <c>devices.list</c> describes it. Its token never leaves the host, which keeps only a hash of it.</summary>
 /// <param name="Name">What the device called itself when it paired.</param>
 /// <param name="Current">The device asking.</param>
-/// <param name="Owner">The device paired first of those still paired: the one that may revoke others and pair new ones.</param>
+/// <param name="Owner">False from protocol 28, when no device outranks another (the page manages the server). Kept for a client of an older version, whose Manage server reads it.</param>
 public sealed record PairedDevice(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen = null, bool Current = false, bool Owner = false);
 
 public sealed record DeviceIdParams(string Id);
@@ -101,4 +100,7 @@ public interface IPairedDevices
     Task<JoinDenied> DenyJoinAsync(string id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     // Only the network host makes join links (protocol 27).
     Task<JoinLinkIssued> JoinLinkAsync(string? address, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    // The password a move asks for (protocol 28, ProtocolDispatcher.AccountMove.cs). Without a host that says otherwise, this device may not move accounts.
+    Task<bool> MayMoveAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
+    Task<string> AuthorizeMoveAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(AccountMoveAuthorizeWords.NoPassword);
 }

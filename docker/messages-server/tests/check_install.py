@@ -110,7 +110,7 @@ class InstallerChecks(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('No messages-source.tar.gz', result.stderr)
         self.assertFalse(calls)
-        for options, image in [((), 'messages-server:local'), (('--google',), 'messages-server:local-google')]:
+        for options, image in [((), 'messages-server:local')]:
             with self.subTest(options=options):
                 result, calls, template = self.run_install(*options, bundle=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -119,8 +119,7 @@ class InstallerChecks(unittest.TestCase):
                 self.assertIsNone(template)
 
     def test_ghcr_variants_keep_runtime_settings_and_template(self):
-        for options, tag in [((), 'latest'), (('--google',), 'latest-google'),
-                             (('--google', '--chrome-sandbox'), 'latest-google')]:
+        for options, tag in [((), 'latest'), (('--chrome-sandbox',), 'latest')]:
             with self.subTest(options=options):
                 result, calls, template = self.run_install('--ghcr', *options,
                     extra={'MESSAGES_MEMORY': '5g', 'MESSAGES_PIDS_LIMIT': '2345', 'MESSAGES_CPUS': '1.5',
@@ -161,12 +160,9 @@ class InstallerChecks(unittest.TestCase):
                 for flag in ['--stop-timeout=60', '--cap-drop=ALL', '--memory=5g', '--memory-swap=5g',
                              '--pids-limit=2345', '--cpus=1.5', '-p 192.0.2.10:8788:8787', 'messages-server-keys:/keys']:
                     self.assertIn(flag, parameters)
-                if '--google' in options:
-                    for key in ['MESSAGES_GOOGLE', 'MESSAGES_GOOGLE_CHROME', 'MESSAGES_CHROMIUM_HEADED', 'MESSAGES_NETWORK_ISOLATED']:
-                        self.assertEqual(configs[key], '1')
-                    self.assertEqual('MESSAGES_CHROMIUM_NO_SANDBOX' in configs, '--chrome-sandbox' not in options)
-                else:
-                    self.assertNotIn('MESSAGES_GOOGLE', configs)
+                for key in ['MESSAGES_GOOGLE', 'MESSAGES_GOOGLE_CHROME', 'MESSAGES_CHROMIUM_HEADED', 'MESSAGES_NETWORK_ISOLATED']:
+                    self.assertEqual(configs[key], '1')
+                self.assertEqual('MESSAGES_CHROMIUM_NO_SANDBOX' in configs, '--chrome-sandbox' not in options)
 
     def test_tailnet_auth_key_goes_by_name_and_is_never_saved(self):
         key = 'tskey-auth-kSynthetic0CNTRL-secret'
@@ -230,7 +226,7 @@ class InstallerChecks(unittest.TestCase):
                     self.assertIn(['rm', '-v', 'synthetic-assets'], calls)
 
     def test_invalid_options_and_image_fail_before_docker(self):
-        for options, extra in [(('--ghcr', '--chrome-sandbox'), {}), (('--ghcr', '--unknown'), {}),
+        for options, extra in [(('--ghcr', '--unknown'), {}),
                                (('--ghcr',), {'MESSAGES_GHCR_IMAGE': 'docker.io/example/messages-server'}),
                                (('--ghcr',), {'MESSAGES_GHCR_TAG': 'bad tag'})]:
             with self.subTest(options=options, extra=extra):
@@ -239,11 +235,11 @@ class InstallerChecks(unittest.TestCase):
                 self.assertFalse(calls)
 
     def test_version_and_other_namespace(self):
-        result, calls, template = self.run_install('--ghcr', '--google',
+        result, calls, template = self.run_install('--ghcr',
             extra={'MESSAGES_GHCR_IMAGE': 'ghcr.io/example/messages-server', 'MESSAGES_GHCR_TAG': '0.1.403',
                    'MESSAGES_BIND_IP': '2001:db8::10'})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(['pull', 'ghcr.io/example/messages-server:0.1.403-google'], calls)
+        self.assertIn(['pull', 'ghcr.io/example/messages-server:0.1.403'], calls)
         self.assertIn('-p [2001:db8::10]:8788:8787', template.findtext('ExtraParams'))
 
     def test_uninstall_removes_registry_artifacts_and_keeps_data_and_login(self):

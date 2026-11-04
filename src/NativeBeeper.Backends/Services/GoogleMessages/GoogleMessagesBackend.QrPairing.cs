@@ -6,75 +6,13 @@ using NativeBeeper.GoogleMessages.Spike;
 
 namespace NativeBeeper.App.Services.GoogleMessages;
 
-// Pairing by QR code (SWITCHBOARD.md 5.4, chosen 2026-10-10). Google binds a Google-account sign-in to the browser that made it and refuses a copy of it two hours
-// on, so a server cannot keep such a pairing alive. A QR pairing is the phone scanning a code in Google Messages > Device pairing > QR code scanner: the pairing that
-// results holds no Google-account cookie and no Gaia pairing id, so there is no sign-in to expire, nothing to renew and no browser. Connecting with it is the helper's
-// ordinary connect.
-//
-// A helper of its own does the pairing, so everything the pairing already has - its connection, its saved session, its sign-in clock, its kept browser profile - is left
-// exactly as it was until the phone has accepted. Only then is the new session written over the old one (the same commit a sign-in uses), the old helper let go, and
-// everything that belonged to the Google-account sign-in cleared. The code is a credential: it is handed to the caller as a picture, and is in no log, no error, no file.
+// A saved session made by a QR pairing, which this app no longer starts: it holds no Google-account sign-in, so there is nothing to expire or renew.
 internal sealed partial class GoogleMessagesBackend
 {
     // Whether the saved pairing is a QR pairing: no Google-account sign-in to expire, renew or time. Read from the session when it is connected with or written, and
     // never guessed: a missing or unreadable session leaves it as it was.
     private volatile bool qrSession;
     public bool QrSession => qrSession;
-
-    public async Task PairByQrAsync(IGoogleQrOutput output, CancellationToken token)
-    {
-        GoogleMessagesLog.Write("sign_in starting mode=qr");
-        JsonElement session;
-        try
-        {
-            // A helper that is only for this pairing. The one that is connected, if any, is not touched: it keeps the pairing this computer has until the phone accepts the new one.
-            await using var pairing = await HelperConnection.StartAsync(HelperExecutables.PathFor("gmessages-helper"), null, token);
-            pairing.Received += (kind, data) =>
-            {
-                // The refreshed codes. A picture that cannot be read is skipped; the next one replaces it.
-                if (kind == "qr" && TryPicture(data, out var png, out var number)) output.Code(png, number);
-            };
-            var started = await pairing.CallAsync("pair.qrStart", null, token);
-            if (!TryPicture(started, out var first, out var firstNumber)) throw new InvalidOperationException("pair_qr_failed");
-            output.Code(first, firstNumber);
-            session = await pairing.CallAsync("pair.qrWait", null, token);
-        }
-        catch (OperationCanceledException)
-        {
-            GoogleMessagesLog.Write("sign_in failed reason=cancelled mode=qr");
-            throw;
-        }
-        catch (InvalidOperationException ex)
-        {
-            // The helper's own fixed words only (HelperErrorCodes): never its text, and nothing of the code.
-            GoogleMessagesLog.Write($"sign_in failed reason={GoogleMessagesLog.Reason(ex)} mode=qr");
-            LastSignInFailure = ex.Message;
-            throw new BackendException(BackendFailure.AuthenticationRequired, ex.Message switch
-            {
-                "pair_qr_timeout" => "The code expired before your phone scanned it. Try again and scan the new code.",
-                "pair_qr_start_failed" => "Google would not start the pairing. Check that the server can reach the internet and try again.",
-                "pair_qr_refresh_failed" => "The code couldn't be refreshed. Try again.",
-                "request_cancelled" => "Pairing was cancelled.",
-                var code when GooglePairingFailure.Message(code) is { } reason => reason,
-                _ => "Your phone did not finish pairing. In Google Messages, open Device pairing, choose QR code scanner and scan the new code."
-            });
-        }
-        catch (Exception failure) { GoogleMessagesLog.Write($"sign_in failed reason={GoogleMessagesLog.Reason(failure)} mode=qr"); throw; }
-
-        // The phone has accepted. From here the pairing is written whatever happens to the caller: a cancel now would throw away a pairing the phone already holds.
-        await CommitQrSessionAsync(session);
-    }
-
-    private static bool TryPicture(JsonElement data, out byte[] png, out int number)
-    {
-        png = []; number = 0;
-        if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty("png", out var picture) || picture.ValueKind != JsonValueKind.String
-            || !data.TryGetProperty("n", out var n) || !n.TryGetInt32(out number) || number < 1 || number > 64) return false;
-        try { png = Convert.FromBase64String(picture.GetString() ?? ""); }
-        catch (FormatException) { return false; }
-        return png.Length is > 0 and <= 256 * 1024;
-    }
-
     // The one commit, in the order SignInAsync's is: the connected helper is let go, the old pairing's bookkeeping is made, the new one is written, and what belonged to the
     // old sign-in is cleared. A failure to write leaves the old pairing on disk as it was (the write is a move of a finished file over it).
     private async Task CommitQrSessionAsync(JsonElement session)

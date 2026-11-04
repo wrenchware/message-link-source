@@ -34,16 +34,6 @@ public sealed record GoogleProfileCookie(string Name, string Value, string Domai
     public override string ToString() => $"GoogleProfileCookie {{ Name = {Name} }}";
 }
 
-/// <summary>
-/// Where a QR pairing puts the pictures of its code. The code is a credential (it carries the pairing key and this device's request keys): a picture of it goes to the person
-/// who is to scan it and nowhere else, and is never logged, kept or put in an error. Both calls return at once.
-/// </summary>
-public interface IGoogleQrOutput
-{
-    /// <summary>A new picture of the code (a PNG). <paramref name="number"/> counts them from 1; each replaces the one before.</summary>
-    void Code(ReadOnlyMemory<byte> png, int number);
-}
-
 /// <summary>One person in a conversation this PC knows, as the local-data reset files their pictures and names.</summary>
 public sealed record GoogleKnownPerson(string Id, string NativeId, bool Self);
 
@@ -93,14 +83,6 @@ public interface IGoogleMessagesAccount
     Task SignInAsync(IReadOnlyDictionary<string, string> cookies, IProgress<string> pairingEmoji, CancellationToken cancellationToken, bool asNewDevice,
         IReadOnlyList<GoogleProfileCookie>? profileCookies) => SignInAsync(cookies, pairingEmoji, cancellationToken, asNewDevice);
 
-    /// <summary>
-    /// Pairs this computer with the phone by QR code (SWITCHBOARD.md 5.4): the phone scans a code, in Google Messages under Device pairing, and the pairing that results holds
-    /// no Google-account sign-in, so nothing of it expires or needs a browser to renew. <paramref name="output"/> is given each picture of the code as it is made (a code lasts
-    /// thirty seconds, so a new one follows until the phone scans one or the attempt ends). It returns when the pairing is saved. Whatever ends it otherwise (cancel, the codes
-    /// running out, a failure) leaves the pairing this computer already had exactly as it was; only a success replaces it. A failure throws
-    /// <see cref="NativeBeeper.Core.Backend.BackendException"/>. A port that cannot pair this way (the default) throws <see cref="NotSupportedException"/>.
-    /// </summary>
-    Task PairByQrAsync(IGoogleQrOutput output, CancellationToken cancellationToken) => throw new NotSupportedException();
 
     /// <summary>The SIM a conversation sends from, or null for a single-SIM phone, an unknown conversation or another service.</summary>
     GoogleSimChip? SimFor(string? chatId);

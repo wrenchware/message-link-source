@@ -28,9 +28,9 @@ internal static class AccountWire
     /// <see cref="OperationCanceledException"/>: the unknown outcome the host records for a cancel after the start is not the caller's news.
     /// </summary>
     public static async Task<TResult> MutateAsync<TParams, TResult>(ProtocolClient client, string method, TParams parameters, CancellationToken cancellationToken = default,
-        IProgress<string>? progress = null, Action<SignInViewEvent>? signInView = null, Action<QrCodeEvent>? qrCode = null) where TParams : MutationParams
+        IProgress<string>? progress = null) where TParams : MutationParams
     {
-        try { return await client.MutateAsync<TParams, TResult>(method, parameters, cancellationToken, progress, signInView, qrCode).ConfigureAwait(false); }
+        try { return await client.MutateAsync<TParams, TResult>(method, parameters, cancellationToken, progress).ConfigureAwait(false); }
         catch (SendException ex) when (ex.OutcomeUnknown && cancellationToken.IsCancellationRequested) { throw new OperationCanceledException(cancellationToken); }
     }
 
@@ -94,35 +94,6 @@ public sealed class MessengerAccountProxy(ProtocolClient client, HostStateCache 
         (await AccountWire.MutateAsync<AccountOpParams, FailureCode>(client, ProtocolMethods.AccountsMessengerEnableEncryptedAfterSignIn, new(AccountWire.OperationId())).ConfigureAwait(false)).Code;
 
     public Task SignOutAsync() => AccountWire.MutateAsync(client, ProtocolMethods.AccountsMessengerSignOut, new AccountOpParams(AccountWire.OperationId()));
-
-    /// <summary>
-    /// Whether this server signs Messenger in in its own Chrome (protocol 27): it says so in its state, and this connection speaks a version that has the method. When false the sign-in is made in this
-    /// PC's own window and its cookies handed up with <see cref="ConnectAsync"/>, as before (a Windows server, an older Linux server, one without its own Chrome).
-    /// </summary>
-    public bool CanSignInOnServer => cache.Limits.RemoteMessengerSignIn && client.Version is >= ProtocolVersion.ServerSignIn;
-
-    /// <summary>
-    /// A Messenger sign-in made in the server's browser: <paramref name="view"/> gets its pictures, then <see cref="RemoteSignIn.SignedInKind"/> once the person chose Done and the server has read the
-    /// sign-in; <paramref name="progress"/> gets <see cref="RemoteSignIn.ConnectingProgress"/> and <see cref="RemoteSignIn.EncryptingProgress"/>. The person's input and Done go by
-    /// <see cref="SendSignInInputAsync"/>. No cookie crosses: the server reads them, connects and turns encrypted conversations on once.
-    /// </summary>
-    public Task<RemoteSignInResult> SignInOnServerAsync(IProgress<string> progress, Action<SignInViewEvent> view, CancellationToken cancellationToken, int width = 0, int height = 0) =>
-        RemoteSignInWire.StartAsync(client, RemoteSignInServices.Messenger, progress, view, cancellationToken, width, height);
-
-    /// <summary>What the person did in the window, in order, Done included. Not a mutation, and refused unless this connection has a sign-in under way.</summary>
-    public Task SendSignInInputAsync(IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken = default) => RemoteSignInWire.InputAsync(client, events, cancellationToken);
-}
-
-/// <summary>The calls of a sign-in in the server's browser for a service that ends with Done (protocol 27), shared by Messenger's and Instagram's proxies.</summary>
-internal static class RemoteSignInWire
-{
-    public static Task<RemoteSignInResult> StartAsync(ProtocolClient client, string service, IProgress<string> progress, Action<SignInViewEvent> view, CancellationToken cancellationToken,
-        int width, int height) =>
-        AccountWire.MutateAsync<ServerSignInParams, RemoteSignInResult>(client, ProtocolMethods.ServerSignInMethod,
-            new(AccountWire.OperationId(), service, false, width, height), cancellationToken, progress, view);
-
-    public static Task InputAsync(ProtocolClient client, IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken) =>
-        client.CallAsync<RemoteSignInInputParams, Done>(ProtocolMethods.RemoteSignInInputMethod, new(events), cancellationToken);
 }
 
 /// <summary>Instagram's account over the wire.</summary>
@@ -176,17 +147,6 @@ public sealed class InstagramAccountProxy : IInstagramAccount
     // Per message, and about what the host holds in memory: read from a copy of the host's answer (see the header).
     public bool AnswersFromMemory(string chatId, string messageId) => held.Get((chatId, messageId));
 
-    /// <summary>As <see cref="MessengerAccountProxy.CanSignInOnServer"/>, for Instagram.</summary>
-    public bool CanSignInOnServer => cache.Limits.RemoteInstagramSignIn && client.Version is >= ProtocolVersion.ServerSignIn;
-
-    /// <summary>
-    /// An Instagram sign-in made in the server's browser, as <see cref="MessengerAccountProxy.SignInOnServerAsync"/>: the server reads the cookies when the person chooses Done and connects. Instagram's
-    /// inbox pages stay blocked in that browser, as in this PC's own window.
-    /// </summary>
-    public Task<RemoteSignInResult> SignInOnServerAsync(IProgress<string> progress, Action<SignInViewEvent> view, CancellationToken cancellationToken, int width = 0, int height = 0) =>
-        RemoteSignInWire.StartAsync(client, RemoteSignInServices.Instagram, progress, view, cancellationToken, width, height);
-
-    public Task SendSignInInputAsync(IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken = default) => RemoteSignInWire.InputAsync(client, events, cancellationToken);
 }
 
 /// <summary>Google Messages' account over the wire.</summary>
@@ -250,51 +210,8 @@ public sealed class GoogleMessagesAccountProxy : IGoogleMessagesAccount
         AccountWire.MutateAsync<GoogleSignInParams, Done>(client, ProtocolMethods.AccountsGoogleSignIn,
             new(AccountWire.OperationId(), cookies as Dictionary<string, string> ?? new Dictionary<string, string>(cookies), asNewDevice, profileCookies is { Count: > 0 } ? profileCookies : null), cancellationToken, pairingEmoji);
 
-    /// <summary>
-    /// Whether this server signs Google Messages in in a browser of its own (SWITCHBOARD.md 5.4, protocol 12): it says so in its state, and this connection speaks a version that has
-    /// the methods. When false the sign-in is made in the client's own window and handed up, as before.
-    /// </summary>
-    public bool CanSignInOnServer => cache.Limits.RemoteGoogleSignIn && client.Version is >= ProtocolVersion.RemoteSignIn;
-
     /// <summary>The one sentence Settings shows when the server's Chrome is out of date (protocol 14), or null. A host that does not say so, or speaks less than 14, gets none.</summary>
     public string? ChromeOutOfDateSentence => cache.Limits.ChromeOutOfDate && client.Version is >= ProtocolVersion.ChromeAge ? RemoteSignIn.ChromeOutOfDateSentence : null;
-
-    /// <summary>
-    /// A sign-in made in the server's browser: <paramref name="view"/> gets what that browser shows (pictures, then <see cref="RemoteSignIn.SignedInKind"/> when the browser is
-    /// done and the phone is being paired), <paramref name="pairingEmoji"/> the emoji as <see cref="SignInAsync(IReadOnlyDictionary{string, string}, IProgress{string}, CancellationToken, bool)"/>
-    /// gives them. It ends as that call does. The person's input goes by <see cref="SendSignInInputAsync"/>. Cancelling ends the host's browser. No cookie crosses: the host reads them.
-    /// </summary>
-    public Task SignInOnServerAsync(IProgress<string> pairingEmoji, Action<SignInViewEvent> view, CancellationToken cancellationToken, bool asNewDevice, int width = 0, int height = 0) =>
-        AccountWire.MutateAsync<RemoteSignInParams, Done>(client, ProtocolMethods.RemoteSignInMethod,
-            new(AccountWire.OperationId(), asNewDevice, width, height), cancellationToken, pairingEmoji, view);
-
-    /// <summary>What the person did in the window, in order. Not a mutation: nothing is journaled, and it is refused unless this connection has a sign-in under way.</summary>
-    public Task SendSignInInputAsync(IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken = default) =>
-        client.CallAsync<RemoteSignInInputParams, Done>(ProtocolMethods.RemoteSignInInputMethod, new(events), cancellationToken);
-
-    /// <summary>
-    /// Whether this server pairs Google Messages by QR code (SWITCHBOARD.md 5.4, protocol 13): it says so in its state, and this connection speaks a version that has the methods.
-    /// When true it is the way to pair, in place of the sign-in in the server's browser and the one handed up from this PC's window.
-    /// </summary>
-    public bool CanPairByQr => cache.Limits.QrPairing && client.Version is >= ProtocolVersion.QrPairing;
-
-    /// <summary>
-    /// A pairing by QR code: each picture of the code reaches <paramref name="output"/> as the host makes it. It ends when the pairing is saved, or as a failure or a cancel; the
-    /// caller's cancel ends the host's pairing, which leaves the pairing the server already had as it was. The code is a credential and is handed on, never logged.
-    /// </summary>
-    public Task PairByQrAsync(IGoogleQrOutput output, CancellationToken cancellationToken) =>
-        AccountWire.MutateAsync<QrPairingParams, Done>(client, ProtocolMethods.QrPairingMethod, new(AccountWire.OperationId()), cancellationToken,
-            qrCode: code =>
-            {
-                byte[] png;
-                try { png = Convert.FromBase64String(code.Data); }
-                catch (FormatException) { return; }
-                output.Code(png, code.Number);
-            });
-
-    /// <summary>Ends this connection's pairing by QR code, if it has one. Not a mutation: nothing is journaled.</summary>
-    public Task CancelQrPairingAsync(CancellationToken cancellationToken = default) =>
-        client.CallAsync<Done>(ProtocolMethods.QrPairingCancelMethod, cancellationToken);
 
     // Per conversation: read from a copy of the host's answer (see the header).
     public GoogleSimChip? SimFor(string? chatId) => sims.Get(chatId ?? "");
@@ -348,21 +265,4 @@ public sealed class GoogleVoiceAccountsProxy(ProtocolClient client, HostStateCac
     public Task SignOutAsync(string key) =>
         AccountWire.MutateAsync(client, ProtocolMethods.AccountsVoiceSignOut, new VoiceSignOutParams(AccountWire.OperationId(), key));
 
-    /// <summary>
-    /// Whether this server signs Google Voice in in its own Chrome (SWITCHBOARD.md 5.4, protocol 15): it says so in its state, and this connection speaks a version that has the method.
-    /// When false the sign-in is made in the client's own window and handed up, as before (or the host says it does not run Voice).
-    /// </summary>
-    public bool CanSignInOnServer => cache.Limits.RemoteVoiceSignIn && client.Version is >= ProtocolVersion.VoiceRemoteSignIn;
-
-    /// <summary>
-    /// A Voice sign-in made in the server's browser: <paramref name="view"/> gets what that browser shows (pictures, then <see cref="RemoteSignIn.SignedInKind"/> when the person is done and the
-    /// host is adding the account). It ends as the add does. The person's input goes by <see cref="SendSignInInputAsync"/>. Cancelling ends the host's browser. No cookie crosses: the host reads them.
-    /// </summary>
-    public Task SignInOnServerAsync(Action<SignInViewEvent> view, CancellationToken cancellationToken, int width = 0, int height = 0) =>
-        AccountWire.MutateAsync<VoiceRemoteSignInParams, Done>(client, ProtocolMethods.VoiceRemoteSignInMethod,
-            new(AccountWire.OperationId(), width, height), cancellationToken, null, view);
-
-    /// <summary>What the person did in the window, in order. Not a mutation: nothing is journaled, and it is refused unless this connection has a sign-in under way.</summary>
-    public Task SendSignInInputAsync(IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken = default) =>
-        client.CallAsync<RemoteSignInInputParams, Done>(ProtocolMethods.RemoteSignInInputMethod, new(events), cancellationToken);
 }

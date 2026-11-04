@@ -3,7 +3,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Server.Linux;
 
 /// <summary>
-/// What the person did in the client's window, as the DevTools commands that do it in the server's browser (SWITCHBOARD.md 5.4). The person may be typing a Google password, so
+/// What the person did on the server's page, as the DevTools commands that do it in the server's browser (SWITCHBOARD.md 5.4). The person may be typing a Google password, so
 /// this is the one place their input is read, and it is read to be handed on and forgotten: nothing here is logged, stored or put in an exception, a bad event is dropped without
 /// saying which, and nothing outside this table reaches the browser. A pointer is kept inside the page, a wheel turn and a click count are bounded, a key is one of a short list
 /// of control keys (characters arrive as text, so a layout or an input method never matters), and a text event is capped.

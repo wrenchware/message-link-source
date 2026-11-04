@@ -122,7 +122,7 @@ public sealed partial class SyncViewModel(IRealtimeFeed feed, IMessageSender sen
             {
                 if (sender is IProviderConnectionState connections && !connections.AnyConnected)
                     return missing.Any(scope => unavailable[scope] == RealtimeKind.AuthenticationRequired)
-                        ? "A service needs you to sign in again: Settings → Accounts." : "Disconnected. Settings → Accounts shows which service.";
+                        ? "A service needs you to sign in again: Settings → Connections." : "Disconnected. Settings → Connections shows which service.";
                 return PartialWarning(missing);
             }
             if (connectionState is SyncState.Disconnected or SyncState.AuthenticationRequired &&
@@ -167,7 +167,7 @@ public sealed partial class SyncViewModel(IRealtimeFeed feed, IMessageSender sen
             return sender is IProviderConnectionState connections && connections.NeedsSignInOnly(google)
                 ? "Google Messages needs its sign-in renewed. Open Settings and choose Renew sign-in."
                 : "Google Messages needs pairing again. Open Settings and choose Pair again.";
-        return string.Join(", ", all.Select(ServiceScopes.Name).Distinct()) + " is unavailable. Your other services are still working; Settings → Accounts shows more.";
+        return string.Join(", ", all.Select(ServiceScopes.Name).Distinct()) + " is unavailable. Your other services are still working; Settings → Connections shows more.";
     }
     private static bool IsGoogleMessages(string scope) => ServiceScopes.Name(scope) == "Google Messages";
     private void ReportLive()
@@ -279,7 +279,7 @@ public sealed partial class SyncViewModel(IRealtimeFeed feed, IMessageSender sen
                         {
                             var auth = counted.Any(e => e.Kind == RealtimeKind.AuthenticationRequired);
                             Report(auth ? SyncState.AuthenticationRequired : SyncState.Disconnected,
-                                auth ? "A service needs you to sign in again: Settings → Accounts." : "Disconnected. Settings → Accounts shows which service.");
+                                auth ? "A service needs you to sign in again: Settings → Connections." : "Disconnected. Settings → Connections shows which service.");
                         }
                         else NoteUnconfigured(batch);
                         // Still observed while nothing is connected: a disconnect is an event worth knowing about.

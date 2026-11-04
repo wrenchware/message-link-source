@@ -575,15 +575,13 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     /// the host about it after reconnecting and says what it learned through <see cref="Reconciled"/>.
     /// </remarks>
     public async Task<TResult> MutateAsync<TParams, TResult>(string method, TParams parameters, CancellationToken cancellationToken = default,
-        IProgress<string>? progress = null, Action<SignInViewEvent>? signInView = null, Action<QrCodeEvent>? qrCode = null)
+        IProgress<string>? progress = null)
         where TParams : MutationParams
     {
         var attempt = new Attempt();
         ResponseFrame response;
         // Registered before the request leaves, so the first report cannot find nobody to hear it.
         if (progress is not null) sinks[parameters.ClientOpId] = progress;
-        if (signInView is not null) signInViews[parameters.ClientOpId] = signInView;
-        if (qrCode is not null) qrCodes[parameters.ClientOpId] = qrCode;
         try { response = await RoundTripAsync(method, ProtocolJson.ToElement(parameters), cancellationToken, attempt, operationId: parameters.ClientOpId).ConfigureAwait(false); }
         // The connection ended after the request was handed to it (or while it was being written).
         // Anything that ends the round trip once the request may have reached the host leaves the outcome unknown, however
@@ -597,8 +595,6 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         finally
         {
             if (progress is not null) sinks.TryRemove(parameters.ClientOpId, out _);
-            if (signInView is not null) signInViews.TryRemove(parameters.ClientOpId, out _);
-            if (qrCode is not null) qrCodes.TryRemove(parameters.ClientOpId, out _);
         }
         if (response.Error is { } error) throw TranslateMutation(error, cancellationToken);
         TResult? value;
@@ -630,10 +626,6 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
 
     // The callers waiting for progress, by the operation id of the call. Only this client's own calls are in it.
     private readonly ConcurrentDictionary<string, IProgress<string>> sinks = new(StringComparer.Ordinal);
-    // The windows showing a server's browser, by the operation id of the sign-in they belong to (EventKinds.SignInView).
-    private readonly ConcurrentDictionary<string, Action<SignInViewEvent>> signInViews = new(StringComparer.Ordinal);
-    // The windows showing a pairing's code, by the operation id of the pairing they belong to (EventKinds.QrCode).
-    private readonly ConcurrentDictionary<string, Action<QrCodeEvent>> qrCodes = new(StringComparer.Ordinal);
 
     private static Exception TranslateMutation(ProtocolError error, CancellationToken cancellationToken)
     {
@@ -676,8 +668,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         finally
         {
             connection.Pending.TryRemove(id, out _);
-            // Not the sign-in's input: how many calls a person's typing made would be a measure of what they typed (RemoteSignIn).
-            if (method != ProtocolMethods.RemoteSignInInputMethod) stats?.Record(method, Stopwatch.GetElapsedTime(started));
+            stats?.Record(method, Stopwatch.GetElapsedTime(started));
         }
     }
 
@@ -841,28 +832,6 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         try { sink.Report(report.Text); } catch (Exception) { }
     }
 
-    // What a server's browser shows during a sign-in made there: for the call that is running, not the feed. Never logged; the frame is dropped when nobody is waiting for it.
-    private void ReceiveSignInView(EventFrame frame)
-    {
-        SignInViewEvent? view = null;
-        try { view = frame.HasPayload ? frame.Payload.Deserialize<SignInViewEvent>(ProtocolJson.Options) : null; }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
-        if (view?.ClientOpId is null || view.Kind is null || !signInViews.TryGetValue(view.ClientOpId, out var sink)) return;
-        // A window that throws must not end the connection's reader.
-        try { sink(view); } catch (Exception) { }
-    }
-
-    // The pictures of a pairing's code: for the call that is running, not the feed. A credential, so never logged; the frame is dropped when nobody is waiting for it.
-    private void ReceiveQrCode(EventFrame frame)
-    {
-        QrCodeEvent? code = null;
-        try { code = frame.HasPayload ? frame.Payload.Deserialize<QrCodeEvent>(ProtocolJson.Options) : null; }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
-        if (code?.ClientOpId is null || code.Data is null || !qrCodes.TryGetValue(code.ClientOpId, out var sink)) return;
-        // A window that throws must not end the connection's reader.
-        try { sink(code); } catch (Exception) { }
-    }
-
     private void ReceiveTyping(EventFrame frame)
     {
         if (cache is null) return;
@@ -921,18 +890,6 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         if (frame.Kind == EventKinds.Progress)
         {
             ReceiveProgress(frame);
-            return;
-        }
-        // The same for a server's browser: pictures for the window of the sign-in that is running, outside the sequence, and kept by nothing.
-        if (frame.Kind == EventKinds.SignInView)
-        {
-            ReceiveSignInView(frame);
-            return;
-        }
-        // And a pairing's code, which is a credential: outside the sequence, kept by nothing.
-        if (frame.Kind == EventKinds.QrCode)
-        {
-            ReceiveQrCode(frame);
             return;
         }
         // A state is applied the moment its frame is read, ahead of everything that follows it on the connection, the answer to the

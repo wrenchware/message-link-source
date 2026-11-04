@@ -444,8 +444,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         running.TryRemove(request.Id, out _);
         outliving.TryRemove(request.Id, out _);
         // Only a method this host knows is named in the measurements; whatever else a peer sends is not echoed anywhere.
-        // Not the sign-in's input: how many calls a person's typing made would be a measure of what they typed (RemoteSignIn).
-        if (route is not null && request.Method != ProtocolMethods.RemoteSignInInputMethod) stats?.Record(request.Method, Stopwatch.GetElapsedTime(started));
+        if (route is not null) stats?.Record(request.Method, Stopwatch.GetElapsedTime(started));
         // After a failure too: what an action did before it failed (a sign-in that expired) is in the state the caller reads next.
         if (route is { Settles: true }) await SettleAsync().ConfigureAwait(false);
         await SendTextAsync(response).ConfigureAwait(false);
@@ -593,7 +592,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         return value;
     }
 
-    private static readonly Dictionary<string, Route> Routes = AddBackupRoutes(AddPushRoutes(AddAdminRoutes(AddHostLogsRoutes(AddAccountMoveRoutes(AddQrPairingRoutes(AddRemoteSignInRoutes(AddStateImportRoutes(AddScheduledRoutes(AddSharedStateRoutes(AddDeviceRoutes(AddShutdownRoutes(AddClientStateRoutes(AddIncomingRoutes(AddDiagnosticsRoutes(AddReadingRoutes(AddAccountRoutes(new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Route> Routes = AddBackupRoutes(AddPushRoutes(AddAdminRoutes(AddHostLogsRoutes(AddAccountMoveRoutes(AddStateImportRoutes(AddScheduledRoutes(AddSharedStateRoutes(AddDeviceRoutes(AddShutdownRoutes(AddClientStateRoutes(AddIncomingRoutes(AddDiagnosticsRoutes(AddReadingRoutes(AddAccountRoutes(new(StringComparer.Ordinal)
     {
         [ProtocolMethods.BackendDiscover] = OfHost<IBeeperBackend, BackendInfo>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.DiscoverAsync(ct).ConfigureAwait(false); }),
         [ProtocolMethods.AccountsList] = OfHost<IBeeperBackend, IReadOnlyList<ChatAccount>>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.GetAccountsAsync(ct).ConfigureAwait(false); }),
@@ -685,5 +684,5 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         // The connection's own event feed (EventLog): the answer, then event frames until it is ended.
         [ProtocolMethods.EventsSubscribe] = new(typeof(EventsSubscribeParams), typeof(EventsSubscribed), null, Own: (connection, request, after, ct) => connection.SubscribeAsync(request, after, ct)),
         [ProtocolMethods.EventsUnsubscribe] = new(null, typeof(Done), null, Own: (connection, _, _, ct) => connection.UnsubscribeAsync(ct)),
-    })))))))))))))))));
+    })))))))))))))));
 }

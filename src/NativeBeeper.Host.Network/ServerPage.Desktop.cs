@@ -30,7 +30,7 @@ internal sealed partial class ServerPage
         var expires = time.GetUtcNow() + SessionLifetime;
         context.Response.Cookies.Append(CookieName, NewSession(expires), Cookie(expires));
         log("server page sign_in outcome=signed_in via=once");
-        Redirect(context.Response, "/");
+        Redirect(context.Response, SectionPath(Section(context.Request.Query["section"].ToString())));
         return true;
     }
 

@@ -76,8 +76,6 @@ internal sealed class ProfileKeepingGoogleAccount(IGoogleMessagesAccount inner, 
         catch (Exception failure) when (failure is not OperationCanceledException) { GoogleMessagesLog.Write($"browser profile=not_seeded reason=error type={failure.GetType().Name}"); }
     }
 
-    // A QR pairing keeps no browser profile: it has no Google-account sign-in to renew. The backend's own, unchanged.
-    public Task PairByQrAsync(IGoogleQrOutput output, CancellationToken cancellationToken) => inner.PairByQrAsync(output, cancellationToken);
     public GoogleSimChip? SimFor(string? chatId) => inner.SimFor(chatId);
     public Task SetHistoryIndexingAsync(bool enabled, CancellationToken cancellationToken = default) => inner.SetHistoryIndexingAsync(enabled, cancellationToken);
     public Task LoadRenumberedAsync() => inner.LoadRenumberedAsync();

@@ -3,12 +3,12 @@ using System.Text.Json;
 namespace NativeBeeper.Protocol;
 
 // host.status, host.accounts, host.removeAccount (ProtocolMethods.Admin.cs) and devices.rename: served only to a connection that negotiated version 20, by a host
-// that has the port, and the first three only to the owner device (checked before the port is reached, as for the account move and host.logs). Who may rename a
-// device is the devices port's rule, as for a revoke. A removal is journaled by its operation id and its answer follows the state it changed. A fixed code word from
+// that has the port. The two reads to any paired device, who reads every conversation anyway; a removal is the page's, and is refused to every device on a server. Who may rename
+// a device is the devices port's rule, as for a revoke. A removal is journaled by its operation id and its answer follows the state it changed. A fixed code word from
 // the host (AccountRemoveWords) reaches the caller as an account_failed error; nothing else of an exception does. Nothing is logged here but a refusal.
 public sealed partial class ProtocolDispatcher
 {
-    private const string AdminRefusal = "Only the device paired first with this server can manage it.";
+    private const string AdminRefusal = "Accounts are connected and removed on the server's page.";
 
     private static Dictionary<string, Route> AddAdminRoutes(Dictionary<string, Route> routes)
     {
@@ -26,7 +26,11 @@ public sealed partial class ProtocolDispatcher
             {
                 return JsonSerializer.SerializeToUtf8Bytes(await Coded(() => port.RemoveAccountAsync(parameters.Provider, parameters.Key, cancellationToken)).ConfigureAwait(false),
                     ProtocolJson.Options);
-            }, Before: ct => connection.RequireOwnerAsync("server admin", AdminRefusal, ct));
+            }, Before: _ =>
+            {
+                connection.RefuseOnServer("server admin", AdminRefusal);
+                return Task.CompletedTask;
+            });
         }, Settles: true);
         routes[ProtocolMethods.DevicesRename] = new(typeof(DeviceRenameParams), typeof(DeviceRenamed), null, Own: (connection, request, _, ct) => connection.RenameDeviceAsync(request, ct));
         return routes;
@@ -36,7 +40,6 @@ public sealed partial class ProtocolDispatcher
     {
         var port = services.Admin ?? throw new NotSupportedException();
         if (negotiated < ProtocolVersion.ServerAdmin) throw new NotSupportedException();
-        await RequireOwnerAsync("server admin", AdminRefusal, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToUtf8Bytes(await call(port, cancellationToken).ConfigureAwait(false), ProtocolJson.Options);
     }
 

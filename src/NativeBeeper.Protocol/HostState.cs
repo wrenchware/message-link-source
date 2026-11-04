@@ -40,20 +40,11 @@ public sealed record ScopeState(string Scope, bool Connected, bool Configured, b
 /// <param name="FiresScheduled">This host keeps and fires its clients' scheduled sends itself (stage 6 slice 11, protocol 9): it serves <c>scheduled.*</c> and writes the <c>scheduled:</c> rows. False
 /// (an in-process host, the loopback, a host from before the flag) means the client keeps and fires its own. A client of a host of 9 or later never fires one itself
 /// whatever this says; the flag only tells it whether the host can take a new one.</param>
-/// <param name="RemoteGoogleSignIn">This host signs Google Messages in in a browser of its own (protocol 12, <see cref="ProtocolMethods.RemoteSignInMethod"/>), shown in the client's window,
-/// because Google keeps a sign-in alive only for the browser that made it. False (a host from before the flag, or one with no such browser) means the client signs in as it did.</param>
-/// <param name="QrPairing">This host pairs Google Messages by QR code (protocol 13, <see cref="ProtocolMethods.QrPairingMethod"/>): the phone scans a code the client shows, and the pairing holds no
-/// Google sign-in to expire. When true a client uses it in place of both other ways. False (a host from before the flag, or one that does not run Google Messages) means the client pairs as it did.</param>
 /// <param name="ChromeOutOfDate">The Chrome this host signs Google Messages in through (protocol 14) is older than the server's image was meant to keep it (21 days since the image was built), so the
 /// client says in Settings that the server should be reinstalled. False (a host from before the flag, or one with no such Chrome) says nothing.</param>
-/// <param name="RemoteVoiceSignIn">This host signs Google Voice in in its own Chrome (protocol 15, <see cref="ProtocolMethods.VoiceRemoteSignInMethod"/>), shown in the client's window, on a profile of that account's own.
-/// False (a host from before the flag, or one that does not run Voice) means the client signs in as it did, or is told the host does not run Voice.</param>
-/// <param name="RemoteMessengerSignIn">This host signs Messenger in in its own Chrome (protocol 27, <see cref="ProtocolMethods.ServerSignInMethod"/>), shown in the client's window, on a throwaway profile.
-/// False (a host from before the flag, a Windows server, or a Linux server without its own Chrome) means the client signs in in its own window and hands the cookies up, as before.</param>
-/// <param name="RemoteInstagramSignIn">The same for Instagram.</param>
 public sealed record HostLimits(bool HasLocalActionOptions = false, int MaxFirstMessageLength = 0, int GroupNameMaximum = 0, int AddMaximum = 0, int BatchItemLimit = 0,
-    bool GoogleAbsent = false, bool VoiceAbsent = false, bool InstagramAbsent = false, bool UnarchivesChats = false, bool FiresScheduled = false, bool RemoteGoogleSignIn = false,
-    bool QrPairing = false, bool ChromeOutOfDate = false, bool RemoteVoiceSignIn = false, bool RemoteMessengerSignIn = false, bool RemoteInstagramSignIn = false);
+    bool GoogleAbsent = false, bool VoiceAbsent = false, bool InstagramAbsent = false, bool UnarchivesChats = false, bool FiresScheduled = false,
+    bool ChromeOutOfDate = false);
 
 /// <summary>Typing, in aggregate: the flags <c>ITypingService.CanReceive</c> and <c>CanSend</c> answer, which <see cref="TypingProxy"/> reads.</summary>
 public sealed record TypingState(bool CanReceive = false, bool CanSend = false);

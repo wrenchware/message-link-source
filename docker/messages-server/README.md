@@ -24,7 +24,7 @@ its first visit and then walks you through Tailscale, your accounts, your phone 
   mode 700, first ("Run it").
 - **Linux with systemd and no Docker** (Debian, Ubuntu, an LXC you made yourself):
   `tar -xzf messages-server-<version>-linux-x64.tar.gz && sudo ./messages-server-<version>-linux-x64/install.sh --google`
-  (`systemd/README.md`; without `--google` there is no Chrome and no Google Messages or Voice).
+  (`systemd/README.md`; without `--google` there is no Chrome, so the page can't connect any account).
 - **Windows.** Messages for Windows connects your accounts on the PC itself, with no server; it can also use any server
   above (Settings, Messages Server).
 
@@ -60,17 +60,16 @@ Local builds remain the default. To publish private images from a copy of this r
    Avoid the broad `repo` and `delete:packages` scopes. The token's account must be allowed to create and write packages
    under `wrenchware`; authorize organization SSO if required. If the token belongs to a different username, set the
    repository Actions variable **`MESSAGES_GHCR_USERNAME`** to that username.
-2. Run **Messages Server image** from Actions on `main`, or wait for the next main push. It builds Linux x64 with and
-   without Google on every main push and each Sunday at 06:23 UTC. A missing secret skips both builds and publishes
+2. Run **Messages Server image** from Actions on `main`, or wait for the next main push. It builds the Linux x64
+   image on every main push and each Sunday at 06:23 UTC. A missing secret skips the build and publishes
    nothing; manual runs from other branches cannot publish. Removing the secret disables future publishing.
 3. Check that the new `messages-server` package is **Private**, and give the Unraid token's account read access.
    GHCR creates new packages private; the workflow refuses an existing package with any other visibility. It never
    changes visibility. Keep it private unless you mean to share it.
 
-The package is `ghcr.io/wrenchware/messages-server`. Tags are `latest` (without Google), `latest-google` (Google
-Messages and Voice), the app version (such as `0.1.403` and `0.1.403-google`), and exact builds
-(`sha-<commit>-run-<run-id>-<attempt>`, with `-google` for Google). Version tags receive fresh runtime layers too;
-use an exact-build tag or digest to pin a particular build. The helpers and locked .NET dependencies remain cached;
+The package is `ghcr.io/wrenchware/messages-server`. Tags are `latest`, the app version (such as `0.1.433`) and exact builds
+(`sha-<commit>-run-<run-id>-<attempt>`), each also under a `-google` name for servers installed when there were two images; they are one image. Version tags receive fresh runtime layers too;
+use an exact-build tag or digest to pin a particular build, though only the newest three images are kept (the workflow deletes older ones, which needs `delete:packages` on `MESSAGES_GHCR_TOKEN`). The helpers and locked .NET dependencies remain cached;
 runtime package installation is repeated and `CHROME_REFRESH` changes on every build. Pinned base-image digests and
 .NET/Go versions still require source updates (Dependabot opens a pull request when one moves); the schedule refreshes
 Chrome and the base's own packages (`apt-get upgrade` in both runtime stages), not those pins.
@@ -93,13 +92,13 @@ normally in RAM, so log in again after a reboot unless you already restore Docke
 them on an exported flash share. The install script uses the saved login and never accepts or writes a token.
 
 Copy the new `install-unraid.sh` beside the existing `install.env` (the publisher also copies it). No source archive
-is needed for this mode. With Google Messages and Voice, and Chrome's sandbox:
+is needed for this mode. With Chrome's sandbox:
 
 ```sh
-bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --google --chrome-sandbox
+bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --chrome-sandbox
 ```
 
-Use `--ghcr` alone for the plain image, or `--ghcr --google` for Google without Chrome's sandbox. The script pulls and
+Use `--ghcr` alone for Chrome without its sandbox. The script pulls and
 checks install assets before replacing the running container, retains its data and keys, and saves a matching Unraid
 user template. That template keeps the LAN bind, Google options, limits and shutdown timeout when Unraid recreates
 the container. The sandbox profile stays at `/boot/config/plugins/dockerMan/messages-server/chrome-seccomp.json`.
@@ -109,7 +108,7 @@ stop timeout/delay to at least 60 seconds**: the plugin otherwise supplies its o
 container has a 60-second stop timeout. An update restarts the server and restores the same saved sign-ins.
 
 For another namespace, set `MESSAGES_GHCR_IMAGE=ghcr.io/<owner>/messages-server`; for a version or exact build set
-`MESSAGES_GHCR_TAG=<tag without the -google suffix>` in `install.env` or the environment. `--google` adds the suffix.
+`MESSAGES_GHCR_TAG=<tag>` in `install.env` or the environment.
 Keep `latest` for automatic updates. To return to local builds, disable this container's automatic updates, provide
 the source archive and run the script without `--ghcr`; remove or update the saved GHCR template before using
 DockerMan to recreate it.
@@ -142,7 +141,7 @@ first start (`server key moved`, `server tls moved`, `server helper store moved`
 The owner's Messages keeps copies of the server's logs (`server.log` and the run before it, Google Messages and its
 sign-in history, Google Voice, Instagram, and the Messenger helper's log from the keys volume), refreshed about once a
 minute while it is connected, in `ServerLogs` under its data folder (`%LOCALAPPDATA%\Messages for Windows\ServerLogs`)
-and in its log viewer as "Server · …". Only the device paired first can read them, and only by those names; nothing
+and in its log viewer as "Server · …". Any paired device can read them, and only by those names; nothing
 else on either volume is ever served. No shell or copy loop on the server is needed to read them.
 
 ## Run it
@@ -284,22 +283,22 @@ data folder's `push/` still work when the keys volume has none; `MESSAGES_PUSH` 
 
 The container is started with limits, so a flood of requests, a runaway browser or a leak cannot take the whole server
 down with it: `--memory` (with `--memory-swap` equal, so no swap beyond it) and `--pids-limit` (threads count). The
-install script uses 2 GB and 1024 for the plain image, and 4 GB and 2048 with `--google`, where Chrome alone takes
+install script uses 4 GB and 2048, where Chrome alone takes
 0.6 to 1.2 GB and a few hundred threads. Change them with `MESSAGES_MEMORY` (such as `3g`), `MESSAGES_PIDS_LIMIT` and,
 if you want a cap on processor use, `MESSAGES_CPUS` (such as `2`; not set by default because the script cannot know how
-many cores the server has) in `install.env` or the environment. The compose file and the Unraid template carry the plain
-image's values. The server itself also limits each paired device: at most 4 connections open at once (a new one closes the
+many cores the server has) in `install.env` or the environment. The compose file and the Unraid templates carry the same
+values. The server itself also limits each paired device: at most 4 connections open at once (a new one closes the
 device's oldest), 256 requests in flight on a connection (the next is refused as unavailable and can be sent again), and
 no more than 64 open connections in all.
 
-## Chrome's sandbox (the Google image)
+## Chrome's sandbox
 
-By default the Google image runs Chrome with `--no-sandbox`, because a container with every capability dropped cannot give
+By default the image runs Chrome with `--no-sandbox`, because a container with every capability dropped cannot give
 Chrome the user namespaces its sandbox is made of. Chrome runs as the same account that can read the keys volume, so a page's
 code that broke out of a renderer would have every provider's secrets. `--chrome-sandbox` turns the sandbox on:
 
 ```sh
-bash /mnt/user/tmp/messages-server/install-unraid.sh --google --chrome-sandbox
+bash /mnt/user/tmp/messages-server/install-unraid.sh --chrome-sandbox
 ```
 
 What it changes, and nothing more: the container is started with `docker/messages-server/chrome-seccomp.json` (Docker's own
@@ -318,7 +317,7 @@ never gives it; `inactive` or `unknown` means the sandbox is not proven. `server
 (`cat /proc/sys/user/max_user_namespaces` must be above 0, as it is on Unraid's stock kernel). If it
 says they are off, leave the sandbox off.
 
-**To check it**: install with `--google --chrome-sandbox`; the install output shows the
+**To check it**: install with `--chrome-sandbox`; the install output shows the
 `server google` lines. Wait about a minute after Chrome starts and look for `google chrome sandbox=active` in
 `docker logs messages-server`. Then sign in as usual and check that the Google pairing renews. If Chrome does not start, the log says
 why (`sandbox_unavailable`, or `google chrome start=failed`; Chrome's own message is in `last-chrome-error.log` on the keys volume).
@@ -340,9 +339,7 @@ app shows matches the one in the log before you accept it.
 
 ## Devices
 
-The first device paired is the owner. It can add devices without a restart (it approves a device that asks to join, or
-makes a pairing code, in Manage server) and remove any device; every other device can only remove itself. If the owner removes itself, the
-next oldest device becomes the owner.
+Devices are added and removed on the server's page, with its password. No device outranks another: each reads and sends, and can remove itself.
 
 To start over with no device: stop the container, delete `devices.json` in the data folder and start it again. That
 unpairs every device, and the log shows a new pairing code. With the server's page on (below), a lost owner PC is
@@ -354,7 +351,7 @@ The server has a page of its own on the same port: open `https://<this server>:8
 (or your Tailscale network). It shows devices waiting to join, the server's version and uptime, the accounts it holds, and its
 paired devices; it approves a device that asks to join, removes a device, shows a QR code a phone scans to join (**Add a
 phone**) and a line a PC pastes (**Add a PC**), each asking for the password again; and it shows the end of the server's
-log. Removing an account stays in Messages' Manage server.
+log, and what it keeps on disk by kind (Storage, measured in the background and refreshed every ten minutes). Accounts are connected and removed there too, and nowhere else.
 
 **First run.** On its first start without a password, the server prints a one-time setup code to the container's output
 (`server setup code=XXXXX-XXXXX`, good for a day; **Logs** on Unraid, `docker logs messages-server 2>&1 | grep -i "setup
@@ -433,7 +430,7 @@ keeps its encrypted-device keys on the server; if the same account then moves in
 deleted once the server has signed the account in.
 
 A move back (Settings → Messages Server → **Move back to this PC…**) holds the accounts on the server and takes them home;
-the server then keeps a paused copy with a note that they moved away, which Manage server's **Remove** forgets. While that note is there the server will not restore, connect, turn on encryption
+the server then keeps a paused copy with a note that they moved away, which **Remove** on the server's page forgets. While that note is there the server will not restore, connect, turn on encryption
 for or sign in Messenger or Instagram; a new move from the PC takes it away. If the PC is lost and the server should run them
 again, clear the note with a command like the reset's (stop the container, mount both volumes, type `CLEAR`):
 

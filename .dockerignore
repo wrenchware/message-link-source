@@ -10,9 +10,9 @@
 !src
 !experiments
 !third_party/mautrix-meta
-# The Google Messages helper's patched library, for docker/messages-server/Dockerfile.google.
+# The Google Messages helper's patched library, for docker/messages-server/Dockerfile.
 !third_party/mautrix-gmessages
-# Google Chrome's managed policy for Dockerfile.google (copied to /etc/opt/chrome/policies/managed).
+# Google Chrome's managed policy for the Dockerfile (copied to /etc/opt/chrome/policies/managed).
 !docker/messages-server/chrome-policy.json
 # The GHCR installer extracts these from the image without a source bundle or starting the server.
 !docker/messages-server/chrome-seccomp.json

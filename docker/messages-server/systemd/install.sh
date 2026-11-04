@@ -3,7 +3,7 @@
 # Linux host with systemd and no Docker: Ubuntu, Debian, a Proxmox LXC. Run it as root from anywhere:
 #
 #   sudo ./install.sh              Messenger and Instagram (and Google, if an earlier install turned it on)
-#   sudo ./install.sh --google     also Google Messages and Google Voice, beside official Google Chrome (Debian, Ubuntu)
+#   sudo ./install.sh --google     with official Google Chrome (Debian, Ubuntu), in which the page connects accounts: without it, accounts only arrive by a move from a PC
 #   sudo ./install.sh --no-google  turns Google off again; Chrome stays installed
 #
 # What it does, and nothing else:

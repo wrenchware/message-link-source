@@ -4,18 +4,16 @@
 # (tools\Publish-ServerBundle.ps1 puts both in a share). Run it from Unraid's terminal:
 #
 #   bash /mnt/user/tmp/messages-server/install-unraid.sh
-#   bash /mnt/user/tmp/messages-server/install-unraid.sh --google    # the Google Messages image (SWITCHBOARD.md 4.3, 5.4)
-#   bash /mnt/user/tmp/messages-server/install-unraid.sh --google --chrome-sandbox   # the same, with Chrome's own sandbox on (README, Chrome's sandbox)
-#   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --google --chrome-sandbox
+#   bash /mnt/user/tmp/messages-server/install-unraid.sh --chrome-sandbox   # with Chrome's own sandbox on (README, Chrome's sandbox)
+#   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --chrome-sandbox
 #
-# --google builds Dockerfile.google instead (Debian with official Google Chrome, always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
+# The one image is Debian with official Google Chrome (SWITCHBOARD.md stage 11; 4.3, 5.4): always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
 # Messages on. Chromium runs without its own sandbox there, chosen for the 5.4 test (2026-10-09):
 # the container drops every capability, so the sandbox cannot start, and the browser loads only Google's own sites
 # (docs/research/google-linux-renewal.md). It also runs Chromium headed, with a window on a virtual display (Xvfb, one
 # per browser run, inside the container): the headless browser loaded Google's page signed in but Google never rotated
 # its sign-in cookie (5.4, 2026-10-10). The log says headed=yes on `server google enabled` and each `google browser`
-# line, and the keeper's `browser early=` lines now appear in `docker logs`. The same keys volume and data folder are kept, so running the script again
-# without --google goes back to the main image with Messenger's sign-in intact.
+# line, and the keeper's `browser early=` lines now appear in `docker logs`.
 #
 # It unpacks the source to /tmp, builds the image there, keeps the server's sealed data in appdata and its keys in the
 # Docker named volume messages-server-keys (inside Docker's own storage, outside every share), and replaces a running
@@ -29,34 +27,24 @@ bundle="$here/messages-source.tar.gz"
 # rewritten by every publish, and sits on a share): a reinstall keeps the running container's (see below).
 [ -f "$here/install.env" ] && . "$here/install.env"
 
-google=0
 chrome_sandbox=0
 ghcr=0
 for arg in "$@"; do
     case "$arg" in
-        --google) google=1 ;;
         --chrome-sandbox) chrome_sandbox=1 ;;
         --ghcr) ghcr=1 ;;
-        *) echo "Unknown option: $arg (the options are --google, --chrome-sandbox and --ghcr)." >&2; exit 1 ;;
+        *) echo "Unknown option: $arg (the options are --chrome-sandbox and --ghcr)." >&2; exit 1 ;;
     esac
 done
 if [ "$ghcr" = 0 ]; then
     [ -f "$bundle" ] || { echo "No messages-source.tar.gz beside this script." >&2; exit 1; }
 fi
-if [ "$google" = 1 ]; then
-    image="messages-server:local-google"
-    dockerfile="Dockerfile.google"
-    # MESSAGES_NETWORK_ISOLATED=1: this container is published with -p on a bridge network, so it has a network namespace of its own; the remote Google sign-in is offered only on that proof.
-    extra_env=(-e MESSAGES_GOOGLE=1 -e MESSAGES_GOOGLE_CHROME=1 -e MESSAGES_CHROMIUM_NO_SANDBOX=1 -e MESSAGES_CHROMIUM_HEADED=1 -e MESSAGES_NETWORK_ISOLATED=1)
-    # The image always takes the newest stable Chrome: the build time is an argument the Chrome layer names, so Docker never reuses a cached Chrome. It is also how old the server says Chrome is.
-    build_args=(--build-arg "CHROME_REFRESH=$(date -u +%Y%m%dT%H%M%SZ)")
-else
-    image="messages-server:local"
-    dockerfile="Dockerfile"
-    extra_env=()
-    # The build time, for the owner's Manage server (MESSAGES_IMAGE_BUILT); the main image names it in its last layer only.
-    build_args=(--build-arg "CHROME_REFRESH=$(date -u +%Y%m%dT%H%M%SZ)")
-fi
+image="messages-server:local"
+dockerfile="Dockerfile"
+# MESSAGES_NETWORK_ISOLATED=1: this container is published with -p on a bridge network, so it has a network namespace of its own; the remote Google sign-in is offered only on that proof.
+extra_env=(-e MESSAGES_GOOGLE=1 -e MESSAGES_GOOGLE_CHROME=1 -e MESSAGES_CHROMIUM_NO_SANDBOX=1 -e MESSAGES_CHROMIUM_HEADED=1 -e MESSAGES_NETWORK_ISOLATED=1)
+# The image always takes the newest stable Chrome: the build time is an argument the Chrome layer names, so Docker never reuses a cached Chrome. It is also how old the server says Chrome is.
+build_args=(--build-arg "CHROME_REFRESH=$(date -u +%Y%m%dT%H%M%SZ)")
 if [ "$ghcr" = 1 ]; then
     # Docker's login stays on the host, never in install.env, a share, the image, or either account volume.
     repository="${MESSAGES_GHCR_IMAGE:-ghcr.io/wrenchware/messages-server}"
@@ -65,7 +53,6 @@ if [ "$ghcr" = 1 ]; then
         echo "Use MESSAGES_GHCR_IMAGE=ghcr.io/<owner>/messages-server and MESSAGES_GHCR_TAG=latest (or an app version or exact build tag)." >&2
         exit 1
     fi
-    if [ "$google" = 1 ]; then tag="$tag-google"; fi
     image="$repository:$tag"
 fi
 # --chrome-sandbox: Chrome with its own sandbox on, not the owner's 2026-10-09 choice of no sandbox (docs/research/google-linux-renewal.md). Chrome runs as the account that can read the keys
@@ -75,7 +62,6 @@ fi
 # `google chrome sandbox=active` once a page's renderers are seen filtered. Without the option nothing changes. Checked here first, so a kernel that cannot do it is said before anything is built.
 seccomp_args=()
 if [ "$chrome_sandbox" = 1 ]; then
-    [ "$google" = 1 ] || { echo "--chrome-sandbox is for the Google image: use it with --google." >&2; exit 1; }
     userns="$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 0)"
     case "$userns" in ''|*[!0-9]*) userns=0 ;; esac
     if [ "$userns" -le 0 ] || [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 1)" = 0 ]; then
@@ -97,15 +83,14 @@ if [ "$chrome_sandbox" = 1 ]; then
     extra_env=("${kept[@]}")
 fi
 # What the container may use, so a flood of requests, a runaway browser or a leak cannot take the whole box (external security review, 2026-10-11).
-#   memory   Memory and swap together (no swap beyond it). Without --google: the server and the Messenger helper, which together stay well under 1 GB;
-#            2g leaves their history reads and media downloads room. With --google: Chrome (a window on a virtual display, one page, plus its renderer,
+#   memory   Memory and swap together (no swap beyond it). Chrome (a window on a virtual display, one page, plus its renderer,
 #            GPU-less compositor and network processes) takes 0.6 to 1.2 GB by itself, so it is 4g; Chrome is the thing that gets killed first if it leaks,
 #            not the box.
 #   pids     Threads count as processes here. The server and four Go helpers hold some hundreds of threads between them; Chrome alone holds a few hundred.
-#            1024 plain, 2048 with Chrome: a fork bomb is stopped, normal use never gets near.
+#            2048: a fork bomb is stopped, normal use never gets near.
 #   cpus     Not limited by default (the number of cores is not known here, and Docker refuses more than the box has); set MESSAGES_CPUS=2 to cap it.
 # Each can be changed with MESSAGES_MEMORY, MESSAGES_PIDS_LIMIT, MESSAGES_CPUS in install.env or the environment.
-if [ "$google" = 1 ]; then default_memory="4g"; default_pids=2048; else default_memory="2g"; default_pids=1024; fi
+default_memory="4g"; default_pids=2048
 memory="${MESSAGES_MEMORY:-$default_memory}"
 pids="${MESSAGES_PIDS_LIMIT:-$default_pids}"
 cpus="${MESSAGES_CPUS:-}"

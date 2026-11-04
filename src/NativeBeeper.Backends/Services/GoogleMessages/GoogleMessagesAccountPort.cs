@@ -38,8 +38,6 @@ internal sealed class GoogleMessagesAccountPort(GoogleMessagesBackend google, Go
     public Task SignInAsync(IReadOnlyDictionary<string, string> cookies, IProgress<string> pairingEmoji, CancellationToken cancellationToken, bool asNewDevice = false) =>
         google.SignInAsync(cookies, pairingEmoji, cancellationToken, asNewDevice);
 
-    public Task PairByQrAsync(IGoogleQrOutput output, CancellationToken cancellationToken) => google.PairByQrAsync(output, cancellationToken);
-
     public GoogleSimChip? SimFor(string? chatId) => google.SimFor(chatId) is { } sim ? new(sim.Label, sim.Color) : null;
     public Task SetHistoryIndexingAsync(bool enabled, CancellationToken cancellationToken = default)
     {

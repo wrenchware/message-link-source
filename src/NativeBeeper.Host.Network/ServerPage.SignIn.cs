@@ -40,15 +40,19 @@ internal sealed partial class ServerPage
 
     private static bool IsSignInPath(string? path) => path is SignInPath;
 
-    private static readonly (string Service, string Name, string Provider)[] SignInServiceList =
+    // A new service is one line here (and a card in Settings). Many: it takes more than one account, so its button adds one rather than signing the one in again.
+    // Only Google Voice does today: its helper runs one process per account, and the other services' ports hold one account each (ROADMAP.md, Several accounts on one service).
+    private static readonly (string Service, string Name, string Provider, bool Many)[] SignInServiceList =
     [
-        (RemoteSignInServices.Google, "Google Messages", ServerAccountProviders.GoogleMessages),
-        (RemoteSignInServices.Voice, "Google Voice", ServerAccountProviders.GoogleVoice),
-        (RemoteSignInServices.Messenger, "Messenger", ServerAccountProviders.Messenger),
-        (RemoteSignInServices.Instagram, "Instagram", ServerAccountProviders.Instagram),
+        (RemoteSignInServices.Google, "Google Messages", ServerAccountProviders.GoogleMessages, false),
+        (RemoteSignInServices.Voice, "Google Voice", ServerAccountProviders.GoogleVoice, true),
+        (RemoteSignInServices.Messenger, "Messenger", ServerAccountProviders.Messenger, false),
+        (RemoteSignInServices.Instagram, "Instagram", ServerAccountProviders.Instagram, false),
     ];
 
     private static string SignInName(string service) => SignInServiceList.First(item => item.Service == service).Name;
+
+    private static bool SignInMany(string service) => SignInServiceList.First(item => item.Service == service).Many;
 
     // ---- The Connect buttons, on the Accounts card and the walkthrough's accounts step ----
 
@@ -58,24 +62,24 @@ internal sealed partial class ServerPage
         if (DesktopSignIn is not null)
         {
             DesktopSignInForms(body, context, token, accounts);
-            if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Messages there (Settings → Accounts), or with Connect on this page in a browser on that PC."));
+            if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Messages there (Settings → Connections), or with Connect on this page in a browser on that PC."));
             return;
         }
         var services = signInServices;
         // A server with no browser at all says so once, rather than the same sentence under each of the four services.
         if (!AnyBrowser(services))
         {
-            body.Append(Para("This server can't show sign-in pages because it has no Google Chrome. Connect accounts from Messages on a PC that uses this server, in Settings → Accounts."));
+            body.Append(Para(NoSignIn));
             return;
         }
         var any = false;
         body.Append("<ul class=\"rows connect\">");
-        foreach (var (service, name, provider) in SignInServiceList)
+        foreach (var (service, name, provider, many) in SignInServiceList)
         {
             var has = accounts?.Any(account => account.Provider == provider) == true;
             var offered = services is not null && RemoteSignInSessions.Offers(services, service);
             any |= offered;
-            var button = service == RemoteSignInServices.Voice ? has ? "Add another account" : "Add an account" : has ? "Sign in again" : "Connect";
+            var button = many ? has ? "Add another account" : "Add an account" : has ? "Sign in again" : "Connect";
             body.Append("<li><span class=\"grow\"><strong>").Append(Html(name)).Append("</strong><span class=\"quiet\">")
                 .Append(Html(offered ? ConnectHint(service) : Elsewhere(service, services))).Append("</span></span>");
             if (offered)
@@ -86,7 +90,7 @@ internal sealed partial class ServerPage
         body.Append("</ul>");
         if (!any) return;
         if (services!.SignIns.OpenOn is { } open) body.Append(Notice(BusyWords(open)));
-        body.Append("<p class=\"quiet\">Each opens the service's own sign-in page in the server's browser, shown here. Only someone signed in to this page, or Messages on the PC that manages the server, can connect an account, one at a time.</p>");
+        body.Append("<p class=\"quiet\">Each opens the service's own sign-in page in the server's browser, shown here. Only someone signed in to this page can connect an account, one at a time.</p>");
     }
 
     private static string ConnectHint(string service) => service switch
@@ -97,14 +101,12 @@ internal sealed partial class ServerPage
         _ => "Sign in to Instagram, then choose Done.",
     };
 
-    // Where to connect a service this server cannot sign in to in its own browser: from Messages on a PC that uses it (on a Windows server, that PC is the server's own), in its native window.
-    private static string Elsewhere(string service, ProtocolServices? services)
-    {
-        var name = SignInName(service);
-        return AnyBrowser(services)
-            ? $"This server can't sign in to {name} in its own browser. Connect it from Messages on a PC that uses this server, in Settings → Accounts."
-            : $"This server can't show sign-in pages because it has no Google Chrome. Connect {name} from Messages on a PC that uses this server, in Settings → Accounts.";
-    }
+    // The page is the only place a server's accounts connect (owner, 2026-11-03), so a server that can't show a sign-in here says what it needs. Its one image has Chrome: this is a server
+    // run on the host's network (SignInExposure.cs) or installed without it.
+    private const string NoSignIn = "This server can't show sign-in pages, so accounts can't be connected here yet. It needs Google Chrome and a network of its own.";
+
+    private static string Elsewhere(string service, ProtocolServices? services) =>
+        AnyBrowser(services) ? $"This server can't sign in to {SignInName(service)} in its own browser. Update the server, then try again." : NoSignIn;
 
     private static bool AnyBrowser(ProtocolServices? services) =>
         services is not null && (services.RemoteSignIn is not null || services.VoiceRemoteSignIn is not null || services.MetaRemoteSignIn is not null);
@@ -112,7 +114,6 @@ internal sealed partial class ServerPage
     private static string BusyWords(string? face) => face switch
     {
         RemoteSignInFaces.Page => "Another sign-in is open on this page, in another tab or browser. Finish or cancel it there first.",
-        RemoteSignInFaces.App => "Another sign-in is open in Messages on a PC. Finish or cancel it there first.",
         _ => "The server is already signing in, or renewing a sign-in. Try again in a moment.",
     };
 
@@ -132,7 +133,7 @@ internal sealed partial class ServerPage
         var back = walkthrough ? "/welcome?step=accounts" : "/#accounts";
         var backWords = walkthrough ? "Back to setting up" : "Back to the server";
         var name = SignInName(service);
-        var title = service == RemoteSignInServices.Voice ? "Add a Google Voice account" : "Connect " + name;
+        var title = SignInMany(service) ? $"Add a {name} account" : "Connect " + name;
         var services = signInServices;
         if (services is null || !RemoteSignInSessions.Offers(services, service))
         {

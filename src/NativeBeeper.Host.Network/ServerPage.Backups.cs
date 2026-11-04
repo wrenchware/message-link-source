@@ -402,7 +402,7 @@ internal sealed partial class ServerPage
         log($"server page reset signed_out={signedOut} left={left} failed={failed}");
         if (failed)
         {
-            await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("An account couldn't be signed out, so nothing was reset. Try again, or remove it in Messages from Manage server.")).ConfigureAwait(false);
+            await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("An account couldn't be signed out, so nothing was reset. Try again, or remove it on the Accounts card of this page.")).ConfigureAwait(false);
             return;
         }
         try { await ServerRestore.StageResetAsync(backups.Service.Paths).ConfigureAwait(false); }

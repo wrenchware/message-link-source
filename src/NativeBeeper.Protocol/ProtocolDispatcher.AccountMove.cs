@@ -10,6 +10,7 @@ public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddAccountMoveRoutes(Dictionary<string, Route> routes)
     {
+        routes[ProtocolMethods.AccountMoveAuthorize] = new(typeof(AccountMoveAuthorizeParams), typeof(AccountMoveAuthorized), null, Own: (connection, request, _, cancellationToken) => connection.AuthorizeMoveAsync(request, cancellationToken));
         routes[ProtocolMethods.AccountMoveStatus] = MoveRead<AccountMoveStatusParams, AccountMoveStatus>((port, p, ct) => port.StatusAsync(p, ct));
         routes[ProtocolMethods.AccountMoveHistoryPut] = MoveRead<MoveHistoryPutParams, MoveHistoryPutResult>((port, p, ct) => port.PutHistoryAsync(p, ct));
         routes[ProtocolMethods.AccountMoveRead] = MoveRead<AccountMoveReadParams, AccountMoveChunk>((port, p, ct) => port.ReadAsync(p, ct));
@@ -38,7 +39,8 @@ public sealed partial class ProtocolDispatcher
         var parameters = ReadParams<TParams>(request);
         if (parameters is AccountMoveReadParams piece) parameters = (TParams)(object)(piece with { ClientProtocol = negotiated });
         if (parameters is AccountMoveHistoryGetParams page) parameters = (TParams)(object)(page with { ClientProtocol = negotiated });
-        await RequireOwnerAsync(cancellationToken).ConfigureAwait(false);
+        // What the server holds of each account says nothing of them, so any paired device may read it; the rest needs the password.
+        if (parameters is not AccountMoveStatusParams) await RequireMovePasswordAsync(cancellationToken).ConfigureAwait(false);
         // A legacy move-back ignores a failed hold if status still says held/stopped. Guard the bytes too, including a hold made by another client version.
         if (parameters is AccountMoveReadParams read) await Coded(async () => { await OlderClientMayReadAsync(port, read.MoveId, [read.Provider], cancellationToken); return true; }).ConfigureAwait(false);
         if (parameters is AccountMoveHistoryGetParams history) await Coded(async () => { await OlderClientMayReadAsync(port, history.MoveId, [history.Provider], cancellationToken); return true; }).ConfigureAwait(false);
@@ -63,7 +65,7 @@ public sealed partial class ProtocolDispatcher
                 return JsonSerializer.SerializeToUtf8Bytes(await Coded(() => call(port, parameters, cancellationToken)).ConfigureAwait(false), ProtocolJson.Options);
             }, Before: async cancellationToken =>
             {
-                await connection.RequireOwnerAsync(cancellationToken).ConfigureAwait(false);
+                await connection.RequireMovePasswordAsync(cancellationToken).ConfigureAwait(false);
                 if (before is not null) await Coded(async () => { await before(connection, port, parameters, cancellationToken).ConfigureAwait(false); return true; }).ConfigureAwait(false);
             });
         }, Settles: true);
@@ -92,19 +94,32 @@ public sealed partial class ProtocolDispatcher
         }
     }
 
-    // Everything the account move carries is cookies, device keys and message history: only the owner device may ask, hold, read or release a server's copy. A host with no paired devices
-    // (the app's own host, a local pipe, the loopback) has one user, whose connection is the owner. Checked before the host's port is reached; the refusal is fixed words.
-    private Task RequireOwnerAsync(CancellationToken cancellationToken) =>
-        RequireOwnerAsync("account move", "Only the device paired first with this server can move accounts.", cancellationToken);
+    // Everything the account move carries is cookies, device keys and message history, and what it hands over outlives removing a device: so the server's password is asked, not just
+    // a paired device's token (owner, 2026-11-03). A host with no paired devices (the app's own host, a local pipe, the loopback) has one user. Checked before the host's port is reached.
+    private const string MoveRefusal = "Moving accounts needs the server's password. Update Messages if it didn't ask for it.";
 
-    // The same rule for anything else only the owner may have (host.logs, host.*, the account changes): `what` is the log line's fixed words, `sentence` the refusal's, and
-    // `method`, when given, the route's own name (a constant, never what the peer sent), added to the line.
-    private async Task RequireOwnerAsync(string what, string sentence, CancellationToken cancellationToken, string? method = null)
+    private async Task RequireMovePasswordAsync(CancellationToken cancellationToken)
     {
-        if (services.Devices is not { } devices) return;
-        var list = await devices.ListAsync(cancellationToken).ConfigureAwait(false);
-        if (list.Any(device => device.Current && device.Owner)) return;
-        log?.Invoke(method is null ? $"protocol {what} refused reason=not_owner" : $"protocol {what} refused reason=not_owner method={method}");
+        if (services.Devices is not { } devices || await devices.MayMoveAsync(cancellationToken).ConfigureAwait(false)) return;
+        log?.Invoke("protocol account move refused reason=no_password");
+        throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden, MoveRefusal);
+    }
+
+    // The password itself, which only the device's port sees: it is not journaled, logged or answered back.
+    private async Task<byte[]> AuthorizeMoveAsync(RequestFrame request, CancellationToken cancellationToken)
+    {
+        if (negotiated < ProtocolVersion.MovePassword) throw new NotSupportedException();
+        var parameters = ReadParams<AccountMoveAuthorizeParams>(request);
+        var outcome = services.Devices is { } devices ? await devices.AuthorizeMoveAsync(parameters.Password ?? "", cancellationToken).ConfigureAwait(false) : AccountMoveAuthorizeWords.Right;
+        return JsonSerializer.SerializeToUtf8Bytes(new AccountMoveAuthorized(outcome), ProtocolJson.Options);
+    }
+
+    // What a server's page does, refused to any device on its door (owner, 2026-11-03): `what` is the log line's fixed words, `sentence` the refusal's, and `method`, when given, the
+    // route's own name (a constant, never what the peer sent), added to the line. A host with no paired devices has one user, who goes on as before.
+    private void RefuseOnServer(string what, string sentence, string? method = null)
+    {
+        if (services.Devices is null) return;
+        log?.Invoke(method is null ? $"protocol {what} refused reason=on_page" : $"protocol {what} refused reason=on_page method={method}");
         throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Forbidden, sentence);
     }
 }

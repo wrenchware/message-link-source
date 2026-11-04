@@ -13,8 +13,8 @@ internal sealed partial class GoogleMessagesBackend
     private static readonly TimeSpan IndexStartDelay = TimeSpan.FromSeconds(45), IndexQuietPeriod = TimeSpan.FromSeconds(15), IndexPageDelay = TimeSpan.FromMilliseconds(2500), IndexRealtimePause = TimeSpan.FromSeconds(30);
     private const int IndexPageSize = 50;
     private readonly GoogleIndexRun indexing = new();
-    private volatile bool historyIndexingEnabled = NativeBeeper.App.Services.SearchIndexPreference.Load();
-    // Settings toggle. Off stops downloading; already saved history stays searchable.
+    // Always on (owner, 2026-11-04: no switch for it, and an old choice of off no longer counts). It pauses while someone is active.
+    private volatile bool historyIndexingEnabled = true;
     internal bool HistoryIndexingEnabled
     {
         get => historyIndexingEnabled;

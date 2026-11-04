@@ -10,8 +10,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Host.Network;
 
 /// <summary>
-/// The server's own page (SWITCHBOARD.md 4.6), for its owner in a browser on the home network: what the server is and holds, its paired devices (one can be removed, so a lost
-/// PC is never stuck as the owner), a new pairing code with the address and fingerprint a PC needs, and the server's recent log. Account removal stays in the app's Manage server.
+/// The server's own page (SWITCHBOARD.md 4.6), for its owner in a browser on the home network: what the server is and holds, its paired devices, its accounts (connected and removed here), a new pairing code with the address and fingerprint a PC needs, and the server's recent log.
 /// <para>
 /// It is served on the host's one HTTPS port beside <c>/v1/socket</c>, and only when the owner set a password (<c>MESSAGES_ADMIN_PASSWORD</c>, at least
 /// <see cref="MinimumPassword"/> characters); without one every path but the socket stays 404. Signing in sets a cookie good for <see cref="SessionLifetime"/>, made with a key
@@ -270,7 +269,7 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
         or "/push/test" or "/mirror" or LogoPath || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
@@ -348,26 +347,33 @@ internal sealed partial class ServerPage
         // The server's first run (ServerPage.Setup.cs): until a password is chosen, the setup screen is all the page shows.
         if (await FirstRunAsync(context, path, form).ConfigureAwait(false)) return;
 
+        // A link to a place on the home page (`/?section=storage`) goes there once signed in; the sign-in form carries the section along, so it survives it.
+        var section = Section((post ? form!["section"] : request.Query["section"]).ToString());
         if (path == "/login")
         {
-            if (session is not null) { Redirect(response, "/"); return; }
+            if (session is not null) { Redirect(response, SectionPath(section)); return; }
             if (get)
             {
                 // Messages opening its own server's page on this PC (ServerPage.Desktop.cs).
                 if (TryOnceSignIn(context)) return;
                 // A sign-out the server could not keep is said, so the owner knows a restart would undo it.
                 var unsaved = request.Query["signed_out"] == "unsaved" ? "Signed out, but the server couldn't save it, so starting the server again would undo it. Change the password to sign every browser out for good." : null;
-                await PageAsync(context, StatusCodes.Status200OK, "Sign in", SignInBody(unsaved)).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status200OK, "Sign in", SignInBody(unsaved, section)).ConfigureAwait(false);
                 return;
             }
-            await SignInAsync(context, form!).ConfigureAwait(false);
+            await SignInAsync(context, form!, section).ConfigureAwait(false);
             return;
         }
         if (session is null)
         {
             // A form without a sign-in does nothing; a page asks for one.
             if (post) await PlainAsync(context, StatusCodes.Status403Forbidden, "Sign in first.").ConfigureAwait(false);
-            else Redirect(response, "/login");
+            else Redirect(response, path == "/" && section is not null ? "/login?section=" + section : "/login");
+            return;
+        }
+        if (get && path == "/" && section is not null)
+        {
+            Redirect(response, SectionPath(section));
             return;
         }
         if (post && !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(form!["form"].ToString()), Encoding.ASCII.GetBytes(FormToken(session))))
@@ -396,6 +402,12 @@ internal sealed partial class ServerPage
                 return;
             case "/devices/remove":
                 await RemoveDeviceAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
+                return;
+            case "/devices/rename":
+                await RenameDeviceAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
+                return;
+            case "/accounts/remove":
+                await RemoveAccountAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
                 return;
             case "/joins/approve":
                 await ApproveJoinAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
@@ -476,10 +488,24 @@ internal sealed partial class ServerPage
     // One password try, to sign in or asked again before a code or a removal (`purpose`, for the log). Paced as wrong pairing codes are: a source that keeps getting it
     // wrong waits longer each time, and every source waits a moment after any try. The moment is claimed under the same lock it is looked at in, so tries sent together are
     // one try and the rest are told to wait. Wrong and paced tries are logged the first time and then one in a hundred, so guessing cannot fill the server's log.
-    private Try CheckPassword(HttpContext context, string presented, string purpose)
+    private Try CheckPassword(HttpContext context, string presented, string purpose) =>
+        TrustedHere(context, purpose) ? Try.Right : CheckPassword(PairingCodes.Key(context.Connection.RemoteIpAddress), presented, purpose);
+
+    // The password a device gives to move accounts (ProtocolDispatcher.AccountMove.cs): paced with the page's own tries, per device. Never logged.
+    internal string CheckMovePassword(string device, string presented)
     {
-        if (TrustedHere(context, purpose)) return Try.Right;
-        var source = PairingCodes.Key(context.Connection.RemoteIpAddress);
+        if (settingUp) return AccountMoveAuthorizeWords.NoPassword;
+        if (Encoding.UTF8.GetByteCount(presented) > MaximumPasswordBytes) return AccountMoveAuthorizeWords.Wrong;
+        return CheckPassword("device:" + device, presented, "move") switch
+        {
+            Try.Right => AccountMoveAuthorizeWords.Right,
+            Try.Paced => AccountMoveAuthorizeWords.Paced,
+            _ => AccountMoveAuthorizeWords.Wrong,
+        };
+    }
+
+    private Try CheckPassword(string source, string presented, string purpose)
+    {
         var now = time.GetUtcNow();
         DateTimeOffset claimed;
         lock (gate)
@@ -518,22 +544,22 @@ internal sealed partial class ServerPage
         if (total == 1 || total % 100 == 0) log($"server page password outcome={outcome} purpose={purpose}{(total == 1 ? "" : $" count={total}")}");
     }
 
-    private async Task SignInAsync(HttpContext context, IFormCollection form)
+    private async Task SignInAsync(HttpContext context, IFormCollection form, string? section)
     {
         switch (CheckPassword(context, form["password"].ToString(), "sign_in"))
         {
             case Try.Paced:
                 context.Response.Headers.RetryAfter = "60";
-                await PageAsync(context, StatusCodes.Status429TooManyRequests, "Sign in", SignInBody("Too many tries. Wait a minute, then try again.")).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status429TooManyRequests, "Sign in", SignInBody("Too many tries. Wait a minute, then try again.", section)).ConfigureAwait(false);
                 return;
             case Try.Wrong:
-                await PageAsync(context, StatusCodes.Status401Unauthorized, "Sign in", SignInBody("That isn't the server password.")).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status401Unauthorized, "Sign in", SignInBody("That isn't the server password.", section)).ConfigureAwait(false);
                 return;
         }
         var expires = time.GetUtcNow() + SessionLifetime;
         context.Response.Cookies.Append(CookieName, NewSession(expires), Cookie(expires));
         log("server page sign_in outcome=signed_in");
-        Redirect(context.Response, "/");
+        Redirect(context.Response, SectionPath(section));
     }
 
     // The password asked again (a code, a removal): true to go on; otherwise the page is answered with `body` saying why.
@@ -616,7 +642,7 @@ internal sealed partial class ServerPage
 
     // ---- What the page does ----
 
-    // Asked about first (a GET), then done only with the password itself: a removed device stops connecting, and removing the PC that manages the server hands that on.
+    // Asked about first (a GET), then done only with the password itself: a removed device stops connecting.
     private async Task RemoveDeviceAsync(HttpContext context, string id, IFormCollection? form, string token)
     {
         var device = devices.List(null).FirstOrDefault(found => found.Id == id);
@@ -642,6 +668,95 @@ internal sealed partial class ServerPage
             return;
         }
         Redirect(context.Response, removed ? "/?done=removed" : "/?done=gone");
+    }
+
+    // A new name gives nobody anything, so the sign-in is enough, as turning a device away is.
+    private async Task RenameDeviceAsync(HttpContext context, string id, IFormCollection? form, string token)
+    {
+        var device = devices.List(null).FirstOrDefault(found => found.Id == id);
+        if (device is null)
+        {
+            Redirect(context.Response, "/?done=gone");
+            return;
+        }
+        string Ask(string? problem) => new StringBuilder("<section>").Append(problem is null ? "" : Notice(problem))
+            .Append("<form method=\"post\" action=\"/devices/rename\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token))
+            .Append("\"><input type=\"hidden\" name=\"id\" value=\"").Append(Html(device.Id))
+            .Append("\"><label for=\"name\">Name</label><input id=\"name\" name=\"name\" value=\"").Append(Html(device.Name)).Append("\" maxlength=\"").Append(NetworkPairing.MaxDeviceName)
+            .Append("\" autocomplete=\"off\" required autofocus><button type=\"submit\">Rename</button><a class=\"cancel\" href=\"/\">Cancel</a></form></section>").ToString();
+        if (form is null)
+        {
+            await PageAsync(context, StatusCodes.Status200OK, "Rename a device", Ask(null)).ConfigureAwait(false);
+            return;
+        }
+        var name = form["name"].ToString();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            await PageAsync(context, StatusCodes.Status400BadRequest, "Rename a device", Ask("A device needs a name.")).ConfigureAwait(false);
+            return;
+        }
+        string? kept;
+        try { kept = await devices.RenameAsync(id, name).ConfigureAwait(false); }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            await PlainAsync(context, StatusCodes.Status500InternalServerError, "Couldn't save the new name. Try again.").ConfigureAwait(false);
+            return;
+        }
+        Redirect(context.Response, kept is null ? "/?done=gone" : "/?done=renamed");
+    }
+
+    // What names an account in a link and a form: its service, and for one of several Voice accounts its one-way key. Only ever compared with the list the server gives.
+    private static string AccountId(ServerAccount account) => account.Key is { Length: > 0 } key ? account.Provider + ":" + key : account.Provider;
+
+    // The account as the person knows it, so that one of two Voice accounts is never removed by guess.
+    private static string AccountLabel(ServerAccount account) => account.Name is { Length: > 0 } name ? $"{Provider(account.Provider)} ({name})" : Provider(account.Provider);
+
+    // Asked about first (a GET), then done only with the password itself: the server signs out and forgets what it kept, for every device that uses it. Not tied to the browser
+    // staying open once it starts, and never tried twice: a second press finds nothing to remove.
+    private async Task RemoveAccountAsync(HttpContext context, string id, IFormCollection? form, string token)
+    {
+        IReadOnlyList<ServerAccount>? accounts = null;
+        if (admin is not null)
+            try { accounts = await admin.AccountsAsync(context.RequestAborted).ConfigureAwait(false); }
+            catch (Exception failure) when (failure is not OperationCanceledException) { log($"server page accounts failed type={failure.GetType().Name}"); }
+        var account = accounts?.FirstOrDefault(found => AccountId(found) == id);
+        if (account is null)
+        {
+            Redirect(context.Response, "/?done=account_gone");
+            return;
+        }
+        if (!account.Removable)
+        {
+            Redirect(context.Response, account.Provider == ServerAccountProviders.GoogleMessages ? "/?done=account_unpair" : "/?done=account_moving");
+            return;
+        }
+        var service = Provider(account.Provider);
+        var said = account.State == ServerAccountStates.MovedAway
+            ? $"The server forgets the paused copy of {service} it kept. The account on your PC stays as it is, and your saved messages stay."
+            : $"The server signs out of {service} and forgets what it kept of it, so every device that uses the server stops showing it until you connect it here again. "
+              + $"Nothing changes at {service} itself or in its own app, and your saved messages stay."
+              // The Windows server keeps Messenger's device where it is, so a new sign-in there reuses it (WindowsServerAdmin).
+              + (account.Provider == ServerAccountProviders.Messenger && DesktopSignIn is null ? " Encrypted chats would start over here: the server would join as a new device." : "");
+        string Ask(string? problem) => AskBody("/accounts/remove", token, $"Remove {AccountLabel(account)} from the server? {said}", "Remove", problem, id: id, danger: true);
+        if (form is null)
+        {
+            await PageAsync(context, StatusCodes.Status200OK, "Remove an account", Ask(null)).ConfigureAwait(false);
+            return;
+        }
+        if (!await PasswordAgainAsync(context, form, "remove_account", "Remove an account", Ask).ConfigureAwait(false)) return;
+        try
+        {
+            var removed = await admin!.RemoveAccountAsync(account.Provider, account.Key, CancellationToken.None).ConfigureAwait(false);
+            Redirect(context.Response, removed.Removed ? "/?done=account_removed" : "/?done=account_gone");
+        }
+        catch (InvalidOperationException refused) when (refused.Message == AccountRemoveWords.Moving) { Redirect(context.Response, "/?done=account_moving"); }
+        catch (InvalidOperationException refused) when (refused.Message == AccountRemoveWords.NotOffered) { Redirect(context.Response, "/?done=account_unpair"); }
+        catch (InvalidOperationException refused) when (refused.Message == AccountRemoveWords.Unknown) { Redirect(context.Response, "/?done=account_gone"); }
+        catch (Exception failure)
+        {
+            log($"server page account remove failed provider={account.Provider} type={failure.GetType().Name}");
+            await PlainAsync(context, StatusCodes.Status500InternalServerError, "Couldn't tell whether the account was removed. Check the list on the page before trying again.").ConfigureAwait(false);
+        }
     }
 
     // Asked about first (a GET, which shows the code to match), then done only with the password itself: an approved device can read every conversation on the server.
@@ -692,6 +807,11 @@ internal sealed partial class ServerPage
         {
             "removed" => "The device was removed. It stops connecting at once, and nothing on it was deleted.",
             "gone" => "That device isn't paired with the server any more.",
+            "renamed" => "The device was renamed.",
+            "account_removed" => "The account was removed from the server.",
+            "account_gone" => "The server doesn't hold that account any more.",
+            "account_moving" => "That account is part of a move between this server and a PC, so it can't be removed yet.",
+            "account_unpair" => UnpairGoogle,
             "joined" => "The device joined. It can use the server now.",
             "declined" => "The request was turned away.",
             "join_gone" => "That request isn't waiting any more: it was answered, it ran out, or the device stopped asking.",
@@ -742,11 +862,17 @@ internal sealed partial class ServerPage
         {
             body.Append("<ul class=\"rows\">");
             foreach (var account in accounts)
+            {
                 body.Append("<li><span class=\"grow\"><strong>").Append(Html(Provider(account.Provider))).Append("</strong>")
                     .Append(account.Name is { Length: > 0 } name ? "<span class=\"quiet\">" + Html(name) + "</span>" : "").Append("</span>")
-                    .Append("<span class=\"state\"><span class=\"dot ").Append(Tone(account.State)).Append("\"></span>").Append(Html(State(account.State))).Append("</span></li>");
+                    .Append("<span class=\"state\"><span class=\"dot ").Append(Tone(account.State)).Append("\"></span>").Append(Html(State(account.State))).Append("</span>");
+                if (account.Removable)
+                    body.Append("<a class=\"quiet\" href=\"/accounts/remove?id=").Append(Html(Uri.EscapeDataString(AccountId(account)))).Append("\" aria-label=\"").Append(Html("Remove " + AccountLabel(account))).Append("\">Remove</a>");
+                body.Append("</li>");
+            }
             body.Append("</ul>");
-            body.Append("<p class=\"quiet\">To remove an account, use Manage server in Messages on the PC that manages this server.</p>");
+            if (accounts.Any(account => !account.Removable && account.Provider == ServerAccountProviders.GoogleMessages)) body.Append("<p class=\"quiet\">").Append(Html(UnpairGoogle)).Append("</p>");
+            if (accounts.Any(account => !account.Removable && account.Provider != ServerAccountProviders.GoogleMessages)) body.Append("<p class=\"quiet\">An account being moved between this server and a PC can't be removed until the move finishes.</p>");
         }
         // Signing in from this page (ServerPage.SignIn.cs): a Connect for each service the server's own browser signs in, and where to do it for the rest; on the Windows server,
         // the native sign-in on its own desktop instead (ServerPage.Desktop.cs).
@@ -761,12 +887,12 @@ internal sealed partial class ServerPage
             body.Append("<ul class=\"rows\">");
             foreach (var device in list)
                 body.Append("<li><span class=\"grow\"><strong>").Append(Html(device.Name)).Append("</strong><span class=\"quiet\">")
-                    .Append(device.Owner ? "Manages the server · " : "")
                     .Append(device.LastSeen is { } seen ? "last connected " + Html(Ago(seen)) : "never connected").Append("</span></span>")
+                    .Append("<a class=\"quiet\" href=\"/devices/rename?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Rename " + device.Name)).Append("\">Rename</a>")
                     .Append("<a class=\"quiet\" href=\"/devices/remove?id=").Append(Uri.EscapeDataString(device.Id)).Append("\">Remove</a></li>");
             body.Append("</ul>");
         }
-        body.Append("<p class=\"quiet\">Add a phone shows a code to scan. Add a PC gives a line to paste into Messages on the PC, in Settings → Accounts → Messages Server.</p>");
+        body.Append("<p class=\"quiet\">Add a phone shows a code to scan. Add a PC gives a line to paste into Messages on the PC, in Settings → Connections → Messages Server.</p>");
         // Pages that ask for the password first (a GET, so nothing is done by following them).
         body.Append("<p class=\"actions\"><a class=\"button\" href=\"/phone\">Add a phone…</a> <a class=\"button quiet\" href=\"/pair\">Add a PC…</a></p>");
         // Asking to join is a way in for devices, so its switch sits with them rather than in a card of its own.
@@ -776,6 +902,7 @@ internal sealed partial class ServerPage
             .Append("</span><button type=\"submit\" class=\"quiet\">").Append(joins.Paused ? "Allow requests" : "Pause requests").Append("</button></form>");
         body.Append("</section>");
 
+        StorageCard(body);
         if (pushes is not null) PushCard(body, pushes, token);
         if (tailnet is not null) TailnetCard(body, tailnet, token);
 
@@ -823,7 +950,7 @@ internal sealed partial class ServerPage
     {
         var body = new StringBuilder("<section>");
         // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
-        body.Append(Para($"In Messages on the PC, open Settings → Accounts → Messages Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
+        body.Append(Para($"In Messages on the PC, open Settings → Connections → Messages Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
         body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(Address(request), fingerprint(), code))).Append("</p>");
         body.Append(Para("Or choose to use a pairing code there, and enter these three:"));
         body.Append("<dl>");
@@ -855,6 +982,8 @@ internal sealed partial class ServerPage
     };
 
     private const string PairAsk = "A pairing code lets a device read every conversation on the server, so the server's password is asked for again.";
+
+    private const string UnpairGoogle = "To remove Google Messages, unpair the server on your phone: Google Messages → Device pairing.";
 
     // A form that asks for the password before it does `button`: what it does, why it fails (when it did), and the device it is about.
     private static string AskBody(string action, string token, string intro, string button, string? problem, string? id = null, bool danger = false)
@@ -936,9 +1065,9 @@ internal sealed partial class ServerPage
 
     // ---- Words and HTML ----
 
-    private static string SignInBody(string? problem) =>
+    private static string SignInBody(string? problem, string? section = null) =>
         "<section>" + (problem is null ? "" : Notice(problem))
-        + "<form method=\"post\" action=\"/login\"><label for=\"password\">Password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>"
+        + "<form method=\"post\" action=\"/login\">" + (section is null ? "" : "<input type=\"hidden\" name=\"section\" value=\"" + section + "\">") + "<label for=\"password\">Password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>"
         + "<button type=\"submit\">Sign in</button></form>"
         + "<p class=\"quiet\">The password chosen when this server was installed. Changing it signs every browser out.</p></section>";
 
@@ -1042,6 +1171,13 @@ internal sealed partial class ServerPage
 
     private static Task PlainAsync(HttpContext context, int status, string text) =>
         PageAsync(context, status, status >= 500 ? "Something went wrong" : "That didn't work", Para(text) + "<p><a href=\"/\">Back to the server's page</a></p>");
+
+    // The places on the home page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
+    private static readonly string[] Sections = ["accounts", "storage"];
+
+    internal static string? Section(string? name) => Sections.FirstOrDefault(known => known == name);
+
+    private static string SectionPath(string? section) => section is null ? "/" : "/#" + section;
 
     private static void Redirect(HttpResponse response, string to)
     {

@@ -108,18 +108,6 @@ public static class EventKinds
     /// </summary>
     public const string Shared = "shared";
     /// <summary>
-    /// What the server's browser shows during a Google sign-in made there (<see cref="SignInViewEvent"/>, protocol version 12), sent to the connection that is signing in and to no other.
-    /// Not part of the sequence: it has <c>seq</c> 0, is not in the host's ring, is never replayed to a client that resumes, is never logged on either end, and a slow client sees
-    /// only the newest picture. A client that does not know the kind ignores it.
-    /// </summary>
-    public const string SignInView = "signInView";
-    /// <summary>
-    /// A picture of the code during a Google Messages pairing by QR code (<see cref="QrCodeEvent"/>, protocol version 13), sent to the connection that is pairing and to no other. The
-    /// code is a credential. Exactly as <see cref="SignInView"/>: <c>seq</c> 0, not in the host's ring, never replayed to a client that resumes, never logged on either end, and a
-    /// slow client sees only the newest picture. A client that does not know the kind ignores it.
-    /// </summary>
-    public const string QrCode = "qrCode";
-    /// <summary>
     /// One change to the server's whole copy of a conversation (<see cref="HistoryChange"/>, SWITCHBOARD.md stage 8; protocol version 24), carrying the changed
     /// messages themselves. It sits in the host's sequence like any event, just after the realtime event that caused it, so a client that resumes is given the ones
     /// it missed and one that was handed a resync reads them with <c>history.changes</c>. A connection below 24 is never sent one.

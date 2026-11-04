@@ -91,13 +91,11 @@ in part 2 says `server google enabled browser=chrome`), and the Facebook test ac
 page, or skip part 3's Facebook step).
 
 1. On the PC, start the isolated development copy (`powershell -NoProfile -File tools\Run-DevBuild.ps1`), never the
-   installed app. In **Settings → Accounts → Messages Server → Manage…**, join this test server (**Ask to join**,
-   approve on the page). It must be the first device the server paired, since only that one signs accounts in: on a
-   server the phone joined first, Connect says "Only the device paired first with this server can sign in, sign out
-   or change its accounts." Report that sentence if you see it, then use a fresh container.
+   installed app. In **Settings → Connections → Messages Server → Manage…**, join this test server (**Ask to join**,
+   approve on the page). The order devices joined in makes no difference.
 2. In a second shell on the Proxmox host, follow the log:
    `pct exec <id> -- journalctl -u messages-server -f -o cat | grep -E 'remote sign-in|google chrome|server sign-in'`
-3. **Cancel.** In the dev copy's **Settings → Accounts**, Messenger, **Connect**. Wanted: a window titled
+3. **Cancel.** In the dev copy's **Settings → Connections**, Messenger, **Connect**. Wanted: a window titled
    "Sign in to Facebook" saying "This is Messages Server's own browser. Sign in to Facebook here, then choose Done.",
    showing facebook.com's login page with an address bar, and buttons **Done** and **Cancel**. Choose **Cancel** (and
    once more, closing the window with its X instead). Wanted: "Facebook sign-in was cancelled.",

@@ -1,9 +1,9 @@
 namespace NativeBeeper.Protocol;
 
-/// <summary>Where the person signing in is (SWITCHBOARD.md 10.6): Messages on a PC, through a protocol connection, or the server's own page, through its socket.</summary>
+/// <summary>Where the person signing in is (SWITCHBOARD.md 10.6): the server's own page, through its socket.</summary>
 public static class RemoteSignInFaces
 {
-    public const string App = "app", Page = "page";
+    public const string Page = "page";
 }
 
 /// <summary>

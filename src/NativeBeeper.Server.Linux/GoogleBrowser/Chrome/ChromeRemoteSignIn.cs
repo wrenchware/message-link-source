@@ -11,7 +11,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Server.Linux;
 
 /// <summary>
-/// A Google Messages sign-in made BY HAND in the server's own Chrome and shown in the client's window (SWITCHBOARD.md 5.4; chosen 2026-10-10: run official Chrome persistently, sign in by hand,
+/// A Google Messages sign-in made BY HAND in the server's own Chrome and shown on the server's page (SWITCHBOARD.md 5.4; chosen 2026-10-10: run official Chrome persistently, sign in by hand,
 /// never automate it, and let it renew Google's sign-in itself as the PC's WebView2 profile does). Nothing is automated while a Google page is loaded and nothing is attached to the browser: the picture is
 /// the X display it sits on (<see cref="ChromeScreenStream"/>), and what the person does goes in as real X input (<see cref="XInputTranslator"/>, <see cref="XInputRunner"/>). The server's part is
 /// to read Chrome's cookie store from disk (<see cref="ChromeCookieStore"/>), which fills in as Chrome writes it, and when a NEW complete set of Google's account cookies is there, to hand it to the

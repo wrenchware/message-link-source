@@ -1,50 +1,14 @@
 namespace NativeBeeper.Protocol;
 
-// A Google sign-in made in the server's own browser (SWITCHBOARD.md 5.4, chosen 2026-10-10; protocol version 12). Google binds a sign-in to the browser that made it,
-// so a server that must renew one has to be the browser that signs in. The client shows that browser in a window:
+// A sign-in made in the server's own browser (SWITCHBOARD.md 5.4 and 10.6). Google binds a sign-in to the browser that made it, so a server that must renew one has to be the
+// browser that signs in. The server's page shows that browser and drives it from its own socket (RemoteSignInSessions); no protocol method starts one, so this file holds the
+// types of what the person does and what the browser shows, and the ports a host gives.
 //
-//   accounts.google.remoteSignIn       A journaled mutation like accounts.google.signIn, and it ends as that one does (the pairing emoji as progress, then Done). The host
-//                                      starts a browser of its own on a virtual display, sends what it shows as `signInView` events to this connection only, and, when the
-//                                      sign-in is finished, reads the cookies from that browser, keeps its profile for renewals and pairs the phone. One at a time; ended
-//                                      by the call's own cancel, by the connection closing, or by the host's idle (10 minutes) and total (20 minutes) limits.
-//   accounts.google.remoteSignInInput  Not a mutation and never journaled: what the person did in the window (pointer, keys, typed text, size). Answered Done; refused
-//                                      unless this connection has a sign-in under way.
-//
-// What the person types may be a password. So: an input event is never logged, journaled, kept in the event log or written to a file, by either end; a frame (a picture
-// of Google's page, which may show an address or a code) the same. The events carry no identifier a log could show, an error names no part of them, and the types that
-// hold them print only their own name.
-//
-// Protocol 15 adds the same for Google Voice:
-//
-//   accounts.voice.remoteSignIn        As accounts.google.remoteSignIn, for a Voice account: the host's Chrome is started on a new Chrome profile of that account's own and, when the
-//                                      person is signed in to Voice, the host reads the cookies, adds the account (the profile is kept for its renewals) and answers Done. No emoji
-//                                      are sent. What the browser shows is `signInView`, and what the person does goes by accounts.google.remoteSignInInput: one window, one at a time.
-//
-// Protocol 27 (SWITCHBOARD.md stage 10, 10.5) makes it one method for any service:
-//
-//   accounts.remoteSignIn              {service: google|voice|messenger|instagram}. Google and Voice run as their own methods above do. Messenger and Instagram sign in in the server's Chrome
-//                                      on a throwaway profile at the service's login page; the person says when they are finished with a `done` input (RemoteSignIn.DoneKind) through the same
-//                                      input method; the host closes that Chrome so its cookie file is whole, reads the cookies the PC's own window would have kept, deletes the profile and
-//                                      connects the account as accounts.<service>.connect does (Messenger then turns its encrypted conversations on, once). The answer is a
-//                                      RemoteSignInResult: the conversations that joined and, for Messenger, how the encrypted step went. A failure is a fixed word, as the connect's own.
-//                                      Nothing is retried: a sign-in that failed is started again by the person.
-public static partial class ProtocolMethods
-{
-    public const string RemoteSignInMethod = "accounts.google.remoteSignIn";
-    public const string RemoteSignInInputMethod = "accounts.google.remoteSignInInput";
-    public const string VoiceRemoteSignInMethod = "accounts.voice.remoteSignIn";
-    public const string ServerSignInMethod = "accounts.remoteSignIn";
+// What the person types may be a password. So: an input event is never logged, journaled, kept in the event log or written to a file; a frame (a picture of Google's page,
+// which may show an address or a code) the same. The events carry no identifier a log could show, an error names no part of them, and the types that hold them print only their
+// own name.
 
-    private static Entry[] RemoteSignInEntries() =>
-    [
-        new(RemoteSignInMethod, "IRemoteSignInHost.SignInAsync", typeof(RemoteSignInParams), typeof(Done), true),
-        new(RemoteSignInInputMethod, "IRemoteSignInHost.InputAsync", typeof(RemoteSignInInputParams), typeof(Done)),
-        new(VoiceRemoteSignInMethod, "IRemoteSignInHost.SignInAsync (Google Voice)", typeof(VoiceRemoteSignInParams), typeof(Done), true),
-        new(ServerSignInMethod, "IRemoteSignInHost.SignInAsync / IRemoteCookieSignInHost.SignInAsync", typeof(ServerSignInParams), typeof(RemoteSignInResult), true),
-    ];
-}
-
-/// <summary>The services <see cref="ProtocolMethods.ServerSignInMethod"/> names (protocol 27).</summary>
+/// <summary>The services a sign-in in the server's browser is made for.</summary>
 public static class RemoteSignInServices
 {
     public const string Google = "google", Voice = "voice", Messenger = "messenger", Instagram = "instagram";
@@ -54,12 +18,6 @@ public static class RemoteSignInServices
     /// <summary>Whether the service's sign-in ends when the person says so (<see cref="RemoteSignIn.DoneKind"/>) and the host then reads its cookies, rather than when the host sees it signed in.</summary>
     public static bool EndsWithDone(string? service) => service is Messenger or Instagram;
 }
-
-/// <summary>
-/// Starts a sign-in in the server's browser for <paramref name="Service"/> (<see cref="RemoteSignInServices"/>). <paramref name="AsNewDevice"/> is Google Messages' alone; <paramref name="Width"/> and
-/// <paramref name="Height"/> are as <see cref="RemoteSignInParams"/>'s.
-/// </summary>
-public sealed record ServerSignInParams(string ClientOpId, string Service, bool AsNewDevice = false, int Width = 0, int Height = 0) : MutationParams(ClientOpId);
 
 /// <summary>
 /// How a sign-in in the server's browser ended (protocol 27). <paramref name="Conversations"/>: the conversations that joined (Messenger and Instagram; 0 for Google and Voice). <paramref name="Encrypted"/>:
@@ -74,15 +32,6 @@ public static class RemoteSignInEncryption
     public const string On = "on", AlreadyOn = "already_on";
 }
 
-/// <summary>Starts a Google Voice sign-in in the server's browser. <paramref name="Width"/> and <paramref name="Height"/> are as <see cref="RemoteSignInParams"/>'s.</summary>
-public sealed record VoiceRemoteSignInParams(string ClientOpId, int Width = 0, int Height = 0) : MutationParams(ClientOpId);
-
-/// <summary>
-/// Starts a sign-in in the server's browser. <paramref name="Width"/> and <paramref name="Height"/> are the largest picture the client can show crisply, in pixels (0: the host's
-/// default, 1280 by 800); the host clamps them and never sends a larger one.
-/// </summary>
-public sealed record RemoteSignInParams(string ClientOpId, bool AsNewDevice, int Width = 0, int Height = 0) : MutationParams(ClientOpId);
-
 /// <summary>What the person did, in the order they did it. The host takes at most <see cref="RemoteSignIn.MaxEvents"/> in a call.</summary>
 public sealed record RemoteSignInInputParams(IReadOnlyList<RemoteSignInInput> Events)
 {
@@ -92,7 +41,7 @@ public sealed record RemoteSignInInputParams(IReadOnlyList<RemoteSignInInput> Ev
 /// <summary>
 /// One thing the person did. <see cref="Kind"/> is <see cref="RemoteSignIn.Mouse"/>, <see cref="RemoteSignIn.Key"/>, <see cref="RemoteSignIn.Text"/> or
 /// <see cref="RemoteSignIn.Resize"/>; the members each kind reads are the ones its name says, and the host ignores the rest. Pointer positions are in the page's own pixels
-/// (<see cref="SignInViewEvent.ViewWidth"/> by <see cref="SignInViewEvent.ViewHeight"/>, from the newest picture). <see cref="Text"/> is what was typed or pasted and is
+/// (the page's size in its own pixels, from the newest picture). <see cref="Text"/> is what was typed or pasted and is
 /// private: it is never printed, logged or kept (the record prints only its name).
 /// </summary>
 /// <param name="Type">A mouse event: <c>mouseMoved</c>, <c>mousePressed</c>, <c>mouseReleased</c> or <c>mouseWheel</c>. A key event: <c>keyDown</c> or <c>keyUp</c>.</param>
@@ -104,17 +53,6 @@ public sealed record RemoteSignInInput(string Kind, string? Type = null, double 
     double DeltaX = 0, double DeltaY = 0, int Modifiers = 0, string? Key = null, string? Text = null, int Width = 0, int Height = 0)
 {
     public override string ToString() => nameof(RemoteSignInInput);
-}
-
-/// <summary>
-/// What the host's browser shows, pushed to the connection that is signing in and to no other (event kind <see cref="EventKinds.SignInView"/>, <c>seq</c> 0, never in the event log
-/// and never replayed). <paramref name="Kind"/> is <see cref="RemoteSignIn.FrameKind"/>: <paramref name="Data"/> is a JPEG, base64, at most <see cref="RemoteSignIn.MaxFrameCharacters"/>
-/// characters, <paramref name="ViewWidth"/> by <paramref name="ViewHeight"/> is the page's size in its own pixels (what pointer positions are in); or
-/// <see cref="RemoteSignIn.SignedInKind"/>: the browser is finished and closed, and the host is pairing the phone (the emoji follow as progress).
-/// </summary>
-public sealed record SignInViewEvent(string ClientOpId, string Kind, string? Data = null, int ViewWidth = 0, int ViewHeight = 0)
-{
-    public override string ToString() => nameof(SignInViewEvent);
 }
 
 /// <summary>One picture from the host's browser, ready to send: base64 JPEG, and the page's size in its own pixels.</summary>

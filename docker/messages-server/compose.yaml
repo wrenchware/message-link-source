@@ -41,6 +41,13 @@ services:
       MESSAGES_TAILNET: "${MESSAGES_TAILNET:-0}"
       # Empty unless .env sets it. The server takes it out of its environment at start and hands it to the door alone.
       MESSAGES_TAILNET_AUTHKEY: "${MESSAGES_TAILNET_AUTHKEY:-}"
+      # The server's own Chrome, in which the page signs accounts in (README, "Chrome's sandbox" for running it with its sandbox).
+      MESSAGES_GOOGLE: "1"
+      MESSAGES_GOOGLE_CHROME: "1"
+      MESSAGES_CHROMIUM_HEADED: "1"
+      MESSAGES_CHROMIUM_NO_SANDBOX: "1"
+      # Published with a port on a bridge network, so this container has a network of its own. Remove it with network_mode: host.
+      MESSAGES_NETWORK_ISOLATED: "1"
       TZ: "${TZ:-Etc/UTC}"
     ports:
       - "${MESSAGES_BIND_IP:-0.0.0.0}:${MESSAGES_PORT:-8787}:8787"
@@ -57,9 +64,9 @@ services:
     cap_drop:
       - ALL
     # What the container may use (README, Limits): memory with no swap beyond it, and threads/processes.
-    mem_limit: 2g
-    memswap_limit: 2g
-    pids_limit: 1024
+    mem_limit: 4g
+    memswap_limit: 4g
+    pids_limit: 2048
 volumes:
   # Named outright, so it is the same volume the install script and the Unraid template use, not one prefixed by the project.
   messages-server-keys:

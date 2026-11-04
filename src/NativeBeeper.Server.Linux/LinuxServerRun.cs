@@ -94,7 +94,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
 
     private static void Show(string line) => Console.Out.Write($"{DateTimeOffset.Now:HH:mm:ss.fff} {line}\n");
 
-    // Reset server (stage 10): every account the server can remove is removed, as Manage server removes one (each through its own sign-out); Google Messages, which is unpaired on
+    // Reset server (stage 10): every account the server can remove is removed, as the page removes one (each through its own sign-out); Google Messages, which is unpaired on
     // the phone, and an account in the middle of a move are left for the reset itself, which deletes what the server keeps of them. A removal that fails stops the reset.
     private static async Task<(int SignedOut, int Left, bool Failed)> SignOutAllAsync(NativeBeeper.Protocol.IServerAdmin admin, Action<string> log, CancellationToken cancellationToken)
     {

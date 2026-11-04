@@ -43,15 +43,15 @@ namespace NativeBeeper.Protocol;
 /// shared rows, handed up like a file, into the shared state, adding and never replacing). No category and no frame changes: a client below 11 never calls it, and
 /// a host answers it as not supported to a connection that negotiated less.</para>
 /// <para>12 (SWITCHBOARD.md 5.4) adds <c>accounts.google.remoteSignIn</c> and <c>accounts.google.remoteSignInInput</c> and the <c>signInView</c> event: a Google sign-in made in the
-/// server's own browser, shown in the client's window (<see cref="HostLimits.RemoteGoogleSignIn"/> says whether a host offers it). Additive: a client below 12 never calls them, a host
+/// server's own browser, shown on the server's page (<c>HostLimits.RemoteGoogleSignIn</c> says whether a host offers it). Additive: a client below 12 never calls them, a host
 /// answers them as not supported to a connection that negotiated less, and a client of 12 of a host below 12 (or one that does not say it offers it) signs in as before.</para>
 /// <para>13 (SWITCHBOARD.md 5.4) adds <c>accounts.google.qrPairing</c> and <c>accounts.google.qrPairingCancel</c> and the <c>qrCode</c> event: Google Messages paired by QR code, the phone scanning a code
-/// the host shows (<see cref="HostLimits.QrPairing"/> says whether a host offers it). Additive in the same way as 12: a client below 13 never calls them, a host answers them as not
+/// the host shows (<c>HostLimits.QrPairing</c> says whether a host offers it). Additive in the same way as 12: a client below 13 never calls them, a host answers them as not
 /// supported to a connection that negotiated less, and a client of 13 of a host below 13 (or one that does not say it offers it) pairs as before.</para>
 /// <para>14 (SWITCHBOARD.md 5.4, Chrome on the server) adds <see cref="HostLimits.ChromeOutOfDate"/>: the server's own Chrome has gone unrenewed past the age the image was meant to keep it. The
 /// sign-in window, its methods and the <c>signInView</c> event are as at 12; what the pictures show is now the server's whole virtual display (the page's size in <c>ViewWidth</c> by
 /// <c>ViewHeight</c> is that display's, and pointer positions are pixels of it). Additive: a client below 14 ignores the member, and a host below 14 never sets it.</para>
-/// <para>15 (SWITCHBOARD.md 5.4, Google Voice on the server) adds <c>accounts.voice.remoteSignIn</c> and <see cref="HostLimits.RemoteVoiceSignIn"/>: a Google Voice sign-in made by hand in the server's own Chrome, on a
+/// <para>15 (SWITCHBOARD.md 5.4, Google Voice on the server) adds <c>accounts.voice.remoteSignIn</c> and <c>HostLimits.RemoteVoiceSignIn</c>: a Google Voice sign-in made by hand in the server's own Chrome, on a
 /// Chrome profile of that Voice account's own, shown in the same window and driven by the same <c>accounts.google.remoteSignInInput</c> and <c>signInView</c> as Google Messages'. Additive: a client below 15 never calls
 /// it, a host answers it as not supported to a connection that negotiated less, and a client of 15 of a host below 15 (or one that does not say it offers it) signs Voice in as before, or is told the server does not run it.
 /// A server that offers it refuses the cookie hand-over <c>accounts.voice.add</c> from a client (<c>sign_in_use_server</c>): cookies copied from a PC are refused by Google at two hours.</para>
@@ -110,13 +110,18 @@ namespace NativeBeeper.Protocol;
 /// open phone signs up at once). Additive: a client below 27 never calls them and is never sent the signal (its place in the sequence counts as sent), and a host
 /// answers them as not supported to a connection that negotiated less. <c>push.register</c> with an empty token and a package the project lacks, which phones
 /// already send, is now kept as a report rather than refused, at every version.</para>
+/// <para>28 (SWITCHBOARD.md stage 11) adds <c>accounts.move.authorize</c>: the server's password, which lets this device move accounts for the next hour. Not additive for a move: a client
+/// below 28 has no way to give it, so its move is refused in words, and it updates. Everything else that managed a server left the door at this version too, for every client: the
+/// page does it.</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 27;
+    public const int Current = 28;
+    /// <summary>The first version with the password a move asks for (<see cref="ProtocolMethods.AccountMoveAuthorize"/>).</summary>
+    public const int MovePassword = 28;
     /// <summary>The first version with the join link (<see cref="ProtocolMethods.DevicesJoinLink"/>).</summary>
     public const int JoinLinks = 27;
-    /// <summary>The first version with <c>accounts.remoteSignIn</c> for any service (<see cref="ProtocolMethods.ServerSignInMethod"/>) and the Done input.</summary>
+    /// <summary>The first version with <c>accounts.remoteSignIn</c> for any service (<c>ProtocolMethods.ServerSignInMethod</c>) and the Done input.</summary>
     public const int ServerSignIn = 27;
     /// <summary>The first version with the test push's answer (<see cref="ProtocolMethods.PushTestShown"/>), <see cref="ProtocolMethods.PushStatusRead"/> and the <c>push</c> signal.</summary>
     public const int PushTest = 27;
@@ -150,13 +155,13 @@ public static class ProtocolVersion
     public const int AccountGuard = 17;
     /// <summary>The first version with <c>accounts.move.*</c> (<see cref="ProtocolMethods.AccountMoveStatus"/>).</summary>
     public const int AccountMove = 16;
-    /// <summary>The first version with the Google Voice sign-in in the server's own browser (<see cref="ProtocolMethods.VoiceRemoteSignInMethod"/>, <see cref="HostLimits.RemoteVoiceSignIn"/>).</summary>
+    /// <summary>The first version with the Google Voice sign-in in the server's own browser (<c>ProtocolMethods.VoiceRemoteSignInMethod</c>, <c>HostLimits.RemoteVoiceSignIn</c>).</summary>
     public const int VoiceRemoteSignIn = 15;
-    /// <summary>The first version with pairing by QR code (<see cref="ProtocolMethods.QrPairingMethod"/>).</summary>
+    /// <summary>The first version with pairing by QR code (<c>ProtocolMethods.QrPairingMethod</c>).</summary>
     public const int QrPairing = 13;
     /// <summary>The first version with <see cref="HostLimits.ChromeOutOfDate"/>.</summary>
     public const int ChromeAge = 14;
-    /// <summary>The first version with the sign-in in the server's own browser (<see cref="ProtocolMethods.RemoteSignInMethod"/>).</summary>
+    /// <summary>The first version with the sign-in in the server's own browser (<c>ProtocolMethods.RemoteSignInMethod</c>).</summary>
     public const int RemoteSignIn = 12;
     /// <summary>The first version whose server reads a <c>scheduled.cancel</c> or <c>scheduled.edit</c> with <c>IfRev</c> 0 as "discard a message the client never saw" (it answers <c>conflict</c> below).</summary>
     public const int ScheduledDiscard = 10;

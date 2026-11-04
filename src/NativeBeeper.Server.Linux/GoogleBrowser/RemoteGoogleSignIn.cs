@@ -9,7 +9,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Server.Linux;
 
 /// <summary>
-/// A Google Messages sign-in made in the server's own browser and shown in the client's window (SWITCHBOARD.md 5.4; chosen 2026-10-10: Google binds a sign-in to the browser that
+/// A Google Messages sign-in made in the server's own browser and shown on the server's page (SWITCHBOARD.md 5.4; chosen 2026-10-10: Google binds a sign-in to the browser that
 /// made it, so a sign-in made on the PC could be used here for two hours and renewed only by the PC). The server's headed Chromium, on a display of its own and a profile that is new for
 /// the run, is the browser the person signs in with; the profile it signed in with becomes the kept renewal profile (<see cref="GoogleMessagesBrowserProfile.KeepAsync"/>), nothing seeded;
 /// and the phone is paired exactly as for a sign-in handed up (<see cref="IGoogleMessagesAccount.SignInAsync(IReadOnlyDictionary{string, string}, IProgress{string}, CancellationToken, bool)"/>),

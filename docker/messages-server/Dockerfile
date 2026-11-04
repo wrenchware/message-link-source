@@ -1,41 +1,57 @@
-# Messages Server for Linux: builds the server and the Messenger and Instagram helpers from this repository's source, so the machine
-# that builds it needs Docker and nothing else. Build from the repository root (the context must be the root, where
-# .dockerignore keeps everything but the source out of it):
+# Messages Server's one image (SWITCHBOARD.md stage 11; 4.3, 5.4): the server, its helpers and official Google Chrome, in which it shows every sign-in and which it keeps running, signed in
+# by hand, to renew Google's sign-in the way the PC's own browser profile does. Debian with Google's own Chrome package, because Ubuntu offers browsers only as snaps, which a container cannot
+# run; .NET is published self-contained into it. Build from the repository root (install-unraid.sh does, with the current time as CHROME_REFRESH):
 #
-#   docker build -f docker/messages-server/Dockerfile -t messages-server:local .
+#   docker build -f docker/messages-server/Dockerfile --build-arg CHROME_REFRESH=$(date -u +%Y%m%dT%H%M%SZ) -t messages-server:local .
 #
-# Written for the classic builder as well as BuildKit (Unraid's docker may have no buildx): no heredocs, no RUN
-# --mount, no COPY --chmod or --parents. Base images are pinned by version and digest; to move to a newer patch, change
-# the tag and the digest together.
+# Chrome and Google stay off until the container is given MESSAGES_GOOGLE=1 and MESSAGES_GOOGLE_CHROME=1 (the install script, compose and the Unraid templates give both), and it needs
+# MESSAGES_RESTORE=1 (only the restore starts the renewal) and, in a container with every capability dropped, MESSAGES_CHROMIUM_NO_SANDBOX=1 (also given by the script; see the ENV
+# below). Chrome always runs headed on its own Xvfb. Written for the classic builder as well as BuildKit.
 
-# ---- Messenger helper (Go). The version is experiments/Messenger/helper/go.mod's "go" line. ---------------------------
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS helper
-# Static binary (modernc sqlite needs no cgo), built for the image's platform. GOTOOLCHAIN=local stops go.mod from
-# fetching a different toolchain than the pinned image; -mod=readonly refuses a go.sum that does not match.
+# ---- Google Messages helper (Go). The version is experiments/GoogleMessages/helper/go.mod's "go" line. -------------------------------------------
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS gmessages-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
-# go.mod replaces go.mau.fi/mautrix-meta with ../../../third_party/mautrix-meta, so the tree keeps the repo's layout.
+# go.mod replaces go.mau.fi/mautrix-gmessages with ../../../third_party/mautrix-gmessages, so the tree keeps the repo's layout.
+COPY third_party/mautrix-gmessages/ /source/third_party/mautrix-gmessages/
+WORKDIR /source/experiments/GoogleMessages/helper
+COPY experiments/GoogleMessages/helper/go.mod experiments/GoogleMessages/helper/go.sum ./
+RUN go mod download && go mod verify
+COPY experiments/GoogleMessages/helper/ ./
+# The same tests experiments/GoogleMessages/Build.ps1 runs before it builds.
+RUN go test ./... && go build -trimpath -o /out/gmessages-helper .
+
+# ---- Messenger helper (Go), built from its own source. ----------------------------------------------------------------------------------------
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS messenger-helper
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 COPY third_party/mautrix-meta/ /source/third_party/mautrix-meta/
 WORKDIR /source/experiments/Messenger/helper
 COPY experiments/Messenger/helper/go.mod experiments/Messenger/helper/go.sum ./
 RUN go mod download && go mod verify
 COPY experiments/Messenger/helper/ ./
-# The same tests experiments/Messenger/Build.ps1 runs before it builds.
 RUN go test ./... go.mau.fi/mautrix-meta/pkg/messagix \
  && go build -trimpath -o /out/messenger-helper .
 
-# ---- Instagram helper (Go). The same image and rules as the Messenger helper's; its go.mod's "go" line is the same. ---
-# A stage of its own, so each helper's module download is cached apart and the two build side by side under BuildKit.
+# ---- Instagram helper (Go), built from its own source. ----------------------------------------------------------------------------------------
 FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS instagram-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
-# go.mod replaces go.mau.fi/mautrix-meta with the same ../../../third_party/mautrix-meta (pkg/instameow).
 COPY third_party/mautrix-meta/ /source/third_party/mautrix-meta/
 WORKDIR /source/experiments/Instagram/helper
 COPY experiments/Instagram/helper/go.mod experiments/Instagram/helper/go.sum ./
 RUN go mod download && go mod verify
 COPY experiments/Instagram/helper/ ./
-# The same tests experiments/Instagram/Build.ps1 runs before it builds, and on Linux also the parent-death watch's.
 RUN go test ./... \
  && go build -trimpath -o /out/instagram-helper .
+
+# ---- Google Voice helper (Go). It has no replace directive: its one library (go.mau.fi/mautrix-gvoice) is fetched and verified from go.sum, like the others' dependencies. ---------
+# Started only beside the server's own Chrome (SWITCHBOARD.md 5.4, Google Voice on the server), which signs Voice in and renews it; one process per Voice account.
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS gvoice-helper
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
+WORKDIR /source/experiments/GoogleVoice/helper
+COPY experiments/GoogleVoice/helper/go.mod experiments/GoogleVoice/helper/go.sum ./
+RUN go mod download && go mod verify
+COPY experiments/GoogleVoice/helper/ ./
+# The same tests experiments/GoogleVoice/Build.ps1 runs before it builds.
+RUN go test ./... && go build -trimpath -o /out/gvoice-helper .
 
 # ---- Tailnet door (Go): the server's own node on the owner's tailnet (SWITCHBOARD.md 4.7, TailnetDoor.cs), run only with MESSAGES_TAILNET=1. -------
 # Tailscale's tsnet: userspace networking, so the container needs no capability or tun device for it. The licence files of every module it links (and
@@ -60,53 +76,71 @@ RUN go test ./... \
       if [ "$found" != 1 ]; then echo "Tailnet door: no licence file in $module" >&2; exit 1; fi; \
     done
 
-# ---- Server (.NET). The SDK is global.json's; the runtime is the runtime image's below (10.0.14), not the SDK's. ---------------------
+# ---- Server (.NET), self-contained: the Debian base below has no .NET of its own. ---------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302-noble@sha256:72dd743782f2ae7e5476fd64f6a460045e3998dc862218b80e6944cba79a01b0 AS server
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 WORKDIR /source
 COPY global.json Directory.Build.props Directory.Build.targets ./
-# Backends compiles source files linked from experiments/*/*.Spike, so both trees are needed.
 COPY src/ src/
 COPY experiments/ experiments/
-RUN for project in src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj \
-                   src/NativeBeeper.Host.Network/NativeBeeper.Host.Network.csproj; do \
-      if [ ! -f "$project" ]; then \
-        echo "Messages Server build: $project is missing from this checkout. Build from a commit that has the Linux server host and the network transport." >&2; \
-        exit 1; \
-      fi; \
-    done; \
-    if [ ! -f src/NativeBeeper.Server.Linux/packages.lock.json ]; then \
-      echo "Messages Server build: src/NativeBeeper.Server.Linux/packages.lock.json is missing. Restore is locked; commit the lock file." >&2; \
-      exit 1; \
-    fi
-# Locked restore: a dependency graph that differs from the committed lock files fails here rather than being rewritten.
-# NuGet audit stays on (Directory.Build.props), so a known vulnerable package fails the build too.
-# Framework-dependent: the runtime image already carries exactly the ASP.NET Core shared framework the server needs,
-# in layers Microsoft patches; self-contained would copy the same ~70 MB of runtime into the server's own layer.
-# The project lists its Linux runtimes (RuntimeIdentifiers) for the lock file and the publish picks one. Restore takes
-# no -r: it would flow into every referenced project, whose lock files name no runtime, and locked mode refuses that.
-RUN dotnet restore src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj --locked-mode -p:SelfContained=false
+# Locked: the project lists its Linux runtimes (RuntimeIdentifiers), which is what lets a self-contained restore stay
+# inside its lock file on a Linux SDK.
+RUN dotnet restore src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj --locked-mode -p:SelfContained=true
 RUN dotnet publish src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj -c Release --no-restore \
-      -r linux-x64 -p:SelfContained=false -o /out \
+      -r linux-x64 -p:SelfContained=true -o /out \
  && if [ ! -x /out/messages-server ]; then \
       echo "Messages Server build: the publish has no messages-server executable (expected AssemblyName messages-server, linux-x64)." >&2; \
       exit 1; \
     fi
 
-# ---- Runtime ----------------------------------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.14-noble@sha256:de0ee358cdd672f7017a003bed21e9ac9ed48a27c922a59b18175b6e82fa7fee AS runtime
-LABEL org.opencontainers.image.title="Messages Server" \
-      org.opencontainers.image.description="Messages Server: the Messages backends on a home server, reached by paired devices over TLS."
+# ---- Runtime --------------------------------------------------------------------------------------------------------------------------------------
+FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS runtime
+LABEL org.opencontainers.image.title="Messages Server (Google)" \
+      org.opencontainers.image.description="Messages Server with Google Messages: the Messages backends on a home server, reached by paired devices over TLS."
 
-# Ubuntu's security fixes as of each build: the digest above freezes the base (OpenSSL, which .NET's TLS uses on Linux,
-# among it), and the scheduled build (no-cache-filters: runtime) re-runs this stage, so fixes arrive without a pin bump.
+# What .NET needs on Debian (ICU, OpenSSL, time zones, certificates), tini, and xvfb: the virtual X display Chrome draws on (SWITCHBOARD.md 5.4).
+# xvfb brings xauth, xkb-data and x11-xkb-utils (xkbcomp, which gives the display its keyboard) and a few X libraries. libxcb-xtest0 is the XTEST
+# binding of libxcb, through which the server types and clicks on that display (real X input, so nothing is attached to Chrome); libxcb itself comes with Chrome.
+# With --no-install-recommends, and no window manager. The upgrade brings Debian's security fixes as of each build: the digest above
+# freezes the base, and the scheduled build (no-cache-filters: runtime) re-runs this stage, so OpenSSL and libc fixes arrive without a pin bump.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
+ && apt-get install -y --no-install-recommends ca-certificates tzdata libicu76 libssl3t64 tini xvfb libxcb-xtest0 \
  && rm -rf /var/lib/apt/lists/*
 
-# The account the server runs as: 2787:2787, its own. Not Unraid's nobody:users (99:100), which is the Samba guest
-# account and most other containers' PUID, so anything else running as it could read the server's files. The names are
-# not APP_UID/APP_GID because the base image sets ENV APP_UID, and an ENV always wins over an ARG of the same name.
+# Official Google Chrome (stable), from Google's own apt repository, in place of Debian's chromium: the server runs it persistently, signed in by hand, and lets it renew
+# Google's sign-in itself (SWITCHBOARD.md 5.4, chosen 2026-10-10). The repository's key is fetched over HTTPS and only the keys whose fingerprints are listed in
+# CHROME_SIGNER_FPRS are kept (the build fails if none of them is in the file); the repository line is pinned to that keyring and to amd64.
+# CHROME_REFRESH is a build argument install-unraid.sh sets to the build time: it is named in this RUN, so a new value is a new layer and the newest stable Chrome is fetched on
+# every build, never reused from Docker's cache. It is also written into the image as MESSAGES_CHROME_BUILT, which the server counts Chrome's age from (it says so when
+# it is more than 21 days, and the client tells the person to reinstall). curl and gnupg are removed again after the key is made.
+ARG CHROME_REFRESH=unset
+ARG CHROME_SIGNER_FPRS="EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796"
+RUN set -eu; \
+    echo "Chrome refresh: $CHROME_REFRESH"; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg; \
+    curl -fsSL --proto '=https' --tlsv1.2 https://dl.google.com/linux/linux_signing_key.pub -o /tmp/google-signing.pub; \
+    gpg --batch --no-default-keyring --keyring /tmp/google-all.gpg --import /tmp/google-signing.pub; \
+    : > /tmp/google-chrome.gpg; \
+    for fpr in $CHROME_SIGNER_FPRS; do gpg --batch --no-default-keyring --keyring /tmp/google-all.gpg --export "$fpr" >> /tmp/google-chrome.gpg 2>/dev/null || true; done; \
+    [ -s /tmp/google-chrome.gpg ] || { echo "Google's signing key file holds none of the pinned keys ($CHROME_SIGNER_FPRS)." >&2; exit 1; }; \
+    install -m 0644 /tmp/google-chrome.gpg /usr/share/keyrings/google-chrome.gpg; \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list; \
+    mkdir -p /etc/default; echo 'repo_add_once="false"' > /etc/default/google-chrome; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends google-chrome-stable; \
+    apt-get purge -y --auto-remove curl gnupg; \
+    rm -rf /var/lib/apt/lists/* /tmp/google-* ; \
+    google-chrome-stable --version
+# What the browser may load and keep, set where the browser reads it and the server cannot be talked out of (docker/messages-server/chrome-policy.json): every address blocked but a short list
+# (the account sign-in, Messages for web's configuration page by path, and the few static hosts they need; Facebook's and Instagram's own sites for their sign-ins, with Instagram's inbox
+# blocked by path), no saved passwords or autofill, no Chrome account or sync, no developer tools or remote
+# debugging, no downloads, file dialogs or extensions. URLBlocklist/URLAllowlist govern NAVIGATIONS (pages and frames) by the most specific match; what those pages then load follows what they ask for,
+# which is why the list names hosts and not google.com. The server reads the path from nowhere else and will not start Chrome without the file.
+COPY docker/messages-server/chrome-policy.json /etc/opt/chrome/policies/managed/messages-server.json
+RUN chmod 0644 /etc/opt/chrome/policies/managed/messages-server.json
+
 ARG PUID=2787
 ARG PGID=2787
 RUN set -e; \
@@ -115,44 +149,49 @@ RUN set -e; \
       --uid "$PUID" --gid "$PGID" messages-server; \
     mkdir -p /data /keys && chown "$PUID:$PGID" /data /keys && chmod 700 /data /keys
 
-# The server and helpers stay owned by root, so the account they run as cannot change them.
 WORKDIR /app
 COPY --from=server /out/ /app/
-COPY --from=helper /out/messenger-helper /app/messenger-helper
+# The registry installer copies these from a stopped container, without a source archive or starting the server.
+COPY assets/app-icon.png /app/install/assets/app-icon.png
+COPY docker/messages-server/chrome-seccomp.json /app/install/docker/messages-server/chrome-seccomp.json
+COPY --from=messenger-helper /out/messenger-helper /app/messenger-helper
 COPY --from=instagram-helper /out/instagram-helper /app/instagram-helper
+COPY --from=gmessages-helper /out/gmessages-helper /app/gmessages-helper
+COPY --from=gvoice-helper /out/gvoice-helper /app/gvoice-helper
 # The tailnet door (MESSAGES_TAILNET=1) and the licences of what it links.
 COPY --from=tailnet-door /out/messages-tailnet /app/messages-tailnet
 COPY --from=tailnet-door /out/licenses/ /app/licenses/tailnet/
-# Kept in the image so a private-registry install needs no source archive and executes no server to copy its icon.
-COPY assets/app-icon.png /app/install/assets/app-icon.png
-COPY docker/messages-server/chrome-seccomp.json /app/install/docker/messages-server/chrome-seccomp.json
 COPY THIRD_PARTY_NOTICES.md /app/licenses/THIRD_PARTY_NOTICES.md
 COPY experiments/Messenger/helper/UPSTREAM_LICENSE.txt /app/licenses/MESSENGER_LICENSE.txt
 COPY third_party/mautrix-meta/LICENSE /app/licenses/MAUTRIX_META_LICENSE.txt
 COPY third_party/mautrix-meta/LICENSE.exceptions /app/licenses/MAUTRIX_META_LICENSE_EXCEPTIONS.txt
-# libSkiaSharp.so (Google Voice's photo re-encoder) has Skia, libjpeg-turbo, libpng, libwebp, FreeType and others linked in; their notices come
-# with the package, from the restore above. THIRD_PARTY_NOTICES.md lists the package but carries licence texts only for what the app ships.
+COPY experiments/GoogleMessages/helper/UPSTREAM_LICENSE.txt /app/licenses/GOOGLE_MESSAGES_LICENSE.txt
+COPY third_party/mautrix-gmessages/LICENSE /app/licenses/MAUTRIX_GMESSAGES_LICENSE.txt
+COPY third_party/mautrix-gmessages/LICENSE.exceptions /app/licenses/MAUTRIX_GMESSAGES_LICENSE_EXCEPTIONS.txt
+COPY experiments/GoogleVoice/helper/UPSTREAM_LICENSE.txt /app/licenses/GOOGLE_VOICE_LICENSE.txt
+COPY experiments/GoogleVoice/helper/UPSTREAM_LICENSE_EXCEPTIONS.txt /app/licenses/GOOGLE_VOICE_LICENSE_EXCEPTIONS.txt
+# libSkiaSharp.so (Google Voice's photo re-encoder) links Skia, libjpeg-turbo, libpng, libwebp, FreeType and others in; their notices come with the
+# package, from the restore above.
 COPY --from=server /root/.nuget/packages/skiasharp.nativeassets.linux.nodependencies/*/THIRD-PARTY-NOTICES.txt /app/licenses/SKIASHARP_NATIVE_NOTICES.txt
 
-# MESSAGES_DATA: the data root (sealed sessions, history, paired devices, logs). Useless without /keys.
-# MESSAGES_KEYS: the keys and everything that is a secret in itself (the TLS key, all the Messenger helper keeps). Mount a
-#   Docker named volume here, never a share: it then lives in Docker's own storage, outside every user share.
-# HOME=/data: anything a library keeps under the home folder lands in the volume, so it is kept and backed up with the
-#   rest instead of vanishing with the container.
-# ASPNETCORE_HTTP_PORTS is blanked: the base image sets it to 8080, and nothing here may listen on plain HTTP.
-# DOTNET_EnableDiagnostics=0: no diagnostics socket, so nothing can attach a debugger or dump the process's memory.
+# The server's settings, and the browser's: MESSAGES_CHROME (Google Chrome) and MESSAGES_CHROME_BUILT (this image's build time, for its age).
+# MESSAGES_GOOGLE=1 and MESSAGES_GOOGLE_CHROME=1 are given by whatever starts the container, not baked in (Google Messages stays off in this image until the container says so).
+# Not set here, on purpose: MESSAGES_CHROMIUM_NO_SANDBOX. Chromium's own sandbox needs user namespaces or a setuid helper, which a container with
+# every capability dropped and no-new-privileges does not give it, so in such a container the browser starts only if the run passes
+# MESSAGES_CHROMIUM_NO_SANDBOX=1 itself (the log then says sandbox=off). Without its sandbox, a page's code that broke out of the renderer could read
+# what the server's account can, the keys volume included; what limits that is described in docs/research/google-linux-renewal.md. Choosing it
+# is up to whoever runs the container, not baked into the image.
 ENV APP_UID=$PUID \
     MESSAGES_DATA=/data \
     MESSAGES_KEYS=/keys \
     HOME=/data \
     ASPNETCORE_HTTP_PORTS="" \
-    DOTNET_EnableDiagnostics=0
-# Where this image came from, for the owner's Settings → Messages Server → Manage server (host.status): MESSAGES_CHANNEL is ghcr:<variant> (plain or google) for an image GitHub
-# built (which tag the server follows is its own install's), local for one built on the server; MESSAGES_REVISION is the source commit and MESSAGES_IMAGE_BUILT the build time (yyyyMMddTHHmmssZ). The
-# workflow passes all three; install-unraid.sh passes the build time. After everything else, so a new value rebuilds nothing but this layer.
+    DOTNET_EnableDiagnostics=0 \
+    MESSAGES_CHROME=/usr/bin/google-chrome-stable \
+    MESSAGES_CHROME_BUILT=$CHROME_REFRESH
+# Where this image came from, for host.status: the channel (ghcr:google or local), the source commit and the build time.
 ARG MESSAGES_CHANNEL=local
 ARG MESSAGES_REVISION=
-ARG CHROME_REFRESH=unset
 ENV MESSAGES_CHANNEL=$MESSAGES_CHANNEL \
     MESSAGES_REVISION=$MESSAGES_REVISION \
     MESSAGES_IMAGE_BUILT=$CHROME_REFRESH
@@ -160,12 +199,10 @@ VOLUME ["/data", "/keys"]
 EXPOSE 8787/tcp
 USER $PUID:$PGID
 
-# A TCP connect to the TLS port: it needs no token and opens no unauthenticated endpoint. A healthy server answers it;
-# a hung or crashed listener does not. The start period covers first-run certificate generation and helper startup.
 HEALTHCHECK --interval=60s --timeout=5s --start-period=120s --retries=3 \
   CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8787"]
 
-# SIGTERM runs the server's shutdown (pending sends finish, helpers close). Give it time: compose sets
-# stop_grace_period 60s and the Unraid template --stop-timeout=60; Docker's own default of 10 s is too short.
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/app/messages-server"]
+# tini as the first process, so a container started without --init (or compose's init: true) still forwards SIGTERM to the server and reaps
+# whatever a browser leaves behind. -s makes it a subreaper too, so it also does that when docker's own init is PID 1 and tini is not.
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/app/messages-server"]

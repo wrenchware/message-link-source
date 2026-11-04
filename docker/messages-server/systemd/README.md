@@ -13,7 +13,7 @@ time zone data, and `install.sh` adds whichever of them is missing with `apt-get
 ```sh
 tar -xzf messages-server-<version>-linux-x64.tar.gz
 sudo ./messages-server-<version>-linux-x64/install.sh            # Messenger and Instagram
-sudo ./messages-server-<version>-linux-x64/install.sh --google   # also Google Messages and Google Voice (Debian, Ubuntu)
+sudo ./messages-server-<version>-linux-x64/install.sh --google   # with Google Chrome (Debian, Ubuntu), which the page connects accounts in
 ```
 
 It makes the account `messages-server`, puts the program in `/opt/messages-server` and starts `messages-server.service`.
@@ -101,4 +101,4 @@ sudo /opt/messages-server/uninstall.sh          # the program, service and night
 sudo /opt/messages-server/uninstall.sh --all    # also the data, keys, settings and account (the backups stay; add --backups)
 ```
 
-Remove the accounts from Manage server first if the server should sign out of them.
+Remove the accounts on the server's page first if the server should sign out of them.

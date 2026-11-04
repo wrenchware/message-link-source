@@ -4,14 +4,13 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Server;
 
 /// <summary>
-/// The Windows server's administration (SWITCHBOARD.md 10.7, as the Linux host's 4.6): what the server is, the accounts it holds, and removing one, for its page and its
-/// owner. Removing an account is that account's own sign-out on this PC, exactly as Settings' Sign out was in the in-process app: nothing is sent to the service, and the
+/// The Windows server's administration (SWITCHBOARD.md 10.7, as the Linux host's 4.6): what the server is, the accounts it holds, and removing one, for its page. Removing an account is that account's own sign-out on this PC, exactly as Settings' Sign out was in the in-process app: nothing is sent to the service, and the
 /// Messenger device and the history the helper kept stay where they are, so a later sign-in on this PC reuses them. Google Messages has no sign-out here: it is removed by
 /// unpairing on the phone. Logged as fixed words only.
 /// </summary>
 internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : IServerAdmin
 {
-    /// <summary>The channel this host names itself by on the page and in Manage server.</summary>
+    /// <summary>The channel this host names itself by on the page.</summary>
     public const string Channel = "windows";
 
     internal sealed record Parts(string App, DateTimeOffset Started, IMessengerAccount Messenger, IInstagramAccount Instagram, IGoogleVoiceAccounts Voice,

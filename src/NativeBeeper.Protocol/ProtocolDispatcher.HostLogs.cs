@@ -17,7 +17,6 @@ public sealed partial class ProtocolDispatcher
         var port = services.Logs ?? throw new NotSupportedException();
         if (negotiated < ProtocolVersion.ServerLogs) throw new NotSupportedException();
         var parameters = ReadParams<HostLogReadParams>(request);
-        await RequireOwnerAsync("host logs", "Only the device paired first with this server can read its logs.", cancellationToken).ConfigureAwait(false);
         var chunk = HostLogNames.IsKnown(parameters.Name) && parameters.Offset >= 0
             ? await port.ReadAsync(parameters.Name, parameters.Offset, cancellationToken).ConfigureAwait(false)
             : HostLogChunk.Missing;

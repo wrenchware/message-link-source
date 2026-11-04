@@ -354,7 +354,7 @@ internal sealed partial class ServerPage
                 body.Append("</section>");
                 break;
             case "pc":
-                body.Append("<section>").Append(Para("Messages on a Windows PC joins with one line copied from here and pasted into Settings → Accounts → Messages Server. The line holds a one-time pairing code, so the server's password is asked for first."))
+                body.Append("<section>").Append(Para("Messages on a Windows PC joins with one line copied from here and pasted into Settings → Connections → Messages Server. The line holds a one-time pairing code, so the server's password is asked for first."))
                     .Append(PasswordForm("/pair", token, "Show the line")).Append("</section>");
                 done = devices.Count - PhonesPaired() > 0;
                 break;

@@ -216,7 +216,7 @@ public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : Co
                 new(ConsoleCells.Age(process.LastEvent, now)), new(ConsoleCells.Age(process.LastSend, now), ConsoleTone.Dim),
                 new(unread.ToString(CultureInfo.InvariantCulture), unread > 0 ? ConsoleTone.Strong : ConsoleTone.Dim));
         }
-        if (status.Processes.Count == 0) return [ConsoleRow.Of("No services are set up yet. Settings → Accounts adds one.", ConsoleTone.Dim)];
+        if (status.Processes.Count == 0) return [ConsoleRow.Of("No services are set up yet. Settings → Connections adds one.", ConsoleTone.Dim)];
         return table.Render(width).Select(row => new ConsoleRow(row.Spans));
     }
 

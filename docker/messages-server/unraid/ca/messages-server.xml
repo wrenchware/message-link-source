@@ -4,7 +4,7 @@
      beside this file for what is left before it is submitted. -->
 <Container version="2">
   <Name>messages-server</Name>
-  <Repository>ghcr.io/wrenchware/messages-server:latest-google</Repository>
+  <Repository>ghcr.io/wrenchware/messages-server:latest</Repository>
   <Registry>https://github.com/orgs/wrenchware/packages/container/package/messages-server</Registry>
   <Network>bridge</Network>
   <MyIP/>

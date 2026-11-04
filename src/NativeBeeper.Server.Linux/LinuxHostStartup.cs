@@ -142,17 +142,15 @@ internal sealed partial class LinuxHostStartup : IDisposable
             SavedPhotos: services.GetRequiredService<SavedPhotos>(), SharedState: shared,
             // The scheduled sends are the server's too (stage 6 slice 11): kept as rows of the shared state, fired by this host with every client closed.
             Scheduled: new HostScheduled(), KeptHistory: kept,
-            // Google Messages signed in in the server's own browser, shown in the client's window (SWITCHBOARD.md 5.4): with MESSAGES_GOOGLE=1 and a headed browser only.
+            // Google Messages signed in in the server's own browser, shown on the server's page (SWITCHBOARD.md 5.4): with MESSAGES_GOOGLE=1 and a headed browser only.
             RemoteSignIn: remoteSignIn.Messages, VoiceRemoteSignIn: remoteSignIn.Voice,
-            // Google Messages paired by QR code (SWITCHBOARD.md 5.4): offered whenever Google runs here, with no browser behind it.
-            QrPairing: QrPairing(withGoogle, googleAccount, log),
             // How old the server's own Chrome is, asked each time the state is built (SWITCHBOARD.md 5.4, protocol 14), whether or not the sign-in in it is offered.
             BrowserOutOfDate: withGoogle?.Chrome is { } chromeAge ? () => chromeAge.Build.OutOfDate(DateTimeOffset.UtcNow) : null,
             // Messenger and Instagram move with the PC (SWITCHBOARD.md stage 6 slice 13): staged, activated together, held after a move back, and gated until then.
             AccountMove: move, AccountGate: move,
             // The host's own logs, by name, for its owner's copies (protocol 18): never a path from a client, and nothing but the fixed-format logs.
             Logs: new HostLogFiles(LinuxHostLogs.Paths(root, keys.HelperFolder)),
-            // Its status, its accounts and their removal, for its owner device (protocol 20).
+            // Its status, its accounts and their removal (protocol 20): the page's, and the reads for any device.
             Admin: admin,
             // The conversation list's revisions (protocol 23) in its own protected state.db, so a phone's sync after the nightly restart is a delta,
             // not the whole list again.

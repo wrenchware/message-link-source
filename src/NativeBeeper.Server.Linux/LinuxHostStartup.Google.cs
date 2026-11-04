@@ -88,11 +88,6 @@ internal sealed partial class LinuxHostStartup
         catch (Exception failure) { log($"google chrome stop=failed type={failure.GetType().Name}"); }
     }
 
-    // Pairing by QR code: whenever Google runs here. It needs no browser, no display and no keeper (the pairing it makes holds no Google sign-in), so nothing about LinuxGoogle's
-    // browser is asked; it shares the one guard every Google sign-in on this server runs under.
-    internal static GoogleQrPairing? QrPairing(LinuxGoogle? withGoogle, IGoogleMessagesAccount? account, Action<string> log) =>
-        withGoogle is not null && account is not null ? new GoogleQrPairing(account, log, withGoogle.Guard) : null;
-
     /// <summary>
     /// The Windows server's restore order: the keeper first, so a refusal the launch's connect hears is renewed; Messenger and Instagram alongside and not awaited
     /// before Google, so a stale Google sign-in never holds it up; each once (<see cref="RestoreOnce"/>); then the feed is let go.

@@ -2,7 +2,7 @@ namespace NativeBeeper.Protocol;
 
 // The server's own logs, read by its owner (protocol 18). A read: it changes nothing and is not journaled. The client names a log from a fixed list and a
 // byte offset; it never names a path, and the host maps the name to its file itself (IHostLogs). The logs are the fixed-format ones every host writes
-// (steps, counts, states, one-way tags), and only the owner device may read them, as only it may move accounts.
+// (steps, counts, states, one-way tags), and any paired device may read them: it reads every conversation anyway.
 public static partial class ProtocolMethods
 {
     /// <summary>A chunk of one of the server's logs from an offset. The owner's Messages asks about once a minute while it is the server's client.</summary>

@@ -6,8 +6,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Server.Linux;
 
 /// <summary>
-/// Where the server's image came from, as the image says (<c>MESSAGES_CHANNEL</c>, <c>MESSAGES_REVISION</c> and the build time, <c>MESSAGES_IMAGE_BUILT</c> or the Google image's
-/// <c>MESSAGES_CHROME_BUILT</c>): build arguments the GitHub workflow and install-unraid.sh set. A value that is not the expected shape is not shown (null), never passed on as it is.
+/// Where the server's image came from, as the image says (<c>MESSAGES_CHANNEL</c>, <c>MESSAGES_REVISION</c> and the build time, <c>MESSAGES_IMAGE_BUILT</c> or <c>MESSAGES_CHROME_BUILT</c>): build arguments the GitHub workflow and install-unraid.sh set. A value that is not the expected shape is not shown (null), never passed on as it is.
 /// </summary>
 internal sealed partial record ServerImage(string? Channel, string? Revision, DateTimeOffset? Built)
 {
@@ -25,7 +24,7 @@ internal sealed partial record ServerImage(string? Channel, string? Revision, Da
 }
 
 /// <summary>
-/// The Linux server's administration (SWITCHBOARD.md 4.6, protocol 20), served to its owner device only (the dispatcher checks that before this is reached): what the server is, the
+/// The Linux server's administration (SWITCHBOARD.md 4.6, protocol 20), for its page and its devices' reads: what the server is, the
 /// accounts it holds, and removing one of them.
 /// <para>
 /// Removing an account removes the server's copy and nothing else. It is the same as signing that account out on the server (its sign-in and the conversations it kept go; nothing is

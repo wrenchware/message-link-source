@@ -2,7 +2,7 @@
 
 `messages-server.xml` here is the template for Unraid's Community Applications (CA), and `ca_profile.xml` the
 maintainer profile CA shows beside it. Neither is listed anywhere yet: the image is private until the owner decides
-otherwise. The template pulls `ghcr.io/wrenchware/messages-server:latest-google`, carries no one's own addresses,
+otherwise. The template pulls `ghcr.io/wrenchware/messages-server:latest`, carries no one's own addresses,
 passwords or folders, and keeps Unraid's nightly update working through CA's own update check against that tag.
 
 What CA asks of a listing: a public repository with an OSI-approved licence holding the template and `ca_profile.xml`,
@@ -27,7 +27,7 @@ an image anyone can pull, and a support thread on Unraid's forum.
 
 ## Choices in the template to confirm
 
-- **Chrome without its sandbox** is on (`MESSAGES_CHROMIUM_NO_SANDBOX=1`), as `install-unraid.sh --google` does
+- **Chrome without its sandbox** is on (`MESSAGES_CHROMIUM_NO_SANDBOX=1`), as `install-unraid.sh` does
   without `--chrome-sandbox`: the sandbox needs the seccomp profile `chrome-seccomp.json` on the host, which a template
   cannot ship. An advanced user can switch to it by hand (the main README, "Chrome's sandbox").
 - **Reach from your tailnet** is on by default, since the phone needs it; the server's page signs it in.

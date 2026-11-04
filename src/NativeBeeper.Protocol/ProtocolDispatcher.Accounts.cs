@@ -13,7 +13,7 @@ namespace NativeBeeper.Protocol;
 // Credentials. The cookies of a sign-in and the pairing result are parameters of that one mutation. Nothing here writes a parameter
 // anywhere: the journal keeps a hash (OperationJournal.Fingerprint) and the answer, the answer carries a count or a snapshot, an
 // error carries a fixed sentence or a fixed code word (AccountFailure), and the only log lines of an account call are the shared
-// "protocol journal ..." vocabulary and a refusal to a device that is not the owner (OwnerOnly), which names the method and nothing else.
+// "protocol journal ..." vocabulary and a refusal to any device on a server (PageOnly), which names the method and nothing else.
 public sealed partial class ProtocolDispatcher
 {
     /// <summary>The most a connection waits for its feed to carry a state before it answers anyway.</summary>
@@ -83,20 +83,19 @@ public sealed partial class ProtocolDispatcher
         return new Done();
     }
 
-    // ---- Who may change an account (2026-10-14) ----
+    // ---- Where an account changes (owner, 2026-11-03) ----
 
-    // On a server, only the owner device (the device paired first of those still paired) changes an account: it signs one in (a sign-in handed up, one in the server's own
-    // browser, a pairing by QR code), signs one out, or registers the server as a Messenger device. Every other paired device keeps reading and sending, and keeps what keeps an
-    // account connected with what the server already holds: a restore, Instagram's resume, Messenger's connect with the saved session, Voice's restore. Google Messages' local
-    // reset, its history indexing and its avatars are left to any device too: they change what the server keeps, not the account, and the reset's caller has already cleared
-    // the shared rows by the time it asks (MainWindow.GoogleReset), so a refusal there would leave it half done. A host with no paired devices (the app's own, a local pipe,
-    // the loopback) has one user, who is the owner.
-    private const string AccountRefusal = "Only the device paired first with this server can sign in, sign out or change its accounts.";
+    // A server's accounts are connected and removed on its page, so no device changes one over the door: not a sign-in handed up, one in the server's own browser, a pairing by QR code,
+    // a sign-out, or registering the server as a Messenger device. Every paired device keeps what keeps an account connected with what the server already holds: a restore, Instagram's
+    // resume, Messenger's connect with the saved session, Voice's restore. Google Messages' local reset, its history indexing and its avatars are left to any device too: they change
+    // what the server keeps, not the account, and the reset's caller has already cleared the shared rows by the time it asks (MainWindow.GoogleReset), so a refusal there would leave it
+    // half done. A host with no paired devices (the app's own, a local pipe, the loopback) has one user, who goes on as before.
+    private const string AccountRefusal = "Accounts are connected and removed on the server's page.";
 
-    // The mutation `route`, refused to any device but the owner. Checked after the route's own checks (its params, its port, its version) and before anything else on every
+    // The mutation `route`, refused to every device on a server. Checked after the route's own checks (its params, its port, its version) and before anything else on every
     // call, a journal replay included (as host.removeAccount is): a refused request never reaches the journal or the port, and leaves one fixed line naming `method`.
     // `applies`: whether this request changes the account at all (a Messenger connect with no cookies reconnects the saved session, as a restore does).
-    private static Route OwnerOnly(string method, Route route, Func<RequestFrame, bool>? applies = null)
+    private static Route PageOnly(string method, Route route, Func<RequestFrame, bool>? applies = null)
     {
         var prepare = route.Prepare ?? throw new InvalidOperationException(method + " is not a mutation");
         return route with
@@ -110,7 +109,7 @@ public sealed partial class ProtocolDispatcher
                 {
                     Before = async cancellationToken =>
                     {
-                        await connection.RequireOwnerAsync("account", AccountRefusal, cancellationToken, method).ConfigureAwait(false);
+                        connection.RefuseOnServer("account", AccountRefusal, method);
                         if (before is not null) await before(cancellationToken).ConfigureAwait(false);
                     },
                 };
@@ -125,37 +124,37 @@ public sealed partial class ProtocolDispatcher
         routes[ProtocolMethods.AccountsMessengerDescribe] = Of<IMessengerAccount, string>(s => s.MessengerAccount, (port, ct) => port.DescribeAsync(ct));
         // A read that can move the encrypted connection's state, so its answer follows the state like an action's.
         routes[ProtocolMethods.AccountsMessengerRefreshEncrypted] = Of<IMessengerAccount, bool>(s => s.MessengerAccount, (port, ct) => port.RefreshEncryptedStateAsync(ct)) with { Settles = true };
-        routes[ProtocolMethods.AccountsMessengerConnect] = OwnerOnly(ProtocolMethods.AccountsMessengerConnect, AccountMutation<IMessengerAccount, MessengerConnectParams, int>(
+        routes[ProtocolMethods.AccountsMessengerConnect] = PageOnly(ProtocolMethods.AccountsMessengerConnect, AccountMutation<IMessengerAccount, MessengerConnectParams, int>(
             s => s.MessengerAccount, (port, p, ct) => port.ConnectAsync(p.Cookies, ct)), request => ReadParams<MessengerConnectParams>(request).Cookies is not null);
         // The caller's "stop" is the request's cancel (the client turns its own flag into one), so the host's is the token.
         routes[ProtocolMethods.AccountsMessengerRestore] = RestoreMutation<IMessengerAccount, AccountRestore>(s => s.MessengerAccount, RestoreOnce.Messenger,
             new AccountRestore(null, Skipped: true), (port, ct) => port.RestoreAsync(() => ct.IsCancellationRequested));
         // Turning encrypted conversations on registers the server as one of the account's Messenger devices.
-        routes[ProtocolMethods.AccountsMessengerEnableEncrypted] = OwnerOnly(ProtocolMethods.AccountsMessengerEnableEncrypted,
+        routes[ProtocolMethods.AccountsMessengerEnableEncrypted] = PageOnly(ProtocolMethods.AccountsMessengerEnableEncrypted,
             AccountMutation<IMessengerAccount, AccountOpParams, FailureCode>(s => s.MessengerAccount,
                 async (port, _, ct) => new FailureCode(await port.EnableEncryptedAsync(ct).ConfigureAwait(false))));
-        routes[ProtocolMethods.AccountsMessengerEnableEncryptedAfterSignIn] = OwnerOnly(ProtocolMethods.AccountsMessengerEnableEncryptedAfterSignIn,
+        routes[ProtocolMethods.AccountsMessengerEnableEncryptedAfterSignIn] = PageOnly(ProtocolMethods.AccountsMessengerEnableEncryptedAfterSignIn,
             AccountMutation<IMessengerAccount, AccountOpParams, FailureCode>(s => s.MessengerAccount,
                 async (port, _, _) => new FailureCode(await port.EnableEncryptedAfterSignInAsync().ConfigureAwait(false))));
-        routes[ProtocolMethods.AccountsMessengerSignOut] = OwnerOnly(ProtocolMethods.AccountsMessengerSignOut, Mutation<IMessengerAccount, AccountOpParams, Done>(s => s.MessengerAccount,
+        routes[ProtocolMethods.AccountsMessengerSignOut] = PageOnly(ProtocolMethods.AccountsMessengerSignOut, Mutation<IMessengerAccount, AccountOpParams, Done>(s => s.MessengerAccount,
             (services, port, _, _, _) => Coded(async () => { await port.SignOutAsync().ConfigureAwait(false); Ended(services, "messenger", null); return new Done(); }), null, true));
 
         // ---- Instagram ----
         routes[ProtocolMethods.AccountsInstagramAnswersFromMemory] = Of<IInstagramAccount, MessageIdParams, bool>(s => s.InstagramAccount,
             (port, p, _) => Task.FromResult(port.AnswersFromMemory(p.ChatId, p.MessageId)));
         routes[ProtocolMethods.AccountsInstagramResume] = AccountMutation<IInstagramAccount, AccountOpParams, int>(s => s.InstagramAccount, (port, _, ct) => port.ResumeAsync(ct));
-        routes[ProtocolMethods.AccountsInstagramConnect] = OwnerOnly(ProtocolMethods.AccountsInstagramConnect, AccountMutation<IInstagramAccount, InstagramConnectParams, int>(
+        routes[ProtocolMethods.AccountsInstagramConnect] = PageOnly(ProtocolMethods.AccountsInstagramConnect, AccountMutation<IInstagramAccount, InstagramConnectParams, int>(
             s => s.InstagramAccount, (port, p, ct) => port.ConnectAsync(p.Cookies, ct)));
         routes[ProtocolMethods.AccountsInstagramRestore] = RestoreMutation<IInstagramAccount, AccountRestore>(s => s.InstagramAccount, RestoreOnce.Instagram,
             new AccountRestore(null, Skipped: true), (port, ct) => port.RestoreAsync(() => ct.IsCancellationRequested));
-        routes[ProtocolMethods.AccountsInstagramSignOut] = OwnerOnly(ProtocolMethods.AccountsInstagramSignOut, Mutation<IInstagramAccount, AccountOpParams, Done>(s => s.InstagramAccount,
+        routes[ProtocolMethods.AccountsInstagramSignOut] = PageOnly(ProtocolMethods.AccountsInstagramSignOut, Mutation<IInstagramAccount, AccountOpParams, Done>(s => s.InstagramAccount,
             (services, port, _, _, _) => Coded(async () => { await port.SignOutAsync().ConfigureAwait(false); Ended(services, "instagram", null); return new Done(); }), null, true));
 
         // ---- Google Messages ----
         // The host's keeper is told of a sign-in by hand once it has been accepted (the window told its own keeper when it hosted it): a profile whose
         // refresh failed before is tried again, and the early renewal that gave up is on again. Not told of a sign-in that failed, and a failure to tell
         // is never the sign-in's: it went through, and reporting it failed would invite a second pairing.
-        routes[ProtocolMethods.AccountsGoogleSignIn] = OwnerOnly(ProtocolMethods.AccountsGoogleSignIn, Mutation<IGoogleMessagesAccount, GoogleSignInParams, Done>(s => s.GoogleAccount,
+        routes[ProtocolMethods.AccountsGoogleSignIn] = PageOnly(ProtocolMethods.AccountsGoogleSignIn, Mutation<IGoogleMessagesAccount, GoogleSignInParams, Done>(s => s.GoogleAccount,
             (services, port, p, progress, ct) => Coded(async () =>
             {
                 await port.SignInAsync(p.Cookies, progress, ct, p.AsNewDevice, p.ProfileCookies).ConfigureAwait(false);
@@ -186,9 +185,9 @@ public sealed partial class ProtocolDispatcher
         // ---- Google Voice ----
         routes[ProtocolMethods.AccountsVoiceRestore] = RestoreMutation<IGoogleVoiceAccounts, IReadOnlyList<string>>(s => s.VoiceAccounts, RestoreOnce.Voice,
             [], (port, ct) => port.RestoreAsync(ct));
-        routes[ProtocolMethods.AccountsVoiceAdd] = OwnerOnly(ProtocolMethods.AccountsVoiceAdd, AccountMutation<IGoogleVoiceAccounts, VoiceAddParams, GoogleVoiceAccountState>(
+        routes[ProtocolMethods.AccountsVoiceAdd] = PageOnly(ProtocolMethods.AccountsVoiceAdd, AccountMutation<IGoogleVoiceAccounts, VoiceAddParams, GoogleVoiceAccountState>(
             s => s.VoiceAccounts, (port, p, ct) => port.AddAsync(p.Cookies, p.ProfileId, ct)));
-        routes[ProtocolMethods.AccountsVoiceSignOut] = OwnerOnly(ProtocolMethods.AccountsVoiceSignOut, Mutation<IGoogleVoiceAccounts, VoiceSignOutParams, Done>(s => s.VoiceAccounts,
+        routes[ProtocolMethods.AccountsVoiceSignOut] = PageOnly(ProtocolMethods.AccountsVoiceSignOut, Mutation<IGoogleVoiceAccounts, VoiceSignOutParams, Done>(s => s.VoiceAccounts,
             (services, port, p, _, _) => Coded(async () => { await port.SignOutAsync(p.Key).ConfigureAwait(false); Ended(services, "voice", p.Key); return new Done(); }), null, true));
 
         // ---- What 2.6b's proxies asked the object in this process ----

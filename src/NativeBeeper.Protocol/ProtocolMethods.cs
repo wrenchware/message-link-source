@@ -162,8 +162,6 @@ public static partial class ProtocolMethods
         .. SharedStateEntries(),
         .. ScheduledEntries(),
         .. StateImportEntries(),
-        .. RemoteSignInEntries(),
-        .. QrPairingEntries(),
         .. AccountMoveEntries(),
         .. HostLogsEntries(),
         .. AdminEntries(),

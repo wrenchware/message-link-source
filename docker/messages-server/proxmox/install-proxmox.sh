@@ -21,7 +21,7 @@
 #                                       a file is checked against a .sha256 beside it when there is one.
 #   --ctid <number>                     the container's id (default: the next free one, or the existing Messages Server's)
 #   --yes                               take every default without asking (no page password, no auth key)
-#   --no-google                         Messenger and Instagram only: no Chrome
+#   --no-google                         no Chrome: the page can't connect any account, so accounts only arrive by a move from a PC
 #   --help                              this text
 #
 # Running it again finds the container it made and updates the server in it: data, keys, sign-ins and paired devices
@@ -195,7 +195,6 @@ say ""
 say "A new container for Messages Server. Press Enter to take the value in brackets."
 host=$(ask "Hostname" "$hostname_default")
 [[ "$host" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || fail "the hostname must be lowercase letters, digits and dashes."
-if [ "$google" = yes ] && ! ask_yes "Google Messages and Google Voice? This installs Google Chrome in the container" y; then google=no; fi
 
 mapfile -t template_stores < <(pvesm status -content vztmpl 2>/dev/null | tail -n +2 | awk '$3 == "active" {print $1}')
 mapfile -t disk_stores < <(pvesm status -content rootdir 2>/dev/null | tail -n +2 | awk '$3 == "active" {print $1}')

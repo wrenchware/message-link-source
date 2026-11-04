@@ -22,7 +22,7 @@ public static class TourSteps
             "Google Messages, Messenger, Google Voice and Instagram in one Windows inbox. This two-minute tour shows the things " +
             "that are easy to miss. Leave whenever you like: <kbd>F1</kbd> opens the full guide any time.", null, "basics"),
         new("accounts", "Connect your services",
-            "**Settings → Accounts** connects each one. Google Messages pairs with your phone; Messenger and Instagram sign in " +
+            "**Settings → Connections** connects each one. Google Messages pairs with your phone; Messenger and Instagram sign in " +
             "on their own pages; add as many Google Voice numbers as you like.", "EmptyAddAccount", "connecting", OnlyWithoutAccounts: true),
         new("search", "Search everything",
             "<kbd>Ctrl+E</kbd> searches every service's messages from here. The full search window narrows by person, " +

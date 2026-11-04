@@ -63,10 +63,9 @@ internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string Profile
         // anyway (ProfileKeepingGoogleAccount) without ever renewing it is refused instead.
         if (!options.Restore) { log("server google refused reason=no_restore"); return null; }
         // Chrome mode (SWITCHBOARD.md 5.4, MESSAGES_GOOGLE_CHROME=1) has its own refusals (no_browser, no_xvfb, no_policy, no_helper): Chrome is never started without its policy. Refused, it
-        // is not what runs, and the host falls through to the lines below as a host without the switch would: QR pairing needs no browser, and the Chromium lines say what is left.
+        // is not what runs, and the host falls through to the lines below as a host without the switch would; the Chromium lines say what is left.
         if (options.GoogleChrome && PrepareChrome(options, keys, log, findXvfb, interfaces) is { } chrome) return chrome;
-        // Google Messages is paired by QR code here (GoogleQrPairing), which needs neither a browser nor a display: a pairing made that way holds no Google sign-in to renew. So a
-        // missing browser, or a headed one with no Xvfb, no longer refuses Google; it only leaves the browser-based ways (a Gaia pairing's renewal, the sign-in in the server's
+        // A missing browser, or a headed one with no Xvfb, does not refuse Google; it only leaves the browser-based ways (a Gaia pairing's renewal, the sign-in in the server's
         // own browser) unavailable, said in a word at start. What was asked for is then not what runs, and the line below says what does.
         var headed = options.ChromiumHeaded;
         if (!File.Exists(options.Chromium)) { log("server google browser=none reason=no_browser"); headed = false; }
