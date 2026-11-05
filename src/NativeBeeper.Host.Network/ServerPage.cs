@@ -271,7 +271,7 @@ internal sealed partial class ServerPage
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
     public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/theme" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
-        or "/push/test" or "/mirror" or LogoPath || IsIconPath(path) || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
+        or "/push/test" or "/mirror" or LogoPath or PicturesPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
     public const string LogoPath = "/logo.png";
@@ -302,17 +302,17 @@ internal sealed partial class ServerPage
         var path = request.Path.Value;
         var get = HttpMethods.IsGet(request.Method);
         var post = HttpMethods.IsPost(request.Method);
-        if (get && (path == LogoPath || IsIconPath(path)))
+        if (get && path is LogoPath or PicturesPath)
         {
             response.StatusCode = StatusCodes.Status200OK;
             response.ContentType = "image/png";
             response.Headers.CacheControl = "max-age=86400";
-            var bytes = path == LogoPath ? Logo.Value : Icons.Value[path!];
+            var bytes = path == LogoPath ? Logo.Value : Pictures.Value;
             response.ContentLength = bytes.Length;
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogoPath || IsIconPath(path) || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogoPath or PicturesPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -1000,7 +1000,7 @@ internal sealed partial class ServerPage
         // The frame.
         + "*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 var(--font,'Segoe UI',system-ui,-apple-system,Roboto,sans-serif);color:var(--fg);background-image:var(--glow,none);background-repeat:no-repeat;background-attachment:fixed}"
         + "main{max-width:720px;margin:0 auto;padding:14px 16px 32px}main:has(.cols){max-width:1040px}"
-        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top img{width:24px;height:24px;display:block}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
+        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top .ic{display:block}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
         + "header.top .r{margin-left:auto;display:flex;gap:12px;align-items:center}"
         // The front page's sections and lines.
         + "section.sec{background:none;border:0;padding:0;margin:0 0 16px;backdrop-filter:none;min-width:0}.sh{display:flex;align-items:center;gap:12px;padding:0 2px 6px;min-height:24px}.sh .r{margin-left:auto;display:flex;gap:12px}"
@@ -1010,7 +1010,7 @@ internal sealed partial class ServerPage
         + ".v{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}.v.warn{color:var(--warn)}.act{width:12px;display:flex;justify-content:flex-end;flex:none}.chev{width:7px;height:7px;border:solid var(--muted);border-width:1.5px 1.5px 0 0;transform:rotate(45deg);display:block}"
         + ".sec a:not(.button):not(.go),.row a:not(.button),header.top a,footer a,button.link{color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;white-space:nowrap;background:none;border:0;padding:0;cursor:pointer}.sec a:not(.button):not(.go):hover,.row a:not(.button):hover,header.top a:hover,footer a:hover,button.link:hover{color:var(--fg)}"
         + "a.go{color:var(--fg);text-decoration:none}a.go:hover{background:var(--hair)}a.go[aria-expanded=true] .chev{transform:rotate(135deg)}form.plain{display:inline;margin:0}.more{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 12px 10px 50px;margin:0}.more.flat{padding-left:12px}.hint{color:var(--muted);font-size:12.5px;margin:6px 2px 0}.more .hint{margin:0}.more .copy{overflow-wrap:anywhere;color:var(--muted)}.more details{width:100%;margin:0}.more details p{margin:6px 0}.more pre{margin:6px 0 8px}"
-        + "img.ic{width:28px;height:28px;flex:none;display:block;filter:var(--icons,none)}"
+        + ".ic{width:28px;height:28px;flex:none;display:block;background:url(/page-pictures.png) no-repeat;background-size:28px 140px;filter:var(--icons,none)}.ic.logo{width:24px;height:24px;background-size:24px 120px;filter:none}.ic.gm{background-position:0 -28px}.ic.me{background-position:0 -56px}.ic.gv{background-position:0 -84px}.ic.ig{background-position:0 -112px}a.go:focus{outline:none}a.go:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}"
         + ".cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;align-items:start}@media(min-width:800px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}"
         + "footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:2px 2px 0}footer .end{margin-left:auto}"
         // Everything else: the cards of the pages under /manage, the forms and the steps of setting up.
@@ -1051,7 +1051,7 @@ internal sealed partial class ServerPage
         var html = $"<!doctype html><html lang=\"en\" class=\"t-{context.Items[ThemeItem] ?? Themes[0].Id}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
             + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body><main>"
-            + $"<header class=\"top\"><a href=\"/\" aria-label=\"The server's page\"><img src=\"{LogoPath}\" alt=\"\"></a><h1>{crumbs}</h1>{(actions is null ? "" : $"<span class=\"r\">{actions}</span>")}</header>{WithoutPasswordAgain(context, body)}</main></body></html>";
+            + $"<header class=\"top\"><a href=\"/\" aria-label=\"The server's page\"><span class=\"ic logo\" aria-hidden=\"true\"></span></a><h1>{crumbs}</h1>{(actions is null ? "" : $"<span class=\"r\">{actions}</span>")}</header>{WithoutPasswordAgain(context, body)}</main></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }
 
