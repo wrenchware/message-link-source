@@ -10,7 +10,7 @@ using NativeBeeper.Core.Services;
 namespace NativeBeeper.App.Services;
 
 /// <summary>How a contact save ended. <see cref="Unknown"/>: the request left and no answer came, so it may have been saved; it is never sent again by itself.</summary>
-public enum GoogleContactSave { Saved, NotConnected, Refused, Failed, Unknown, Cancelled, NotFound, Several }
+public enum GoogleContactSave { Saved, NotConnected, Refused, Failed, Unknown, Cancelled, NotFound, Several, AlreadyThere }
 
 /// <summary>A contact to save. <see cref="PhoneType"/> is one of People API's own words (<see cref="GoogleContacts.PhoneTypes"/>); <see cref="Company"/> may be empty.</summary>
 public sealed record GoogleContactDraft(string GivenName, string FamilyName, string Phone, string PhoneType = "mobile", string Company = "");
@@ -128,6 +128,137 @@ public sealed class GoogleContacts : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>A contact found by name, to add a number to: its People API name (<c>people/c…</c>), its display name and how many numbers it has.</summary>
+    public sealed record ContactMatch(string ResourceName, string Name, int Numbers);
+
+    /// <summary>
+    /// The owner's contacts whose name starts with <paramref name="query"/> (People API's own prefix search), for Add to contacts' Existing contact. Reads
+    /// only; connects first as <see cref="SaveAsync"/> does. <see cref="GoogleContactSave.Saved"/> with the matches, or why there are none.
+    /// </summary>
+    public async Task<(IReadOnlyList<ContactMatch> Matches, GoogleContactSave Outcome)> SearchByNameAsync(string query, Func<Uri, Task<bool>> openBrowser,
+        Action? waiting = null, CancellationToken cancellationToken = default)
+    {
+        query = query.Trim();
+        if (query.Length == 0) return ([], GoogleContactSave.Saved);
+        var matches = new List<ContactMatch>();
+        var outcome = await WithTokenAsync("search", openBrowser, waiting, async token =>
+        {
+            // Google's cache wants one empty search before the first real one; a name typed a moment later finds what is there.
+            if (!nameSearchWarmed)
+            {
+                using var warm = await SearchAsync(token, "", cancellationToken, "names");
+                if (await RefusalAsync(warm, "search") is { } refusedWarm) return refusedWarm;
+                nameSearchWarmed = true;
+            }
+            using var response = await SearchAsync(token, query, cancellationToken, "names,phoneNumbers");
+            if (await RefusalAsync(response, "search") is { } refused) return refused;
+            foreach (var result in JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken))?["results"]?.AsArray() ?? [])
+            {
+                var person = result?["person"];
+                if (person?["resourceName"]?.GetValue<string>() is not { Length: > 0 } name || !name.StartsWith("people/", StringComparison.Ordinal)) continue;
+                var shown = person["names"]?.AsArray().Select(entry => entry?["displayName"]?.GetValue<string>()).FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+                if (shown is null) continue;
+                matches.Add(new ContactMatch(name, shown, person["phoneNumbers"]?.AsArray().Count ?? 0));
+            }
+            return GoogleContactSave.Saved;
+        }, cancellationToken);
+        return (matches, outcome);
+    }
+
+    private bool nameSearchWarmed;
+
+    /// <summary>
+    /// Adds <paramref name="phone"/> to the existing contact <paramref name="resourceName"/> (from <see cref="SearchByNameAsync"/>), keeping its other
+    /// numbers. <see cref="GoogleContactSave.AlreadyThere"/>: it has the number already, and nothing was changed. The contact is read and written back
+    /// under Google's etag, so a contact changed elsewhere in between is refused rather than overwritten, and never tried again here.
+    /// </summary>
+    public async Task<GoogleContactSave> AddNumberAsync(string resourceName, string phone, string phoneType, Func<Uri, Task<bool>> openBrowser,
+        Action? waiting = null, CancellationToken cancellationToken = default)
+    {
+        phone = phone.Trim();
+        if (!resourceName.StartsWith("people/", StringComparison.Ordinal) || resourceName.Length > 64 || resourceName[7..].Any(c => !char.IsAsciiLetterOrDigit(c))
+            || phone.Length == 0 || phone.Length > MaxNameLength || !PhoneTypes.Contains(phoneType)) return GoogleContactSave.Failed;
+        return await WithTokenAsync("add_number", openBrowser, waiting, async token =>
+        {
+            // The contact's own data only (a linked Google profile's numbers are not the contact's to write), with the source Google wants named back.
+            using var read = new HttpRequestMessage(HttpMethod.Get,
+                "https://people.googleapis.com/v1/" + resourceName + "?personFields=metadata,phoneNumbers&sources=READ_SOURCE_TYPE_CONTACT");
+            read.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var current = await http.SendAsync(read, cancellationToken);
+            if (await RefusalAsync(current, "add_number") is { } refused) return refused;
+            var person = JsonNode.Parse(await current.Content.ReadAsStringAsync(cancellationToken));
+            var source = person?["metadata"]?["sources"]?.AsArray().FirstOrDefault(entry => entry?["type"]?.GetValue<string>() == "CONTACT");
+            if (person?["etag"]?.GetValue<string>() is not { Length: > 0 } etag || source?["id"]?.GetValue<string>() is not { Length: > 0 } sourceId
+                || source["etag"]?.GetValue<string>() is not { Length: > 0 } sourceEtag)
+            {
+                log("google contacts add_number outcome=failed step=etag");
+                return GoogleContactSave.Failed;
+            }
+            var wanted = Canonical(phone);
+            var numbers = new JsonArray();
+            foreach (var number in person["phoneNumbers"]?.AsArray() ?? [])
+            {
+                // Another source's number (a profile's) is shown with the contact but is not written into it.
+                if (number?["metadata"]?["source"]?["type"]?.GetValue<string>() is { } from && from != "CONTACT") continue;
+                var value = number?["value"]?.GetValue<string>() ?? "";
+                var known = Canonical(number?["canonicalForm"]?.GetValue<string>() is { Length: > 0 } canonical ? canonical : value);
+                if ((wanted is not null && known == wanted)
+                    || (value.Length > 0 && !value.Any(char.IsLetter) && !phone.Any(char.IsLetter) && Digits(value) == Digits(phone)))
+                {
+                    log("google contacts add_number outcome=already_there");
+                    return GoogleContactSave.AlreadyThere;
+                }
+                // Written back as it was (its label, and which number is preferred), without what Google works out itself (canonicalForm,
+                // formattedType, metadata.primary).
+                var kept = new JsonObject { ["value"] = value };
+                if (number?["type"]?.GetValue<string>() is { Length: > 0 } type) kept["type"] = type;
+                if (number?["metadata"] is JsonObject metadata)
+                {
+                    var keptMetadata = new JsonObject();
+                    if (metadata["sourcePrimary"]?.GetValue<bool>() is { } preferred) keptMetadata["sourcePrimary"] = preferred;
+                    if (metadata["source"] is JsonNode from2) keptMetadata["source"] = from2.DeepClone();
+                    if (keptMetadata.Count > 0) kept["metadata"] = keptMetadata;
+                }
+                numbers.Add(kept);
+            }
+            numbers.Add(new JsonObject { ["value"] = phone, ["type"] = phoneType });
+            var body = new JsonObject
+            {
+                ["etag"] = etag,
+                ["metadata"] = new JsonObject { ["sources"] = new JsonArray(new JsonObject { ["type"] = "CONTACT", ["id"] = sourceId, ["etag"] = sourceEtag }) },
+                ["phoneNumbers"] = numbers,
+            };
+            using var write = new HttpRequestMessage(HttpMethod.Patch, "https://people.googleapis.com/v1/" + resourceName + ":updateContact?updatePersonFields=phoneNumbers")
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            write.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await MutateAsync(write, "add_number", cancellationToken);
+        }, cancellationToken);
+    }
+
+    // The one request that changes the account: an answer is the outcome, no answer (or a server error after it left) is unknown, never sent again.
+    private async Task<GoogleContactSave> MutateAsync(HttpRequestMessage request, string what, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        HttpResponseMessage response;
+        try { response = await http.SendAsync(request, cancellationToken); }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+        {
+            log($"google contacts {what} outcome=unknown");
+            return GoogleContactSave.Unknown;
+        }
+        using (response)
+        {
+            var status = (int)response.StatusCode;
+            if (response.IsSuccessStatusCode) { log($"google contacts {what} outcome=saved"); return GoogleContactSave.Saved; }
+            if (response.StatusCode == HttpStatusCode.Unauthorized) { accessToken = null; log($"google contacts {what} outcome=unauthorized status=401"); return GoogleContactSave.NotConnected; }
+            if (await InsufficientAsync(response)) { log($"google contacts {what} outcome=insufficient_scope status=403"); Forget(); return GoogleContactSave.NotConnected; }
+            log($"google contacts {what} outcome={(status >= 500 ? "unknown" : "refused")} status={status}");
+            return status >= 500 ? GoogleContactSave.Unknown : GoogleContactSave.Refused;
+        }
+    }
+
     // A token, from the kept permission or from Connect, then the one request that changes the account. Anything that goes wrong before that request
     // changed nothing; the request answers for itself from the moment it leaves.
     private async Task<GoogleContactSave> WithTokenAsync(string step, Func<Uri, Task<bool>> openBrowser, Action? waiting, Func<string, Task<GoogleContactSave>> act,
@@ -232,10 +363,10 @@ public sealed class GoogleContacts : IDisposable
         return body.Contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT", StringComparison.Ordinal) || body.Contains("insufficientPermissions", StringComparison.Ordinal);
     }
 
-    private async Task<HttpResponseMessage> SearchAsync(string token, string query, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SearchAsync(string token, string query, CancellationToken cancellationToken, string readMask = "phoneNumbers")
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,
-            "https://people.googleapis.com/v1/people:searchContacts?readMask=phoneNumbers&pageSize=30&query=" + Uri.EscapeDataString(query));
+            "https://people.googleapis.com/v1/people:searchContacts?readMask=" + readMask + "&pageSize=30&query=" + Uri.EscapeDataString(query));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await http.SendAsync(request, cancellationToken);
     }
