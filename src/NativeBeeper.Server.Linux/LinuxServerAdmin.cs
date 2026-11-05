@@ -51,10 +51,12 @@ internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : IServerAd
     /// <param name="LoginGate">The provider's lifecycle lock, shared with the account ports, restores and move file operations.</param>
     /// <param name="MessengerKeysRoot">The helper's private root on the keys volume (<c>&lt;keys&gt;/Messenger</c>).</param>
     /// <param name="EncryptedFlag">Messenger's <c>encrypted.on</c> beside its session, which goes with a device that is set aside.</param>
+    /// <param name="GoogleNumber">The paired phone's number, once a conversation has loaded.</param>
+    /// <param name="MessengerName">The Facebook account's name, once a conversation has loaded.</param>
     internal sealed record Parts(string App, DateTimeOffset Started, ServerImage Image, Func<string?> ChromeSandbox,
         IMessengerAccount Messenger, Func<Task<string?>> MessengerKey, IInstagramAccount Instagram, IGoogleVoiceAccounts Voice, bool VoiceRuns, bool GoogleRuns,
         Func<bool> GooglePaired, Func<bool> GoogleConnected, IAccountMove? Move, IAccountGate? Gate, Func<string, SemaphoreSlim> LoginGate, string MessengerKeysRoot, TimeProvider Time,
-        Action<string> Log, string? EncryptedFlag = null);
+        Action<string> Log, string? EncryptedFlag = null, Func<string?>? GoogleNumber = null, Func<string?>? MessengerName = null);
 
     public Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new HostStatus(parts.App, ProtocolVersion.Current, ProtocolVersion.Supported, parts.Started, parts.ChromeSandbox(), parts.Image.Channel, parts.Image.Revision, parts.Image.Built));
@@ -64,10 +66,10 @@ internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : IServerAd
         var moving = await MovingAsync(cancellationToken).ConfigureAwait(false);
         var accounts = new List<ServerAccount>();
         if (parts.GoogleRuns && parts.GooglePaired())
-            accounts.Add(new(ServerAccountProviders.GoogleMessages, parts.GoogleConnected() ? ServerAccountStates.Connected : ServerAccountStates.Paired, Removable: false));
+            accounts.Add(new(ServerAccountProviders.GoogleMessages, parts.GoogleConnected() ? ServerAccountStates.Connected : ServerAccountStates.Paired, Removable: false, Name: parts.GoogleNumber?.Invoke()));
         var messenger = parts.Messenger.State;
         if (moving.TryGetValue(MoveProviders.Messenger, out var messengerMove)) accounts.Add(new(ServerAccountProviders.Messenger, messengerMove, Removable: CanRemoveHeld(MoveProviders.Messenger)));
-        else if (messenger.Saved || messenger.Connected) accounts.Add(new(ServerAccountProviders.Messenger, messenger.Connected ? ServerAccountStates.Connected : ServerAccountStates.Saved, Removable: true));
+        else if (messenger.Saved || messenger.Connected) accounts.Add(new(ServerAccountProviders.Messenger, messenger.Connected ? ServerAccountStates.Connected : ServerAccountStates.Saved, Removable: true, Name: parts.MessengerName?.Invoke()));
         var instagram = parts.Instagram.State;
         if (moving.TryGetValue(MoveProviders.Instagram, out var instagramMove)) accounts.Add(new(ServerAccountProviders.Instagram, instagramMove, Removable: CanRemoveHeld(MoveProviders.Instagram)));
         else if (instagram.Saved || instagram.Connected)

@@ -103,6 +103,7 @@ internal sealed partial class ServerPage
         this.credential = credential ?? (stored is not null ? StoredCredential(secret, stored) : RandomNumberGenerator.GetBytes(32));
         settingUp = credential is null && stored is null;
         sessionKey = SessionKey(generation);
+        LoadTheme();
     }
 
     /// <summary>
@@ -269,20 +270,22 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
-        or "/push/test" or "/mirror" or LogoPath || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/theme" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+        or "/push/test" or "/mirror" or LogoPath || IsIconPath(path) || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
     public const string LogoPath = "/logo.png";
 
-    private static readonly Lazy<byte[]> Logo = new(() =>
+    private static readonly Lazy<byte[]> Logo = new(() => Picture("server-page-logo.png"));
+
+    private static byte[] Picture(string name)
     {
-        using var stream = typeof(ServerPage).Assembly.GetManifestResourceStream("server-page-logo.png");
+        using var stream = typeof(ServerPage).Assembly.GetManifestResourceStream(name);
         if (stream is null) return [];
         using var copy = new MemoryStream();
         stream.CopyTo(copy);
         return copy.ToArray();
-    });
+    }
 
     /// <summary>Answers one request of the page, and closes its connection.</summary>
     public async Task HandleAsync(HttpContext context, bool draining)
@@ -290,6 +293,7 @@ internal sealed partial class ServerPage
         var request = context.Request;
         var response = context.Response;
         Secure(response);
+        context.Items[ThemeItem] = theme;
         if (draining)
         {
             await PlainAsync(context, StatusCodes.Status503ServiceUnavailable, "The server is stopping.").ConfigureAwait(false);
@@ -298,17 +302,17 @@ internal sealed partial class ServerPage
         var path = request.Path.Value;
         var get = HttpMethods.IsGet(request.Method);
         var post = HttpMethods.IsPost(request.Method);
-        if (path == LogoPath && get)
+        if (get && (path == LogoPath || IsIconPath(path)))
         {
             response.StatusCode = StatusCodes.Status200OK;
             response.ContentType = "image/png";
             response.Headers.CacheControl = "max-age=86400";
-            var bytes = Logo.Value;
+            var bytes = path == LogoPath ? Logo.Value : Icons.Value[path!];
             response.ContentLength = bytes.Length;
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && path is "/" or "/log" or LogoPath)
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogoPath || IsIconPath(path) || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -347,7 +351,7 @@ internal sealed partial class ServerPage
         // The server's first run (ServerPage.Setup.cs): until a password is chosen, the setup screen is all the page shows.
         if (await FirstRunAsync(context, path, form).ConfigureAwait(false)) return;
 
-        // A link to a place on the home page (`/?section=storage`) goes there once signed in; the sign-in form carries the section along, so it survives it.
+        // A link to a place on the page (`/?section=storage`) goes there once signed in; the sign-in form carries the section along, so it survives it.
         var section = Section((post ? form!["section"] : request.Query["section"]).ToString());
         if (path == "/login")
         {
@@ -425,6 +429,12 @@ internal sealed partial class ServerPage
                 }
                 Redirect(response, "/");
                 return;
+            case "/theme":
+                await ThemeAsync(context, form!).ConfigureAwait(false);
+                return;
+            case { } manage when IsManagePath(manage):
+                await ManageAsync(context, manage, token).ConfigureAwait(false);
+                return;
             case "/log":
                 await PageAsync(context, StatusCodes.Status200OK, "Recent log", await LogBodyAsync(context.RequestAborted).ConfigureAwait(false)).ConfigureAwait(false);
                 return;
@@ -433,7 +443,7 @@ internal sealed partial class ServerPage
                 if (history is not null)
                     try { await history.MirrorAsync(new HistoryMirrorParams(Start: true), context.RequestAborted).ConfigureAwait(false); }
                     catch (Exception failure) when (failure is not OperationCanceledException) { log($"server page mirror failed type={failure.GetType().Name}"); }
-                Redirect(response, "/?done=mirror");
+                Redirect(response, "/manage/sync?done=mirror");
                 return;
             case "/push" when pushes is not null:
                 await PushAsync(context, form, token, pushes).ConfigureAwait(false);
@@ -475,8 +485,8 @@ internal sealed partial class ServerPage
                 Redirect(response, "/");
                 return;
             default:
-                var (home, badge, refresh) = await HomeBodyAsync(request, token, request.Query["done"].ToString(), context.RequestAborted).ConfigureAwait(false);
-                await PageAsync(context, StatusCodes.Status200OK, "Messages Server", home, badge, refresh).ConfigureAwait(false);
+                var home = await HomeBodyAsync(request, token, request.Query["done"].ToString(), context.RequestAborted).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status200OK, SiteName, home.Body, home.Refresh, home.RefreshTo, home.Actions).ConfigureAwait(false);
                 return;
         }
     }
@@ -776,6 +786,8 @@ internal sealed partial class ServerPage
             body.Append("<p class=\"code\">").Append(Html(waiting.Code)).Append("</p>");
             body.Append("<p class=\"quiet\">Asked from ").Append(Html(waiting.Source)).Append(", ").Append(Html(Ago(waiting.Asked))).Append(".</p>");
             body.Append(PasswordForm("/joins/approve", token, "Approve", id: waiting.Id));
+            // Turning a device away gives nothing to anyone, so it needs no password.
+            body.Append("<form method=\"post\" action=\"/joins/deny\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"id\" value=\"").Append(Html(waiting.Id)).Append("\"><button type=\"submit\" class=\"quiet\">Deny</button></form>");
             return body.Append("</section>").ToString();
         }
         if (form is null)
@@ -796,143 +808,6 @@ internal sealed partial class ServerPage
             return;
         }
         Redirect(context.Response, approved.Approved ? "/?done=joined" : "/?done=join_gone");
-    }
-
-    // The home page, with the badge beside its title and how often it reloads itself: every 10 seconds while a device waits to join (so its going is seen), every 30 otherwise
-    // (so a new one shows up without a click).
-    private async Task<(string Body, string? Badge, int Refresh)> HomeBodyAsync(HttpRequest request, string token, string done, CancellationToken cancellationToken)
-    {
-        var body = new StringBuilder();
-        var said = done switch
-        {
-            "removed" => "The device was removed. It stops connecting at once, and nothing on it was deleted.",
-            "gone" => "That device isn't paired with the server any more.",
-            "renamed" => "The device was renamed.",
-            "account_removed" => "The account was removed from the server.",
-            "account_gone" => "The server doesn't hold that account any more.",
-            "account_moving" => "That account is part of a move between this server and a PC, so it can't be removed yet.",
-            "account_unpair" => UnpairGoogle,
-            "joined" => "The device joined. It can use the server now.",
-            "declined" => "The request was turned away.",
-            "join_gone" => "That request isn't waiting any more: it was answered, it ran out, or the device stopped asking.",
-            "push_on" => "Notifications are on. Phones with Messages open sign up now, the others when Messages on them next connects. Send a test below to be sure.",
-            "push_on_unchecked" => "Notifications are on, but the server couldn't reach Google to check the key just now. Send a test below; if it doesn't arrive, add the files again.",
-            "mirror" => "Checking now. Each service takes a few seconds per conversation; reload to see the results.",
-            "backup_started" => "Backing up now. Reload in a minute to see it done.",
-            "backup_busy" => "A backup is already running, or there's no password yet.",
-            "backup_checking" => "Reading the latest backup back now. Reload in a minute to see what it found.",
-            "backup_password" => "The backup password is set. Keep it safe: without it the backups can't be read.",
-            "desktop_sign_in" => "The sign-in opened in Messages on this PC.",
-            "desktop_sign_in_failed" => "Messages couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
-            _ => TailnetNotice(done),
-        };
-        if (said is not null) body.Append(Notice(said));
-        // A device asking to join is the one thing that needs someone now, so it comes first; the server's own details come last.
-        var waiting = joins.Waiting();
-        if (waiting.Count > 0)
-        {
-            body.Append("<section class=\"attention\"><h2>Waiting to join</h2><ul class=\"rows\">");
-            foreach (var asking in waiting)
-            {
-                body.Append("<li><span class=\"grow\"><strong>").Append(Html(asking.DeviceName)).Append("</strong><span class=\"quiet\">From ").Append(Html(asking.Source))
-                    .Append(" · asked ").Append(Html(Ago(asking.Asked))).Append("</span></span>")
-                    .Append("<span class=\"code small\">").Append(Html(asking.Code)).Append("</span>")
-                    .Append("<a class=\"button\" href=\"/joins/approve?id=").Append(Uri.EscapeDataString(asking.Id)).Append("\">Approve…</a>")
-                    .Append("<form method=\"post\" action=\"/joins/deny\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
-                    .Append("<input type=\"hidden\" name=\"id\" value=\"").Append(Html(asking.Id)).Append("\"><button type=\"submit\" class=\"quiet\">Deny</button></form></li>");
-            }
-            body.Append("</ul><p class=\"quiet\">Approve only a device that shows the same code.</p></section>");
-        }
-
-        await ChecklistAsync(body, token, cancellationToken).ConfigureAwait(false);
-
-        HostStatus? status = null;
-        if (admin is not null)
-            try { status = await admin.StatusAsync(cancellationToken).ConfigureAwait(false); }
-            catch (Exception failure) when (failure is not OperationCanceledException) { }
-
-        body.Append("<section id=\"accounts\"><h2>Accounts</h2>");
-        IReadOnlyList<ServerAccount>? accounts = null;
-        if (admin is not null)
-            try { accounts = await admin.AccountsAsync(cancellationToken).ConfigureAwait(false); }
-            catch (Exception failure) when (failure is not OperationCanceledException) { }
-        if (accounts is null) body.Append(Para("The server couldn't list its accounts just now."));
-        else if (accounts.Count == 0) body.Append(Para("The server holds no account yet."));
-        else
-        {
-            body.Append("<ul class=\"rows\">");
-            foreach (var account in accounts)
-            {
-                body.Append("<li><span class=\"grow\"><strong>").Append(Html(Provider(account.Provider))).Append("</strong>")
-                    .Append(account.Name is { Length: > 0 } name ? "<span class=\"quiet\">" + Html(name) + "</span>" : "").Append("</span>")
-                    .Append("<span class=\"state\"><span class=\"dot ").Append(Tone(account.State)).Append("\"></span>").Append(Html(State(account.State))).Append("</span>");
-                if (account.Removable)
-                    body.Append("<a class=\"quiet\" href=\"/accounts/remove?id=").Append(Html(Uri.EscapeDataString(AccountId(account)))).Append("\" aria-label=\"").Append(Html("Remove " + AccountLabel(account))).Append("\">Remove</a>");
-                body.Append("</li>");
-            }
-            body.Append("</ul>");
-            if (accounts.Any(account => !account.Removable && account.Provider == ServerAccountProviders.GoogleMessages)) body.Append("<p class=\"quiet\">").Append(Html(UnpairGoogle)).Append("</p>");
-            if (accounts.Any(account => !account.Removable && account.Provider != ServerAccountProviders.GoogleMessages)) body.Append("<p class=\"quiet\">An account being moved between this server and a PC can't be removed until the move finishes.</p>");
-        }
-        // Signing in from this page (ServerPage.SignIn.cs): a Connect for each service the server's own browser signs in, and where to do it for the rest; on the Windows server,
-        // the native sign-in on its own desktop instead (ServerPage.Desktop.cs).
-        ConnectList(body, accounts, walkthrough: false, request.HttpContext, token);
-        body.Append("</section>");
-
-        var list = devices.List(null);
-        body.Append("<section id=\"devices\"><h2>Devices</h2>");
-        if (list.Count == 0) body.Append(Para("No device is paired yet."));
-        else
-        {
-            body.Append("<ul class=\"rows\">");
-            foreach (var device in list)
-                body.Append("<li><span class=\"grow\"><strong>").Append(Html(device.Name)).Append("</strong><span class=\"quiet\">")
-                    .Append(device.LastSeen is { } seen ? "last connected " + Html(Ago(seen)) : "never connected").Append("</span></span>")
-                    .Append("<a class=\"quiet\" href=\"/devices/rename?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Rename " + device.Name)).Append("\">Rename</a>")
-                    .Append("<a class=\"quiet\" href=\"/devices/remove?id=").Append(Uri.EscapeDataString(device.Id)).Append("\">Remove</a></li>");
-            body.Append("</ul>");
-        }
-        body.Append("<p class=\"quiet\">Add a phone shows a code to scan. Add a PC gives a line to paste into Messages on the PC, in Settings → Connections → Messages Server.</p>");
-        // Pages that ask for the password first (a GET, so nothing is done by following them).
-        body.Append("<p class=\"actions\"><a class=\"button\" href=\"/phone\">Add a phone…</a> <a class=\"button quiet\" href=\"/pair\">Add a PC…</a></p>");
-        // Asking to join is a way in for devices, so its switch sits with them rather than in a card of its own.
-        body.Append("<form class=\"inline\" method=\"post\" action=\"/joins/pause\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token))
-            .Append("\"><input type=\"hidden\" name=\"paused\" value=\"").Append(joins.Paused ? "no" : "yes").Append("\"><span class=\"quiet\">")
-            .Append(joins.Paused ? "Requests to join are paused. Paired devices keep working." : "Devices on your home network can ask to join.")
-            .Append("</span><button type=\"submit\" class=\"quiet\">").Append(joins.Paused ? "Allow requests" : "Pause requests").Append("</button></form>");
-        body.Append("</section>");
-
-        StorageCard(body);
-        if (pushes is not null) PushCard(body, pushes, token);
-        if (tailnet is not null) TailnetCard(body, tailnet, token);
-
-        if (backups is not null) await BackupsCardAsync(body, token, request, cancellationToken).ConfigureAwait(false);
-
-        if (history is not null) await CopiesCardAsync(body, token, cancellationToken).ConfigureAwait(false);
-
-        body.Append("<section><h2>Server</h2><dl>");
-        if (status is not null)
-        {
-            // The version alone: how the server is updated is its host's schedule, which it cannot know, and its protocol and build are in its log.
-            Row(body, "Version", status.App);
-            // Only said when something is wrong: a running sandbox, or one turned off by whoever installed the server, is nothing a person needs to read.
-            if (status.ChromeSandbox is ChromeSandboxWords.Inactive)
-                Row(body, "Google Chrome", "Its sandbox isn't working, so the pages it opens aren't kept apart from the rest of the server.");
-        }
-        Row(body, "Address", Address(request), copy: true);
-        Row(body, "Fingerprint", fingerprint(), copy: true);
-        body.Append("</dl>");
-        if (status is null) body.Append(Para("The server couldn't say what it is just now."));
-        body.Append("</section>");
-
-        if (backups is not null) ResetCard(body);
-
-        // The AGPL offer to everyone who uses the server over the network: the source of the commit this image was built from (Core SourceCode).
-        body.Append("<footer><a href=\"/log\">Recent log</a><a href=\"").Append(Html(SourceCode.For(status?.App, status?.Revision)))
-            .Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Source code</a>").Append(Form("/logout", token, "Sign out", quiet: true)).Append("</footer>");
-        // Every 5 seconds while the server waits to be signed in to Tailscale, so the card moves on as soon as it has been; every 2 while a test push is waited on.
-        return (body.ToString(), status is null ? null : Span(time.GetUtcNow() - status.Started) is { Length: > 0 } span ? "Running for " + span : "Just started",
-            pushes?.Health.Test is { State: PushTestState.Waiting } ? 2 : waiting.Count > 0 ? 10 : TailnetWaiting ? 5 : 30);
     }
 
     // One line of the card: done or to do, its words, and what to do it with.
@@ -1006,7 +881,7 @@ internal sealed partial class ServerPage
 
     private async Task<string> LogBodyAsync(CancellationToken cancellationToken)
     {
-        var body = new StringBuilder("<p><a href=\"/\">Back</a></p>");
+        var body = new StringBuilder();
         HostLogChunk? chunk = null;
         if (logs is not null)
         {
@@ -1026,34 +901,25 @@ internal sealed partial class ServerPage
         HistoryMirrorResult? mirror = null;
         try { mirror = await history!.MirrorAsync(new HistoryMirrorParams(), cancellationToken).ConfigureAwait(false); }
         catch (Exception failure) when (failure is not OperationCanceledException) { }
-        body.Append("<section><h2>Sync check</h2>");
+        body.Append("<section id=\"sync\"><h2>Sync check</h2>");
         if (mirror is null) body.Append(Para("The server couldn't say how its last check went just now."));
         else if (mirror.Reports.Count == 0) body.Append(Para(mirror.Running ? "Checking now." : "Not checked yet. The server checks every half hour."));
         else
         {
-            body.Append("<ul class=\"rows\">");
-            foreach (var report in mirror.Reports)
+            if (mirror.Running) body.Append(Notice("Checking again now."));
+            body.Append("<div class=\"box\">");
+            foreach (var report in mirror.Reports.OrderBy(report => Array.IndexOf(MirrorOrder, report.Service)))
             {
-                var found = report.Differed == 0 ? "all match"
-                    : $"{report.Differed} {(report.Differed == 1 ? "was" : "were")} out of date and {(report.Differed == 1 ? "is" : "are")} fixed ({Parts(report)})";
-                body.Append("<li><span class=\"grow\"><strong>").Append(Html(Service(report.Service))).Append("</strong><span class=\"quiet\">")
-                    .Append(report.Checked).Append(" checked · ").Append(Html(found))
-                    .Append(report.Skipped > 0 ? $" · {report.Skipped} skipped" : "").Append(" · ").Append(Html(Ago(report.At))).Append("</span></span></li>");
+                var found = report.Differed == 0 ? "all match" : $"{report.Differed} fixed";
+                body.Append(Row(Service(report.Service), null, $"{report.Checked} checked · {found}" + (report.Skipped > 0 ? $" · {report.Skipped} skipped" : "") + " · " + Ago(report.At), null));
             }
-            body.Append("</ul>");
-            if (mirror.Running) body.Append(Para("Checking again now."));
+            body.Append("</div>");
         }
-        body.Append("<p class=\"quiet\">Every half hour the server compares its most active conversations with each service and fixes any that differ. Nothing is sent or marked read.</p>");
+        body.Append("<p class=\"hint\">Every half hour the server compares its most active conversations with each service and fixes any that differ. Nothing is sent or marked read.</p>");
         body.Append(Form("/mirror", token, "Check now", quiet: true)).Append("</section>");
     }
 
-    // Only the kinds of difference the check found.
-    private static string Parts(HistoryMirrorReport report) => string.Join(", ", new[]
-    {
-        report.Missing > 0 ? $"{report.Missing} missing" : null,
-        report.Extra > 0 ? $"{report.Extra} deleted" : null,
-        report.Changed > 0 ? $"{report.Changed} changed" : null,
-    }.Where(part => part is not null));
+    private static readonly string[] MirrorOrder = ["google-direct", "messenger", "gvoice", "instagram"];
 
     private static string Service(string service) => service switch
     {
@@ -1124,60 +990,80 @@ internal sealed partial class ServerPage
         $"<form method=\"post\" action=\"{action}\"><input type=\"hidden\" name=\"form\" value=\"{Html(token)}\"><button type=\"submit\"{(quiet ? " class=\"quiet\"" : "")}>{Html(button)}</button></form>";
 
     private const string Style =
-        ":root{color-scheme:light dark;--fg:#1b1b1b;--bg:#f3f3f3;--card:#fff;--line:#e0e0e0;--accent:#0b62c4;--quiet:#5f5f5f;--danger:#b3261e;--on-accent:#fff;--ok:#1f8a4c;--wait:#b07d00;--off:#8a8a8a;--attention:#eaf2fc}"
-        + "@media(prefers-color-scheme:dark){:root{--fg:#ececec;--bg:#1c1c1c;--card:#262626;--line:#383838;--accent:#6aa8ff;--quiet:#a8a8a8;--danger:#ff8a80;--on-accent:#10203a;--ok:#5fcf8f;--wait:#e6bd5c;--off:#8a8a8a;--attention:#1f2a3a}}"
-        + "body{margin:0;font:15px/1.5 'Segoe UI',system-ui,sans-serif;color:var(--fg);background:var(--bg)}main{max-width:720px;margin:0 auto;padding:24px 16px 48px}"
-        + "header{display:flex;align-items:center;gap:12px;margin:0 0 20px}header img{width:40px;height:40px}h1{font-size:24px;font-weight:600;margin:0;flex:1}"
-        + ".pill{font-size:13px;padding:3px 12px;border-radius:999px;background:var(--attention);color:var(--ok);white-space:nowrap}"
-        + "h2{font-size:15px;font-weight:600;margin:0 0 10px}section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin:0 0 14px}"
-        + "section.attention{background:var(--attention);border-color:var(--accent)}section>:last-child{margin-bottom:0}p{margin:0 0 10px}form{margin:12px 0 10px}section>form:first-child{margin-top:0}"
-        + "dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:0 0 10px;align-items:baseline}dt{color:var(--quiet)}dd{margin:0;overflow-wrap:anywhere}"
-        + ".copy{font-family:Consolas,ui-monospace,monospace;font-size:13px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--quiet)}"
-        + "ul.rows{list-style:none;margin:0 0 10px;padding:0}ul.rows li{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)}ul.rows li:first-child{border-top:0}"
-        + ".grow{flex:1;min-width:0;display:flex;flex-direction:column}.grow .quiet{font-size:13px}ul.rows form{margin:0}"
-        + ".state{font-size:13px;white-space:nowrap}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--off)}.dot.ok{background:var(--ok)}.dot.wait{background:var(--wait)}"
-        + ".code{font-family:Consolas,ui-monospace,monospace;font-size:28px;letter-spacing:3px;margin:8px 0 12px}.code.small{font-size:17px;letter-spacing:2px;margin:0}"
-        + "a{color:var(--accent)}a.button{display:inline-block;padding:6px 14px;border-radius:4px;background:var(--accent);color:var(--on-accent);text-decoration:none;white-space:nowrap}"
-        + ".notice{border-left:3px solid var(--accent);padding:4px 10px;background:var(--card)}a.cancel{margin-left:16px}"
-        + "label{display:block;margin:0 0 4px}input[type=password]{font:inherit;padding:6px 8px;width:100%;max-width:360px;box-sizing:border-box;margin:0 0 12px;display:block}"
-        + "button{font:inherit;padding:6px 14px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);cursor:pointer}"
-        + "button.quiet{background:transparent;color:var(--accent)}button.danger{background:var(--danger);border-color:var(--danger)}"
-        + "footer{display:flex;align-items:center;gap:16px;font-size:14px}footer form{margin:0}footer button.quiet{border:0;padding:0;text-decoration:underline}"
-        // A card's closing line with its own button beside it (Devices: requests to join).
-        + "form.inline{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;border-top:1px solid var(--line);padding-top:12px;margin:12px 0 0}form.inline span{flex:1;min-width:12em;font-size:14px}"
-        + "pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 Consolas,ui-monospace,monospace;background:var(--card);border:1px solid var(--line);padding:12px;border-radius:8px}"
+        // Every look: the same names, read by everything below. All five are dark; colour is for what needs someone.
+        "html{color-scheme:dark;--danger:#ff8a80;--on-danger:#2a0d0a;--card:var(--box);--quiet:var(--muted);--accent:var(--acc);--on-accent:var(--btnfg);--attention:var(--warnbg);--ok:var(--muted);--off:var(--muted);--wait:var(--warn)}"
+        + ".t-night{--bg:#0a0d13;--fg:#e8edf5;--muted:#93a0b4;--box:rgba(255,255,255,.035);--line:rgba(255,255,255,.09);--hair:rgba(255,255,255,.06);--warn:#ffb23e;--warnbg:rgba(255,178,62,.08);--warnline:rgba(255,178,62,.32);--btn:#3884ff;--btnfg:#fff;--acc:#6aa8ff;--glow:radial-gradient(900px 260px at 18% -60px,rgba(56,132,255,.22),transparent 70%)}"
+        + ".t-graphite{--bg:#141516;--fg:#ededed;--muted:#8d8f94;--box:#1b1c1e;--line:#2b2c2f;--hair:#26272a;--warn:#f5a524;--warnbg:#1f1b12;--warnline:#4a3a17;--btn:#ededed;--btnfg:#141516;--acc:#ededed;--capt:none;--caps:0;--capsize:13px;--capc:#ededed;--icons:grayscale(1)}"
+        + ".t-aurora{--bg:#0a0f1f;--fg:#eaf0fb;--muted:#94a2c0;--box:rgba(255,255,255,.04);--line:rgba(255,255,255,.09);--hair:rgba(255,255,255,.06);--warn:#ffb84d;--warnbg:rgba(255,184,77,.09);--warnline:rgba(255,184,77,.32);--btn:linear-gradient(100deg,#19c8c0,#7c6cff);--btnfg:#fff;--acc:#4fd1c5;--glow:radial-gradient(620px 240px at 18% -40px,rgba(25,211,197,.26),transparent 72%),radial-gradient(760px 280px at 62% -70px,rgba(139,92,246,.3),transparent 72%)}"
+        + ".t-glass{--bg:#0d0b1e;--fg:#fff;--muted:rgba(255,255,255,.68);--box:rgba(255,255,255,.075);--line:rgba(255,255,255,.16);--hair:rgba(255,255,255,.09);--warn:#ffd27a;--warnbg:rgba(255,190,90,.14);--warnline:rgba(255,205,120,.42);--btn:rgba(255,255,255,.92);--btnfg:#171330;--acc:#fff;--blur:blur(16px);--r:14px;--rb:999px;--glow:radial-gradient(40vw 40vw at 12% 18%,rgba(43,123,255,.6),transparent 70%),radial-gradient(44vw 44vw at 60% 92%,rgba(236,72,153,.42),transparent 70%),radial-gradient(38vw 38vw at 94% 22%,rgba(20,200,190,.4),transparent 70%)}"
+        + ".t-phosphor{--font:'Cascadia Mono',ui-monospace,Consolas,Menlo,monospace;--bg:#060a08;--fg:#d3ecdc;--muted:#6f9580;--box:#0b120e;--line:#1c3327;--hair:#14241b;--warn:#ffb84d;--warnbg:#171208;--warnline:#57401a;--btn:transparent;--btnfg:#5dffa0;--btnline:#5dffa0;--acc:#5dffa0;--r:3px;--rb:3px;--ri:3px;--capc:#5dffa0;--icons:grayscale(1)}"
+        // The frame.
+        + "*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 var(--font,'Segoe UI',system-ui,-apple-system,Roboto,sans-serif);color:var(--fg);background-image:var(--glow,none);background-repeat:no-repeat;background-attachment:fixed}"
+        + "main{max-width:720px;margin:0 auto;padding:14px 16px 32px}main:has(.cols){max-width:1040px}"
+        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top img{width:24px;height:24px;display:block}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
+        + "header.top .r{margin-left:auto;display:flex;gap:12px;align-items:center}"
+        // The front page's sections and lines.
+        + "section.sec{background:none;border:0;padding:0;margin:0 0 16px;backdrop-filter:none;min-width:0}.sh{display:flex;align-items:center;gap:12px;padding:0 2px 6px;min-height:24px}.sh .r{margin-left:auto;display:flex;gap:12px}"
+        + "section.sec h2,.sh h2{font-size:var(--capsize,11px);letter-spacing:var(--caps,.08em);text-transform:var(--capt,uppercase);color:var(--capc,var(--muted));font-weight:600;margin:0}section.sec h2.warn{color:var(--warn)}"
+        + ".box{background:var(--box);border:1px solid var(--line);border-radius:var(--r,10px);backdrop-filter:var(--blur,none);overflow:hidden}.box.alert{background:var(--warnbg);border-color:var(--warnline)}.box>*+*{border-top:1px solid var(--hair)}"
+        + ".row{display:flex;align-items:center;gap:10px;min-height:48px;padding:6px 12px;scroll-margin-top:12px}.btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}.btns form{margin:0}.g{flex:1;min-width:0;overflow-wrap:anywhere}.g small{display:block;color:var(--muted);font-size:12px;line-height:1.25}"
+        + ".v{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}.v.warn{color:var(--warn)}.act{width:12px;display:flex;justify-content:flex-end;flex:none}.chev{width:7px;height:7px;border:solid var(--muted);border-width:1.5px 1.5px 0 0;transform:rotate(45deg);display:block}"
+        + ".sec a:not(.button):not(.go),.row a:not(.button),header.top a,footer a,button.link{color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;white-space:nowrap;background:none;border:0;padding:0;cursor:pointer}.sec a:not(.button):not(.go):hover,.row a:not(.button):hover,header.top a:hover,footer a:hover,button.link:hover{color:var(--fg)}"
+        + "a.go{color:var(--fg);text-decoration:none}a.go:hover{background:var(--hair)}a.go[aria-expanded=true] .chev{transform:rotate(135deg)}form.plain{display:inline;margin:0}.more{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 12px 10px 50px;margin:0}.more.flat{padding-left:12px}.hint{color:var(--muted);font-size:12.5px;margin:6px 2px 0}.more .hint{margin:0}.more .copy{overflow-wrap:anywhere;color:var(--muted)}.more details{width:100%;margin:0}.more details p{margin:6px 0}.more pre{margin:6px 0 8px}"
+        + "img.ic{width:28px;height:28px;flex:none;display:block;filter:var(--icons,none)}"
+        + ".cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;align-items:start}@media(min-width:800px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}"
+        + "footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:2px 2px 0}footer .end{margin-left:auto}"
+        // Everything else: the cards of the pages under /manage, the forms and the steps of setting up.
+        + "section{background:var(--box);border:1px solid var(--line);border-radius:var(--r,10px);padding:14px;margin:0 0 14px;backdrop-filter:var(--blur,none)}section.attention{background:var(--warnbg);border-color:var(--warnline)}section>:last-child{margin-bottom:0}"
+        + "h2{font-size:14px;font-weight:600;margin:0 0 10px}.manage>section>h2:first-child{display:none}.manage>section:has(>.box){background:none;border:0;padding:0;backdrop-filter:none}section>.sh{margin-top:14px}section.sec>.sh,section>.notice+.sh,section>h2+.sh{margin-top:0}.row>.v.copy{font:inherit;font-size:13px;white-space:normal;overflow-wrap:anywhere;text-align:right;min-width:0;user-select:all}.row form{margin:0}.row details summary{font-size:13px}.row a.button.small{margin:0}section .sh h2,.sh h2{font-size:var(--capsize,11px);letter-spacing:var(--caps,.08em);text-transform:var(--capt,uppercase);color:var(--capc,var(--muted));font-weight:600;margin:0}p{margin:0 0 10px}form{margin:12px 0 10px}section>form:first-child{margin-top:0}"
+        + "dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:0 0 10px;align-items:baseline}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}"
+        + ".copy{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12.5px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--muted)}"
+        + "ul.rows{list-style:none;margin:0 0 10px;padding:0}ul.rows li{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair)}ul.rows li:first-child{border-top:0}"
+        + ".grow{flex:1;min-width:0;display:flex;flex-direction:column}.grow strong{font-weight:500}.grow .quiet{font-size:12.5px}ul.rows form{margin:0}.manage>section>form:not(.btns){display:inline-block;margin:6px 8px 6px 0}"
+        + ".state{font-size:13px;white-space:nowrap;color:var(--muted)}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--muted)}.dot.wait{background:var(--warn)}"
+        + ".code{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:28px;letter-spacing:3px;margin:8px 0 12px}"
+        + "a{color:var(--acc)}a.button,button{display:inline-block;font:inherit;font-size:13px;font-weight:600;padding:5px 13px;border-radius:var(--rb,7px);border:1px solid var(--btnline,transparent);background:var(--btn);color:var(--btnfg);text-decoration:none;white-space:nowrap;cursor:pointer}"
+        + "a.button.quiet,button.quiet{background:transparent;color:var(--fg);border-color:var(--line);font-weight:400}button.danger{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}"
+        + ".notice{border-left:2px solid var(--acc);padding:6px 12px;background:var(--box);border-radius:0 6px 6px 0;margin:0 0 14px}a.cancel{margin-left:16px}"
+        + "label{display:block;margin:0 0 4px}input[type=password],input[type=text],input:not([type]),select{font:inherit;color:var(--fg);background:var(--box);border:1px solid var(--line);border-radius:var(--rb,6px);padding:6px 9px;width:100%;max-width:360px;margin:0 0 12px;display:block}select option{color:#111}"
+        + "pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,Consolas,Menlo,monospace;background:var(--box);border:1px solid var(--line);padding:12px;border-radius:var(--r,10px)}"
         // The tailnet card's steps: a command or a rule to copy, and a link into Tailscale's console, under a step's words.
-        + ".copy.block{display:block;margin:6px 0 0;overflow-wrap:anywhere}.grow>a.button,.grow>.copy.block{align-self:flex-start}.grow>pre{margin:8px 0 6px}a.button.small{font-size:13px;padding:3px 10px;margin-top:6px}"
+        + ".copy.block{display:block;margin:6px 0 0;overflow-wrap:anywhere}.grow>a.button,.grow>.copy.block{align-self:flex-start}.grow>pre{margin:8px 0 6px}a.button.small{font-size:12.5px;font-weight:400;padding:3px 10px;margin-top:6px;background:transparent;color:var(--fg);border-color:var(--line)}"
         // The notifications card's steps and form.
         + "ol.steps{margin:0 0 12px;padding-left:22px}ol.steps li{margin:0 0 6px}input[type=file]{font:inherit;display:block;margin:0 0 12px;max-width:100%}"
         + PushStyle
-        // The restore's choice of file, the reset's typed word, and the review's devices.
-        + "select,input#word{font:inherit;padding:6px 8px;width:100%;max-width:360px;box-sizing:border-box;margin:0 0 12px;display:block}label.grow{cursor:pointer}"
-        + "@media(max-width:520px){header{flex-wrap:wrap}h1{white-space:nowrap}ul.rows li{flex-wrap:wrap}.attention .grow,#tailnet .grow{flex-basis:100%}}";
+        + "label.grow{cursor:pointer}"
+        + "@media(max-width:520px){ul.rows li{flex-wrap:wrap}.more{padding-left:12px}}";
 
-    // The page around a body: the logo and the title, and beside it `badge` when there is one; `refresh` reloads it every so many seconds (the home page, so a request to
+    private const string SiteName = "Messages Server";
+
+    // The page around a body: the logo and the title, with `actions` at its end; `refresh` reloads it every so many seconds (the home page, so a request to
     // join shows up without a click). It reloads the plain home page, so a notice (removed, joined) is said once.
-    private static Task PageAsync(HttpContext context, int status, string title, string body, string? badge = null, int? refresh = null, string refreshTo = "/")
+    private static Task PageAsync(HttpContext context, int status, string title, string body, int? refresh = null, string refreshTo = "/", string? actions = null)
     {
         var response = context.Response;
         response.StatusCode = status;
         response.ContentType = "text/html; charset=utf-8";
-        var html = $"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
+        // Every page is the server's, so its name always comes first, and is the way back to the front page.
+        var inner = title != SiteName;
+        var whole = inner ? SiteName + " › " + title : SiteName;
+        var crumbs = inner ? "<a href=\"/\">" + SiteName + "</a><span class=\"sep\" aria-hidden=\"true\">›</span>" + Html(title) : SiteName;
+        var html = $"<!doctype html><html lang=\"en\" class=\"t-{context.Items[ThemeItem] ?? Themes[0].Id}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
-            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(title)}</title><style>{Style}{SetupStyle}</style></head><body><main>"
-            + $"<header><img src=\"{LogoPath}\" alt=\"\"><h1>{Html(title)}</h1>{(badge is null ? "" : $"<span class=\"pill\">{Html(badge)}</span>")}</header>{WithoutPasswordAgain(context, body)}</main></body></html>";
+            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body><main>"
+            + $"<header class=\"top\"><a href=\"/\" aria-label=\"The server's page\"><img src=\"{LogoPath}\" alt=\"\"></a><h1>{crumbs}</h1>{(actions is null ? "" : $"<span class=\"r\">{actions}</span>")}</header>{WithoutPasswordAgain(context, body)}</main></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }
 
     private static Task PlainAsync(HttpContext context, int status, string text) =>
         PageAsync(context, status, status >= 500 ? "Something went wrong" : "That didn't work", Para(text) + "<p><a href=\"/\">Back to the server's page</a></p>");
 
-    // The places on the home page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
+    // The places on the page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
     private static readonly string[] Sections = ["accounts", "storage"];
 
     internal static string? Section(string? name) => Sections.FirstOrDefault(known => known == name);
 
-    private static string SectionPath(string? section) => section is null ? "/" : "/#" + section;
+    private static string SectionPath(string? section) => section switch { null => "/", "storage" => "/manage/storage", _ => "/#" + section };
 
     private static void Redirect(HttpResponse response, string to)
     {

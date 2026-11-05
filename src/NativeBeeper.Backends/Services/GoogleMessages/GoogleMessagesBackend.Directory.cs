@@ -208,6 +208,12 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
         return known;
     }
 
+    // The paired phone's number, for the server's page, from the conversations already loaded: the live list, or the archive before it has arrived.
+    internal string? OwnNumber => OwnIdentity(chats.Values) ?? OwnIdentity(archive.ChatsSnapshot());
+
+    private static string? OwnIdentity(IEnumerable<GoogleChat> known) =>
+        NativeBeeper.Core.Messaging.AccountIdentity.Of(known.SelectMany(c => c.Participants).Where(p => p.Self).Select(p => ((string?)p.Id, (string?)p.Name)), preferNumber: true);
+
     // The merge picker can use the protected directory already loaded for search, beyond the inbox prefix.
     // No connection or provider read is made here, and hidden/deleted rows are excluded by KnownChats.
     internal IReadOnlyList<ChatSummary> KnownConversationSummaries => KnownChats().Values.Select(Summary).ToArray();

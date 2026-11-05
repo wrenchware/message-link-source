@@ -45,8 +45,8 @@ internal sealed partial class ServerPage
     private static readonly (string Service, string Name, string Provider, bool Many)[] SignInServiceList =
     [
         (RemoteSignInServices.Google, "Google Messages", ServerAccountProviders.GoogleMessages, false),
-        (RemoteSignInServices.Voice, "Google Voice", ServerAccountProviders.GoogleVoice, true),
         (RemoteSignInServices.Messenger, "Messenger", ServerAccountProviders.Messenger, false),
+        (RemoteSignInServices.Voice, "Google Voice", ServerAccountProviders.GoogleVoice, true),
         (RemoteSignInServices.Instagram, "Instagram", ServerAccountProviders.Instagram, false),
     ];
 

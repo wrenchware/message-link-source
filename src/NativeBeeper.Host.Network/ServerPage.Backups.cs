@@ -73,14 +73,6 @@ internal sealed partial class ServerPage
             body.Append("</section>");
             return;
         }
-        body.Append("<dl>");
-        Row(body, "Folder", service.Folder!, copy: true);
-        Row(body, "Daily backups", status.Enabled ? "On" : "Off");
-        Row(body, "Last backup", status.LastGood is { } good ? Ago(good) + " · " + BackupSettings.Size(status.Bytes) : "None yet");
-        if (status.Next is { } next && status.Enabled) Row(body, "Next", next <= time.GetUtcNow() ? "shortly" : When(next));
-        if (status.Kept > 0) Row(body, "Kept", status.Kept == 1 ? "1 backup" : $"{status.Kept} backups (the newest 5)");
-        if (status.Check is { } check && status.CheckedAt is { } checkedAt) Row(body, "Read back", CheckWords(check) + " (" + Ago(checkedAt) + ")");
-        body.Append("</dl>");
         var said = status.State switch
         {
             ServerBackupStates.Running => "Backing up now.",
@@ -90,17 +82,28 @@ internal sealed partial class ServerPage
             _ => null,
         };
         if (said is not null) body.Append(Notice(said));
-        body.Append("<form method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
-            .Append(status.HasPassword && status.State != ServerBackupStates.Running ? "<button type=\"submit\" name=\"do\" value=\"now\">Back up now</button> " : "")
-            .Append(status.LastGood is not null && status.State != ServerBackupStates.Running ? "<button type=\"submit\" name=\"do\" value=\"check\" class=\"quiet\">Check latest</button> " : "")
-            .Append("<button type=\"submit\" name=\"do\" value=\"").Append(status.Enabled ? "off" : "on").Append("\" class=\"quiet\">").Append(status.Enabled ? "Turn off daily backups" : "Turn on daily backups").Append("</button></form>")
-            .Append("<form method=\"get\" action=\"/backups/password\"><button type=\"submit\" class=\"quiet\">").Append(status.HasPassword ? "Change the password…" : "Set a password…").Append("</button></form>");
-        body.Append("<p class=\"quiet\">Each backup holds your conversations, the server's settings and its devices, never a sign-in: after a restore you sign in to each account again.</p>");
-        if (service.FolderChoiceFile is not null) body.Append(tried is null ? "<details><summary>" : "<details open><summary>").Append("Use another folder</summary>").Append(FolderForm(token, tried ?? service.Folder, fromSteps)).Append("</details>");
+        var idle = status.State != ServerBackupStates.Running;
+        string Do(string what, string words) => "<button type=\"submit\" name=\"do\" value=\"" + what + "\" class=\"quiet\">" + Html(words) + "</button>";
+        body.Append("<div class=\"sh\"><h2>Daily backup</h2></div><div class=\"box\">")
+            .Append(Row("Daily backups", null, status.Enabled ? "On" : "Off", null))
+            .Append(Row("Last backup", null, status.LastGood is { } good ? Ago(good) + " · " + BackupSettings.Size(status.Bytes) : "None yet", null));
+        if (status.Next is { } next && status.Enabled) body.Append(Row("Next", null, next <= time.GetUtcNow() ? "shortly" : When(next), null));
+        if (status.Kept > 0) body.Append(Row("Kept", null, status.Kept == 1 ? "1 backup" : $"{status.Kept} backups (the newest 5)", null));
+        if (status.LastGood is not null)
+            body.Append(Row("Read back", status.Check is { } check && check != "ok" ? CheckWords(check) : null, status.Check is null || status.CheckedAt is null ? "Not checked" : (status.Check == "ok" ? "Good · " : "Problem · ") + Ago(status.CheckedAt.Value), null, warn: status.Check is not (null or "ok")));
+        body.Append("</div><form class=\"btns\" method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
+            .Append(status.HasPassword && idle ? Do("now", "Back up now") : "")
+            .Append(status.LastGood is not null && idle ? Do("check", "Check latest") : "")
+            .Append(Do(status.Enabled ? "off" : "on", status.Enabled ? "Turn off daily backups" : "Turn on daily backups")).Append("</form>");
+        body.Append("<div class=\"sh\"><h2>Where and how</h2></div><div class=\"box\">");
+        if (service.FolderChoiceFile is not null)
+            body.Append("<div class=\"line\">").Append(CopyRow("Folder", service.Folder!)).Append("<div class=\"more flat\">").Append(tried is null ? "<details><summary>" : "<details open><summary>").Append("Use another folder</summary>").Append(FolderForm(token, tried ?? service.Folder, fromSteps)).Append("</details></div></div>");
+        else body.Append(CopyRow("Folder", service.Folder!));
+        body.Append(Row("Password", null, status.HasPassword ? "Set" : "Not set", null, warn: !status.HasPassword));
+        body.Append("</div><div class=\"btns\"><a class=\"button quiet\" href=\"/backups/password\">").Append(status.HasPassword ? "Change the password…" : "Set a password…").Append("</a>");
         // A restore goes only onto a server with no service signed in; one in use is reset first.
-        if (accounts == 0)
-            body.Append("<form method=\"get\" action=\"/restore\"><button type=\"submit\">Restore from a backup…</button></form>");
-        body.Append("</section>");
+        if (accounts == 0) body.Append("<a class=\"button quiet\" href=\"/restore\">Restore from a backup…</a>");
+        body.Append("</div><p class=\"hint\">Each backup holds your conversations, the server's settings and its devices, never a sign-in: after a restore you sign in to each account again.</p></section>");
     }
 
     private static string CheckWords(string check) => check switch
@@ -131,7 +134,7 @@ internal sealed partial class ServerPage
             $"Restored: {outcome.Messages.ToString("N0", CultureInfo.CurrentCulture)} messages, {outcome.Devices} device{(outcome.Devices == 1 ? "" : "s")} kept"
             + (outcome.Forgotten > 0 ? $", {outcome.Forgotten} forgotten" : "")
             + (outcome.Held > 0 ? $". {outcome.Held} scheduled message{(outcome.Held == 1 ? " is" : "s are")} held and won't go by {(outcome.Held == 1 ? "itself" : "themselves")}: send or drop each in Messages" : "")
-            + ". Sign in to each account again below; the server then fills in what arrived meanwhile.",
+            + ". Sign in to each account again; the server then fills in what arrived meanwhile.",
         RestoreOutcomes.Reset => "The server was reset. It holds nothing now: restore a backup, or sign in to your accounts.",
         RestoreOutcomes.ResetInUse => "The reset didn't run: an account was signed in on this server again before it started. Nothing was changed; reset again to sign it out.",
         RestoreOutcomes.InUse => "The restore didn't run: an account is signed in on this server. Reset the server first.",
@@ -149,27 +152,27 @@ internal sealed partial class ServerPage
         {
             case "now":
                 var started = await service.RunAsync(context.RequestAborted).ConfigureAwait(false);
-                Redirect(context.Response, started.Started ? "/?done=backup_started#backups" : "/?done=backup_busy#backups");
+                Redirect(context.Response, started.Started ? "/manage/backups?done=backup_started" : "/manage/backups?done=backup_busy");
                 return;
             case "check":
                 _ = Task.Run(service.CheckNowAsync);
-                Redirect(context.Response, "/?done=backup_checking#backups");
+                Redirect(context.Response, "/manage/backups?done=backup_checking");
                 return;
             case "cancel":
                 var called = ServerRestore.CancelPending(service.Paths);
                 log($"server page pending cancelled={(called ? "yes" : "no")}");
-                Redirect(context.Response, "/#backups");
+                Redirect(context.Response, "/manage/backups");
                 return;
             case "on":
             case "off":
                 service.SetEnabled(form["do"] == "on");
-                Redirect(context.Response, "/#backups");
+                Redirect(context.Response, "/manage/backups");
                 return;
             case "folder":
                 var chosen = service.ChooseFolder(form["folder"].ToString());
                 log($"server page backup folder outcome={chosen}");
                 // Back where the form was, with what was typed when it needs typing again.
-                var from = form["from"].ToString() == "steps" ? "/welcome?step=backups&done=" : "/?done=";
+                var from = form["from"].ToString() == "steps" ? "/welcome?step=backups&done=" : "/manage/backups?done=";
                 Redirect(context.Response, chosen == "chosen" ? from + "backup_folder#backups" : from + "backup_folder_" + chosen + "&tried=" + Uri.EscapeDataString(form["folder"].ToString()) + "#backups");
                 return;
             default:
@@ -226,7 +229,7 @@ internal sealed partial class ServerPage
             await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("The server couldn't keep the password. Try again.")).ConfigureAwait(false);
             return;
         }
-        Redirect(context.Response, "/?done=backup_password#backups");
+        Redirect(context.Response, "/manage/backups?done=backup_password");
     }
 
     // Restore, step one: which backup, its password, and that the old server is off. The file is read whole before anything else is asked.

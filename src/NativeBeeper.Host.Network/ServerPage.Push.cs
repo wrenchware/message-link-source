@@ -23,59 +23,44 @@ internal sealed partial class ServerPage
     private static string? ProjectOf(string? id) =>
         id is { Length: >= 4 and <= 64 } && id.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-') ? id : null;
 
-    // The card: off, what notifications are and the way to set them up; on, the line both the page and Manage server show, each phone that matters, the test
-    // push, and replacing the files.
+    // The card: off, the way to set them up; on, each phone that matters with its test, then the project and when one last went.
     private void PushCard(StringBuilder body, Pushes card, string token)
     {
         body.Append("<section id=\"push\"><h2>Notifications on phones</h2>");
         if (card.Switch.Current is not { } setup)
         {
-            body.Append(Para("Messages on a phone can show new messages as notifications. They go through a Firebase project of your own, so no one else's service is in between, and each is sealed for your phone: Google carries it without being able to read it."))
-                .Append(Para("Setting it up takes about five minutes in Firebase: a project, the Messages app, and two files to drop here."))
+            body.Append(Para("New messages on a phone go through a Firebase project of your own, and each is sealed for your phone: Google carries it without being able to read it."))
                 .Append("<form method=\"get\" action=\"/push\"><button type=\"submit\">Set up notifications…</button></form></section>");
             return;
         }
         var project = ProjectOf(setup.Offer.ProjectId);
-        var list = devices.List(null);
-        var status = card.Health.Status(true, card.Registry, list);
-        body.Append("<p class=\"summary\">").Append(Html(status.Summary(time.GetUtcNow()))).Append("</p><ul class=\"rows\">");
-        Step(body, true, "Firebase project", setup.Offer.ProjectId ?? "");
-        foreach (var phone in status.Phones ?? [])
-            switch (phone.State)
-            {
-                case PushPhoneStates.On:
-                    Step(body, true, phone.Name, "Signed up.");
-                    break;
-                case PushPhoneStates.Failing:
-                    Step(body, false, phone.Name, $"{(phone.Failures == 1 ? "1 notification" : $"{phone.Failures} notifications")} failed since the last that went: {PushStatus.Reason(phone)}.", word: "Failing");
-                    break;
-                case PushPhoneStates.MissingApp:
-                    Step(body, false, phone.Name, $"Can't sign up: your Firebase project has no app for this version of Messages. Add {phone.Package} in Firebase, download google-services.json again and replace the files.",
-                        Link(FirebasePage(project, GeneralPage), "Open Project settings"));
-                    break;
-                case PushPhoneStates.NotSignedUp:
-                    Step(body, false, phone.Name, "Asked about notifications but hasn't signed up. Open Messages on it; its Settings say what it needs.");
-                    break;
-            }
-        var signedUp = card.Registry.All().Where(registration => card.Registry.Paired(registration.DeviceId)).Select(registration => registration.DeviceId).ToHashSet(StringComparer.Ordinal);
-        if (status.Phones is not { Count: > 0 }) Step(body, false, "No phone yet", "Open Messages on your phone once: it signs up by itself when it connects.");
-        body.Append("</ul>");
-        var phones = list.Where(device => signedUp.Contains(device.Id)).ToList();
-        if (phones.Count > 0)
-        {
-            body.Append("<form method=\"post\" action=\"/push/test\" class=\"test\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">");
-            if (phones.Count == 1) body.Append("<input type=\"hidden\" name=\"id\" value=\"").Append(Html(phones[0].Id)).Append("\">");
-            else
-            {
-                body.Append("<label for=\"testphone\">Send a test to</label><select id=\"testphone\" name=\"id\">");
-                foreach (var phone in phones) body.Append("<option value=\"").Append(Html(phone.Id)).Append("\">").Append(Html(phone.Name)).Append("</option>");
-                body.Append("</select>");
-            }
-            body.Append("<button type=\"submit\" class=\"quiet\">").Append(phones.Count == 1 ? Html($"Send a test to {phones[0].Name}") : "Send a test").Append("</button></form>");
-        }
         if (card.Health.Test is { } test) body.Append("<p class=\"notice\" role=\"status\">").Append(Html(TestWords(test))).Append("</p>");
-        body.Append("<p class=\"quiet\">Replacing the files with another project's makes every phone sign up again; phones with Messages open do it at once.</p>")
-            .Append("<form method=\"get\" action=\"/push\"><button type=\"submit\" class=\"quiet\">Replace the files…</button></form></section>");
+        body.Append("<div class=\"sh\"><h2>Phones</h2></div><div class=\"box\">");
+        var any = false;
+        var tests = new StringBuilder();
+        // One device at a time, so each line knows the device its test goes to: two phones can share a name.
+        foreach (var device in devices.List(null).OrderBy(device => device.Name, StringComparer.CurrentCulture))
+        {
+            if (card.Health.Status(true, card.Registry, [device]).Phones is not [var phone]) continue;
+            any = true;
+            if (card.Registry.Get(device.Id) is not null && card.Registry.Paired(device.Id))
+                tests.Append("<form method=\"post\" action=\"/push/test\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"id\" value=\"").Append(Html(device.Id))
+                    .Append("\"><button type=\"submit\" class=\"quiet\">").Append(Html("Send a test to " + phone.Name)).Append("</button></form>");
+            body.Append(phone.State switch
+            {
+                PushPhoneStates.On => Row(phone.Name, null, "Signed up", null),
+                PushPhoneStates.Failing => Row(phone.Name, $"{phone.Failures} failed: {PushStatus.Reason(phone)}", "Failing", null, warn: true),
+                PushPhoneStates.MissingApp => Line(false, phone.Name, $"Add {phone.Package} in Firebase, download google-services.json again and replace the files.", Link(FirebasePage(project, GeneralPage), "Open Project settings"), "No app in Firebase"),
+                _ => Row(phone.Name, "Open Messages on it; its Settings say what it needs.", "Not signed up", null, warn: true),
+            });
+        }
+        if (!any) body.Append(Row("No phone yet", "Open Messages on your phone once: it signs up by itself when it connects.", null, null));
+        body.Append("</div>");
+        if (tests.Length > 0) body.Append("<div class=\"btns\">").Append(tests).Append("</div>");
+        body.Append("<div class=\"sh\"><h2>Firebase</h2></div><div class=\"box\">")
+            .Append(Row("Project", null, setup.Offer.ProjectId ?? "", null))
+            .Append(Row("Last sent", null, card.Health.LastSent is { } sent ? Ago(sent) : "Nothing yet", null))
+            .Append("</div><div class=\"btns\"><a class=\"button quiet\" href=\"/push\">Replace the files…</a></div></section>");
     }
 
     // The test push as it stands, in the page's words.
@@ -103,7 +88,7 @@ internal sealed partial class ServerPage
             return;
         }
         await card.Health.SendTestAsync(device.Id, device.Name, card.Registry, card.Switch, context.RequestAborted).ConfigureAwait(false);
-        Redirect(context.Response, "/#push");
+        Redirect(context.Response, "/manage/notifications");
     }
 
     // What was wrong with the files given, with the page that fixes it when there is one.
@@ -114,7 +99,7 @@ internal sealed partial class ServerPage
     {
         var replacing = card.Switch.Current is not null;
         string Ask(PushProblemWords? problem, string? project) => PushWizard(token, replacing, problem, project ?? ProjectOf(card.Switch.Current?.Offer.ProjectId));
-        const string title = "Notifications on phones";
+        const string title = "Notifications";
         if (form is null)
         {
             await PageAsync(context, StatusCodes.Status200OK, title, Ask(null, null)).ConfigureAwait(false);
@@ -184,7 +169,7 @@ internal sealed partial class ServerPage
             await PageAsync(context, outcome == PushInstall.NotSaved ? StatusCodes.Status500InternalServerError : StatusCodes.Status400BadRequest, title, Ask(said, project)).ConfigureAwait(false);
             return;
         }
-        Redirect(context.Response, outcome == PushInstall.On ? "/?done=push_on" : "/?done=push_on_unchecked");
+        Redirect(context.Response, outcome == PushInstall.On ? "/manage/notifications?done=push_on" : "/manage/notifications?done=push_on_unchecked");
     }
 
     // The wizard: the package names to copy, Firebase's pages (the project's own once a file or the server names it), the hard cases in plain words, and one drop

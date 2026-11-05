@@ -19,10 +19,9 @@ internal sealed partial class ServerPage
         if (storage.Current() is not { } sizes) body.Append("<p class=\"quiet\">Measuring…</p>");
         else
         {
-            body.Append("<ul class=\"rows\">");
-            foreach (var (name, bytes) in sizes.Kinds)
-                body.Append("<li><span class=\"grow\">").Append(Html(name)).Append("</span><span class=\"state\">").Append(Html(ServerStorage.Size(bytes))).Append("</span></li>");
-            body.Append("<li><span class=\"grow\"><strong>Total</strong></span><span class=\"state\"><strong>").Append(Html(ServerStorage.Size(sizes.Total))).Append("</strong></span></li></ul>");
+            body.Append("<div class=\"box\">");
+            foreach (var (name, bytes) in sizes.Kinds) body.Append(Row(name, null, ServerStorage.Size(bytes), null));
+            body.Append("<div class=\"row\"><div class=\"g\"><strong>Total</strong></div><span class=\"v\"><strong>").Append(Html(ServerStorage.Size(sizes.Total))).Append("</strong></span></div></div>");
         }
         body.Append("</section>");
     }

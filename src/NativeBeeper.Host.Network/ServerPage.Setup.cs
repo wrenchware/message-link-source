@@ -130,7 +130,7 @@ internal sealed partial class ServerPage
                 // A code that ran out is replaced at once: the new one is in the server's output.
                 var renewed = false;
                 if (!setupCodes!.Open) { setupCodes.Issue(); renewed = true; }
-                await PageAsync(context, StatusCodes.Status200OK, "Set up Messages Server", SetupCodeBody(renewed ? "The last setup code ran out, so the server printed a new one just now." : null)).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status200OK, "Set up", SetupCodeBody(renewed ? "The last setup code ran out, so the server printed a new one just now." : null)).ConfigureAwait(false);
                 return true;
             case "/setup":
                 await SetupCodeAsync(context, form!).ConfigureAwait(false);
@@ -155,7 +155,7 @@ internal sealed partial class ServerPage
 
     private async Task SetupCodeAsync(HttpContext context, IFormCollection form)
     {
-        const string title = "Set up Messages Server";
+        const string title = "Set up";
         var codes = setupCodes!;
         if (codes.Take(form["code"].ToString(), context.Connection.RemoteIpAddress, out var paced) is null)
         {
@@ -204,7 +204,7 @@ internal sealed partial class ServerPage
         if (!held || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(form["form"].ToString()), Encoding.ASCII.GetBytes(SetupFormToken(cookie!))))
         {
             if (!setupCodes!.Open) setupCodes.Issue();
-            await PageAsync(context, StatusCodes.Status403Forbidden, "Set up Messages Server",
+            await PageAsync(context, StatusCodes.Status403Forbidden, "Set up",
                 SetupCodeBody("That took too long, or came from another browser. The server printed a new setup code: enter it to start again.")).ConfigureAwait(false);
             return;
         }
@@ -385,7 +385,7 @@ internal sealed partial class ServerPage
         if (admin is not null)
             try { accounts = await admin.AccountsAsync(cancellationToken).ConfigureAwait(false); }
             catch (Exception failure) when (failure is not OperationCanceledException) { }
-        body.Append("<section id=\"connect\">").Append(Para("The server signs in to Google Messages, Google Voice, Messenger and Instagram for you, and keeps every conversation."));
+        body.Append("<section id=\"connect\">").Append(Para("The server signs in to Google Messages, Messenger, Google Voice and Instagram for you, and keeps every conversation."));
         if (accounts is { Count: > 0 })
         {
             body.Append("<ul class=\"rows\">");
@@ -440,14 +440,11 @@ internal sealed partial class ServerPage
             ? ("backups", "Back up the server", BackupsReady(), null)
             : ("backups", "Back up the server", false, "Backups need a folder. " + MapBackups));
         if (items.All(item => item.Done)) return;
-        body.Append("<section class=\"checklist\"><h2>Finish setting up</h2><ul class=\"rows\">");
-        foreach (var (step, title, done, detail) in items)
-            body.Append("<li><span class=\"grow\"><strong>").Append(Html(title)).Append("</strong>")
-                .Append(detail is null ? "" : "<span class=\"quiet\">" + Html(detail) + "</span>").Append("</span>")
-                .Append(done ? "<span class=\"state\"><span class=\"dot ok\"></span>Done</span>"
-                    : "<a class=\"button\" href=\"/welcome?step=" + step + "\">" + (step == "tailscale" && tailnet?.Latest is { NeedsAttention: true } ? "Finish…" : "Set up…") + "</a>")
-                .Append("</li>");
-        body.Append("</ul>").Append(Form("/checklist/hide", token, "Hide this list", quiet: true)).Append("</section>");
+        body.Append("<section class=\"sec checklist\" id=\"checklist\"><div class=\"sh\"><h2>Finish setting up</h2><span class=\"r\"><form class=\"plain\" method=\"post\" action=\"/checklist/hide\"><input type=\"hidden\" name=\"form\" value=\"")
+            .Append(Html(token)).Append("\"><button type=\"submit\" class=\"link\">Hide this list</button></form></span></div><div class=\"box\">");
+        foreach (var (step, title, _, detail) in items.Where(item => !item.Done))
+            body.Append(Go(title, detail, null, "/welcome?step=" + step, title));
+        body.Append("</div></section>");
     }
     // A phone's code: the password first (a GET shows the form), then the code as a QR, with a button for a new one that needs no password again for half an hour.
     private async Task PhoneAsync(HttpContext context, IFormCollection? form, string token)
@@ -505,9 +502,8 @@ internal sealed partial class ServerPage
         ".qr-card{display:flex;gap:20px;align-items:flex-start;margin:0 0 12px}.qr{flex:0 0 auto;width:220px;max-width:100%;background:#fff;border-radius:8px;padding:6px;box-sizing:border-box}"
         + ".qr.small{width:150px}.qr svg{display:block;width:100%;height:auto}"
         + "nav.steps{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:4px 0 16px}nav.steps a.button:only-child{margin-left:auto}"
-        + "section.checklist{border-color:var(--accent)}.fix{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}.fix h3{font-size:14px;margin:0 0 8px}"
-        + "details{margin:6px 0 0}summary{cursor:pointer;color:var(--accent)}summary.button{display:inline-block;padding:6px 14px;border-radius:4px;border:1px solid var(--accent);list-style:none;margin:0 0 8px}.actions .button{margin:0 8px 6px 0}a.button.quiet{background:transparent;color:var(--accent);border:1px solid var(--accent)}"
-        + ".copy.line{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin:0 0 12px}"
-        + "input[type=text]{font:inherit;padding:6px 8px;width:100%;max-width:360px;box-sizing:border-box;margin:0 0 12px;display:block}"
+        + ""
+        + "details{margin:6px 0 0}summary{cursor:pointer;color:var(--accent)}summary.button{display:inline-block;padding:5px 13px;border-radius:var(--rb,7px);border:1px solid var(--line);list-style:none;margin:0 0 8px;color:var(--fg);font-size:13px}.actions .button{margin:0 8px 6px 0}"
+        + ".copy.line{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:rgba(0,0,0,.2);margin:0 0 12px}"
         + "@media(max-width:520px){.qr-card{flex-direction:column;align-items:stretch}.qr{width:100%;max-width:300px;align-self:center}.qr.small{max-width:200px}}";
 }

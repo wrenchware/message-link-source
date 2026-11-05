@@ -113,7 +113,7 @@ internal sealed class HostStartup : IDisposable
         ProtocolHost? built = null;
         var admin = new WindowsServerAdmin(new WindowsServerAdmin.Parts(version, DateTimeOffset.UtcNow, services.GetRequiredService<IMessengerAccount>(),
             services.GetRequiredService<IInstagramAccount>(), services.GetRequiredService<IGoogleVoiceAccounts>(), () => GoogleSessionProfile.HasSavedSession,
-            () => built?.StatePublisher.Latest?.State.Scopes.Any(scope => scope.Scope == ProviderScopes.Google && scope.Connected) == true, log));
+            () => built?.StatePublisher.Latest?.State.Scopes.Any(scope => scope.Scope == ProviderScopes.Google && scope.Connected) == true, log, () => google.OwnNumber, () => messenger.OwnName));
         // The server's own backup (stage 10, D7): into the folder the person chose on the page, the PC backup's folder and password taken over the first time.
         var paths = BackupPaths(AppPaths.DataRoot);
         var folderChoice = Path.Combine(paths.Backup, "folder.txt");

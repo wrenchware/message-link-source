@@ -117,7 +117,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
             () => GoogleSessionProfile.HasSavedSession,
             () => built?.StatePublisher.Latest?.State.Scopes.Any(scope => scope.Scope == ProviderScopes.Google && scope.Connected) == true,
             move, move, provider => (made ?? throw new InvalidOperationException("The host is not composed yet.")).LoginGate(provider), keys.HelperFolder, TimeProvider.System, log,
-            Path.Combine(Path.GetDirectoryName(MessengerBackend.SessionPath)!, "encrypted.on")));
+            Path.Combine(Path.GetDirectoryName(MessengerBackend.SessionPath)!, "encrypted.on"), () => google.OwnNumber, () => messenger.OwnName));
         // Everything Messenger's helper keeps in the signed-in account's messages.db, searched read-only for search.query's kept source and warmed by
         // search.warmKept, as the Windows app searches its own (MessengerKeptHistory). The store is in the keys folder, its cells sealed with the helper's key.
         var kept = new MessengerKeptHistory(() => messenger.SelfId is { } self ? MessengerKeptAccount.In(keys.HelperFolder, self) : null,

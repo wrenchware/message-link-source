@@ -37,6 +37,9 @@ internal sealed partial class MessengerBackend
 
     // The signed-in Facebook id, from the one self identity the conversation list names (the saved list included, so it
     // is known before the helper connects). Null when the list names none, or more than one.
+    // Who this account is, for the server's page, from the conversations already loaded.
+    internal string? OwnName => NativeBeeper.Core.Messaging.AccountIdentity.Of(chats.SelectMany(c => c.Participants).Where(p => p.Self).Select(p => ((string?)p.Id, (string?)p.Name)));
+
     internal string? SelfId
     {
         get

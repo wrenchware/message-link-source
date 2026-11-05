@@ -14,7 +14,7 @@ internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : IServ
     public const string Channel = "windows";
 
     internal sealed record Parts(string App, DateTimeOffset Started, IMessengerAccount Messenger, IInstagramAccount Instagram, IGoogleVoiceAccounts Voice,
-        Func<bool> GooglePaired, Func<bool> GoogleConnected, Action<string> Log);
+        Func<bool> GooglePaired, Func<bool> GoogleConnected, Action<string> Log, Func<string?>? GoogleNumber = null, Func<string?>? MessengerName = null);
 
     /// <summary>Told of an account removed here, so what the host kept of it goes too (<c>ProtocolServices.AccountEnded</c>).</summary>
     public Action<string, string?>? Ended { get; set; }
@@ -26,10 +26,10 @@ internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : IServ
     {
         var accounts = new List<ServerAccount>();
         if (parts.GooglePaired())
-            accounts.Add(new(ServerAccountProviders.GoogleMessages, parts.GoogleConnected() ? ServerAccountStates.Connected : ServerAccountStates.Paired, Removable: false));
+            accounts.Add(new(ServerAccountProviders.GoogleMessages, parts.GoogleConnected() ? ServerAccountStates.Connected : ServerAccountStates.Paired, Removable: false, Name: parts.GoogleNumber?.Invoke()));
         var messenger = parts.Messenger.State;
         if (messenger.Saved || messenger.Connected)
-            accounts.Add(new(ServerAccountProviders.Messenger, messenger.Connected ? ServerAccountStates.Connected : ServerAccountStates.Saved, Removable: true));
+            accounts.Add(new(ServerAccountProviders.Messenger, messenger.Connected ? ServerAccountStates.Connected : ServerAccountStates.Saved, Removable: true, Name: parts.MessengerName?.Invoke()));
         var instagram = parts.Instagram.State;
         if (instagram.Saved || instagram.Connected)
             accounts.Add(new(ServerAccountProviders.Instagram, instagram.Connected ? ServerAccountStates.Connected : ServerAccountStates.Saved, Removable: true, Name: instagram.AccountName));
