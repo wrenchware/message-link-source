@@ -563,7 +563,7 @@ Messages shows Windows notifications while it's running, including from the tray
 
 ### Sounds and privacy {#notification-options}
 
-**Settings → Notifications → Sounds and privacy → Customize…** opens **Sounds and privacy**:
+**Settings → Notifications → Sounds and privacy**:
 
 - **Services**: each service, and each Google Voice number, on or off, with its sound: Text message, Instant message, Mail, Reminder, Windows default or No sound. These follow your Windows sound scheme. Turning a service off here mutes nothing on the service.
 - **Show in notifications**: **Sender and message**, **Sender only** ("New message") or **No details**. **Show the sender's photo** is off by default.
@@ -575,7 +575,7 @@ Messages shows Windows notifications while it's running, including from the tray
 
 ### Private reading {#private-reading}
 
-**Settings → Messaging → Private reading → Customize…** turns it on per service. While it's on, reading a conversation on that service sends **no read receipt** and your typing isn't shown. The conversation is marked read on this PC only, so the other person and your phone still see it unread. Other people's links there show **Load preview** instead of a preview, since fetching one tells the link's site the message was opened.
+**Settings → Messaging → Private reading** turns it on per service. While it's on, reading a conversation on that service sends **no read receipt** and your typing isn't shown. The conversation is marked read on this PC only, so the other person and your phone still see it unread. Other people's links there show **Load preview** instead of a preview, since fetching one tells the link's site the message was opened.
 
 To tell them after all: **Send read receipt** in the conversation menu, **Mark read** on a notification, or `/read` in the console.
 
@@ -771,26 +771,26 @@ Each service's card has a row for each of its accounts, in the same way for ever
 - **Messenger**: **Connect**, **Reconnect**, **Refresh** and **Sign out**. Encrypted conversations turn on by themselves when you sign in, and the card mentions them only if something is wrong. While they're on but their connection isn't, it reads **Connecting**, **Not connected**, **Removed** (Facebook no longer lists this PC) or **Keys missing** (this PC's encrypted-conversation keys are gone; Messages never adds a Messenger device by itself, so the button to turn encrypted conversations on comes back for you to press), with a line saying what to do. After **Sign out** it reads **Off**: the keys stay, so signing in again uses the same device.
 - **Instagram**: Connect, Reconnect, Refresh and Sign out.
 - **Google Voice**: **Add Google Voice account**, then a row per number with its status and its own **Sign out**.
-- **Messages Server → Manage…** is the first card. It connects Messages to a Messages Server you run yourself; on a PC that already uses one, it opens the server's page, where accounts are connected and removed. See [Using a Messages Server](#messages-server).
+- **Messages Server** is the first card. Choosing it opens **Connections › Server**, which connects Messages to a Messages Server you run yourself; on a PC that already uses one, the card shows the server's address and how it stands. Each account's card opens that service on the server's page in your browser, where accounts are connected and removed. See [Using a Messages Server](#messages-server).
 
 Signing out deletes that service's saved sign-in on this PC; scheduled messages for it stay, unsent. With a Messages Server it signs out on the server, so the service leaves every device that uses it, and Messages asks first.
 
 ### Using a Messages Server {#messages-server}
 
-**Settings → Connections → Messages Server → Manage…**
+**Settings → Connections → Messages Server**
 
-A Messages Server is a small program you run at home so Messages stays connected all day. The dialog has two states; once your accounts run on the server, **Manage…** opens its page with no dialog.
+A Messages Server is a small program you run at home so Messages stays connected all day. Before a server is set up, the screen asks for its address; once there is one, it shows the address and the way to the server's page.
 
 - **Not set up.** Enter the server's **Address** (its name or address and its port, like `server.lan:8787`) and choose **Ask to join**. The server's owner approves this PC on the server's page. While it waits, this PC shows a short code, and the owner approves only if the code there is the same. Once approved, the owner is given a **finish code**: type it here and choose **Finish** (within 5 minutes). It proves the approval came from the real server, so this PC keeps nothing until it matches. The request holds for 10 minutes, and **Cancel** stops asking. Asking works only from the server's home network. Or choose **Use a pairing code instead**, enter the server's **Fingerprint** and a **Pairing code** from its page, and choose **Connect**. Have the line from **Add a PC** on the server's page? Paste it into **Address**: the address, fingerprint and pairing code fill in by themselves, and **Connect** joins. A phone's join link pasted there works the same way. Either way Messages checks that the server answers, then remembers it. Nothing moves yet. A new server takes requests only once its page has a password; until then a device uses the pairing code shown when the server was installed.
 - **Connected.** A card shows the server, with **Manage server…**, which opens its page. **Forget this server** removes the saved details.
 
 **If the server is gone for good**, set up a new server, restore its latest backup from the new server's page, and connect your accounts there. Signing in to Messenger again adds a new device, and the old one may stay in your Facebook device list for you to remove. If Messages says a move didn't finish, it offers to finish it when it opens.
 
-Accounts are connected and removed on the server's page, and nowhere else: on a PC that uses a server, **Settings → Connections** shows how each one stands, and choosing one, or **Manage…** on the Messages Server card, takes you there. No device outranks another, whichever joined first: each reads and sends, and managing the server takes the page's password. How a sign-in on the server looks is in [Signing in on the server](#server-sign-in).
+Accounts are connected and removed on the server's page, and nowhere else: on a PC that uses a server, **Settings → Connections** shows how each one stands, and choosing one takes you to it there. No device outranks another, whichever joined first: each reads and sends, and managing the server takes the page's password. How a sign-in on the server looks is in [Signing in on the server](#server-sign-in).
 
 Moving, either way, asks first, then closes Messages the way **Quit** in the tray does (drafts are saved, and you are asked about anything still sending), does the move, tells you how it went and opens Messages again by itself. If you have scheduled messages waiting, or changes that haven't reached the server yet, the move stops and says so; nothing changes and Messages opens as it was.
 
-**Manage…** (the button on the server's card) opens the server's page in your browser, which warns about the page's certificate the first time because the server makes its own. **Theme** under About on that page changes how it looks, on every device, and **Log** at its foot shows the server's log as it is written: scroll up to read and it pauses, and **Jump to newest** picks it up again. While Messages runs on a server, a notice says when a device asks to join. **More options** beside it holds **This PC was removed from the server?**, which takes a new pairing code from the page and joins again, and **The server moved to a new address?**.
+**Manage the server** on Connections › Server opens the server's page in your browser, which warns about the page's certificate the first time because the server makes its own. **Theme** under About on that page changes how it looks, on every device, and **Log** at its foot shows the server's log as it is written: scroll up to read and it pauses, and **Jump to newest** picks it up again. While Messages runs on a server, a notice says when a device asks to join. The same screen changes the server's address at any time and, for a PC removed from the server, takes a new pairing code from the page and joins again.
 
 The server also has a page of its own, for a browser on your home network: open `https://` and the server's address with port 8787. Its first visit asks for the setup code the server printed when it started, then sets the page's password, and walks through Tailscale, your accounts, a phone, notifications, a PC and backups (each can be skipped; a checklist on the page keeps what is left). It shows the devices waiting to join (approving one asks for the password again and gives you a finish code for that device's person to type there), the server's version and its address and fingerprint, its accounts and devices, what the server keeps on disk (**Storage**), removes an account or a device (each asks for the password again), renames a device, and has **Add a phone** and **Add a PC**. Its **Tailscale** card signs the server in to your Tailscale network, ticks off each setting it needs, and can do them for you with **Fix it for me**. **Pause requests** on that page stops requests to join, including those already waiting, until you choose **Allow requests**. The pause survives a server restart; paired devices and pairing codes still work. A device denied or abandoned must wait five minutes before asking again.
 
@@ -832,7 +832,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 | **Undo send** | Off, 5 seconds or 10 seconds to take a message back. See [Undo send](#undo-send) | Off |
 | **New texts** | Which service New chat uses for phone numbers when it searches all services. Shown when Google Messages and Google Voice are both connected. See [New chats](#new-chats-and-groups) | Google Messages |
 | **Private reading** | Per service: read without sending read receipts or typing. See [Private reading](#private-reading) | Off |
-| **GIF search** | **Add key…** saves your free GIPHY key, which turns on the GIF tab. **Remove key…** takes it away | Off |
+| **GIF search** | Saves your free GIPHY key, which turns on the GIF tab, and removes it again | Off |
 
 ### Appearance {#settings-appearance}
 
@@ -859,15 +859,16 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 
 | Setting | What it does | Default |
 |---|---|---|
-| **Backup and restore** | **Manage…** opens Backup. See [Backup](#backup-and-restore) | Off |
-| **Storage** | **Manage…** shows disk use and clears cached pictures. See [Storage](#storage) | |
+| **Backup and restore** | Opens Backup. See [Backup](#backup-and-restore) | Off |
+| **Storage** | Shows disk use and clears cached pictures. See [Storage](#storage) | |
 | **Saved drafts** | How many conversations have unsent text, and **Clear drafts…** | |
 
 ### Troubleshooting {#settings-troubleshooting}
 
 | Setting | What it does | Default |
 |---|---|---|
-| **Diagnostic logs** | **View logs** and **Connection health**. See [Troubleshooting](#troubleshooting) | |
+| **Diagnostic logs** | **View logs**. See [Troubleshooting](#troubleshooting) | |
+| **Connection health** | How each service stands, and a way to restart its connection. See [Troubleshooting](#troubleshooting) | |
 | **Record diagnostics** | Save troubleshooting information while Messages runs | On |
 | **Reset Google Messages local data** | **Reset…**, shown only when Google sends have stopped because your phone renumbered its conversations | |
 
@@ -880,7 +881,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 
 ### Backup {#backup-and-restore}
 
-**Settings → Storage and backup → Backup and restore → Manage…**
+**Settings → Storage and backup → Backup and restore**
 
 - A backup is an encrypted copy of what only this PC keeps: Messenger's history, drafts, pins, labels, merges, names and photos you set, saved messages and their reminders, quick replies and preferences. Photos and videos in conversations aren't included.
 - **Set password** (at least 8 characters). If you lose it, those backups can't be restored. **Change password** applies to new backups only.
@@ -891,7 +892,7 @@ A Windows PC can be its own Messages Server: the server runs as you, starts when
 
 ### Your Messages Server's backup {#server-backup}
 
-When Messages uses a Messages Server, the server keeps the backups and its page manages them. **Settings → Storage and backup → Backup and restore** appears only when they want a look: it shows how the backup stands (the last backup and its size, or why it failed), and **Manage…** opens it.
+When Messages uses a Messages Server, the server keeps the backups and its page manages them. **Settings → Storage and backup → Backup and restore** appears only when they want a look: it shows how the backup stands (the last backup and its size, or why it failed), and choosing it opens the server's page there.
 
 - Once a day the server writes one encrypted file into the folder it was given (with Docker, a folder mapped to `/backups`, such as an Unraid share). It holds your conversations, the server's own settings, its certificate and its devices, saved photos, scheduled messages, and Messenger's history. It never holds a sign-in: after a restore you sign in to each account again.
 - The server keeps its five newest backups, and never removes the newest one that holds Messenger's history. It reads the newest back a day after writing it, then weekly.
@@ -905,7 +906,7 @@ When Messages uses a Messages Server, the server keeps the backups and its page 
 - Every scheduled message is held for you to send or drop, whether or not its time has come: the backup can't know which you cancelled or sent early since. Nothing that was sending is sent again.
 - Sign in to each account again on the server; it then fills in what arrived meanwhile, and adds Messenger's history once Messenger is signed in.
 - A backup made by a PC (before it used a server) restores onto a server too: its Messenger history and choices are added once those accounts are signed in on the server.
-- If the server moved to new hardware at a new address, **Settings → Connections → Messages Server → More options → The server moved to a new address?** changes only the address and keeps this PC's pairing, once the old address no longer answers; the server's certificate proves it's the same server.
+- If the server moved to new hardware at a new address, **Settings → Connections → Messages Server** changes only the address and keeps this PC's pairing; the server's certificate proves it's the same server.
 
 ### Export a conversation {#export}
 
@@ -913,7 +914,7 @@ When Messages uses a Messages Server, the server keeps the backups and its page 
 
 ### Storage {#storage}
 
-**Settings → Storage and backup → Storage → Manage…** shows what Messages keeps: settings, drafts and saved history; pictures and videos kept for quick display; the Google Messages search archive; Messenger's history (the only copy, never changed here); saved sign-ins; logs; and everything else.
+**Settings → Storage and backup → Storage** shows what Messages keeps: settings, drafts and saved history; pictures and videos kept for quick display; the Google Messages search archive; Messenger's history (the only copy, never changed here); saved sign-ins; logs; and everything else.
 
 - **Free up space** makes Messages' saved data take less room on disk.
 - **Clear pictures…** removes cached pictures and videos; they download again when next shown, though some older ones may no longer be available from the service.

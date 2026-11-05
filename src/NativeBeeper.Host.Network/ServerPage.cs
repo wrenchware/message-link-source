@@ -1047,11 +1047,19 @@ internal sealed partial class ServerPage
         PageAsync(context, status, status >= 500 ? "Something went wrong" : "That didn't work", Para(text) + "<p><a href=\"/\">Back to the server's page</a></p>");
 
     // The places on the page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
-    private static readonly string[] Sections = ["accounts", "storage"];
+    private static readonly string[] Sections = ["accounts", "storage", "backups", ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram];
 
     internal static string? Section(string? name) => Sections.FirstOrDefault(known => known == name);
 
-    private static string SectionPath(string? section) => section switch { null => "/", "storage" => "/manage/storage", _ => "/#" + section };
+    private static string SectionPath(string? section) => section switch
+    {
+        null => "/",
+        "storage" => "/manage/storage",
+        "backups" => "/manage/backups",
+        "accounts" => "/#accounts",
+        // A service: its line, open (ServerPage.Home.cs).
+        _ => "/?open=" + section + "#row-" + section,
+    };
 
     private static void Redirect(HttpResponse response, string to)
     {

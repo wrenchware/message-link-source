@@ -201,6 +201,8 @@ internal sealed partial class ServerPage
         var ordered = (accounts ?? []).OrderBy(account => Array.IndexOf(ServiceOrder, account.Provider) is var at and >= 0 ? at : ServiceOrder.Length).ToArray();
         var open = request.Query["open"].ToString();
         if (!(open is "fingerprint" or "theme" or "requests" or "add-device" || ServiceOrder.Contains(open) || ordered.Any(account => AccountId(account) == open) || devices.Has(open))) open = "";
+        // A link to a service (`/?section=google-voice`) opens its account when it has just the one.
+        if (ServiceOrder.Contains(open) && ordered.Where(account => account.Provider == open).ToArray() is [var only]) open = AccountId(only);
 
         var waiting = joins.Waiting();
         Attention(body, waiting, ordered, status, token);
@@ -293,6 +295,8 @@ internal sealed partial class ServerPage
                     body.Append("</div>");
                     continue;
                 }
+                // Where a link to the service lands (SectionPath), when its accounts' own lines are named by their keys.
+                if (AccountId(mine[0]) != provider) body.Append("<div id=\"row-").Append(Html(provider)).Append("\"></div>");
                 foreach (var account in mine)
                 {
                     var id = AccountId(account);
