@@ -18,7 +18,7 @@
   <ItemGroup>
     <!-- The server page's logo (ServerPage, /logo.png): assets/app-icon.png at 128 px, built in so every host has it, the tarball and Windows included. -->
     <EmbeddedResource Include="Assets/logo.png" LogicalName="server-page-logo.png" />
-    <EmbeddedResource Include="Assets/service-*.png" LogicalName="server-page-%(Filename).png" />
+    <EmbeddedResource Include="Assets/page-pictures.png" LogicalName="server-page-pictures.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />
