@@ -20,12 +20,12 @@ internal sealed partial class ServerPage
 
     private const string ThemeItem = "messages-theme";
 
-    // The logo and the services' marks, as Settings on the PC shows them, in one picture the page draws parts of. It has to be one: the door takes two connections from an address at
-    // a time and drops the rest unread (MaxPendingPerAddress), and every answer here closes its connection, so a browser asking for five pictures at once got two per reload.
-    // Nothing of the server's, so like the logo it needs no sign-in.
-    internal const string PicturesPath = "/page-pictures.png";
+    // The services' own marks, as Settings on the PC shows them. Nothing of the server's, so like the logo they need no sign-in.
+    private const string IconsPath = "/icons/";
 
-    private static readonly Lazy<byte[]> Pictures = new(() => Picture("server-page-pictures.png"));
+    private static readonly Lazy<Dictionary<string, byte[]>> Icons = new(() => ServerAccountProviders.All.ToDictionary(provider => IconsPath + provider + ".png", provider => Picture("server-page-service-" + provider + ".png"), StringComparer.Ordinal));
+
+    private static bool IsIconPath(string? path) => path is not null && path.StartsWith(IconsPath, StringComparison.Ordinal) && Icons.Value.ContainsKey(path);
 
     private static readonly string[] ServiceOrder = [ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram];
 
@@ -144,14 +144,7 @@ internal sealed partial class ServerPage
 
     private static string Act(string inner) => "<span class=\"act\">" + inner + "</span>";
 
-    private static string Icon(string provider) => provider switch
-    {
-        ServerAccountProviders.GoogleMessages => "<span class=\"ic gm\" aria-hidden=\"true\"></span>",
-        ServerAccountProviders.Messenger => "<span class=\"ic me\" aria-hidden=\"true\"></span>",
-        ServerAccountProviders.GoogleVoice => "<span class=\"ic gv\" aria-hidden=\"true\"></span>",
-        ServerAccountProviders.Instagram => "<span class=\"ic ig\" aria-hidden=\"true\"></span>",
-        _ => "",
-    };
+    private static string Icon(string provider) => ServerAccountProviders.All.Contains(provider) ? "<img class=\"ic\" src=\"" + IconsPath + provider + ".png\" alt=\"\">" : "";
 
     // A line that goes somewhere: the whole line is the link, with a chevron where every line's control is. Its state stays in the state's column, like every other line's.
     private static string Go(string name, string? under, string? value, string href, string label, string? icon = null, bool warn = false, string? id = null, bool? expanded = null) =>
@@ -163,10 +156,7 @@ internal sealed partial class ServerPage
 
     // A line that opens in place, through the address, or closes again.
     private static string Opens(string id, string name, string? under, string? value, string label, string open, string? icon = null, bool warn = false) =>
-        Go(name, under, value, (open == id ? "/#row-" : "/?open=" + Uri.EscapeDataString(id) + "#row-") + Uri.EscapeDataString(id), label, icon, warn, null, open == id);
-
-    // What the address points at is the line around the link, not the link: a browser puts its focus on a link it lands on, and draws its ring round it as if it had been tabbed to.
-    private static string LineOf(string id) => "<div class=\"line\" id=\"row-" + Html(id) + "\">";
+        Go(name, under, value, (open == id ? "/#row-" : "/?open=" + Uri.EscapeDataString(id) + "#row-") + Uri.EscapeDataString(id), label, icon, warn, "row-" + id, open == id);
 
     // The line under an account's name: who it is, or until that is known (no conversation has loaded yet) what kind of account it is, as Settings on the PC says.
     private static string Who(ServerAccount account) => account.Name is { Length: > 0 } name ? name : account.Provider switch
@@ -288,7 +278,7 @@ internal sealed partial class ServerPage
                         body.Append(Row(name, under, "Not connected", Act(""), Icon(provider)));
                         continue;
                     }
-                    body.Append(LineOf(provider)).Append(Opens(provider, name, null, "Not connected", "Connect " + name, open, Icon(provider)));
+                    body.Append("<div class=\"line\">").Append(Opens(provider, name, null, "Not connected", "Connect " + name, open, Icon(provider)));
                     if (open == provider) body.Append("<div class=\"more\"><a class=\"button quiet\" href=\"").Append(SignInHref(service)).Append("\" aria-label=\"").Append(Html("Connect: " + name)).Append("\">Connect</a></div>");
                     body.Append("</div>");
                     continue;
@@ -296,7 +286,7 @@ internal sealed partial class ServerPage
                 foreach (var account in mine)
                 {
                     var id = AccountId(account);
-                    body.Append(LineOf(id)).Append(Opens(id, name, Who(account), Word(account.State), "Manage " + AccountLabel(account), open, Icon(provider), account.State == ServerAccountStates.Saved));
+                    body.Append("<div class=\"line\">").Append(Opens(id, name, Who(account), Word(account.State), "Manage " + AccountLabel(account), open, Icon(provider), account.State == ServerAccountStates.Saved));
                     if (open == id)
                     {
                         body.Append("<div class=\"more\">");
@@ -328,18 +318,18 @@ internal sealed partial class ServerPage
         if (list.Count == 0) body.Append(Row("No device is paired yet.", null, null, Act("")));
         foreach (var device in list)
         {
-            body.Append(LineOf(device.Id)).Append(Opens(device.Id, device.Name, null, device.LastSeen is { } seen ? Ago(seen) : "Never connected", "Manage " + device.Name, open));
+            body.Append("<div class=\"line\">").Append(Opens(device.Id, device.Name, null, device.LastSeen is { } seen ? Ago(seen) : "Never connected", "Manage " + device.Name, open));
             if (open == device.Id)
                 body.Append("<div class=\"more flat\"><a class=\"button quiet\" href=\"/devices/rename?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Rename " + device.Name)).Append("\">Rename…</a>")
                     .Append("<a class=\"button quiet\" href=\"/devices/remove?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Remove " + device.Name)).Append("\">Remove…</a></div>");
             body.Append("</div>");
         }
         // Asking to join is a way in for devices, so its switch sits with them.
-        body.Append(LineOf("requests")).Append(Opens("requests", "Requests to join", null, joins.Paused ? "Paused" : "Allowed", "Requests to join", open));
+        body.Append("<div class=\"line\">").Append(Opens("requests", "Requests to join", null, joins.Paused ? "Paused" : "Allowed", "Requests to join", open));
         if (open == "requests")
             body.Append("<form class=\"more flat\" method=\"post\" action=\"/joins/pause\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"paused\" value=\"").Append(joins.Paused ? "no" : "yes")
                 .Append("\"><button type=\"submit\" class=\"quiet\">").Append(joins.Paused ? "Allow requests" : "Pause requests").Append("</button>").Append(joins.Paused ? "<span class=\"hint\">Paired devices keep working.</span>" : "").Append("</form>");
-        body.Append("</div>").Append(LineOf("add-device")).Append(Opens("add-device", "Add a device", null, null, "Add a device", open));
+        body.Append("</div><div class=\"line\">").Append(Opens("add-device", "Add a device", null, null, "Add a device", open));
         // Pages that ask for the password first (a GET, so nothing is done by following them).
         if (open == "add-device") body.Append("<div class=\"more flat\"><a class=\"button quiet\" href=\"/phone\" aria-label=\"Add a phone\">A phone…</a><a class=\"button quiet\" href=\"/pair\" aria-label=\"Add a PC\">A PC…</a></div>");
         body.Append("</div></div></section>");
@@ -414,9 +404,9 @@ internal sealed partial class ServerPage
         }
         body.Append("<div class=\"row\"><div class=\"g\">Address</div><span class=\"v copy\">").Append(Html(Address(request))).Append("</span>").Append(Act("")).Append("</div>");
         var whole = fingerprint();
-        body.Append(LineOf("fingerprint")).Append(Opens("fingerprint", "Fingerprint", null, whole.Length > 12 ? whole[..12] + "…" : whole, "The whole fingerprint", open));
+        body.Append("<div class=\"line\">").Append(Opens("fingerprint", "Fingerprint", null, whole.Length > 12 ? whole[..12] + "…" : whole, "The whole fingerprint", open));
         if (open == "fingerprint") body.Append("<div class=\"more flat\"><span class=\"copy\">").Append(Html(whole)).Append("</span></div>");
-        body.Append("</div>").Append(LineOf("theme")).Append(Opens("theme", "Theme", null, Themes.First(known => known.Id == theme).Name, "Change the theme", open));
+        body.Append("</div><div class=\"line\">").Append(Opens("theme", "Theme", null, Themes.First(known => known.Id == theme).Name, "Change the theme", open));
         if (open == "theme")
         {
             body.Append("<form class=\"more flat\" method=\"post\" action=\"/theme\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">");
