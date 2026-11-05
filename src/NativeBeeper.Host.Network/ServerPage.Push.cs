@@ -153,7 +153,7 @@ internal sealed partial class ServerPage
             PushInstall.NotAppSettings => new("google-services.json couldn't be read. Download it again from Project settings, under General.", FirebasePage(project, GeneralPage), "Open Project settings"),
             PushInstall.NotServiceAccount => new("The key file isn't a private key from Firebase. Make one in Project settings, under Service accounts, with Generate new private key.", FirebasePage(project, KeysPage), "Open Service accounts"),
             PushInstall.ProjectsDiffer => new("The two files are from different Firebase projects. Use both from the same project."),
-            PushInstall.NoApp => new("google-services.json has no Android app for Messages. Add com.wrenchware.messages (and com.wrenchware.messages.dev for test builds), then download the file again.",
+            PushInstall.NoApp => new("google-services.json has no Android app for Messages. Add com.wrenchware.messages, then download the file again.",
                 FirebasePage(project, GeneralPage), "Open Project settings"),
             PushInstall.KeyRefused => new("Google didn't accept the private key: it may have been deleted. Make a new one in Service accounts and try again.", FirebasePage(project, KeysPage), "Open Service accounts"),
             PushInstall.ApiDisabled => new("Google says Cloud Messaging is turned off for this project. Turn on the Firebase Cloud Messaging API, wait a minute, then add the files again.",
