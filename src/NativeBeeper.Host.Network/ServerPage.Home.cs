@@ -215,7 +215,7 @@ internal sealed partial class ServerPage
         body.Append("</div></div>");
 
         // The AGPL offer to everyone who uses the server over the network: the source of the commit this image was built from (Core SourceCode).
-        body.Append("<footer><a href=\"/log\">Recent log</a><a href=\"").Append(Html(SourceCode.For(status?.App, status?.Revision))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Source code</a>");
+        body.Append("<footer><a href=\"/log\">Log</a><a href=\"").Append(Html(SourceCode.For(status?.App, status?.Revision))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Source code</a>");
         if (backups is not null) body.Append("<a class=\"end\" href=\"/reset\">Reset server…</a>");
         body.Append("</footer>");
 

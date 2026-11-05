@@ -270,7 +270,7 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/theme" or "/log" or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/theme" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
         or "/push/test" or "/mirror" or LogoPath or PicturesPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
@@ -312,7 +312,7 @@ internal sealed partial class ServerPage
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogoPath or PicturesPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogTailPath or LogoPath or PicturesPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -436,7 +436,11 @@ internal sealed partial class ServerPage
                 await ManageAsync(context, manage, token).ConfigureAwait(false);
                 return;
             case "/log":
-                await PageAsync(context, StatusCodes.Status200OK, "Recent log", await LogBodyAsync(context.RequestAborted).ConfigureAwait(false)).ConfigureAwait(false);
+                response.Headers.ContentSecurityPolicy = LogPolicy;
+                await PageAsync(context, StatusCodes.Status200OK, "Log", await LogBodyAsync(context.RequestAborted).ConfigureAwait(false)).ConfigureAwait(false);
+                return;
+            case LogTailPath:
+                await LogTailAsync(context).ConfigureAwait(false);
                 return;
             case "/mirror":
                 // Reads each service's most recently active conversations again, as the walk does every half hour: nothing is sent or marked read.
@@ -879,22 +883,6 @@ internal sealed partial class ServerPage
             .Append("<button type=\"submit\"").Append(danger ? " class=\"danger\"" : "").Append('>').Append(Html(button)).Append("</button><a class=\"cancel\" href=\"/\">Cancel</a></form>").ToString();
     }
 
-    private async Task<string> LogBodyAsync(CancellationToken cancellationToken)
-    {
-        var body = new StringBuilder();
-        HostLogChunk? chunk = null;
-        if (logs is not null)
-        {
-            var head = await logs.ReadAsync(HostLogNames.Server, long.MaxValue, cancellationToken).ConfigureAwait(false);
-            if (head.Exists) chunk = await logs.ReadAsync(HostLogNames.Server, Math.Max(0, head.Length - LogTail), cancellationToken).ConfigureAwait(false);
-        }
-        if (chunk is not { Exists: true }) return body.Append(Para("The server keeps no log here.")).ToString();
-        var text = chunk.Text;
-        // From the end of the log, whole lines only.
-        if (chunk.Length > LogTail && text.IndexOf('\n') is var first and >= 0) text = text[(first + 1)..];
-        return body.Append("<pre>").Append(Html(text)).Append("</pre>").ToString();
-    }
-
     // The server's check of its copy against each service (SWITCHBOARD.md stage 9): what the newest one found, and a button to check now.
     private async Task CopiesCardAsync(StringBuilder body, string token, CancellationToken cancellationToken)
     {
@@ -999,8 +987,8 @@ internal sealed partial class ServerPage
         + ".t-phosphor{--font:'Cascadia Mono',ui-monospace,Consolas,Menlo,monospace;--bg:#060a08;--fg:#d3ecdc;--muted:#6f9580;--box:#0b120e;--line:#1c3327;--hair:#14241b;--warn:#ffb84d;--warnbg:#171208;--warnline:#57401a;--btn:transparent;--btnfg:#5dffa0;--btnline:#5dffa0;--acc:#5dffa0;--r:3px;--rb:3px;--ri:3px;--capc:#5dffa0;--icons:grayscale(1)}"
         // The frame.
         + "*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 var(--font,'Segoe UI',system-ui,-apple-system,Roboto,sans-serif);color:var(--fg);background-image:var(--glow,none);background-repeat:no-repeat;background-attachment:fixed}"
-        + "main{max-width:720px;margin:0 auto;padding:14px 16px 32px}main:has(.cols){max-width:1040px}"
-        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top .ic{display:block}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
+        + "main{max-width:720px;margin:0 auto;padding:14px 16px 32px}main:has(.cols),main:has(pre.log){max-width:1040px}pre.log{height:calc(100vh - 124px);min-height:240px;overflow:auto;margin:0}"
+        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top .ic{display:block}[hidden]{display:none!important}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
         + "header.top .r{margin-left:auto;display:flex;gap:12px;align-items:center}"
         // The front page's sections and lines.
         + "section.sec{background:none;border:0;padding:0;margin:0 0 16px;backdrop-filter:none;min-width:0}.sh{display:flex;align-items:center;gap:12px;padding:0 2px 6px;min-height:24px}.sh .r{margin-left:auto;display:flex;gap:12px}"
@@ -1073,7 +1061,7 @@ internal sealed partial class ServerPage
     }
 
     // What every answer carries: nothing cached or framed, no script but the notifications card's own few lines (allowed by their hash alone, so nothing put into a
-    // page could run), forms only to this page, and the connection closed after it.
+    // page could run; the sign-in view and the log page each swap in their own), forms only to this page, and the connection closed after it.
     private static void Secure(HttpResponse response)
     {
         var headers = response.Headers;
