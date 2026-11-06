@@ -1561,7 +1561,7 @@ Applies to:
 - go.mau.fi/mautrix-gvoice v0.2605.1-0.20261006180600-8775ef52af27 (LICENSE)
 - go.mau.fi/mautrix-meta v0.2609.1-0.20261012222411-4b3889e607c0 (LICENSE)
 
-Identical to GOOGLE_MESSAGES_LICENSE.txt, GOOGLE_VOICE_LICENSE.txt and MESSENGER_LICENSE.txt, installed beside Messages.exe.
+Identical to GOOGLE_MESSAGES_LICENSE.txt, GOOGLE_VOICE_LICENSE.txt and MESSENGER_LICENSE.txt, installed beside MessageLink.exe.
 
 ### Apache-2.0: gopkg.in/yaml.v3 v3.0.1 (NOTICE)
 
@@ -3383,11 +3383,11 @@ of the GNU AGPL version 3 or later.
 
 ### LICENSE.exceptions: go.mau.fi/mautrix-gvoice v0.2605.1-0.20261006180600-8775ef52af27 (LICENSE.exceptions)
 
-Identical to GOOGLE_VOICE_LICENSE_EXCEPTIONS.txt, installed beside Messages.exe.
+Identical to GOOGLE_VOICE_LICENSE_EXCEPTIONS.txt, installed beside MessageLink.exe.
 
 ### LICENSE.exceptions: go.mau.fi/mautrix-meta v0.2609.1-0.20261012222411-4b3889e607c0 (LICENSE.exceptions)
 
-Identical to MAUTRIX_META_LICENSE_EXCEPTIONS.txt, installed beside Messages.exe.
+Identical to MAUTRIX_META_LICENSE_EXCEPTIONS.txt, installed beside MessageLink.exe.
 
 ### license.txt: Microsoft.Windows.AI.MachineLearning 2.1.74 (license.txt)
 

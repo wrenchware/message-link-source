@@ -24,7 +24,7 @@ public sealed partial class ConsoleSessionViewModel
         {
             target = Target is { } to ? to.Target ?? TargetOf(to.SourceChatId) : null;
             target ??= OpenTarget() ?? Implied().Target;
-            if (target is null) { Fail("Which conversation? /thread name, /thread N, or /thread . for the one open in Messages."); return; }
+            if (target is null) { Fail("Which conversation? /thread name, /thread N, or /thread . for the one open in Message Link."); return; }
         }
         if (view == "route") { Trace(target, null); return; }
         if (view == "members") { Members(target); return; }
@@ -145,7 +145,7 @@ public sealed partial class ConsoleSessionViewModel
 
     private void Stats(ChatTarget target, IReadOnlyList<ChatMessage> held)
     {
-        if (held.Count == 0) { Out($"Nothing kept here for {target.Title} yet. Opening it in Messages keeps its history.", ConsoleTone.Dim); return; }
+        if (held.Count == 0) { Out($"Nothing kept here for {target.Title} yet. Opening it in Message Link keeps its history.", ConsoleTone.Dim); return; }
         var span = held[^1].Timestamp - held[0].Timestamp;
         Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {held.Count.ToString("N0", CultureInfo.CurrentCulture)} messages over {ConsoleCells.Duration(span)} " +
             $"({formatter.ShortDate(held[0].Timestamp)} – {formatter.ShortDate(held[^1].Timestamp)})", ConsoleTone.Dim));

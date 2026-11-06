@@ -36,7 +36,7 @@ internal static class AppLog
 
     private static string fileName = "app.log", openingLine = "app started";
 
-    // A process that is not the window (MessagesServer.exe) keeps its own file, chosen before its first line.
+    // A process that is not the window (MessageLinkServer.exe) keeps its own file, chosen before its first line.
     public static void UseFile(string name, string opening) { fileName = name; openingLine = opening; }
 
     public static string FilePath => AppPaths.Combine(fileName);

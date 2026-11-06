@@ -195,7 +195,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         {
             InstagramLog.Write($"instagram resume refused code={spent} automatic=False");
             throw new BackendException(BackendFailure.RateLimited,
-                "Instagram was reconnected 3 times without staying connected for 2 minutes. To protect the account, it is not reconnected again until Messages is restarted.");
+                "Instagram was reconnected 3 times without staying connected for 2 minutes. To protect the account, it is not reconnected again until Message Link is restarted.");
         }
     }
 

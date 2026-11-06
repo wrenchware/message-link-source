@@ -2,7 +2,7 @@ namespace NativeBeeper.WindowsPlatform;
 
 /// <summary>
 /// The thread WebView2 lives on, as the browser needs to see it: whether the caller is already there, and a way to put work on it. The app
-/// supplies one over its interface thread's dispatcher queue and MessagesServer.exe one over its own STA thread (SWITCHBOARD.md 3.1c), so the
+/// supplies one over its interface thread's dispatcher queue and MessageLinkServer.exe one over its own STA thread (SWITCHBOARD.md 3.1c), so the
 /// browser code names neither WinUI nor the Windows App SDK.
 /// </summary>
 internal interface IStaQueue

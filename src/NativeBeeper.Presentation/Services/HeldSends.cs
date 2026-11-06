@@ -6,7 +6,7 @@ namespace NativeBeeper.Presentation.Services;
 // its conversation's saved draft, as Undo would have put it back in the box. Before, quitting sent every held message at
 // once, so quitting within the wait was the one way to have no chance to take it back. Every quit path does this first,
 // before its drafts are written and its windows closed (MainWindow.ReturnHeldSendsAsync): the tray's Quit and the close
-// button through their confirmation, Messages.exe --quit (which the silent uninstaller uses), and the end of a Windows
+// button through their confirmation, MessageLink.exe --quit (which the silent uninstaller uses), and the end of a Windows
 // session or Setup's Restart Manager through the session flush; App's shutdown asks once more for anything those missed.
 // Held sends are text only (a composer's text or reply), so there are never attachments to put back.
 public static class HeldSends

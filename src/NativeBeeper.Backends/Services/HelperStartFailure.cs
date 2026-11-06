@@ -11,11 +11,11 @@ internal static class HelperStartFailure
     public const string Blocked = "helper_blocked";
     public const string Failed = "helper_start_failed";
 
-    public const string MissingSentence = "Part of Messages is missing. Reinstall Messages.";
-    public const string BlockedSentence = "Windows security blocked part of Messages. Allow it in Windows Security, or reinstall Messages.";
-    public const string FailedSentence = "Part of Messages couldn't start. Restart your PC, or reinstall Messages.";
+    public const string MissingSentence = "Part of Message Link is missing. Reinstall Message Link.";
+    public const string BlockedSentence = "Windows security blocked part of Message Link. Allow it in Windows Security, or reinstall Message Link.";
+    public const string FailedSentence = "Part of Message Link couldn't start. Restart your PC, or reinstall Message Link.";
     // The app and a helper from different versions of Messages, which only a mixed or damaged install produces.
-    public const string OutOfDateSentence = "Part of Messages is out of date. Reinstall Messages.";
+    public const string OutOfDateSentence = "Part of Message Link is out of date. Reinstall Message Link.";
 
     // ERROR_ACCESS_DENIED, ERROR_VIRUS_INFECTED (antivirus), ERROR_ACCESS_DISABLED_BY_POLICY (AppLocker or a software
     // restriction policy) and ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION (Smart App Control, App Control for Business).

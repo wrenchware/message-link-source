@@ -403,7 +403,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         {
             log?.Invoke("protocol hello refused reason=version");
             await SendAsync(new HelloFrame(Math.Min(HighestProtocol, ProtocolVersion.Current), appVersion, Server: HelloFrame.ServerName, MinProtocol: ProtocolVersion.Minimum,
-                Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Messages cannot talk to that server."))).ConfigureAwait(false);
+                Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Message Link cannot talk to that server."))).ConfigureAwait(false);
             return;
         }
         greeted = true;

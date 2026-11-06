@@ -29,7 +29,7 @@ internal static class HeldClear
         }
         if (lease is null)
         {
-            output.WriteLine("The Messages Server for this data folder is running, so nothing was changed. Stop the server first, then run this again.");
+            output.WriteLine("The Message Link Server for this data folder is running, so nothing was changed. Stop the server first, then run this again.");
             return new(3, Refused, "server_running");
         }
         using (lease)

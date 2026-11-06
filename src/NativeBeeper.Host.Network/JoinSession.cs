@@ -35,7 +35,7 @@ internal static class JoinSession
                             if (ProtocolVersion.Negotiate(hello.Protocol, hello.MinProtocol) is not { } chosen || chosen < ProtocolVersion.JoinRequests)
                             {
                                 await channel.SendAsync(Frames.Serialize(new HelloFrame(ProtocolVersion.Current, version, Server: HelloFrame.ServerName, MinProtocol: ProtocolVersion.JoinRequests,
-                                    Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Messages cannot ask this server to join."))), limit.Token).ConfigureAwait(false);
+                                    Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Message Link cannot ask this server to join."))), limit.Token).ConfigureAwait(false);
                                 return;
                             }
                             request.Protocol = chosen;

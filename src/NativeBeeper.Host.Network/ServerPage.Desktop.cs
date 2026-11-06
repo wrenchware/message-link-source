@@ -56,7 +56,7 @@ internal sealed partial class ServerPage
         if (DesktopSignIn is null || !OnThisPc(context)) return;
         var any = accounts is { Count: > 0 };
         if (any) body.Append("<details><summary class=\"button\">Connect another service</summary>");
-        body.Append("<p class=\"quiet\">Connect opens the service's own sign-in in Messages on this PC.</p><div class=\"actions\">");
+        body.Append("<p class=\"quiet\">Connect opens the service's own sign-in in Message Link on this PC.</p><div class=\"actions\">");
         foreach (var (service, name) in DesktopServices)
         {
             var mine = accounts?.Where(account => Provider(account.Provider) == name).ToArray() ?? [];

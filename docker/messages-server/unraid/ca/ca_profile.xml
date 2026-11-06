@@ -3,7 +3,7 @@
      template repository it reads). -->
 <Maintainer>
   <Icon>https://raw.githubusercontent.com/wrenchware/switchboard-messages/main/assets/app-icon.png</Icon>
-  <Profile>Wrenchware makes Messages: native apps for Windows and Android that bring Facebook Messenger, Instagram, Google Messages and Google Voice into one inbox, and Messages Server, which keeps those accounts signed in on your own home server.</Profile>
+  <Profile>Wrenchware makes Message Link: native apps for Windows and Android that bring Google Messages, Facebook Messenger, Google Voice and Instagram into one inbox, and Message Link Server, which keeps those accounts signed in on your own home server.</Profile>
   <WebPage>https://github.com/wrenchware/switchboard-messages</WebPage>
   <Forum>https://forums.unraid.net/topic/SUPPORT-THREAD-TO-OPEN/</Forum>
 </Maintainer>

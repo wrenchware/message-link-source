@@ -75,7 +75,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
             case "grep": GrepScroll(rest); return;
             case "guide":
                 try { host.OpenGuide(rest.Length == 0 ? null : rest); } catch (Exception) { Fail("The guide couldn't be opened."); return; }
-                Out(rest.Length == 0 ? "Opened the Messages guide. F1 opens it from here too." : $"Opened the Messages guide at “{rest}”.", ConsoleTone.Dim);
+                Out(rest.Length == 0 ? "Opened the Message Link guide. F1 opens it from here too." : $"Opened the Message Link guide at “{rest}”.", ConsoleTone.Dim);
                 return;
             case "tour":
                 try { host.StartTour(); } catch (Exception) { Fail("The tour couldn't start."); return; }
@@ -115,7 +115,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         ConsoleMirror? mirror;
         try { mirror = await host.MirrorAsync(start.Length > 0); }
         catch (Exception) { Fail("The server couldn't say just now."); return; }
-        if (mirror is null) { Out("No server keeps copies for this PC: /mirror is for a PC that uses a Messages Server.", ConsoleTone.Dim); return; }
+        if (mirror is null) { Out("No server keeps copies for this PC: /mirror is for a PC that uses a Message Link Server.", ConsoleTone.Dim); return; }
         if (start.Length > 0) Out("Checking now: each service takes about a second per conversation. /mirror again shows what it found.", ConsoleTone.Dim);
         if (mirror.Services.Count == 0) { Out(mirror.Running ? "The first check is under way." : "Not checked yet: the server checks every half hour.", ConsoleTone.Dim); return; }
         foreach (var service in mirror.Services)
@@ -135,7 +135,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         var env = host.Environment;
         var services = host.SystemStatus.Processes.Where(p => p.State != "unconfigured").ToArray();
         Out(new ConsoleSpan(env is null ? "you" : env.User + "@" + env.Machine, ConsoleTone.Strong),
-            new ConsoleSpan(env is null ? "" : $" · Messages {env.Version} ({env.Install})", ConsoleTone.Dim));
+            new ConsoleSpan(env is null ? "" : $" · Message Link {env.Version} ({env.Install})", ConsoleTone.Dim));
         if (services.Length == 0) { Out("Signed in to nothing yet.", ConsoleTone.Dim); return; }
         Out([new ConsoleSpan("signed in: ", ConsoleTone.Dim), .. services.SelectMany((p, i) => new[]
         {
@@ -167,7 +167,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         {
             ("", new ConsoleSpan(title, ConsoleTone.Strong)),
             ("", new ConsoleSpan(new string('-', title.Length), ConsoleTone.Dim)),
-            ("App", new ConsoleSpan("Messages " + status.Version + (env is null ? "" : " (" + env.Install + ")"))),
+            ("App", new ConsoleSpan("Message Link " + status.Version + (env is null ? "" : " (" + env.Install + ")"))),
         };
         if (env is not null)
         {
@@ -275,7 +275,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         var next = targets.Entries().Where(c => !c.Members.All(m => m.IsArchived) && c.Members.Any(m => m.UnreadCount > 0 || m.IsMarkedUnread))
             .OrderByDescending(c => c.LastActivity ?? DateTimeOffset.MinValue).FirstOrDefault();
         if (next is null) { Out("Nothing unread. Inbox zero.", ConsoleTone.Ok); return; }
-        if (await Safely(() => host.OpenAsync(next.DisplayId))) Out(new ConsoleSpan("Opened ", ConsoleTone.Dim), new ConsoleSpan(next.Title, ConsoleTone.Strong), new ConsoleSpan(" in Messages.", ConsoleTone.Dim));
+        if (await Safely(() => host.OpenAsync(next.DisplayId))) Out(new ConsoleSpan("Opened ", ConsoleTone.Dim), new ConsoleSpan(next.Title, ConsoleTone.Strong), new ConsoleSpan(" in Message Link.", ConsoleTone.Dim));
         else Fail("Couldn't open that conversation.");
     }
 

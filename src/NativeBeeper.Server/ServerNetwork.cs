@@ -101,12 +101,12 @@ internal sealed class ServerNetwork : IAsyncDisposable
     }
 
     /// <summary>
-    /// Asks Messages, beside this program, to open a service's sign-in (<c>Messages.exe --sign-in=&lt;service&gt;</c>): a running Messages takes it through its own
+    /// Asks Messages, beside this program, to open a service's sign-in (<c>MessageLink.exe --sign-in=&lt;service&gt;</c>): a running Messages takes it through its own
     /// activation, and one that is not running starts and opens it. With this process's environment, so a development copy's data folder is the same one.
     /// </summary>
     internal static bool AskMessagesToSignIn(string service, Action<string> log)
     {
-        var messages = Path.Combine(AppContext.BaseDirectory, "Messages.exe");
+        var messages = Path.Combine(AppContext.BaseDirectory, "MessageLink.exe");
         if (!File.Exists(messages) || !NativeBeeper.Presentation.Services.LaunchCommand.SignInServices.Contains(service)) return false;
         try
         {

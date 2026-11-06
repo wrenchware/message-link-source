@@ -52,7 +52,7 @@ public sealed partial class PagerApp : ConsoleApp
         if (word.Length == 0 || sources.Count == 0) return 0;
         string[] aliases = word switch
         {
-            "app" or "messages" => ["Messages"],
+            "app" or "messages" => ["Message Link"],
             "google" or "gmessages" or "sms" => ["Google Messages"],
             "voice" or "gvoice" => ["Google Voice"],
             "helper" or "messenger-helper" => ["Messenger helper"],

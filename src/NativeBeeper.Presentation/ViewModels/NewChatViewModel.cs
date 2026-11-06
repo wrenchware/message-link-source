@@ -151,6 +151,10 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
         if (Participants.Count > 0 && !GroupOptions.Allowed)
         { Status = GroupOptions.Reason + " Remove the person on the To line to choose somebody else."; return false; }
         if (GroupOptions.Allowed && Participants.Count >= GroupOptions.Maximum) return false;
+        // The row's conversation is kept with the pick: the pane redraws its default sections straight afterwards, and
+        // somebody found by searching is often not in them, which left Start chat asking the provider to make a
+        // conversation that already exists.
+        if (ConversationFor(person) is { } existing) picked[person] = existing;
         Participants.Add(person);
         // The first recipient settles the service. Searching stays across everything so the next click can still be
         // explained rather than ignored.
@@ -363,7 +367,9 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
     /// </summary>
     public ChatSummary? ConversationFor(ContactPerson contact) =>
         Rows.Select(row => row.Destination)
-            .FirstOrDefault(destination => destination?.Contact == contact && destination.Conversation is not null)?.Conversation;
+            .FirstOrDefault(destination => destination?.Contact == contact && destination.Conversation is not null)?.Conversation
+        ?? (Participants.Contains(contact) && picked.TryGetValue(contact, out var kept) ? kept : null);
+    private readonly Dictionary<ContactPerson, ChatSummary> picked = [];
 
     private IReadOnlyList<ChatSummary> InScope(IReadOnlyList<ChatSummary> chats)
     {

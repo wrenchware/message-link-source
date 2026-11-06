@@ -1,4 +1,4 @@
-# Messages Server with plain Docker Compose. From this folder:
+# Message Link Server with plain Docker Compose. From this folder:
 #   docker compose up -d --build      build the image from this checkout and start it
 #   docker compose logs messages-server   pairing code and TLS fingerprint
 #   docker compose down               stop (SIGTERM, up to 60 s to finish)

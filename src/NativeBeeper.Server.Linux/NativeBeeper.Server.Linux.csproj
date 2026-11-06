@@ -12,9 +12,9 @@
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
     <AssemblyName>messages-server</AssemblyName>
     <RootNamespace>NativeBeeper.Server.Linux</RootNamespace>
-    <Product>Messages Server</Product>
-    <AssemblyTitle>Messages Server</AssemblyTitle>
-    <Description>Messages Server</Description>
+    <Product>Message Link Server</Product>
+    <AssemblyTitle>Message Link Server</AssemblyTitle>
+    <Description>Message Link Server</Description>
     <Company>wrenchware</Company>
     <!-- One version for the app and every host (SWITCHBOARD.md decisions), read from the app's project as the Windows server reads it. -->
     <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../NativeBeeper.App/NativeBeeper.App.csproj')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>

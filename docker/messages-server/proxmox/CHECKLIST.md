@@ -9,7 +9,7 @@ in with the link the script prints, and add the phone with the pairing code.
 
 Have ready: the package `messages-server-<version>-linux-x64.tar.gz` and its `.sha256` (from
 `tools\Build-ServerTarball.ps1`, in `artifacts\server-tarball`), the phone with the Play internal-testing build of
-Messages, and a PC browser.
+Message Link, and a PC browser.
 
 ## 1. Make the container
 
@@ -57,7 +57,7 @@ Report all of it. The two things this run is for:
      showed and finished, and any "Was this you?" prompt.
    - Skip Google this time unless the sandbox line above said `active`; if it did, report whether the Google sign-in
      screen shows on the page (do not sign a real Google account in).
-4. **Add a phone**: on the page, show the QR code. On the phone, in Messages, scan it. Wanted: the phone signs in to
+4. **Add a phone**: on the page, show the QR code. On the phone, in Message Link, scan it. Wanted: the phone signs in to
    Tailscale, joins without typing a code, and shows the test account's conversations.
 5. On the phone, open the owner-designated Messenger test thread and send one message there. Nowhere else.
 
@@ -91,12 +91,12 @@ in part 2 says `server google enabled browser=chrome`), and the Facebook test ac
 page, or skip part 3's Facebook step).
 
 1. On the PC, start the isolated development copy (`powershell -NoProfile -File tools\Run-DevBuild.ps1`), never the
-   installed app. In **Settings → Connections → Messages Server → Manage…**, join this test server (**Ask to join**,
+   installed app. In **Settings → Connections → Message Link Server → Manage…**, join this test server (**Ask to join**,
    approve on the page). The order devices joined in makes no difference.
 2. In a second shell on the Proxmox host, follow the log:
    `pct exec <id> -- journalctl -u messages-server -f -o cat | grep -E 'remote sign-in|google chrome|server sign-in'`
 3. **Cancel.** In the dev copy's **Settings → Connections**, Messenger, **Connect**. Wanted: a window titled
-   "Sign in to Facebook" saying "This is Messages Server's own browser. Sign in to Facebook here, then choose Done.",
+   "Sign in to Facebook" saying "This is Message Link Server's own browser. Sign in to Facebook here, then choose Done.",
    showing facebook.com's login page with an address bar, and buttons **Done** and **Cancel**. Choose **Cancel** (and
    once more, closing the window with its X instead). Wanted: "Facebook sign-in was cancelled.",
    `remote sign-in service=messenger outcome=cancelled reason=client`, `keys/SignIn` empty (below), and the server's
@@ -108,8 +108,8 @@ page, or skip part 3's Facebook step).
 5. **Messenger.** Connect once more.
    - Sign in with the Facebook test account. Answer anything Facebook asks (a code, "Was this you?" on the test
      account's phone, "Trust this browser"). Note each prompt Facebook showed, in order.
-   - Choose **Done** only once Facebook shows its home page. The header changes to "Finishing the sign-in on Messages
-     Server…" and the window closes by itself.
+   - Choose **Done** only once Facebook shows its home page. The header changes to "Finishing the sign-in on Message
+     Link Server…" and the window closes by itself.
    - Wanted in Settings: "Loading the Messenger inbox…", "Connected. Turning on encrypted conversations…", then
      "Connected. N conversations joined your chat list. Encrypted conversations are on too: …".
    - Wanted in the log, in this order and nothing with a name, an id or a cookie:

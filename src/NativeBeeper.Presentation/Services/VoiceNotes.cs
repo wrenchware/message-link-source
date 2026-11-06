@@ -40,12 +40,12 @@ public static class VoiceNoteRules
     // Five minutes of mono AAC at 96 kbps is about 3.6 MB. Anything far past that is not what was asked for.
     public const long ByteLimit = 16L * 1024 * 1024;
 
-    public const string AccessDenied = "Windows is blocking Messages from using the microphone. To record, turn on " +
+    public const string AccessDenied = "Windows is blocking Message Link from using the microphone. To record, turn on " +
         "Microphone access and Let desktop apps access your microphone in Settings > Privacy & security > Microphone.";
     public const string NoMicrophone = "No microphone was found. Connect one and try again.";
-    public const string CouldNotStart = "Messages couldn't start recording. Check the microphone and try again.";
+    public const string CouldNotStart = "Message Link couldn't start recording. Check the microphone and try again.";
     public const string DeviceLost = "Recording stopped because the microphone stopped working. Nothing was kept.";
-    public const string CouldNotFinish = "Messages couldn't finish the recording. Nothing was kept.";
+    public const string CouldNotFinish = "Message Link couldn't finish the recording. Nothing was kept.";
     public const string TooShort = "That recording was too short to send.";
     public const string LimitReached = "Recordings stop at 5 minutes. This one is ready to review and send.";
     public const string Busy = "Another conversation is recording. Stop that recording first.";

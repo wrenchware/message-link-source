@@ -42,12 +42,12 @@ public static class ScheduledSendRows
         if (!IsNotSent(sendState)) return "";
         return sendState![NotSentPrefix.Length..] switch
         {
-            "CLOSED" => "Not sent — Messages was closed at " + at,
+            "CLOSED" => "Not sent — Message Link was closed at " + at,
             "OFFLINE" => "Not sent — the service wasn't connected at " + at,
             "REFUSED" => "Not sent — the service couldn't take it at " + at,
-            "LATE" => "Not sent — Messages couldn't send it at " + at,
+            "LATE" => "Not sent — Message Link couldn't send it at " + at,
             "ACCOUNT" => "Not sent — a different account is signed in now",
-            "MOVED" => "Not sent — scheduled for " + at + " on this PC, before Messages moved to its server",
+            "MOVED" => "Not sent — scheduled for " + at + " on this PC, before Message Link moved to its server",
             "UNCONFIRMED" => "Not sent — the server never confirmed it was scheduled for " + at,
             // ScheduledSendReason.None: held by a restore before its time (ServerRestore.HoldScheduled). The only way to not sent without a reason.
             "NONE" => "Not sent — held after a restore. It was scheduled for " + at,

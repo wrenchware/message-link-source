@@ -18,7 +18,7 @@ public static class TourSteps
 {
     public static readonly IReadOnlyList<TourStep> All =
     [
-        new("welcome", "Welcome to Messages",
+        new("welcome", "Welcome to Message Link",
             "Google Messages, Messenger, Google Voice and Instagram in one Windows inbox. This two-minute tour shows the things " +
             "that are easy to miss. Leave whenever you like: <kbd>F1</kbd> opens the full guide any time.", null, "basics"),
         new("accounts", "Connect your services",
@@ -46,21 +46,21 @@ public static class TourSteps
             "change your mind. <kbd>Ctrl+V</kbd> pastes a photo and <kbd>Ctrl+Shift+R</kbd> records a voice message.",
             null, "writing-and-sending"),
         new("linked", "One person, every service",
-            "Link the conversations you have with the same person on different services into one. Messages answers where " +
+            "Link the conversations you have with the same person on different services into one. Message Link answers where " +
             "they last wrote; <kbd>Alt+Down</kbd> in the message box switches service.", null, "linked-conversations"),
         new("new", "Start something",
             "<kbd>Ctrl+N</kbd> starts a chat or a group on any service, searching your conversations and each service's " +
             "directory as you type.", "NewChatButton", "new-chats-and-groups"),
         new("desktop", "It lives on your desktop",
-            "Closing the window leaves Messages in the tray, still notifying. **Start with Windows**, a shortcut to show it " +
+            "Closing the window leaves Message Link in the tray, still notifying. **Start with Windows**, a shortcut to show it " +
             "from anywhere (<kbd>Ctrl+Alt+Shift+M</kbd>) and pop-out windows (<kbd>Ctrl+Shift+N</kbd>) are a click away in Settings.",
             null, "living-on-your-desktop"),
         new("taskbar", "Right-click the taskbar button",
             "The jump list has your pinned conversations, a few it thinks you'll want now, **New chat** and **Search**, " +
-            "with your contacts' photos beside them. Pin Messages to the taskbar to keep it handy.", null, "taskbar"),
+            "with your contacts' photos beside them. Pin Message Link to the taskbar to keep it handy.", null, "taskbar"),
         new("keep", "Save it, or be reminded",
             "Right-click a message: **Save** keeps a copy in **Saved Messages**, and **Remind me** brings that exact message " +
-            "back at the time you choose, even if Messages was closed.", null, "saved-messages"),
+            "back at the time you choose, even if Message Link was closed.", null, "saved-messages"),
         new("private", "Read without telling them",
             "**Private reading**, in **Settings → Messaging**, turns off read receipts and typing, per service. A conversation " +
             "you read stays unread for the other person until you choose to tell them.", null, "private-reading"),
@@ -68,7 +68,7 @@ public static class TourSteps
             "<kbd>Ctrl+`</kbd> opens the chat console: every service's messages as one live terminal, with a prompt. " +
             "Try `/help` and `/chats`. Only what you type as a message is ever sent.", null, "the-chat-console"),
         new("done", "That's the tour",
-            "<kbd>F1</kbd> opens the full guide, searchable, from anywhere in Messages. You can take this tour again from " +
+            "<kbd>F1</kbd> opens the full guide, searchable, from anywhere in Message Link. You can take this tour again from " +
             "**More options → Take the tour**.", null, "getting-help"),
     ];
 

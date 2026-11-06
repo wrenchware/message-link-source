@@ -34,7 +34,7 @@ internal sealed partial class ServerPage
         "backup_folder" => "Backups go to that folder now.",
         "backup_folder_not_full" => "Type the whole path, starting with a drive letter, or with \\\\ for a network share.",
         "backup_folder_missing" => "That drive or network share isn't available. Check the path and try again.",
-        "backup_folder_denied" => "Messages can't write to that folder. Choose another one.",
+        "backup_folder_denied" => "Message Link can't write to that folder. Choose another one.",
         "backup_folder_unsaved" => "The server couldn't save that choice. Try again.",
         "backup_folder_fixed" => "This server's backup folder is set where it was installed, so it can't be changed here.",
         _ => null,
@@ -133,13 +133,13 @@ internal sealed partial class ServerPage
         RestoreOutcomes.Restored =>
             $"Restored: {outcome.Messages.ToString("N0", CultureInfo.CurrentCulture)} messages, {outcome.Devices} device{(outcome.Devices == 1 ? "" : "s")} kept"
             + (outcome.Forgotten > 0 ? $", {outcome.Forgotten} forgotten" : "")
-            + (outcome.Held > 0 ? $". {outcome.Held} scheduled message{(outcome.Held == 1 ? " is" : "s are")} held and won't go by {(outcome.Held == 1 ? "itself" : "themselves")}: send or drop each in Messages" : "")
+            + (outcome.Held > 0 ? $". {outcome.Held} scheduled message{(outcome.Held == 1 ? " is" : "s are")} held and won't go by {(outcome.Held == 1 ? "itself" : "themselves")}: send or drop each in Message Link" : "")
             + ". Sign in to each account again; the server then fills in what arrived meanwhile.",
         RestoreOutcomes.Reset => "The server was reset. It holds nothing now: restore a backup, or sign in to your accounts.",
         RestoreOutcomes.ResetInUse => "The reset didn't run: an account was signed in on this server again before it started. Nothing was changed; reset again to sign it out.",
         RestoreOutcomes.InUse => "The restore didn't run: an account is signed in on this server. Reset the server first.",
         RestoreOutcomes.Missing => "The restore didn't run: the backup file is no longer in the folder.",
-        RestoreOutcomes.Unsupported => "The restore didn't run: the backup was made by a newer version of Messages Server.",
+        RestoreOutcomes.Unsupported => "The restore didn't run: the backup was made by a newer version of Message Link Server.",
         RestoreOutcomes.Unreadable => "The restore didn't run: the backup couldn't be read with that password, or it's damaged. Nothing was changed.",
         _ => "The restore didn't finish, and nothing was changed. Try again.",
     };
@@ -185,7 +185,7 @@ internal sealed partial class ServerPage
     private static string FolderForm(string token, string? current, bool fromSteps) =>
         new StringBuilder("<form method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
             .Append(fromSteps ? "<input type=\"hidden\" name=\"from\" value=\"steps\">" : "")
-            .Append("<label for=\"folder\">Folder</label><input id=\"folder\" name=\"folder\" type=\"text\" required maxlength=\"1024\" spellcheck=\"false\" placeholder=\"D:\\Backups\\Messages\" value=\"")
+            .Append("<label for=\"folder\">Folder</label><input id=\"folder\" name=\"folder\" type=\"text\" required maxlength=\"1024\" spellcheck=\"false\" placeholder=\"D:\\Backups\\Message Link\" value=\"")
             .Append(Html(current ?? "")).Append("\">")
             .Append("<button type=\"submit\" name=\"do\" value=\"folder\">Use this folder</button></form>").ToString();
 
@@ -289,8 +289,8 @@ internal sealed partial class ServerPage
             log($"server page restore read outcome={failure.Failure.ToString().ToLowerInvariant()}");
             await PageAsync(context, StatusCodes.Status400BadRequest, title, Ask(failure.Failure switch
             {
-                BackupFileFailure.NotABackup => "That file isn't a Messages backup.",
-                BackupFileFailure.Unsupported => "That backup was made by a newer version of Messages. Update the server first.",
+                BackupFileFailure.NotABackup => "That file isn't a Message Link backup.",
+                BackupFileFailure.Unsupported => "That backup was made by a newer version of Message Link. Update the server first.",
                 _ => "The backup couldn't be opened: the password is wrong, or the file is damaged. Nothing was changed.",
             })).ConfigureAwait(false);
             return;

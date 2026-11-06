@@ -1,16 +1,18 @@
 namespace NativeBeeper.App.Services;
 
-// Where this copy of the app keeps its data. Installed and ordinary builds use %LOCALAPPDATA%\Messages for Windows. Through
-// 0.1.361 that folder was %LOCALAPPDATA%\NativeBeeper, the project's code name, which a person could see in File Explorer;
-// the first launch of a later version renames it (Settle, DataFolderMove). A development build started with
+// Where this copy of the app keeps its data. Installed and ordinary builds use %LOCALAPPDATA%\Message Link. Before the
+// Message Link name it was %LOCALAPPDATA%\Messages for Windows (and %LOCALAPPDATA%\NativeBeeper, the project's code name,
+// through 0.1.361); the first launch of a later version renames it (Settle, DataFolderMove). A development build started with
 // NATIVEBEEPER_DATA_ROOT (tools\Run-DevBuild.ps1) keeps everything in that folder instead and takes its own single-instance
 // identity, so it runs beside the installed app without touching its sessions, caches or archive. A copy installed from the
 // Microsoft Store (an MSIX package, installer\Build-StorePackage.ps1) keeps its data in the package's own LocalState folder
 // and takes its own identity too, so it runs beside the unpackaged install and never reads or moves that copy's data.
 internal static class AppPaths
 {
-    internal const string FolderName = "Messages for Windows";
-    internal const string LegacyFolderName = "NativeBeeper";
+    internal const string FolderName = "Message Link";
+    internal const string LegacyFolderName = "Messages for Windows";
+    // The name through 0.1.361, moved long since; still counted as the real data wherever that is asked.
+    internal const string EarliestFolderName = "NativeBeeper";
 
     private static readonly string? Override = Environment.GetEnvironmentVariable("NATIVEBEEPER_DATA_ROOT") is { Length: > 0 } root
         ? Path.GetFullPath(root) : null;
@@ -31,13 +33,14 @@ internal static class AppPaths
     public static string DefaultRoot => PackageFamily is { } family ? PackageRoot(family) : UnpackagedRoot;
     public static string UnpackagedRoot => Path.Combine(LocalAppData, FolderName);
     public static string LegacyRoot => Path.Combine(LocalAppData, LegacyFolderName);
+    public static string EarliestRoot => Path.Combine(LocalAppData, EarliestFolderName);
     internal static string PackageRoot(string family) => Path.Combine(LocalAppData, "Packages", family, "LocalState");
     // Whether a folder is the real data, or inside it, under either name. Naming the real folder in NATIVEBEEPER_DATA_ROOT is still
     // the real data (review, 2026-10-08), and so is a junction or symbolic link to it, or to a folder above it, or a folder that is
     // the same directory by another route (review, 2026-10-09): Path.GetFullPath resolves none of those, so the paths are compared
     // as the file system names them (FinalPath). A path that cannot be resolved counts as the real data, since the answer
     // decides whether a server may read the owner's accounts.
-    public static bool IsRealData(string path) => IsRealData(path, [DefaultRoot, UnpackagedRoot, LegacyRoot]);
+    public static bool IsRealData(string path) => IsRealData(path, [DefaultRoot, UnpackagedRoot, LegacyRoot, EarliestRoot]);
 
     // The roots are a parameter so the harness can stand in for the real folder; nothing else calls this.
     internal static bool IsRealData(string path, IReadOnlyList<string> realRoots)
@@ -126,14 +129,14 @@ internal static class AppPaths
     private static string Tag(string tagged) =>
         "." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tagged)))[..12];
 
-    // The mutex the window holds for its whole run (Program.Main). MessagesServer.exe looks for it until the window takes the host lease itself
+    // The mutex the window holds for its whole run (Program.Main). MessageLinkServer.exe looks for it until the window takes the host lease itself
     // (SWITCHBOARD.md 3.2), so that a server never opens the stores and providers of a data root the window is using.
     public static string AppDataLockName => @"Local\NativeBeeper.Data" + InstanceSuffix;
     // The same lock of the copy started with folder as its NATIVEBEEPER_DATA_ROOT: how a sample's leftover folder is told from one a
     // sample still running holds (SampleMode).
     public static string DataLockNameFor(string folder) =>
         @"Local\NativeBeeper.Data" + Tag(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)).ToUpperInvariant());
-    // Held by a running MessagesServer.exe for this data root (ServerShell). The app looks for it before it believes a held host lease means a server.
+    // Held by a running MessageLinkServer.exe for this data root (ServerShell). The app looks for it before it believes a held host lease means a server.
     public static string ServerLockName => @"Local\Messages.Server" + InstanceSuffix;
 }
 
@@ -241,7 +244,7 @@ internal static class FinalPath
     private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, out ByHandleFileInformation information);
 }
 
-// The one-time rename of the data folder from %LOCALAPPDATA%\NativeBeeper to %LOCALAPPDATA%\Messages for Windows. Both are
+// The one-time rename of the data folder from its earlier name (AppPaths.LegacyFolderName) to %LOCALAPPDATA%\Message Link. Both are
 // in the same folder, so Directory.Move is a rename: nothing is copied, and it either happens whole or not at all. What the
 // folder holds survives the rename: every path is worked out from the root each run (the helpers' too, given it as
 // NATIVEBEEPER_DATA_ROOT), Windows' protection of the session files is bound to the user rather than to a path, and the

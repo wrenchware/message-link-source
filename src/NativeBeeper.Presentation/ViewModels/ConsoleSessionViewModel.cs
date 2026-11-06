@@ -1068,7 +1068,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
         if (typed == ".")
         {
             if (OpenTarget() is { } open) return open;
-            Say(ConsoleLineKind.Error, "No conversation is open in Messages.");
+            Say(ConsoleLineKind.Error, "No conversation is open in Message Link.");
             return null;
         }
         if (typed.Length is > 0 and <= 4 && typed.All(char.IsAsciiDigit))
@@ -1200,7 +1200,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
             foreach (var member in target.Members) mutedHere[member.Id] = muted;
             Rebuild();
         }
-        Say(ConsoleLineKind.Info, muted ? $"Muted {target.Title} in Messages. /filter muted shows its lines." : $"Unmuted {target.Title}.");
+        Say(ConsoleLineKind.Info, muted ? $"Muted {target.Title} in Message Link. /filter muted shows its lines." : $"Unmuted {target.Title}.");
     }
 
     private void Filter(IReadOnlyList<string> args)

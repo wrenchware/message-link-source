@@ -355,11 +355,11 @@ internal static class HuJson
             {
                 if (k + 2 >= tokens.Count || tokens[k + 2].Kind != '[') return null;
                 var at = tokens[k + 2].End;
-                return text[..at] + "\n\t\t// Added by Messages Server: your devices reach it.\n\t\t" + grant + "," + text[at..];
+                return text[..at] + "\n\t\t// Added by Message Link Server: your devices reach it.\n\t\t" + grant + "," + text[at..];
             }
         }
         var top = tokens[0].End;
-        return text[..top] + "\n\t// Added by Messages Server: your devices reach it.\n\t\"grants\": [" + grant + "]," + text[top..];
+        return text[..top] + "\n\t// Added by Message Link Server: your devices reach it.\n\t\"grants\": [" + grant + "]," + text[top..];
     }
 
     private static string? Key(string text, Token token)

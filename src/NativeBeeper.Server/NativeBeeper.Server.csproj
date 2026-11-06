@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- MessagesServer.exe (SWITCHBOARD.md stage 3): the process that hosts the backends when the window is not the one doing it. It draws
+  <!-- MessageLinkServer.exe (SWITCHBOARD.md stage 3): the process that hosts the backends when the window is not the one doing it. It draws
        nothing, so it is a WinExe, and it carries no WinUI and no Windows App SDK (a harness check fails if this project ever names them);
        what only Windows can do arrives through NativeBeeper.Windows. Everything a person can see of it says "Messages Server": the program,
        its window class, its mutex, its log. Code, namespaces and the project keep NativeBeeper. -->
@@ -10,11 +10,11 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <AssemblyName>MessagesServer</AssemblyName>
+    <AssemblyName>MessageLinkServer</AssemblyName>
     <RootNamespace>NativeBeeper.Server</RootNamespace>
-    <Product>Messages Server</Product>
-    <AssemblyTitle>Messages Server</AssemblyTitle>
-    <Description>Messages Server</Description>
+    <Product>Message Link Server</Product>
+    <AssemblyTitle>Message Link Server</AssemblyTitle>
+    <Description>Message Link Server</Description>
     <Company>wrenchware</Company>
     <!-- Compiled ahead of time on publish, for two reasons. The app's NativeBeeper.*.dll are, and the installer's build refuses two publishes
          that make a file of the same name with different contents. And the start then runs code instead of compiling it first (SWITCHBOARD.md

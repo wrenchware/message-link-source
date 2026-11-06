@@ -52,7 +52,7 @@ internal static class GooglePairingFailure
         // pass yet (mautrix/gmessages#91). Retrying cannot help, and nothing here is the user's doing. The library reports
         // these as an unknown error, which read as "did not finish connecting... try again" until 0.1.306.
         _ when code.StartsWith("pair_attestation_", StringComparison.Ordinal) =>
-            $"Google Messages on your phone now asks for a check Messages can't pass (code {code[(code.LastIndexOf('_') + 1)..]}), so a new pairing can't finish.",
+            $"Google Messages on your phone now asks for a check Message Link can't pass (code {code[(code.LastIndexOf('_') + 1)..]}), so a new pairing can't finish.",
         // The phone's own timeouts (codes 2, 3 and 6): the emoji step ran out or arrived late.
         _ when code.StartsWith("pair_refused_", StringComparison.Ordinal) =>
             $"Your phone didn't finish pairing in time (code {code["pair_refused_".Length..].Replace('_', '/')}). Keep Google Messages open on your phone, tap the emoji when it asks, and try again.",

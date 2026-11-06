@@ -1,7 +1,7 @@
 namespace NativeBeeper.Server;
 
 /// <summary>
-/// What MessagesServer.exe was started with. <c>--restore</c> is what lets the providers connect: without it the server holds its lease and its
+/// What MessageLinkServer.exe was started with. <c>--restore</c> is what lets the providers connect: without it the server holds its lease and its
 /// window and serves nothing from any account, so it can be run on any data root, real or scratch, with no network effect (SWITCHBOARD.md 3.1).
 /// </summary>
 /// <param name="Quit">Ask the server of this data root to quit, and wait for it.</param>
