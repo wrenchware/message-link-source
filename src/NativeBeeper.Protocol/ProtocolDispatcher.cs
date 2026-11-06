@@ -190,7 +190,8 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
                 // The backup signal (protocol 26) likewise: an older client was never told the word.
                 if (item.History is not null && negotiated < ProtocolVersion.WholeHistory || item.Row is not null && negotiated < ProtocolVersion.Feed
                     || item.Signal is { Name: AccountSignals.Backup } && negotiated < ProtocolVersion.ServerBackup
-                    || item.Signal is { Name: AccountSignals.Push } && negotiated < ProtocolVersion.PushTest)
+                    || item.Signal is { Name: AccountSignals.Push } && negotiated < ProtocolVersion.PushTest
+                    || item.Signal is { Name: AccountSignals.PhoneContacts } && negotiated < ProtocolVersion.PhoneContacts)
                 {
                     sent.Advance(item.Seq);
                     continue;
@@ -592,7 +593,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         return value;
     }
 
-    private static readonly Dictionary<string, Route> Routes = AddBackupRoutes(AddPushRoutes(AddAdminRoutes(AddHostLogsRoutes(AddAccountMoveRoutes(AddStateImportRoutes(AddScheduledRoutes(AddSharedStateRoutes(AddDeviceRoutes(AddShutdownRoutes(AddClientStateRoutes(AddIncomingRoutes(AddDiagnosticsRoutes(AddReadingRoutes(AddAccountRoutes(new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Route> Routes = AddPhoneContactsRoutes(AddBackupRoutes(AddPushRoutes(AddAdminRoutes(AddHostLogsRoutes(AddAccountMoveRoutes(AddStateImportRoutes(AddScheduledRoutes(AddSharedStateRoutes(AddDeviceRoutes(AddShutdownRoutes(AddClientStateRoutes(AddIncomingRoutes(AddDiagnosticsRoutes(AddReadingRoutes(AddAccountRoutes(new(StringComparer.Ordinal)
     {
         [ProtocolMethods.BackendDiscover] = OfHost<IBeeperBackend, BackendInfo>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.DiscoverAsync(ct).ConfigureAwait(false); }),
         [ProtocolMethods.AccountsList] = OfHost<IBeeperBackend, IReadOnlyList<ChatAccount>>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.GetAccountsAsync(ct).ConfigureAwait(false); }),
@@ -684,5 +685,5 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         // The connection's own event feed (EventLog): the answer, then event frames until it is ended.
         [ProtocolMethods.EventsSubscribe] = new(typeof(EventsSubscribeParams), typeof(EventsSubscribed), null, Own: (connection, request, after, ct) => connection.SubscribeAsync(request, after, ct)),
         [ProtocolMethods.EventsUnsubscribe] = new(null, typeof(Done), null, Own: (connection, _, _, ct) => connection.UnsubscribeAsync(ct)),
-    })))))))))))))));
+    }))))))))))))))));
 }

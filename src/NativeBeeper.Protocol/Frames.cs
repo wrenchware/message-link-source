@@ -139,6 +139,9 @@ public static class AccountSignals
     /// <summary>The server's pushes were turned on, or their files replaced (protocol 27): an open phone asks for <c>push.offer</c> again and signs up, rather than
     /// waiting for its next connection. Never sent to a connection below 27.</summary>
     public const string Push = "push";
+    /// <summary>Contacts saved through the phone changed (protocol 29): a phone turned the setting on or off, a request was submitted (an open phone with the setting on
+    /// takes it) or answered (a PC reads its results). Never sent to a connection below 29.</summary>
+    public const string PhoneContacts = "phoneContacts";
 }
 
 /// <summary>A progress report from a running mutation: <paramref name="Text"/> is for the caller to show and is never logged.</summary>

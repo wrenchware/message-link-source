@@ -37,6 +37,9 @@ internal sealed class DevicePresence
     /// <summary>Whether any connection of <paramref name="deviceId"/> is open and in front.</summary>
     public bool InFront(string deviceId) => connections.Values.Any(c => c.Device == deviceId && c.Present);
 
+    /// <summary>Whether any connection of <paramref name="deviceId"/> is open, in front or not.</summary>
+    public bool Connected(string deviceId) => connections.Values.Any(c => c.Device == deviceId);
+
     /// <summary>
     /// Whether someone is at another device than <paramref name="deviceId"/> where Messages shows them a new message itself (client.state's active, which only a
     /// PC states): a phone's notification then arrives without a sound, as decided 2026-10-16.

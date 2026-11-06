@@ -122,6 +122,9 @@ public sealed class HostStateCache
     /// <summary>The server's own backup changed how it stands (protocol 26): a listener reads <c>server.backup.status</c> again. Raised on the thread that delivered it.</summary>
     public event EventHandler? BackupChanged;
 
+    /// <summary>Contacts saved through the phone changed (protocol 29): a phone turned the setting on or off, or a request was submitted or answered. Raised on the thread that delivered it.</summary>
+    public event EventHandler? PhoneContactsChanged;
+
     /// <summary>Raises the event an account signal names (SWITCHBOARD.md 2.6c). A name this build does not know says nothing it can act on and is ignored.</summary>
     public void Signal(AccountSignal signal)
     {
@@ -133,6 +136,7 @@ public sealed class HostStateCache
                 case AccountSignals.DefaultSmsApp: DefaultSmsAppChanged?.Invoke(this, EventArgs.Empty); break;
                 case AccountSignals.ReconnectAbandoned: ReconnectAbandoned?.Invoke(this, EventArgs.Empty); break;
                 case AccountSignals.Backup: BackupChanged?.Invoke(this, EventArgs.Empty); break;
+                case AccountSignals.PhoneContacts: PhoneContactsChanged?.Invoke(this, EventArgs.Empty); break;
                 // A renumbering with no value is not a statement either way.
                 case AccountSignals.Renumbered when signal.Value is { } value: RenumberedChanged?.Invoke(this, value); break;
             }

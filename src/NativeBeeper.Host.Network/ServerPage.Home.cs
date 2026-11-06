@@ -332,7 +332,9 @@ internal sealed partial class ServerPage
         if (list.Count == 0) body.Append(Row("No device is paired yet.", null, null, Act("")));
         foreach (var device in list)
         {
-            body.Append(LineOf(device.Id)).Append(Opens(device.Id, device.Name, null, device.LastSeen is { } seen ? Ago(seen) : "Never connected", "Manage " + device.Name, open));
+            // A phone that saves contacts from PCs says so under its name (protocol 29).
+            var under = pushes?.Contacts?.SavesContacts(device.Id) == true ? "Saves contacts from your PC" : null;
+            body.Append(LineOf(device.Id)).Append(Opens(device.Id, device.Name, under, device.LastSeen is { } seen ? Ago(seen) : "Never connected", "Manage " + device.Name, open));
             if (open == device.Id)
                 body.Append("<div class=\"more flat\"><a class=\"button quiet\" href=\"/devices/rename?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Rename " + device.Name)).Append("\">Rename…</a>")
                     .Append("<a class=\"button quiet\" href=\"/devices/remove?id=").Append(Uri.EscapeDataString(device.Id)).Append("\" aria-label=\"").Append(Html("Remove " + device.Name)).Append("\">Remove…</a></div>");

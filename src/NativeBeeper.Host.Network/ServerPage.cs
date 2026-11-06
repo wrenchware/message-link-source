@@ -53,7 +53,7 @@ internal sealed partial class ServerPage
     public const int MaxUpload = 2 * PushSwitch.MaxFile + 4096;
 
     /// <summary>The server's pushes as the page shows and sets them up: the switch they go through, which devices have signed up for them, and how they are doing.</summary>
-    internal sealed record Pushes(PushSwitch Switch, PushRegistry Registry, PushHealth Health);
+    internal sealed record Pushes(PushSwitch Switch, PushRegistry Registry, PushHealth Health, PhoneContactsQueue? Contacts = null);
 
     /// <summary>The most of the server's log the page shows: its end.</summary>
     public const int LogTail = 64 * 1024;

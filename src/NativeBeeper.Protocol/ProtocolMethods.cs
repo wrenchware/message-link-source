@@ -166,6 +166,7 @@ public static partial class ProtocolMethods
         .. HostLogsEntries(),
         .. AdminEntries(),
         .. PushEntries(),
+        .. PhoneContactsEntries(),
         .. BackupEntries(),
         .. WholeHistoryEntries(),
     ];

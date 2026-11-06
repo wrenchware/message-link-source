@@ -127,6 +127,9 @@ internal sealed class NetworkHost : IAsyncDisposable
     /// <summary>Each device's push address and reports of a missing app, for the harness; null on a host started without them.</summary>
     internal PushRegistry? PushRegistrations { get; private set; }
 
+    /// <summary>Contacts saved through the phone (protocol 29), for the harness; null on a host started without them.</summary>
+    internal PhoneContactsQueue? PhoneContacts { get; private set; }
+
     /// <summary>Raised with a device's id once it has been removed.</summary>
     internal event Action<string>? DeviceRevoked { add => devices.Revoked += value; remove => devices.Revoked -= value; }
 
@@ -240,12 +243,18 @@ internal sealed class NetworkHost : IAsyncDisposable
         // How they are doing, for the page's card and push.status (10.9).
         var health = new PushHealth(options.Time, options.Log);
         var presence = new DevicePresence();
+        // Contacts saved through the phone (protocol 29): the phone that saves them is woken with its own push, kind contacts, and every open device hears the signal.
+        var contacts = await PhoneContactsQueue.LoadAsync(options.DataFolder, options.Protector, devices.Has,
+            id => devices.List(null).FirstOrDefault(device => device.Id == id)?.Name, presence.Connected, presence.InFront,
+            (id, urgent) => WakeForContactsAsync(pushSwitch, pushes, health, id, urgent, options.Log),
+            () => services.Events?.AppendSignal(new AccountSignal(AccountSignals.PhoneContacts)), options.Time, options.Log).ConfigureAwait(false);
         var host = await StartAsync(admitted =>
         {
             var dispatcher = new ProtocolDispatcher(admitted.Channel, services with
             {
                 Devices = admitted.Devices,
                 Push = new DevicePush(() => pushSwitch.Current, pushes, admitted.DeviceId, health, () => devices.List(null), options.Time),
+                PhoneContacts = new DevicePhoneContacts(contacts, admitted.DeviceId),
                 ClientState = presence.For(admitted.DeviceId, services.ClientState),
             }, version, served, options.Log, journal);
             admitted.BeginDraining = dispatcher.BeginDraining;
@@ -254,12 +263,14 @@ internal sealed class NetworkHost : IAsyncDisposable
             var run = dispatcher.Start();
             _ = run.ContinueWith(_ => presence.Closed(dispatcher), TaskScheduler.Default);
             return run;
-        }, version, options, cancellationToken, served.Flush, services.Admin, services.Logs, devices, new ServerPage.Pushes(pushSwitch, pushes, health), services.WholeHistory).ConfigureAwait(false);
+        }, version, options, cancellationToken, served.Flush, services.Admin, services.Logs, devices, new ServerPage.Pushes(pushSwitch, pushes, health, contacts), services.WholeHistory).ConfigureAwait(false);
         host.DeviceRevoked += device =>
         {
             _ = pushes.RemoveAsync(device, "device_removed");
             health.Forget(device);
+            _ = contacts.ForgetAsync(device);
         };
+        host.PhoneContacts = contacts;
         host.Pushes = pushSwitch;
         host.PushHealth = health;
         host.PushRegistrations = pushes;
@@ -298,6 +309,27 @@ internal sealed class NetworkHost : IAsyncDisposable
             if (pushSwitch.Current is not null) Start();
         }
         return host;
+    }
+
+    // A phone that saves contacts woken to take what waits (protocol 29): kind contacts, which names nothing, sealed to its key like every push. A phone built before it
+    // opens it and does nothing. Whether one went; a phone Google says is gone is forgotten, as the notifier does.
+    private static async Task<bool> WakeForContactsAsync(PushSwitch transport, PushRegistry registry, PushHealth health, string deviceId, bool urgent, Action<string> log)
+    {
+        try
+        {
+            if (transport.Current is null || registry.Get(deviceId) is not { } device || !registry.Paired(deviceId)) return false;
+            if (PushNotifier.Seal(new PushMessage(1, "contacts", ""), device.PublicKey, device.Auth) is not { } sealedPush) return false;
+            var result = await transport.SendWithStatusAsync(device.Token, Convert.ToBase64String(sealedPush), urgent, sync: false).ConfigureAwait(false);
+            health.Report(deviceId, result);
+            if (result.Outcome == PushOutcome.Gone) await registry.RemoveAsync(deviceId, "token_gone", device.Token).ConfigureAwait(false);
+            log($"push sent kind=contacts outcome={result.Outcome.ToString().ToLowerInvariant()}{(urgent ? " urgent=yes" : "")}");
+            return result.Outcome == PushOutcome.Sent;
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            log($"push send failed kind=contacts type={failure.GetType().Name}");
+            return false;
+        }
     }
 
     /// <summary>

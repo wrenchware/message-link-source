@@ -73,7 +73,7 @@ public sealed record ProtocolServices(
     Action<string, string?>? AccountEnded = null, IScheduledCommands? Scheduled = null, IStateImport? Imports = null, IRemoteSignInHost? RemoteSignIn = null,
     IRemoteSignInHost? VoiceRemoteSignIn = null, IAccountMove? AccountMove = null, IHostLogs? Logs = null, IServerAdmin? Admin = null,
     IPushService? Push = null, ConversationSync? ConversationSync = null, IWholeHistory? WholeHistory = null, IServerBackup? Backup = null,
-    IRemoteCookieSignInHost? MetaRemoteSignIn = null)
+    IRemoteCookieSignInHost? MetaRemoteSignIn = null, IPhoneContacts? PhoneContacts = null)
 {
     /// <summary>
     /// The host's sign-ins in its own browser, one at a time across every face that drives them (SWITCHBOARD.md 10.6). Made with the services, so every connection's copy of them (<c>with</c>) and

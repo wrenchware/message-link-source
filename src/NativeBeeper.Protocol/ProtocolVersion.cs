@@ -113,10 +113,16 @@ namespace NativeBeeper.Protocol;
 /// <para>28 (SWITCHBOARD.md stage 11) adds <c>accounts.move.authorize</c>: the server's password, which lets this device move accounts for the next hour. Not additive for a move: a client
 /// below 28 has no way to give it, so its move is refused in words, and it updates. Everything else that managed a server left the door at this version too, for every client: the
 /// page does it.</para>
+/// <para>29 (owner, 2026-11-05) adds contacts saved through the phone: <c>phonebook.*</c> (<see cref="ProtocolMethods.PhoneContactsOffer"/> and six more) and the
+/// <c>phoneContacts</c> account signal (<see cref="AccountSignals.PhoneContacts"/>). A PC hands the server a new contact, a number for an existing one or a contact's photo,
+/// and a phone with the setting on writes it into its Google account. Additive: a client below 29 never calls them and is never sent the signal (its place in the sequence
+/// counts as sent), and a host answers them as not supported to a connection that negotiated less, which a PC of 29 reads as "no phone saves contacts".</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 28;
+    public const int Current = 29;
+    /// <summary>The first version with contacts saved through the phone (<see cref="ProtocolMethods.PhoneContactsOffer"/> and the <c>phoneContacts</c> signal).</summary>
+    public const int PhoneContacts = 29;
     /// <summary>The first version with the password a move asks for (<see cref="ProtocolMethods.AccountMoveAuthorize"/>).</summary>
     public const int MovePassword = 28;
     /// <summary>The first version with the join link (<see cref="ProtocolMethods.DevicesJoinLink"/>).</summary>
