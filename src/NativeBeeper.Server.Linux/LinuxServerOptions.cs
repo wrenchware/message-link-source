@@ -72,7 +72,7 @@ internal sealed record LinuxServerOptions(string DataRoot, bool Restore, int Por
     /// <summary>Where backups go: the folder named, or <see cref="DefaultBackups"/> when it exists; null for none (backups off).</summary>
     public string? Backups(Func<string, bool> exists) => BackupsGiven ?? (exists(DefaultBackups) ? DefaultBackups : null);
 
-    public const string DefaultTailnetName = "messages-server";
+    public const string DefaultTailnetName = "messagelink-server";
 
     public string TailnetName => TailnetNameGiven ?? DefaultTailnetName;
 

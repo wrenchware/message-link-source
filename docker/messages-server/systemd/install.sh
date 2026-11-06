@@ -204,7 +204,7 @@ if ! grep -q 'MESSAGES_TAILNET' "$settings/environment"; then
 # (README.md, "Your tailnet"). The server's page then walks you through signing it in.
 #MESSAGES_TAILNET=1
 # Its name there: lowercase letters, digits and dashes.
-#MESSAGES_TAILNET_NAME=messages-server
+#MESSAGES_TAILNET_NAME=messagelink-server
 # For a machine with no browser at hand: a Tailscale auth key (tskey-auth-...) signs the server in by itself the first
 # time. It is handed to the tailnet door alone. A tagged key makes a tagged machine, and the server then cannot tell
 # its owner: it lets in every device your access rules let through, not only your own.

@@ -83,7 +83,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
             var door = relay is null ? null
                 : TailnetDoor.Start(Path.Combine(AppContext.BaseDirectory, TailnetDoor.Executable), Path.Combine(keys.Folder, TailnetDoor.StateFolder), relay,
                     options.TailnetName, options.Port, log, Show, board: tailnet,
-                    authKey: (environment ?? Environment.GetEnvironmentVariable)(TailnetAuthKeyVariable));
+                    authKey: (environment ?? Environment.GetEnvironmentVariable)(TailnetAuthKeyVariable), defaultName: options.TailnetNameGiven is null);
             try { await Task.Delay(Timeout.Infinite, stop).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             await network.StopAsync(ShutdownBudget.Normal.Sends).ConfigureAwait(false);

@@ -34,7 +34,8 @@ internal sealed record ServerNetworkSettings(int Port, bool Tailnet, string Tail
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or JsonException) { }
         var port = stored?.Port is >= 0 and <= 65535 ? stored.Port.Value : isolated ? 0 : NativeBeeper.Protocol.NetworkEndpoint.DefaultPort;
-        return new(port, stored?.Tailnet == true, stored?.TailnetName is { } name && TailnetNames.IsLabel(name) ? name : TailnetNames.ForMachine(machine));
+        var oldNode = File.Exists(Path.Combine(root, "Server", "Keys", TailnetDoor.StateFolder, "tailscaled.state.sealed"));
+        return new(port, stored?.Tailnet == true, stored?.TailnetName is { } name && TailnetNames.IsLabel(name) ? name : TailnetNames.ForMachine(machine, oldNode));
     }
 
     /// <summary>Keeps <paramref name="settings"/> for the next start, written whole. A development copy's port 0 is kept as 0 (any free port).</summary>
@@ -55,7 +56,7 @@ internal static class TailnetNames
         name.Length is > 0 and <= 63 && name.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-') && name[0] != '-' && name[^1] != '-';
 
     /// <summary><c>messages-</c> and the machine's name as a label (<c>messages-server</c> when nothing of it is left).</summary>
-    public static string ForMachine(string machine)
+    public static string ForMachine(string machine, bool legacy = false)
     {
         var label = new StringBuilder();
         foreach (var c in machine.ToLowerInvariant())
@@ -63,9 +64,10 @@ internal static class TailnetNames
             if (c is (>= 'a' and <= 'z') or (>= '0' and <= '9')) label.Append(c);
             else if (label.Length > 0 && label[^1] != '-') label.Append('-');
         }
-        var name = ("messages-" + label.ToString().Trim('-')).TrimEnd('-');
+        var prefix = legacy ? "messages" : "messagelink";
+        var name = (prefix + "-" + label.ToString().Trim('-')).TrimEnd('-');
         if (name.Length > 63) name = name[..63].TrimEnd('-');
-        return name == "messages" ? "messages-server" : name;
+        return name == prefix ? prefix + "-server" : name;
     }
 }
 

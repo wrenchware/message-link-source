@@ -16,7 +16,7 @@ internal static class ServerCertificate
     public const string FolderName = "tls";
     public const string CertificateFile = "server.crt";
     public const string KeyFile = "server.key";
-    public const string Subject = "CN=Messages Server";
+    public const string Subject = "CN=Message Link Server";
 
     private const UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private const UnixFileMode PrivateFolder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;

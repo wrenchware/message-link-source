@@ -269,7 +269,7 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/details" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
         or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
@@ -316,7 +316,7 @@ internal sealed partial class ServerPage
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/log" or LogTailPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -408,6 +408,9 @@ internal sealed partial class ServerPage
                 if (!await PasswordAgainAsync(context, form!, "pair", "Add a PC", problem => AskBody("/pair", token, PairAsk, "Show the line", problem)).ConfigureAwait(false)) return;
                 var code = pairing.Issue();
                 await PageAsync(context, StatusCodes.Status200OK, "Add a PC", PairBody(request, code)).ConfigureAwait(false);
+                return;
+            case "/devices/details":
+                await DeviceDetailsAsync(context, request.Query["id"].ToString()).ConfigureAwait(false);
                 return;
             case "/devices/remove":
                 await RemoveDeviceAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);

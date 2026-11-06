@@ -350,6 +350,8 @@ Message Link never sends anything twice behind your back.
 
 ### Saving {#saving-attachments}
 
+On Android, saved photos and videos go into the **Message Link** album in Pictures or Movies. Existing saved files stay where they are.
+
 **Save attachment** in a message's menu saves a photo or file; **Save photo** / **Save N photos** on the hover toolbar saves a set into a folder you choose and says how many were saved.
 
 Saved files are marked as coming from the internet, as a browser marks a download, so Windows checks them before they open. A photo in a set always saves as a picture, whatever its name says.
@@ -779,6 +781,8 @@ Signing out deletes that service's saved sign-in on this PC; scheduled messages 
 
 ### Using a Message Link Server {#messages-server}
 
+New Tailscale devices use names beginning with **messagelink-**. Devices set up before the rename keep their existing names and addresses.
+
 **Settings → Connections → Message Link Server**
 
 A Message Link Server is a small program you run at home so Message Link stays connected all day. Before a server is set up, the screen asks for its address; once there is one, it shows the address and the way to the server's page.
@@ -794,7 +798,7 @@ Moving, either way, asks first, then closes Message Link the way **Quit** in the
 
 **Manage the server** on Connections › Server opens the server's page in your browser, which warns about the page's certificate the first time because the server makes its own. The list down the side of that page goes to each of its pages; **Log** there shows the server's log as it is written: scroll up to read and it pauses, and **Jump to newest** picks it up again. While Message Link runs on a server, a notice says when a device asks to join. The same screen changes the server's address at any time and, for a PC removed from the server, takes a new pairing code from the page and joins again.
 
-The server also has a page of its own, for a browser on your home network: open `https://` and the server's address with port 8787. Its first visit asks for the setup code the server printed when it started, then sets the page's password, and walks through Tailscale, your accounts, a phone, notifications, a PC and backups (each can be skipped; a checklist on the page keeps what is left). It shows the devices waiting to join (approving one asks for the password again and gives you a finish code for that device's person to type there), the server's version and its address and fingerprint, its accounts and devices, what the server keeps on disk (**Storage**), removes an account or a device (each asks for the password again), renames a device, and has **Add a device**, for a phone or a PC. Its **Tailscale** card signs the server in to your Tailscale network, ticks off each setting it needs, and can do them for you with **Fix it for me**. Turning off **Requests to join** on that page stops requests to join, including those already waiting, until you turn it on again. The pause survives a server restart; paired devices and pairing codes still work. A device denied or abandoned must wait five minutes before asking again.
+The server also has a page of its own, for a browser on your home network: open `https://` and the server's address with port 8787. Its first visit asks for the setup code the server printed when it started, then sets the page's password, and walks through Tailscale, your accounts, a phone, notifications, a PC and backups (each can be skipped; a checklist on the page keeps what is left). It shows the devices waiting to join (approving one asks for the password again and gives you a finish code for that device's person to type there), the server's version and its address and fingerprint, its accounts and devices (each device with what it runs, and under **Details** its version, model and the address it last connected from), what the server keeps on disk (**Storage**), removes an account or a device (each asks for the password again), renames a device, and has **Add a device**, for a phone or a PC. Its **Tailscale** card signs the server in to your Tailscale network, ticks off each setting it needs, and can do them for you with **Fix it for me**. Turning off **Requests to join** on that page stops requests to join, including those already waiting, until you turn it on again. The pause survives a server restart; paired devices and pairing codes still work. A device denied or abandoned must wait five minutes before asking again.
 
 Removing an account takes it off the server: the server signs out of it and forgets what it kept, so every device that uses the server stops showing it until you connect it again. Nothing changes at the service itself or on your phone, and your saved messages stay. For Messenger, the server would join as a new device if you signed in there again. Google Messages is removed by unpairing the server on your phone (Google Messages → Device pairing). An account in an unfinished move can't be removed. Once **Move back to this PC…** finishes, **Remove** forgets the server's paused copy; the account and its saved messages on the PC stay as they are.
 

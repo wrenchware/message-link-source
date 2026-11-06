@@ -27,8 +27,8 @@ internal sealed class DeviceRegistry
     /// <summary>The most devices a host keeps; a pairing past it is refused.</summary>
     public const int MaxDevices = 32;
 
-    private sealed record Device(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen, byte[] Hash);
-    private sealed record StoredDevice(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen, string Hash);
+    private sealed record Device(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen, byte[] Hash, DeviceSystem? System = null);
+    private sealed record StoredDevice(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen, string Hash, DeviceSystem? System = null);
     // The list as written since generations: a list from before them was a bare array, read as generation 0.
     private sealed record StoredList(long Generation, List<StoredDevice> Devices);
 
@@ -112,7 +112,7 @@ internal sealed class DeviceRegistry
                 {
                     var hash = Convert.FromBase64String(device.Hash);
                     if (string.IsNullOrEmpty(device.Id) || hash.Length != 32) throw new InvalidDataException();
-                    devices.Add(new Device(device.Id, device.Name ?? "", device.Created, device.LastSeen, hash));
+                    devices.Add(new Device(device.Id, device.Name ?? "", device.Created, device.LastSeen, hash, device.System));
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -295,6 +295,31 @@ internal sealed class DeviceRegistry
         return clean;
     }
 
+    /// <summary>What the device said it runs, and where it last connected from; null until it has connected since this was kept.</summary>
+    public DeviceSystem? SystemOf(string id)
+    {
+        lock (gate) return devices.FirstOrDefault(device => device.Id == id)?.System;
+    }
+
+    /// <summary>Notes what the device runs and where it connected from, as its hello said; written in the background, and only when something changed.</summary>
+    public void Describe(string id, DeviceSystem system)
+    {
+        system = system.Cleaned();
+        lock (gate)
+        {
+            var index = devices.FindIndex(device => device.Id == id);
+            if (index < 0 || devices[index].System == system) return;
+            var updated = devices.ToList();
+            updated[index] = updated[index] with { System = system };
+            devices = updated;
+        }
+        _ = Task.Run(async () =>
+        {
+            try { await SaveAsync().ConfigureAwait(false); }
+            catch (Exception ex) { log($"server devices save failed type={ex.GetType().Name}"); }
+        });
+    }
+
     /// <summary>Notes that the device connected; written at most once a minute per device, in the background.</summary>
     public void Seen(string id)
     {
@@ -321,7 +346,7 @@ internal sealed class DeviceRegistry
         try
         {
             List<StoredDevice> snapshot;
-            lock (gate) snapshot = [.. devices.Select(device => new StoredDevice(device.Id, device.Name, device.Created, device.LastSeen, Convert.ToBase64String(device.Hash)))];
+            lock (gate) snapshot = [.. devices.Select(device => new StoredDevice(device.Id, device.Name, device.Created, device.LastSeen, Convert.ToBase64String(device.Hash), device.System))];
             var next = Generation + 1;
             var sealedBytes = await protector.ProtectAsync(JsonSerializer.SerializeToUtf8Bytes(new StoredList(next, snapshot), Json)).ConfigureAwait(false);
             // The list first, then its number: a stop between them leaves a list ahead of the number, which a start takes; never the other way round.
@@ -356,5 +381,27 @@ internal sealed class DeviceRegistry
         if (clean.Length > NetworkPairing.MaxDeviceName) clean = clean[..NetworkPairing.MaxDeviceName].TrimEnd();
         if (char.IsHighSurrogate(clean.LastOrDefault())) clean = clean[..^1];
         return clean.Length == 0 ? "Device" : clean;
+    }
+}
+
+/// <summary>
+/// What a paired device runs, as its hello said (<see cref="HelloFrame.Os"/>), and the address it last connected from, for the server page only. Words the
+/// device chose, so each is cleaned as a name is and the page shows them as text.
+/// </summary>
+internal sealed record DeviceSystem(string? Client, string? App, string? Os, string? OsVersion, string? Model, string? Address, bool ViaTailnet)
+{
+    private const int Longest = 64;
+
+    public DeviceSystem Cleaned() => this with
+    {
+        Client = Clean(Client), App = Clean(App), Os = Clean(Os), OsVersion = Clean(OsVersion), Model = Clean(Model), Address = Clean(Address),
+    };
+
+    private static string? Clean(string? value)
+    {
+        var clean = new string([.. (value ?? "").Where(c => !char.IsControl(c) && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.Format)]).Trim();
+        if (clean.Length > Longest) clean = clean[..Longest].TrimEnd();
+        if (char.IsHighSurrogate(clean.LastOrDefault())) clean = clean[..^1];
+        return clean.Length == 0 ? null : clean;
     }
 }

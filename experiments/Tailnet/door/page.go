@@ -36,9 +36,9 @@ type pageView struct {
 	// What the tailnet's access rules let reach the door's port: "yours" (only the owner's own devices), "open" (others too: Everyone
 	// when a rule lets every device in (a wildcard or a range, Tailscale's default policy), otherwise Others devices that are not the owner's),
 	// "none" (no device at all), or "unknown".
-	Rules  string `json:"rules,omitempty"`
-	Others   int  `json:"others,omitempty"`
-	Everyone bool `json:"everyone,omitempty"`
+	Rules    string `json:"rules,omitempty"`
+	Others   int    `json:"others,omitempty"`
+	Everyone bool   `json:"everyone,omitempty"`
 	// Whether Tailscale signed this node out after it had been signed in (its key expired, or it was logged out), so the page says "Sign in again".
 	SignedOut bool `json:"signedOut,omitempty"`
 	// The owner's Messages phones on the tailnet (nodes named messages-…, other than a server), each with its key expiry, for the page's checklist.
@@ -130,7 +130,7 @@ func firstV4(ips []netip.Addr) string {
 
 // phonePrefix is how a Messages phone names its node on the tailnet (the app's Tailscale node, 7.4); a server is messages-server, or another name the
 // owner gave it, and is never listed as a phone.
-const phonePrefix = "messages-"
+const phonePrefix = "messagelink-"
 
 // phones lists the owner's Messages phones among the peers, by name, and counts the people whose devices the tailnet holds.
 func phones(status *ipnstate.Status) ([]phoneView, int) {
@@ -152,7 +152,7 @@ func phones(status *ipnstate.Status) ([]phoneView, int) {
 		if name == "" {
 			name = strings.ToLower(peer.HostName)
 		}
-		if tagged || peer.UserID != self.UserID || !strings.HasPrefix(name, phonePrefix) || strings.HasPrefix(name, "messages-server") {
+		if tagged || peer.UserID != self.UserID || !(strings.HasPrefix(name, phonePrefix) || strings.HasPrefix(name, "messages-")) || strings.HasPrefix(name, "messages-server") || strings.HasPrefix(name, "messagelink-server") {
 			continue
 		}
 		phone := phoneView{Name: name, Address: firstV4(peer.TailscaleIPs), Expiry: "off"}

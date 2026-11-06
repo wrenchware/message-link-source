@@ -42,6 +42,23 @@ internal sealed partial class ServerPage
         // Where the page is the switch (the Windows server), turning it off is offered under the card once it is on.
         if (board.Enabled && board.Turn is not null)
             body.Append("<p class=\"quiet\">").Append(Html("Tailscale runs inside Message Link Server on this PC.")).Append("</p>").Append(TailnetTurnForm(token, on: false));
+        // What Tailscale is and what it can see, on a screen of its own: this page reloads while it waits, which would fold a <details> shut mid-read.
+        body.Append("<section><div class=\"box\">").Append(Go("How remote access works", "What Tailscale is, and who can reach the server.", null, "/manage/tailscale/about", "How remote access works")).Append("</div></section>");
+    }
+
+    // For someone who has never heard of Tailscale: what it is, what it can and can't see, and who gets in. Plain facts; the setup steps are the card's.
+    private static void TailnetAbout(StringBuilder body)
+    {
+        body.Append("<section>")
+            .Append(Para("Remote access lets Message Link on your phone reach this server when you're away from home, without opening your home network to the internet."))
+            .Append(Para("It uses Tailscale, a service that joins your own devices into a private network called a tailnet. The server and your phones each sign in with your Tailscale account, "
+                + "and from then on they reach each other wherever they are, as if they were on the same home network."))
+            .Append(Para("Everything they send each other is encrypted with WireGuard, using keys that never leave your devices. Tailscale's servers only help your devices find each other. "
+                + "When two of them can't connect directly, Tailscale passes the encrypted traffic along without being able to read it."))
+            .Append(Para("Only devices signed in with your Tailscale account can reach the server, and each one still has to be added to the server before it can see your conversations."))
+            .Append(Para("Tailscale is built into Message Link Server and the phone app, so there's nothing else to install. It's free for personal use."))
+            .Append("<p>").Append(Link("https://tailscale.com/kb/1151/what-is-tailscale", "Learn more")).Append("</p>")
+            .Append("<p><a href=\"/manage/tailscale\">Back to Remote access</a></p></section>");
     }
 
     private static string TailnetTurnForm(string token, bool on) =>
@@ -96,8 +113,9 @@ internal sealed partial class ServerPage
             return;
         }
         var name = view.Name is { Length: > 0 } n ? n : "messages-server";
-        body.Append("<div class=\"sh\"><h2>This server</h2></div><div class=\"box\">").Append(CopyRow("Name", board.Port == NetworkEndpoint.DefaultPort ? name : $"{name}:{board.Port}"));
-        if (view.Address is { Length: > 0 } address) body.Append(CopyRow("Address", address));
+        body.Append("<div class=\"sh\"><h2>This server</h2></div><div class=\"box\">").Append(CopyRow("Tailscale name", board.Port == NetworkEndpoint.DefaultPort ? name : $"{name}:{board.Port}"));
+        // Labelled as Tailscale's console labels it, so a 100.x address isn't taken for one on the home network.
+        if (view.Address is { Length: > 0 } address) body.Append(CopyRow("Tailscale IP", address));
         // Signing in as someone else sits in the account's own line.
         body.Append(Row("Tailscale account", !view.Tagged && view.Owner is { Length: > 0 } owner ? owner : null, null,
             "<a class=\"button quiet\" href=\"/tailnet/signout\" aria-label=\"Use another Tailscale account\">Change…</a>"));
@@ -287,7 +305,7 @@ internal sealed partial class ServerPage
                 }
                 else if (report.Problem is null) page.Append(Para("There was nothing to change."));
                 page.Append(Para("Tailscale's own settings take a minute to reach the server; the checklist then ticks by itself."))
-                    .Append("<p><a href=\"/manage/tailscale\">Back to Tailscale</a></p></section>");
+                    .Append("<p><a href=\"/manage/tailscale\">Back to Remote access</a></p></section>");
                 await PageAsync(context, StatusCodes.Status200OK, "Fix it for me", page.ToString()).ConfigureAwait(false);
                 return;
             }

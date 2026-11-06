@@ -397,6 +397,9 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
     /// </summary>
     public int HighestProtocol { get; init; } = ProtocolVersion.Current;
 
+    /// <summary>Told each accepted hello: the network host notes what the device runs, for its page.</summary>
+    public Action<HelloFrame>? Greeted { get; init; }
+
     private async Task GreetAsync(HelloFrame hello)
     {
         if (ProtocolVersion.Negotiate(hello.Protocol, hello.MinProtocol, HighestProtocol) is not { } version)
@@ -412,6 +415,8 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         services.Connections?.Opened(this, version);
         // The peer's version word is logged only when it looks like one.
         log?.Invoke($"protocol hello version={version} app={(VersionWord().IsMatch(hello.App) ? hello.App : "other")}");
+        try { Greeted?.Invoke(hello); }
+        catch (Exception ex) { log?.Invoke($"protocol hello note failed type={ex.GetType().Name}"); }
         await SendAsync(new HelloFrame(version, appVersion, Server: HelloFrame.ServerName)).ConfigureAwait(false);
     }
 

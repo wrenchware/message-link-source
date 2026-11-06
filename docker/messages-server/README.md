@@ -140,7 +140,7 @@ first start (`server key moved`, `server tls moved`, `server helper store moved`
 
 The owner's Message Link keeps copies of the server's logs (`server.log` and the run before it, Google Messages and its
 sign-in history, Google Voice, Instagram, and the Messenger helper's log from the keys volume), refreshed about once a
-minute while it is connected, in `ServerLogs` under its data folder (`%LOCALAPPDATA%\Messages for Windows\ServerLogs`)
+minute while it is connected, in `ServerLogs` under its data folder (`%LOCALAPPDATA%\Message Link\ServerLogs`)
 and in its log viewer as "Server · …". Any paired device can read them, and only by those names; nothing
 else on either volume is ever served. No shell or copy loop on the server is needed to read them.
 

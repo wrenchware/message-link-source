@@ -98,6 +98,12 @@ func TestPhones(t *testing.T) {
 	if users != 2 {
 		t.Errorf("users = %d, want 2", users)
 	}
+	// New phones are recognized beside legacy nodes, while new server names stay excluded.
+	status.Peer[key.NewNode().Public()] = &ipnstate.PeerStatus{DNSName: "messagelink-phone.tail1234.ts.net.", UserID: 7}
+	status.Peer[key.NewNode().Public()] = &ipnstate.PeerStatus{DNSName: "messagelink-server-1.tail1234.ts.net.", UserID: 7}
+	if found, _ := phones(status); len(found) != 3 {
+		t.Errorf("mixed prefixes: %+v", found)
+	}
 	status.Peer = nil
 	if found, users := phones(status); len(found) != 0 || users != 1 {
 		t.Errorf("alone: phones = %+v users = %d", found, users)

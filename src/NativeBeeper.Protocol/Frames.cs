@@ -22,9 +22,12 @@ public abstract record Frame;
 /// product word (<paramref name="Server"/>). <paramref name="App"/> is the sender's application version, for logs and
 /// update notices. A server that speaks no version the client can answers with <paramref name="Error"/>
 /// (protocol_unsupported) in a hello of its own, because a hello has no request id for a response frame to name.
+/// A client may also say what it runs on, for the server page's list of devices only: <paramref name="Os"/> ("Windows 11 Pro", "Android 17"),
+/// <paramref name="OsVersion"/> ("25H2, build 26300.1000") and <paramref name="Model"/> ("Samsung SM-S948U"). Plain words, never acted on; a server
+/// that does not know them skips them.
 /// </summary>
 public sealed record HelloFrame(int Protocol, string App, string? Client = null, string? Server = null, int? MinProtocol = null,
-    ProtocolError? Error = null) : Frame
+    ProtocolError? Error = null, string? Os = null, string? OsVersion = null, string? Model = null) : Frame
 {
     public const string ServerName = "messages-server";
 }

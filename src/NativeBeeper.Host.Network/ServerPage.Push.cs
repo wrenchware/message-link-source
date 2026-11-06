@@ -11,7 +11,7 @@ internal sealed partial class ServerPage
     private const string FirebaseConsole = "https://console.firebase.google.com/";
 
     // The Android app a project needs, and what to call the project: any name works, but people ask what to type.
-    private const string MessagesApp = "com.wrenchware.messages", ProjectName = "Messages Notifications";
+    private const string MessagesApp = "com.wrenchware.messages", ProjectName = "Message Link Notifications";
 
     // A Firebase project's own page (settings/general, settings/serviceaccounts/adminsdk), or the console's front page while no project is known.
     private static string FirebasePage(string? project, string page) =>
@@ -247,7 +247,7 @@ rs.forEach(function(r){if(r.k==='s')say(r.n+': google-services.json for '+r.p+'.
 else if(r.k==='big')say(r.n+' is too large to be one of Firebase\'s files.');else say(r.n+' isn\'t one of Firebase\'s files.')});
 point((s||a||{}).p);
 if(s){var none=P.every(function(p){return s.apps.indexOf(p)<0});
-if(none)say('This project has no app for Messages. Add '+P[0]+', then download google-services.json again.')}
+if(none)say('This project has no app for Message Link. Add '+P[0]+', then download google-services.json again.')}
 if(!s)say('Still needed: google-services.json, from Project settings, General.');if(!a)say('Still needed: the private key, from Project settings, Service accounts.');
 if(s&&a)say(s.p===a.p?'Both files are here. Type the password and turn it on.':'The two files are from different projects. Use both from the same one.',s.p===a.p);});}
 })();

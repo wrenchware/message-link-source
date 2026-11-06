@@ -44,7 +44,7 @@ internal sealed partial class ServerPage
     private static string Place(string path) => path switch
     {
         "/manage/notifications" or "/push" or "/push/test" => "/manage/notifications",
-        "/manage/tailscale" => "/manage/tailscale",
+        "/manage/tailscale" or "/manage/tailscale/about" => "/manage/tailscale",
         _ when IsTailnetPath(path) => "/manage/tailscale",
         "/manage/sync" or "/mirror" => "/manage/sync",
         "/manage/backups" => "/manage/backups",
@@ -64,7 +64,7 @@ internal sealed partial class ServerPage
         Entry("/", HomeGlyph, "Overview");
         if (pushes is not null || tailnet is not null || history is not null || backups is not null || storage is not null) nav.Append("<p class=\"grp\">Server</p>");
         if (pushes is not null) Entry("/manage/notifications", BellGlyph, "Notifications");
-        if (tailnet is not null) Entry("/manage/tailscale", NetGlyph, "Tailscale");
+        if (tailnet is not null) Entry("/manage/tailscale", NetGlyph, "Remote access");
         if (history is not null) Entry("/manage/sync", SyncGlyph, "Sync check");
         if (backups is not null) Entry("/manage/backups", BoxGlyph, "Backups");
         if (storage is not null) Entry("/manage/storage", DiskGlyph, "Storage");
@@ -100,7 +100,7 @@ internal sealed partial class ServerPage
 
     // ---- The pages under /manage ----
 
-    private static bool IsManagePath(string? path) => path is "/manage/notifications" or "/manage/tailscale" or "/manage/backups" or "/manage/storage" or "/manage/sync";
+    private static bool IsManagePath(string? path) => path is "/manage/notifications" or "/manage/tailscale" or "/manage/tailscale/about" or "/manage/backups" or "/manage/storage" or "/manage/sync";
 
     private async Task ManageAsync(HttpContext context, string path, string token)
     {
@@ -116,9 +116,14 @@ internal sealed partial class ServerPage
                 if (pushes.Health.Test is { State: PushTestState.Waiting }) refresh = 2;
                 break;
             case "/manage/tailscale" when tailnet is not null:
-                title = "Tailscale";
+                title = "Remote access";
                 TailnetCard(card, tailnet, token);
                 if (TailnetWaiting) refresh = 5;
+                break;
+            case "/manage/tailscale/about" when tailnet is not null:
+                title = "How remote access works";
+                TailnetAbout(card);
+                refresh = null;
                 break;
             case "/manage/backups" when backups is not null:
                 title = "Backups";
@@ -353,11 +358,12 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         if (list.Count == 0) body.Append(Row("No devices yet", "Add a phone or a PC below to start using the server.", null, Act("")));
         foreach (var device in list)
         {
-            // A phone that saves contacts from PCs says so under its name (protocol 29).
-            var under = pushes?.Contacts?.SavesContacts(device.Id) == true ? "Saves contacts from your PC" : "Added " + device.Created.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+            // What it runs under its name, and for a phone that saves contacts from PCs (protocol 29), that too.
+            var parts = new[] { SystemName(devices.SystemOf(device.Id)), SavesContacts(device.Id) ? "Saves contacts from your PC" : null }.OfType<string>().ToArray();
             var id = Uri.EscapeDataString(device.Id);
-            body.Append(Row(device.Name, under, device.LastSeen is { } seen ? "Last seen " + Ago(seen) : "Never connected",
-                Act(Menu("Manage " + device.Name, open == device.Id, [Item("/devices/rename?id=" + id, "Rename…", "Rename " + device.Name), Item("/devices/remove?id=" + id, "Remove…", "Remove " + device.Name, danger: true)])),
+            body.Append(Row(device.Name, parts.Length == 0 ? null : string.Join(" · ", parts), device.LastSeen is { } seen ? "Last seen " + Ago(seen) : "Never connected",
+                Act(Menu("Manage " + device.Name, open == device.Id, [Item("/devices/details?id=" + id, "Details", "Details of " + device.Name),
+                    Item("/devices/rename?id=" + id, "Rename…", "Rename " + device.Name), Item("/devices/remove?id=" + id, "Remove…", "Remove " + device.Name, danger: true)])),
                 id: "row-" + device.Id));
         }
         // Asking to join is a way in for devices, so its switch sits with them. Turning it off leaves paired devices working.
@@ -367,6 +373,43 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         body.Append(Row("Add a device", "Connect a phone or a PC to this server.", null,
             "<span class=\"acts\"><a class=\"button quiet\" href=\"/phone\" aria-label=\"Add a phone\">Phone…</a><a class=\"button quiet\" href=\"/pair\" aria-label=\"Add a PC\">PC…</a></span>", id: "row-add-device"));
         body.Append("</div></section>");
+    }
+
+    private bool SavesContacts(string id) => pushes?.Contacts?.SavesContacts(id) == true;
+
+    // What a device runs, as its hello said; a client from before it said so is named by its kind alone. Null until it has connected once since.
+    private static string? SystemName(DeviceSystem? system) => system?.Os ?? system?.Client switch
+    {
+        "windows" => "Windows",
+        "android" => "Android",
+        _ => null,
+    };
+
+    // One device's own screen: what it runs, where it last connected from, and what can be done with it.
+    private async Task DeviceDetailsAsync(HttpContext context, string id)
+    {
+        var device = devices.List(null).FirstOrDefault(found => found.Id == id);
+        if (device is null)
+        {
+            Redirect(context.Response, "/?done=gone");
+            return;
+        }
+        var system = devices.SystemOf(device.Id);
+        var escaped = Uri.EscapeDataString(device.Id);
+        var body = new StringBuilder("<div class=\"manage\"><section><div class=\"box\">");
+        body.Append(Row("System", system?.OsVersion, SystemName(system) ?? "Not known yet", null));
+        if (system?.Model is { } model) body.Append(Row("Model", null, model, null));
+        if (system?.App is { } app) body.Append(Row("Message Link", null, "Version " + app, null));
+        if (system is not null) body.Append(Row("Last connected from", null, system.ViaTailnet ? "Tailscale" : system.Address ?? "Not known", null));
+        body.Append(Row("Last seen", null, device.LastSeen is { } seen ? When(seen) : "Never connected", null));
+        body.Append(Row("Added", null, When(device.Created), null));
+        if (SavesContacts(device.Id)) body.Append(Row("Contacts", null, "Saves contacts from your PC", null));
+        body.Append("</div></section><section><div class=\"box\">");
+        body.Append(Row("Rename", null, null, "<a class=\"button quiet\" href=\"/devices/rename?id=" + escaped + "\" aria-label=\"" + Html("Rename " + device.Name) + "\">Rename…</a>"));
+        body.Append(Row("Remove", "It stops connecting at once. Nothing on it is deleted.", null,
+            "<a class=\"button quiet danger\" href=\"/devices/remove?id=" + escaped + "\" aria-label=\"" + Html("Remove " + device.Name) + "\">Remove…</a>"));
+        body.Append("</div></section></div>");
+        await PageAsync(context, StatusCodes.Status200OK, device.Name, body.ToString(), refresh: 30, refreshTo: "/devices/details?id=" + escaped).ConfigureAwait(false);
     }
 
     // One line for the check across every service: what the newest round found, and when.
@@ -406,8 +449,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
             body.Append(Go("Notifications", "Push notifications to your phones.", value, "/manage/notifications", "Notifications"));
         }
         if (tailnet is not null)
-            body.Append(Go("Tailscale", "Reach the server from anywhere.", !tailnet.Enabled ? "Off" : tailnet.Latest switch { null => "Starting", { Running: true } => "Connected", { State: "NeedsLogin" } => "Signed out", _ => "Not connected" },
-                "/manage/tailscale", "Tailscale", warn: tailnet.Enabled && tailnet.Latest is { State: "NeedsLogin" }));
+            body.Append(Go("Remote access", "Reach the server from anywhere.", !tailnet.Enabled ? "Off" : tailnet.Latest switch { null => "Starting", { Running: true } => "Connected", { State: "NeedsLogin" } => "Signed out", _ => "Not connected" },
+                "/manage/tailscale", "Remote access", warn: tailnet.Enabled && tailnet.Latest is { State: "NeedsLogin" }));
         if (history is not null)
         {
             HistoryMirrorResult? mirror = null;

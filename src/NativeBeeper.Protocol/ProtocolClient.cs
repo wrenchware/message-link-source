@@ -202,7 +202,9 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         // A greeting nobody is waiting on any more (the connection failed first) is not an unobserved fault.
         _ = opened.Greeting.Task.ContinueWith(static task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
         _ = Task.Run(() => ReadAsync(opened), CancellationToken.None);
-        await SendAsync(opened, new HelloFrame(protocol, appVersion, Client: client, MinProtocol: minProtocol)).ConfigureAwait(false);
+        var system = ClientSystem.Current;
+        await SendAsync(opened, new HelloFrame(protocol, appVersion, Client: client, MinProtocol: minProtocol, Os: system.Os, OsVersion: system.OsVersion, Model: system.Model))
+            .ConfigureAwait(false);
         await (limit is { } token ? opened.Greeting.Task.WaitAsync(token) : opened.Greeting.Task).ConfigureAwait(false);
     }
 

@@ -64,6 +64,10 @@ internal sealed class NetworkHost : IAsyncDisposable
         /// <summary>Admission order across the host: the oldest connection of a device is the lowest.</summary>
         public long Serial { get; init; }
 
+        /// <summary>The address the connection came from (none through the tailnet's door, whose connections all come from the door), for the page.</summary>
+        public string? Address { get; init; }
+        public bool ViaTailnet { get; init; }
+
         private int ending;
 
         /// <summary>Whether <see cref="End"/> has been called: this connection is being answered out and closed.</summary>
@@ -256,7 +260,11 @@ internal sealed class NetworkHost : IAsyncDisposable
                 Push = new DevicePush(() => pushSwitch.Current, pushes, admitted.DeviceId, health, () => devices.List(null), options.Time),
                 PhoneContacts = new DevicePhoneContacts(contacts, admitted.DeviceId),
                 ClientState = presence.For(admitted.DeviceId, services.ClientState),
-            }, version, served, options.Log, journal);
+            }, version, served, options.Log, journal)
+            {
+                Greeted = hello => devices.Describe(admitted.DeviceId,
+                    new DeviceSystem(hello.Client, hello.App, hello.Os, hello.OsVersion, hello.Model, admitted.Address, admitted.ViaTailnet)),
+            };
             admitted.BeginDraining = dispatcher.BeginDraining;
             admitted.WhenAnswered = dispatcher.WhenAnsweredAsync;
             presence.Opened(dispatcher, admitted.DeviceId);
@@ -606,12 +614,19 @@ internal sealed class NetworkHost : IAsyncDisposable
             await ClosedAsync(channel).ConfigureAwait(false);
             return;
         }
-        await ServeDeviceAsync(device!, channel, ticket?.Arrived, Relayed(context)).ConfigureAwait(false);
+        var relayed = Relayed(context);
+        await ServeDeviceAsync(device!, channel, ticket?.Arrived, relayed, relayed ? null : PlainAddress(context.Connection.RemoteIpAddress)).ConfigureAwait(false);
     }
 
-    private async Task ServeDeviceAsync(string device, WebSocketFrameChannel channel, long? arrived, bool relayed)
+    // An IPv4 address the dual-stack socket reports as ::ffff:a.b.c.d is shown as a.b.c.d.
+    private static string? PlainAddress(System.Net.IPAddress? address) => address is null ? null : (address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address).ToString();
+
+    private async Task ServeDeviceAsync(string device, WebSocketFrameChannel channel, long? arrived, bool relayed, string? address = null)
     {
-        var admitted = new Admitted(device, channel, new DeviceView(devices, device, joins, log, MayMove, AuthorizeMove)) { Serial = Interlocked.Increment(ref admissions) };
+        var admitted = new Admitted(device, channel, new DeviceView(devices, device, joins, log, MayMove, AuthorizeMove))
+        {
+            Serial = Interlocked.Increment(ref admissions), Address = address, ViaTailnet = relayed,
+        };
         // Seen before serve starts the dispatcher: from then on the device's requests are answered on other threads while this one carries on below, so a
         // devices.list among its first could list the device asking as never connected (the harness caught it under load, 2026-10-16).
         devices.Seen(device);

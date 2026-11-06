@@ -222,7 +222,7 @@ for variable in MESSAGES_TAILNET MESSAGES_TAILNET_NAME; do
 done
 case "${MESSAGES_TAILNET:-0}" in 1) MESSAGES_TAILNET=1 ;; *) MESSAGES_TAILNET=0 ;; esac
 # One DNS label, as the server takes it; anything else is the default name.
-[[ "${MESSAGES_TAILNET_NAME:-}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || MESSAGES_TAILNET_NAME="messages-server"
+[[ "${MESSAGES_TAILNET_NAME:-}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || MESSAGES_TAILNET_NAME=""
 # A Tailscale auth key for a headless sign-in, only when this environment gives one (README, Your tailnet): passed to docker by name, so the value is in no
 # command line, and never written to install.env or the template. The door uses it only while it has no identity yet, which the keys volume keeps after.
 authkey_env=()
@@ -285,8 +285,8 @@ if [ "$ghcr" = 1 ]; then
   <Config Name="Keys folder" Target="MESSAGES_KEYS" Default="/keys" Mode="" Description="Leave as /keys, the volume in Extra Parameters." Type="Variable" Display="advanced" Required="true" Mask="false">/keys</Config>
   <Config Name="Resume sign-ins" Target="MESSAGES_RESTORE" Default="1" Mode="" Description="1 resumes the accounts signed in on this server when it starts. 0 starts with none connected." Type="Variable" Display="always" Required="false" Mask="false">1</Config>
   <Config Name="Server page password" Target="MESSAGES_ADMIN_PASSWORD" Default="" Mode="" Description="Turns on the server's page at https://(this server):8787/. 12 to 128 characters, used nowhere else; no double spaces, no space at either end, no ampersand. Empty leaves the page off." Type="Variable" Display="always" Required="false" Mask="true">$(xml_escape "${MESSAGES_ADMIN_PASSWORD:-}")</Config>
-  <Config Name="Reach from your tailnet" Target="MESSAGES_TAILNET" Default="0" Mode="" Description="1 puts the server on your Tailscale network as a machine of its own (messages-server); the port stays on the home network. The first start prints a sign-in link in the log (README, Your tailnet)." Type="Variable" Display="always" Required="false" Mask="false">$MESSAGES_TAILNET</Config>
-  <Config Name="Tailnet name" Target="MESSAGES_TAILNET_NAME" Default="messages-server" Mode="" Description="The server's name on your tailnet: lowercase letters, digits and dashes." Type="Variable" Display="advanced" Required="false" Mask="false">$MESSAGES_TAILNET_NAME</Config>
+  <Config Name="Reach from your tailnet" Target="MESSAGES_TAILNET" Default="0" Mode="" Description="1 puts the server on your Tailscale network as a machine of its own; the port stays on the home network. The first start prints a sign-in link in the log (README, Your tailnet)." Type="Variable" Display="always" Required="false" Mask="false">$MESSAGES_TAILNET</Config>
+  <Config Name="Tailnet name" Target="MESSAGES_TAILNET_NAME" Default="" Mode="" Description="The server's name on your tailnet: lowercase letters, digits and dashes." Type="Variable" Display="advanced" Required="false" Mask="false">$MESSAGES_TAILNET_NAME</Config>
   <Config Name="Server names" Target="MESSAGES_HOSTNAMES" Default="" Mode="" Description="Names and addresses devices reach the server by, comma-separated, written into its certificate when it is first made." Type="Variable" Display="advanced" Required="false" Mask="false">$(xml_escape "${MESSAGES_HOSTNAMES:-}")</Config>
   <Config Name="Time zone" Target="TZ" Default="Etc/UTC" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">$(xml_escape "${TZ:-Etc/UTC}")</Config>
 EOF

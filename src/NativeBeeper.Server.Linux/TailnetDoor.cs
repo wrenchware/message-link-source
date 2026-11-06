@@ -144,7 +144,7 @@ internal sealed partial class TailnetDoor
     /// sign-in link is offered as without one. Tailscale uses it only while the node has no identity yet.
     /// </summary>
     public static TailnetDoor? Start(string executable, string stateFolder, string socket, string name, int port, Action<string> log, Action<string> console,
-        Func<ProcessStartInfo, Process>? launch = null, TailnetBoard? board = null, string? authKey = null)
+        Func<ProcessStartInfo, Process>? launch = null, TailnetBoard? board = null, string? authKey = null, bool defaultName = false)
     {
         if (authKey is { Length: > 0 } && !LooksLikeAuthKey(authKey))
         {
@@ -164,7 +164,7 @@ internal sealed partial class TailnetDoor
         }
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(stateFolder);
         else Directory.CreateDirectory(stateFolder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var door = new TailnetDoor(StartInfo(executable, stateFolder, socket, name, port, authKey is not null), stateFolder, authKey, log, console, launch ?? HelperJob.Start, board);
+        var door = new TailnetDoor(StartInfo(executable, stateFolder, socket, name, port, authKey is not null, defaultName), stateFolder, authKey, log, console, launch ?? HelperJob.Start, board);
         if (authKey is not null) log("server tailnet authkey=given");
         door.supervising = Task.Run(door.SuperviseAsync);
         return door;
@@ -174,15 +174,17 @@ internal sealed partial class TailnetDoor
     /// The door's command: its arguments, its pipes, and an environment holding nothing but the server's process id (parentwatch_linux.go). With
     /// <paramref name="authKeyOnInput"/> the door reads an auth key from its input's first line (<c>--authkey-stdin</c>); the key itself is never in here.
     /// </summary>
-    internal static ProcessStartInfo StartInfo(string executable, string stateFolder, string socket, string name, int port, bool authKeyOnInput = false)
+    internal static ProcessStartInfo StartInfo(string executable, string stateFolder, string socket, string name, int port, bool authKeyOnInput = false, bool defaultName = false)
     {
         var start = new ProcessStartInfo(Path.GetFullPath(executable))
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in new[] { "--state", stateFolder, "--socket", socket, "--hostname", name, "--port", port.ToString(CultureInfo.InvariantCulture) })
+        foreach (var argument in new[] { "--state", stateFolder, "--socket", socket })
             start.ArgumentList.Add(argument);
+        if (!defaultName) { start.ArgumentList.Add("--hostname"); start.ArgumentList.Add(name); }
+        start.ArgumentList.Add("--port"); start.ArgumentList.Add(port.ToString(CultureInfo.InvariantCulture));
         if (authKeyOnInput) start.ArgumentList.Add("--authkey-stdin");
         start.Environment.Clear();
         if (OperatingSystem.IsLinux()) start.Environment["MESSAGES_HELPER_PARENT_PID"] = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);

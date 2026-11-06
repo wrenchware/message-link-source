@@ -60,13 +60,27 @@ var labelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 func main() {
 	state := flag.String("state", "", "the node's state folder (in the server's keys volume)")
 	socket := flag.String("socket", "", "the server's relay socket")
-	hostname := flag.String("hostname", "messages-server", "the node's name on the tailnet")
+	hostname := flag.String("hostname", "messagelink-server", "the node's name on the tailnet")
 	port := flag.Int("port", 8787, "the port devices connect to on the tailnet")
 	keyOnInput := flag.Bool("authkey-stdin", false, "read a Tailscale auth key from the first line of standard input")
 	flag.Parse()
+	explicitName := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "hostname" {
+			explicitName = true
+		}
+	})
 	if !filepath.IsAbs(*state) || *socket == "" || !labelPattern.MatchString(*hostname) || *port < 1 || *port > 65535 || flag.NArg() != 0 {
 		say("tailnet start failed reason=arguments")
 		os.Exit(2)
+	}
+	if !explicitName {
+		chosen, err := defaultNodeName(*state)
+		if err != nil {
+			say("tailnet start failed reason=node_name")
+			os.Exit(1)
+		}
+		*hostname = chosen
 	}
 	input := bufio.NewReaderSize(os.Stdin, maxKeyLine)
 	authKey := ""
