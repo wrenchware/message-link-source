@@ -19,16 +19,18 @@
          (dev copy), for 18.5 MB more on disk. Applies to publish only; development builds are unchanged. -->
     <PublishReadyToRun>true</PublishReadyToRun>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- The installed app is called Messages, and so is everything a person can see of it: the program is Messages.exe
-         (Task Manager's Details tab, Restart Manager, the Run value), its resource index Messages.pri, its data folder
-         %LOCALAPPDATA%\Messages for Windows (AppPaths). Code, namespaces, XAML classes and project names keep NativeBeeper;
-         RootNamespace is set so the generated XAML code does not follow the assembly's new name. Through 0.1.361 the
-         program was NativeBeeper.App.exe, and launch moves what named it (StartupRegistration, NotificationRegistration). -->
-    <AssemblyName>Messages</AssemblyName>
+    <!-- The installed app is called Message Link, and so is everything a person can see of it: the program is MessageLink.exe
+         (Task Manager's Details tab, Restart Manager, the Run value), its resource index MessageLink.pri, its data folder
+         %LOCALAPPDATA%\Message Link (AppPaths). Code, namespaces, XAML classes and project names keep NativeBeeper;
+         RootNamespace is set so the generated XAML code does not follow the assembly's new name. Before the name the
+         program was Messages.exe (NativeBeeper.App.exe through 0.1.361), and launch moves what named it
+         (StartupRegistration, NotificationRegistration). The Run values keep their names, "Messages" and "Messages Server":
+         nobody sees them, and Windows keys its Startup apps choice by them. -->
+    <AssemblyName>MessageLink</AssemblyName>
     <RootNamespace>NativeBeeper.App</RootNamespace>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <Product>Messages</Product>
-    <AssemblyTitle>Messages</AssemblyTitle>
+    <Product>Message Link</Product>
+    <AssemblyTitle>Message Link</AssemblyTitle>
     <Company>wrenchware</Company>
     <Version>0.1.438</Version>
     <!-- Program.cs provides Main so a second launch can redirect to the running app. -->

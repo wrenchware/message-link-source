@@ -31,7 +31,7 @@ internal sealed record BackupRestore(int Pages, int MessengerAdded, int Messenge
                 : $"{Local.Refused:N0} couldn't be placed on this PC.");
         // Messenger's history, labels, merged conversations and the pinned order show at once (MainWindow.ReloadRestoredAsync);
         // names, photos, pins and mutes can be held in memory once loaded.
-        if (Local.Added > 0) lines.Add("Some changes show after Messages restarts.");
+        if (Local.Added > 0) lines.Add("Some changes show after Message Link restarts.");
         return lines;
     }
 

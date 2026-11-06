@@ -829,7 +829,7 @@ internal sealed partial class ServerPage
     {
         var body = new StringBuilder("<section>");
         // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
-        body.Append(Para($"In Messages on the PC, open Settings → Connections → Messages Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
+        body.Append(Para($"In Message Link on the PC, open Settings → Connections → Message Link Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
         body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(Address(request), fingerprint(), code))).Append("</p>");
         body.Append(Para("Or choose to use a pairing code there, and enter these three:"));
         body.Append("<dl>");
@@ -837,7 +837,7 @@ internal sealed partial class ServerPage
         Row(body, "Address", Address(request), copy: true);
         Row(body, "Fingerprint", fingerprint(), copy: true);
         body.Append("</dl>");
-        body.Append(Para("Check that the fingerprint Messages shows is this one before you accept it."));
+        body.Append(Para("Check that the fingerprint Message Link shows is this one before you accept it."));
         body.Append("</section><p><a href=\"/\">Back</a></p>");
         return body.ToString();
     }
@@ -1023,7 +1023,7 @@ internal sealed partial class ServerPage
         + "label.grow{cursor:pointer}"
         + "@media(max-width:520px){ul.rows li{flex-wrap:wrap}.more{padding-left:12px}}";
 
-    private const string SiteName = "Messages Server";
+    private const string SiteName = "Message Link Server";
 
     // The page around a body: the logo and the title, with `actions` at its end; `refresh` reloads it every so many seconds (the home page, so a request to
     // join shows up without a click). It reloads the plain home page, so a notice (removed, joined) is said once.

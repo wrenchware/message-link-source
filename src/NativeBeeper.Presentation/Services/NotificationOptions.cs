@@ -65,7 +65,7 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
     public static (string Title, string Preview) Shape(string title, string preview, NotificationDetail detail) => detail switch
     {
         NotificationDetail.SenderOnly => (title, "New message"),
-        NotificationDetail.None => ("Messages", "New message"),
+        NotificationDetail.None => ("Message Link", "New message"),
         _ => (title, preview),
     };
 

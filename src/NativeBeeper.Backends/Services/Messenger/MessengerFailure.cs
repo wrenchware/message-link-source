@@ -68,7 +68,7 @@ internal static class MessengerFailure
         "checkpoint_required" => "Facebook wants to confirm it's you. Open facebook.com in your browser, follow its steps, then connect again.",
         "challenge_required" => "Facebook asked for an extra security check. Complete it at facebook.com, then connect again.",
         "consent_required" => "Facebook is waiting for you to accept something. Accept it at facebook.com, then connect again.",
-        "session_expired" or "missing_cookies" when saved => "Facebook has signed Messages out. Choose Sign out, then Connect to sign in again.",
+        "session_expired" or "missing_cookies" when saved => "Facebook has signed Message Link out. Choose Sign out, then Connect to sign in again.",
         "session_expired" => "Facebook didn't accept this sign-in. Choose Connect to try again.",
         "missing_cookies" => "The Facebook sign-in didn't finish. Choose Connect to try again.",
         "login_failed" => "Couldn't sign in to Facebook. Check your internet connection and try again.",

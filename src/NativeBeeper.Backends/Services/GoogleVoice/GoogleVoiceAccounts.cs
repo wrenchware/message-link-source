@@ -139,7 +139,7 @@ internal sealed partial class GoogleVoiceAccounts : IAsyncDisposable, IDisposabl
     }
 
     // The saved session without its profile id when that profile's folder is gone, so a new profile is attached. Whether the folder is there is a
-    // fact about the disk, so it is read from the disk and never asked of the browser: a host with no browser yet (MessagesServer.exe) answers "no"
+    // fact about the disk, so it is read from the disk and never asked of the browser: a host with no browser yet (MessageLinkServer.exe) answers "no"
     // to everything, and the start that follows writes the session back, which would lose the id of a profile that is still there.
     internal static SavedSession WithLiveProfile(SavedSession saved) =>
         saved.ProfileId is { Length: > 0 } id && !GoogleSignInProfile.TryOpen(id, out _) ? saved with { ProfileId = null } : saved;

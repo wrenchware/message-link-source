@@ -62,7 +62,7 @@ internal sealed partial class ServerPage
         if (DesktopSignIn is not null)
         {
             DesktopSignInForms(body, context, token, accounts);
-            if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Messages there (Settings → Connections), or with Connect on this page in a browser on that PC."));
+            if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Message Link there (Settings → Connections), or with Connect on this page in a browser on that PC."));
             return;
         }
         var services = signInServices;
@@ -392,7 +392,7 @@ internal sealed partial class ServerPage
             {
                 null or RemoteSignInEncryption.AlreadyOn => "",
                 RemoteSignInEncryption.On => " Encrypted conversations are on too.",
-                _ => " Encrypted conversations didn't turn on, so most conversations can't be read yet. In Messages on your PC, choose Turn on encrypted conversations on the Messenger card.",
+                _ => " Encrypted conversations didn't turn on, so most conversations can't be read yet. In Message Link on your PC, choose Turn on encrypted conversations on the Messenger card.",
             },
         };
     }

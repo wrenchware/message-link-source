@@ -7,7 +7,7 @@ namespace NativeBeeper.Server;
 /// The server's end of the local transport (SWITCHBOARD.md 3.2c): one <see cref="PipeHost"/> on the user's pipe, and a <see cref="ProtocolDispatcher"/>
 /// for each client it admits, every one over the same <see cref="ProtocolServices"/> and the same <see cref="OperationJournal"/>. The host's state,
 /// its event log and its journal are therefore one thing however many clients are connected, and a client that comes back finds what it started.
-/// It is plain C# so the harness runs it against a pipe of its own name; the real pipe is opened only by <c>MessagesServer.exe</c>.
+/// It is plain C# so the harness runs it against a pipe of its own name; the real pipe is opened only by <c>MessageLinkServer.exe</c>.
 /// </summary>
 internal sealed class ServerPipe(string pipeName, ClientToken token, ProtocolServices services, OperationJournal journal, string version, Action<string> log,
     Func<bool>? stopping = null) : IAsyncDisposable

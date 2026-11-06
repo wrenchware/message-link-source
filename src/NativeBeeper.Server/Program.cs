@@ -9,7 +9,7 @@ using NativeBeeper.Host;
 
 namespace NativeBeeper.Server;
 
-// MessagesServer.exe (SWITCHBOARD.md stage 3, step 3.1): hosts the backends for one data root. One per root, however it was started: the lease
+// MessageLinkServer.exe (SWITCHBOARD.md stage 3, step 3.1): hosts the backends for one data root. One per root, however it was started: the lease
 // file decides, the named mutex is for the installer. Nothing connects unless it was started with --restore.
 public static class Program
 {
@@ -130,7 +130,7 @@ public static class Program
         try
         {
             using var process = Process.GetProcessById(id);
-            return !process.HasExited && string.Equals(process.ProcessName, "Messages", StringComparison.OrdinalIgnoreCase);
+            return !process.HasExited && string.Equals(process.ProcessName, "MessageLink", StringComparison.OrdinalIgnoreCase);
         }
         // Gone, never there, or not ours to look at (an access refusal is a SystemException too).
         catch (SystemException) { return false; }

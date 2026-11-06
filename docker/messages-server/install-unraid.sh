@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds and (re)starts the Messages Server container on Unraid from the bundle beside this script by default.
+# Builds and (re)starts the Message Link Server container on Unraid from the bundle beside this script by default.
 # --ghcr pulls the private image instead, using Docker's saved read:packages login (README, Private GHCR images).
 # (tools\Publish-ServerBundle.ps1 puts both in a share). Run it from Unraid's terminal:
 #
@@ -274,7 +274,7 @@ if [ "$ghcr" = 1 ]; then
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Overview>Messages Server. Keeps your messaging accounts connected on this server so Messages on your PCs can use them over your home network. Keep the keys volume and the data folder across updates.</Overview>
+  <Overview>Message Link Server. Keeps your messaging accounts connected on this server so Message Link on your PCs can use them over your home network. Keep the keys volume and the data folder across updates.</Overview>
   <Category>Network:Messenger</Category>
   <Icon>file:///boot/config/plugins/dockerMan/messages-server/icon.png</Icon>
   <WebUI>$(xml_escape "$webui")</WebUI>
@@ -371,8 +371,8 @@ for _ in $(seq 1 30); do
 done
 echo
 logs=$(docker logs "$name" 2>&1)
-if printf '%s\n' "$logs" | grep -q "Messages Server didn't start"; then
-    printf '%s\n' "$logs" | grep "Messages Server didn't start" | tail -n 1
+if printf '%s\n' "$logs" | grep -q "Server didn't start"; then
+    printf '%s\n' "$logs" | grep "Server didn't start" | tail -n 1
 else
     # What a PC needs to join, in plain words; the lines they come from stay in the log.
     fingerprint=$(printf '%s\n' "$logs" | sed -n 's/.*server tls fingerprint sha256=\([0-9a-f]*\).*/\1/p' | tail -n 1)
@@ -380,7 +380,7 @@ else
     # Named here, not as a ${bind:-...} default: an apostrophe inside one is a bad substitution in bash.
     where="$bind"
     [ -n "$where" ] || where="this server's address"
-    echo "Messages Server is running. To use it from Messages on a PC: Settings, Messages Server."
+    echo "Message Link Server is running. To use it from Message Link on a PC: Settings, Message Link Server."
     echo "  Address:      $where:$port"
     [ -n "$fingerprint" ] && echo "  Fingerprint:  $fingerprint"
     [ -n "$code" ] && echo "  Pairing code: $code (works once, for 10 minutes)"

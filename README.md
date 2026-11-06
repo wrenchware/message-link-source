@@ -1,10 +1,10 @@
-# Switchboard Messages source
+# Message Link source
 
-This is the source code for the open-source parts of Switchboard Messages: the helper programs that connect to each
-service, and Messages Server. Each tag is the exact source of one build.
+This is the source code for the open-source parts of Message Link: the helper programs that connect to each
+service, and Message Link Server. Each tag is the exact source of one build.
 
-- `v0.1.414` and the like: Messages for Windows 0.1.414.
-- `src-` followed by 12 characters: one build of the Messages Server image. The server's page links to its own.
+- `v0.1.414` and the like: one Windows release (Messages for Windows until the Message Link name).
+- `src-` followed by 12 characters: one build of the Message Link Server image. The server's page links to its own.
 
 ## What's here
 
@@ -14,7 +14,7 @@ service, and Messages Server. Each tag is the exact source of one build.
   [meta](https://github.com/mautrix/meta), [gvoice](https://github.com/mautrix/gvoice)).
 - `third_party`: the copies of mautrix code these helpers use, with local changes. Each folder's
   `NATIVE_MESSAGES_PATCH.md` lists what changed and why.
-- `src`: Messages Server for Windows (`NativeBeeper.Server`) and Linux (`NativeBeeper.Server.Linux`), and the libraries
+- `src`: Message Link Server for Windows (`NativeBeeper.Server`) and Linux (`NativeBeeper.Server.Linux`), and the libraries
   they share with the Windows app.
 - `experiments/Tailnet/door`: the server's own Tailscale node.
 - `docker/messages-server`: the Dockerfiles and install scripts for the server image.
@@ -47,8 +47,8 @@ docker build -f docker/messages-server/Dockerfile .
 
 ## Licence
 
-The code written for Messages is licensed under the GNU Affero General Public License, version 3 or (at your option)
+The code written for Message Link is licensed under the GNU Affero General Public License, version 3 or (at your option)
 any later version. The full text is in `LICENSE`. Third-party code keeps its own licence: see the licence files in
 `third_party` and in each `vendor` folder, and `THIRD_PARTY_NOTICES.md`.
 
-Messages is a one-person project, so issues and pull requests here are not monitored.
+Message Link is a one-person project, so issues and pull requests here are not monitored.

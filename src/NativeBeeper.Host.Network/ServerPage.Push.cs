@@ -51,10 +51,10 @@ internal sealed partial class ServerPage
                 PushPhoneStates.On => Row(phone.Name, null, "Signed up", null),
                 PushPhoneStates.Failing => Row(phone.Name, $"{phone.Failures} failed: {PushStatus.Reason(phone)}", "Failing", null, warn: true),
                 PushPhoneStates.MissingApp => Line(false, phone.Name, $"Add {phone.Package} in Firebase, download google-services.json again and replace the files.", Link(FirebasePage(project, GeneralPage), "Open Project settings"), "No app in Firebase"),
-                _ => Row(phone.Name, "Open Messages on it; its Settings say what it needs.", "Not signed up", null, warn: true),
+                _ => Row(phone.Name, "Open Message Link on it; its Settings say what it needs.", "Not signed up", null, warn: true),
             });
         }
-        if (!any) body.Append(Row("No phone yet", "Open Messages on your phone once: it signs up by itself when it connects.", null, null));
+        if (!any) body.Append(Row("No phone yet", "Open Message Link on your phone once: it signs up by itself when it connects.", null, null));
         body.Append("</div>");
         if (tests.Length > 0) body.Append("<div class=\"btns\">").Append(tests).Append("</div>");
         body.Append("<div class=\"sh\"><h2>Firebase</h2></div><div class=\"box\">")
@@ -68,10 +68,10 @@ internal sealed partial class ServerPage
     {
         PushTestState.Waiting => $"Test sent to {test.Name}. Waiting for it to show…",
         PushTestState.Shown => $"Arrived on {test.Name} in {Seconds(test.ShownAt!.Value - test.At)}.",
-        PushTestState.TimedOut => $"{test.Name} didn't show the test within {(int)PushHealth.TestWait.TotalSeconds} s. Google took it, so check that the phone is online, that notifications for Messages are allowed in its settings, and that battery saving isn't holding Messages back.",
+        PushTestState.TimedOut => $"{test.Name} didn't show the test within {(int)PushHealth.TestWait.TotalSeconds} s. Google took it, so check that the phone is online, that notifications for Message Link are allowed in its settings, and that battery saving isn't holding Message Link back.",
         PushTestState.Refused => $"Google refused the test to {test.Name} (status {test.Status}). Try adding the files again; if it keeps happening, make a new private key.",
-        PushTestState.Gone => $"Google says {test.Name}'s address for notifications is gone. Open Messages on it: it signs up again by itself.",
-        PushTestState.NotSignedUp => $"{test.Name} hasn't signed up for notifications. Open Messages on it once.",
+        PushTestState.Gone => $"Google says {test.Name}'s address for notifications is gone. Open Message Link on it: it signs up again by itself.",
+        PushTestState.NotSignedUp => $"{test.Name} hasn't signed up for notifications. Open Message Link on it once.",
         _ => $"The server couldn't reach Google to send the test to {test.Name}. Try again in a minute.",
     };
 
@@ -153,7 +153,7 @@ internal sealed partial class ServerPage
             PushInstall.NotAppSettings => new("google-services.json couldn't be read. Download it again from Project settings, under General.", FirebasePage(project, GeneralPage), "Open Project settings"),
             PushInstall.NotServiceAccount => new("The key file isn't a private key from Firebase. Make one in Project settings, under Service accounts, with Generate new private key.", FirebasePage(project, KeysPage), "Open Service accounts"),
             PushInstall.ProjectsDiffer => new("The two files are from different Firebase projects. Use both from the same project."),
-            PushInstall.NoApp => new("google-services.json has no Android app for Messages. Add com.wrenchware.messages, then download the file again.",
+            PushInstall.NoApp => new("google-services.json has no Android app for Message Link. Add com.wrenchware.messages, then download the file again.",
                 FirebasePage(project, GeneralPage), "Open Project settings"),
             PushInstall.KeyRefused => new("Google didn't accept the private key: it may have been deleted. Make a new one in Service accounts and try again.", FirebasePage(project, KeysPage), "Open Service accounts"),
             PushInstall.ApiDisabled => new("Google says Cloud Messaging is turned off for this project. Turn on the Firebase Cloud Messaging API, wait a minute, then add the files again.",
@@ -184,7 +184,7 @@ internal sealed partial class ServerPage
             body.Append("</p>");
         }
         body.Append(Para(replacing
-            ? "These replace the files the server has now, at once. With another project's files every phone signs up again by itself: phones with Messages open at once, the others when Messages next connects."
+            ? "These replace the files the server has now, at once. With another project's files every phone signs up again by itself: phones with Message Link open at once, the others when Message Link next connects."
             : "Notifications start as soon as the two files are in; nothing needs restarting."));
         body.Append("<p>").Append(Link(JoinLink.FirebaseGuide, "See these steps with pictures")).Append("</p>");
         body.Append("<ol class=\"steps\">")

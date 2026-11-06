@@ -74,15 +74,15 @@ internal sealed partial class ServerPage
         "joined" => "The device joined. It can use the server now.",
         "declined" => "The request was turned away.",
         "join_gone" => "That request isn't waiting any more: it was answered, it ran out, or the device stopped asking.",
-        "push_on" => "Notifications are on. Phones with Messages open sign up now, the others when Messages on them next connects. Send a test below to be sure.",
+        "push_on" => "Notifications are on. Phones with Message Link open sign up now, the others when Message Link on them next connects. Send a test below to be sure.",
         "push_on_unchecked" => "Notifications are on, but the server couldn't reach Google to check the key just now. Send a test below; if it doesn't arrive, add the files again.",
         "mirror" => "Checking now. Each service takes a few seconds per conversation; reload to see the results.",
         "backup_started" => "Backing up now. Reload in a minute to see it done.",
         "backup_busy" => "A backup is already running, or there's no password yet.",
         "backup_checking" => "Reading the latest backup back now. Reload in a minute to see what it found.",
         "backup_password" => "The backup password is set. Keep it safe: without it the backups can't be read.",
-        "desktop_sign_in" => "The sign-in opened in Messages on this PC.",
-        "desktop_sign_in_failed" => "Messages couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
+        "desktop_sign_in" => "The sign-in opened in Message Link on this PC.",
+        "desktop_sign_in_failed" => "Message Link couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
         _ => TailnetNotice(done),
     };
 

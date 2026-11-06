@@ -1,8 +1,8 @@
-# The nightly update of Messages Server installed by install.sh (messages-server-update.timer starts it). update.sh does
+# The nightly update of Message Link Server installed by install.sh (messages-server-update.timer starts it). update.sh does
 # nothing unless /etc/messages-server/update names a release address, and with Google on it also takes the newest
 # stable Google Chrome. Run it by hand with: systemctl start messages-server-update
 [Unit]
-Description=Messages Server update
+Description=Message Link Server update
 Wants=network-online.target
 After=network-online.target
 

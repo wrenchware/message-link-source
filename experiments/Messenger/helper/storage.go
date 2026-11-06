@@ -37,7 +37,7 @@ func messengerStorageRoot() string {
 }
 
 // The data folder's name under %LOCALAPPDATA%, the same one the app uses. Nothing a person can see says NativeBeeper.
-const productFolder = "Messages for Windows"
+const productFolder = "Message Link"
 
 // Whether an account's store an earlier server build kept in the data folder is still there. The server moves every one
 // into the private root before a helper starts; one that is still there is never opened beside a new store of the same

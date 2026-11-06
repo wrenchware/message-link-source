@@ -41,7 +41,7 @@ internal sealed partial class ServerPage
         TailnetCardBody(body, board, token);
         // Where the page is the switch (the Windows server), turning it off is offered under the card once it is on.
         if (board.Enabled && board.Turn is not null)
-            body.Append("<p class=\"quiet\">").Append(Html("Tailscale runs inside Messages Server on this PC.")).Append("</p>").Append(TailnetTurnForm(token, on: false));
+            body.Append("<p class=\"quiet\">").Append(Html("Tailscale runs inside Message Link Server on this PC.")).Append("</p>").Append(TailnetTurnForm(token, on: false));
     }
 
     private static string TailnetTurnForm(string token, bool on) =>
@@ -54,8 +54,8 @@ internal sealed partial class ServerPage
         {
             // The Windows server (SWITCHBOARD.md 10.7): a switch, here and now; Tailscale runs inside Messages Server, with nothing else to install.
             body.Append("<section id=\"tailnet\"><h2>Away from home</h2>")
-                .Append(Para("Messages on a phone reaches this PC's Messages Server through Tailscale, so it works anywhere without opening this PC to the internet. "
-                    + "Tailscale runs inside Messages Server: there is nothing else to install. Once it is on, this page walks you through signing it in."))
+                .Append(Para("Message Link on a phone reaches this PC's Message Link Server through Tailscale, so it works anywhere without opening this PC to the internet. "
+                    + "Tailscale runs inside Message Link Server: there is nothing else to install. Once it is on, this page walks you through signing it in."))
                 .Append(TailnetTurnForm(token, on: true))
                 .Append("</section>");
             return;
@@ -63,7 +63,7 @@ internal sealed partial class ServerPage
         if (!board.Enabled)
         {
             body.Append("<section id=\"tailnet\"><h2>Away from home</h2>")
-                .Append(Para("Messages on a phone reaches this server through Tailscale, so it works anywhere without opening the server to the internet."))
+                .Append(Para("Message Link on a phone reaches this server through Tailscale, so it works anywhere without opening the server to the internet."))
                 .Append(Para("To use it, turn it on where this server was installed, then start the server again: on Unraid, set Reach from your tailnet to 1 in the container's settings; "
                     + "with Docker Compose, MESSAGES_TAILNET=1 in the .env file; on Linux or Proxmox, MESSAGES_TAILNET=1 in /etc/messages-server/environment. This page then walks you through the rest."))
                 .Append("</section>");

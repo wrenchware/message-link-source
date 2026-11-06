@@ -82,7 +82,7 @@ public static class RemoteSignIn
     /// <summary>The picture size the host starts with, and the limits it clamps a request to.</summary>
     public const int DefaultWidth = 1280, DefaultHeight = 800, MinWidth = 320, MinHeight = 240, MaxWidth = 1920, MaxHeight = 1200;
     /// <summary>What Settings' Google Messages card says while the server's Chrome is out of date (protocol 14).</summary>
-    public const string ChromeOutOfDateSentence = "Messages Server's Chrome is out of date. Reinstall the server to update it.";
+    public const string ChromeOutOfDateSentence = "Message Link Server's Chrome is out of date. Reinstall the server to update it.";
 }
 
 /// <summary>

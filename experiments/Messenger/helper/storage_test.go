@@ -153,7 +153,7 @@ func TestFallbackFolderIsTheProductsOwnName(t *testing.T) {
 	if err != nil {
 		t.Skip("no user cache folder on this system")
 	}
-	if got, want := messengerStorageRoot(), filepath.Join(base, "Messages for Windows", "Messenger"); got != want {
+	if got, want := messengerStorageRoot(), filepath.Join(base, "Message Link", "Messenger"); got != want {
 		t.Fatalf("the fallback folder was %q, not %q", got, want)
 	}
 	if strings.Contains(messengerStorageRoot(), "NativeBeeper") || strings.Contains(logPath(), "NativeBeeper") {

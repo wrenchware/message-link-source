@@ -1,4 +1,4 @@
-# Messages Server's one image (SWITCHBOARD.md stage 11; 4.3, 5.4): the server, its helpers and official Google Chrome, in which it shows every sign-in and which it keeps running, signed in
+# Message Link Server's one image (SWITCHBOARD.md stage 11; 4.3, 5.4): the server, its helpers and official Google Chrome, in which it shows every sign-in and which it keeps running, signed in
 # by hand, to renew Google's sign-in the way the PC's own browser profile does. Debian with Google's own Chrome package, because Ubuntu offers browsers only as snaps, which a container cannot
 # run; .NET is published self-contained into it. Build from the repository root (install-unraid.sh does, with the current time as CHROME_REFRESH):
 #
@@ -89,14 +89,14 @@ RUN dotnet restore src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.cspro
 RUN dotnet publish src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj -c Release --no-restore \
       -r linux-x64 -p:SelfContained=true -o /out \
  && if [ ! -x /out/messages-server ]; then \
-      echo "Messages Server build: the publish has no messages-server executable (expected AssemblyName messages-server, linux-x64)." >&2; \
+      echo "Message Link Server build: the publish has no messages-server executable (expected AssemblyName messages-server, linux-x64)." >&2; \
       exit 1; \
     fi
 
 # ---- Runtime --------------------------------------------------------------------------------------------------------------------------------------
 FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS runtime
-LABEL org.opencontainers.image.title="Messages Server (Google)" \
-      org.opencontainers.image.description="Messages Server with Google Messages: the Messages backends on a home server, reached by paired devices over TLS."
+LABEL org.opencontainers.image.title="Message Link Server (Google)" \
+      org.opencontainers.image.description="Message Link Server with Google Messages: the Message Link backends on a home server, reached by paired devices over TLS."
 
 # What .NET needs on Debian (ICU, OpenSSL, time zones, certificates), tini, and xvfb: the virtual X display Chrome draws on (SWITCHBOARD.md 5.4).
 # xvfb brings xauth, xkb-data and x11-xkb-utils (xkbcomp, which gives the display its keyboard) and a few X libraries. libxcb-xtest0 is the XTEST

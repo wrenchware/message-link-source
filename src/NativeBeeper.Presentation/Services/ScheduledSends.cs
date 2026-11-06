@@ -120,7 +120,7 @@ public sealed class ScheduledSends : IDisposable
         // No host heard yet: the host that may hold the schedule is the one thing this must not guess at, so nothing is scheduled until one is (an older host,
         // which does not fire, lets the engine keep it as before).
         if (await link!.HostFiresAsync().ConfigureAwait(false) is null)
-            throw new InvalidOperationException("Messages isn't connected to its server yet. Try again in a moment.");
+            throw new InvalidOperationException("Message Link isn't connected to its server yet. Try again in a moment.");
         return await engine.ScheduleAsync(chatId, text, due, replyToId, replyPreview).ConfigureAwait(false);
     }
     /// <inheritdoc cref="ScheduledSendEngine.CancelAsync"/>

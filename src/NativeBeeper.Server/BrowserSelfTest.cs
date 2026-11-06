@@ -7,7 +7,7 @@ using NativeBeeper.App.Services.GoogleMessages;
 namespace NativeBeeper.Server;
 
 /// <summary>
-/// <c>MessagesServer.exe --browser-selftest</c> (hidden, SWITCHBOARD.md 3.1c): the Google renewal's browser run once through the server's own STA
+/// <c>MessageLinkServer.exe --browser-selftest</c> (hidden, SWITCHBOARD.md 3.1c): the Google renewal's browser run once through the server's own STA
 /// thread against an empty, fresh profile, and the outcome printed. An empty profile has no sign-in, so the right answer is
 /// <c>missing_cookies</c>. It names a new folder under %TEMP% as the data root before anything reads a path, refuses to go on if the root it ends
 /// up with is not there, takes no lease and opens no store, provider, helper or account, and shows no window. The real profiles are never opened.
