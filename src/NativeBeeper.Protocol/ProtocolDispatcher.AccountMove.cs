@@ -96,7 +96,7 @@ public sealed partial class ProtocolDispatcher
 
     // Everything the account move carries is cookies, device keys and message history, and what it hands over outlives removing a device: so the server's password is asked, not just
     // a paired device's token (owner, 2026-11-03). A host with no paired devices (the app's own host, a local pipe, the loopback) has one user. Checked before the host's port is reached.
-    private const string MoveRefusal = "Moving accounts needs the server's password. Update Message Link if it didn't ask for it.";
+    private const string MoveRefusal = "Moving accounts needs the server's password. Update Messages if it didn't ask for it.";
 
     private async Task RequireMovePasswordAsync(CancellationToken cancellationToken)
     {

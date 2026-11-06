@@ -13,22 +13,11 @@ public static class ConversationHeaderText
     {
         var parts = new List<string>();
         if (chat.MemberChatIds.Count > 0) parts.Add($"{chat.MemberChatIds.Count} conversations");
-        else if (chat.Type == "group") parts.Add($"{GroupSize(chat)} people");
+        else if (chat.Type == "group") parts.Add($"{Math.Max(chat.ParticipantCount, chat.Participants.Count)} people");
         else if ((DirectNumber(chat) ?? DirectHandle(chat)) is { } who && who != chat.Title) parts.Add(who);
         if (parts.Count == 0) parts.Add(ServiceName(chat.Network, transport));
         if (chat.IsReadOnly) parts.Add("Read-only");
         return string.Join(" · ", parts);
-    }
-
-    // Google's rows for a group include this account, rows the phone never shows and a person again under a second
-    // identity, so counting them said 7 people beside Details' four (owner, 2026-11-05). Google's size is the people
-    // Details lists, once per number, and this account. Other services keep their count, which can exceed the rows sent.
-    private static int GroupSize(ChatSummary chat)
-    {
-        if (chat.Network.Equals("Google Messages", StringComparison.OrdinalIgnoreCase)
-            && MergeSuggestions.Counterparts(chat).Select(p => PhoneKey(p.Phone!)).Distinct(StringComparer.Ordinal).Count() is > 0 and var others)
-            return others + 1;
-        return Math.Max(chat.ParticipantCount, chat.Participants.Count);
     }
 
     // A merged conversation's header: the person's number, an RCS one first (owner, 2026-10-26), and how many more there

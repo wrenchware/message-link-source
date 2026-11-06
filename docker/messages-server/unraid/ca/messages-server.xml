@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Message Link Server for Unraid's Community Applications. Unlike ../messages-server.xml (a local build) and the template
+<!-- Messages Server for Unraid's Community Applications. Unlike ../messages-server.xml (a local build) and the template
      install-unraid.sh saves, it pulls the public image and carries no one's own settings. Not listed yet: see README.md
      beside this file for what is left before it is submitted. -->
 <Container version="2">
@@ -12,7 +12,7 @@
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/topic/SUPPORT-THREAD-TO-OPEN/</Support>
   <Project>https://github.com/wrenchware/switchboard-messages</Project>
-  <Overview>Message Link Server keeps your messaging accounts (Google Messages, Facebook Messenger, Google Voice and Instagram) signed in on this server, so the Message Link apps on your PCs and Android phone use them from one place, at home or away through Tailscale.[br][br]
+  <Overview>Messages Server keeps your messaging accounts (Facebook Messenger, Instagram, Google Messages and Google Voice) signed in on this server, so the Messages apps on your PCs and Android phone use them from one place, at home or away through Tailscale.[br][br]
 [b]Setting up:[/b][br]
 1. Before the first start, create the Data and Backups folders owned by user 2787 (the server's own account) with mode 700, in Unraid's terminal:[br]
 mkdir -p /mnt/user/appdata/messages-server /mnt/user/backups/messages &amp;&amp; chown 2787:2787 /mnt/user/appdata/messages-server /mnt/user/backups/messages &amp;&amp; chmod 700 /mnt/user/appdata/messages-server /mnt/user/backups/messages[br]
@@ -27,7 +27,7 @@ Your sign-ins and keys live in the Docker volume messages-server-keys, inside Do
   <PostArgs/>
   <CPUset/>
   <Requires>Create the Data and Backups folders owned by 2787:2787 with mode 700 before the first start (see the setup steps above).</Requires>
-  <Config Name="Port" Target="8787" Default="8787" Mode="tcp" Description="The one port the Message Link apps and the server's page use (HTTPS)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="Port" Target="8787" Default="8787" Mode="tcp" Description="The one port the Messages apps and the server's page use (HTTPS)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/messages-server" Mode="rw" Description="Saved sign-ins, history and paired devices, sealed with the keys volume and useless without it. Owned by 2787:2787, mode 700." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/messages-server</Config>
   <Config Name="Backups" Target="/backups" Default="/mnt/user/backups/messages" Mode="rw" Description="Where the server writes its own backups: the history and the server's identity, never a service sign-in. Owned by 2787:2787, mode 700." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/backups/messages</Config>
   <Config Name="Reach from your tailnet" Target="MESSAGES_TAILNET" Default="1" Mode="" Description="1 puts the server on your Tailscale network as a machine of its own, so your phone reaches it from anywhere while the port above stays on your home network. The server's page signs it in. 0 turns it off." Type="Variable" Display="always" Required="false" Mask="false">1</Config>

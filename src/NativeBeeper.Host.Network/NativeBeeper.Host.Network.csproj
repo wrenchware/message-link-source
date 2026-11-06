@@ -10,7 +10,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="messages-server" />
     <!-- The Windows server hosts the same door on 127.0.0.1 and the tailnet (SWITCHBOARD.md 10.7). -->
-    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="MessagesServer" />
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />
     <!-- The sample-data server (tools/NativeBeeper.SampleServer, SWITCHBOARD.md 7.2): this door in front of made-up people. -->
     <InternalsVisibleTo Include="messages-sample-server" />

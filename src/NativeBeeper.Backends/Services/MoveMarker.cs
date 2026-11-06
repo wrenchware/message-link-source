@@ -163,14 +163,14 @@ internal static class MoveMarker
     /// </summary>
     public const string LocalServer = "local";
 
-    /// <summary>The marker is about this PC's own server: its choices are (or are being) moved to <c>MessageLinkServer.exe</c> on this data root.</summary>
+    /// <summary>The marker is about this PC's own server: its choices are (or are being) moved to <c>MessagesServer.exe</c> on this data root.</summary>
     public static bool IsLocalServer(MoveMark mark) => string.Equals(mark.Server, LocalServer, StringComparison.Ordinal);
 
     /// <summary>This root runs its own Messages Server: the switch was made and confirmed, so the window is that server's client and the server serves this root.</summary>
     public static bool RunsOwnServer(MoveMark mark) => mark.State == MoveState.Moved && IsLocalServer(mark);
 
     /// <summary>
-    /// Whether <c>MessageLinkServer.exe</c> may open the real data of <paramref name="dataRoot"/> (SWITCHBOARD.md 10.7, the lift of 3.2b). Only a root that was
+    /// Whether <c>MessagesServer.exe</c> may open the real data of <paramref name="dataRoot"/> (SWITCHBOARD.md 10.7, the lift of 3.2b). Only a root that was
     /// switched to its own server (<see cref="RunsOwnServer"/>), for any start; and a root whose switch is under way, only for the window's own start that moves its
     /// choices (<paramref name="connects"/> false: no account connects and nothing starts on its own). Anything else, an unreadable marker included, stays refused.
     /// </summary>

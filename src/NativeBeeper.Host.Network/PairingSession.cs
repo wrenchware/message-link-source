@@ -31,7 +31,7 @@ internal static class PairingSession
                             if (ProtocolVersion.Negotiate(hello.Protocol, hello.MinProtocol) is not { } chosen)
                             {
                                 await channel.SendAsync(Frames.Serialize(new HelloFrame(ProtocolVersion.Current, version, Server: HelloFrame.ServerName, MinProtocol: ProtocolVersion.Minimum,
-                                    Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Message Link cannot talk to that server."))), limit.Token).ConfigureAwait(false);
+                                    Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Messages cannot talk to that server."))), limit.Token).ConfigureAwait(false);
                                 return;
                             }
                             greeted = true;

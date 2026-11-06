@@ -27,14 +27,13 @@ internal sealed record PruneResult(IReadOnlyList<string> Removed, int Spared);
 internal static class BackupFolder
 {
     public const int Keep = 5;
-    public const string SuggestedName = "Message Link backups";
+    public const string SuggestedName = "Messages backups";
     private const string TagPattern = "[a-z0-9]{4}";
     private static readonly Regex Tag = new("^" + TagPattern + "$", RegexOptions.CultureInvariant);
-    // Exactly the names FileName gives, and the temporary names a write in progress uses beside them. "Messages backup …" is
-    // the same file from before the Message Link name, still kept, counted and offered for restore.
-    private static readonly Regex Name = new(@"^(?:Message Link|Messages) backup (\d{4}-\d{2}-\d{2} \d{4}) (" + TagPattern + @")(?: \(([2-9]|[1-9]\d{1,2})\))?\.msgbackup$",
+    // Exactly the names FileName gives, and the temporary names a write in progress uses beside them.
+    private static readonly Regex Name = new(@"^Messages backup (\d{4}-\d{2}-\d{2} \d{4}) (" + TagPattern + @")(?: \(([2-9]|[1-9]\d{1,2})\))?\.msgbackup$",
         RegexOptions.CultureInvariant);
-    private static readonly Regex Temporary = new(@"^(?:Message Link|Messages) backup \d{4}-\d{2}-\d{2} \d{4} (" + TagPattern + @")(?: \((?:[2-9]|[1-9]\d{1,2})\))?\.msgbackup\.[0-9a-f]{32}\.tmp$",
+    private static readonly Regex Temporary = new(@"^Messages backup \d{4}-\d{2}-\d{2} \d{4} (" + TagPattern + @")(?: \((?:[2-9]|[1-9]\d{1,2})\))?\.msgbackup\.[0-9a-f]{32}\.tmp$",
         RegexOptions.CultureInvariant);
 
     /// <summary>A new install's tag: random, and saying nothing about the PC, the user or an account.</summary>
@@ -43,7 +42,7 @@ internal static class BackupFolder
     public static bool IsInstallTag(string? tag) => tag is not null && Tag.IsMatch(tag);
 
     public static string FileName(DateTime local, string install, int copy = 1) =>
-        "Message Link backup " + local.ToString("yyyy-MM-dd HHmm", CultureInfo.InvariantCulture) + " " + install + (copy > 1 ? $" ({copy})" : "") + BackupFile.Extension;
+        "Messages backup " + local.ToString("yyyy-MM-dd HHmm", CultureInfo.InvariantCulture) + " " + install + (copy > 1 ? $" ({copy})" : "") + BackupFile.Extension;
 
     /// <summary>Whether a name is one some install of this app gave a backup.</summary>
     public static bool IsBackupName(string name) => Name.IsMatch(name);
@@ -51,11 +50,8 @@ internal static class BackupFolder
     /// <summary>The path the next backup takes: named for the minute, with a number when that minute already has one.</summary>
     public static string NextPath(string folder, DateTime local, string install)
     {
-        // A minute is taken under either name, so two backups of one minute never share a number and keep their order.
-        static bool Taken(string path) => File.Exists(path) || Directory.Exists(path);
         for (var copy = 1; copy < 1000; copy++)
-            if (FileName(local, install, copy) is var name && Path.Combine(folder, name) is var path && !Taken(path) &&
-                !Taken(Path.Combine(folder, "Messages" + name["Message Link".Length..]))) return path;
+            if (Path.Combine(folder, FileName(local, install, copy)) is var path && !File.Exists(path) && !Directory.Exists(path)) return path;
         throw new IOException("Too many backups for one minute.");
     }
 

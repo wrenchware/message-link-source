@@ -1,6 +1,6 @@
-# Message Link Server on a Linux host without Docker
+# Messages Server on a Linux host without Docker
 
-This package runs Message Link Server as a systemd service on an x86-64 Linux host: Ubuntu, Debian, or a Proxmox LXC (the
+This package runs Messages Server as a systemd service on an x86-64 Linux host: Ubuntu, Debian, or a Proxmox LXC (the
 Proxmox script, `proxmox/install-proxmox.sh` in the source, makes the container and runs this for you). It is the same
 server as the container, with Messenger and Instagram, its own door on your Tailscale network, and, with `--google`,
 Google Messages and Google Voice beside the server's own Google Chrome.
@@ -40,7 +40,7 @@ says `server google refused reason=sandbox_unavailable` instead, and `google chr
 - `MESSAGES_ADMIN_PASSWORD`: the server's own page at `https://<this server>:8787/` (12 characters or more, used
   nowhere else). Without it, the page asks for the setup code from the server's log on its first visit.
 - `MESSAGES_TAILNET=1`: the server joins your Tailscale network as a machine of its own (`MESSAGES_TAILNET_NAME`,
-  `messages-server` by default), so Message Link on a phone reaches it from anywhere. The page walks you through signing it
+  `messages-server` by default), so Messages on a phone reaches it from anywhere. The page walks you through signing it
   in; the link is also in the log.
 - `MESSAGES_TAILNET_AUTHKEY`: for a machine with no browser at hand, a Tailscale auth key (`tskey-auth-...`, made in
   Tailscale's admin console under Settings, Keys) signs the server in by itself the first time. Only the tailnet door
@@ -56,7 +56,7 @@ All three are printed when the server starts (the pairing code only while no dev
 sudo journalctl -u messages-server --no-pager | grep -Ei "setup code|pairing code=|tls fingerprint|tailnet login"
 ```
 
-In Message Link: Settings → Message Link Server, with the server's **Address** (and port, if not 8787), the **Fingerprint**
+In Messages: Settings → Messages Server, with the server's **Address** (and port, if not 8787), the **Fingerprint**
 and the **Pairing code**. The code works once, for 10 minutes; a new one is printed when it runs out.
 
 ## Where things live

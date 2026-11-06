@@ -5,8 +5,8 @@
        Windows can do arrives as a port. -->
   <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="MessageLink" />
-    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="Messages" />
+    <InternalsVisibleTo Include="MessagesServer" />
     <InternalsVisibleTo Include="NativeBeeper.Host.Network" />
     <InternalsVisibleTo Include="messages-server" />
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />

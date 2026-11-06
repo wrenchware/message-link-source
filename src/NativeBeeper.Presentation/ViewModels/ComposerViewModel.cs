@@ -111,8 +111,8 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
         return sends.Count switch
         {
             0 => "",
-            1 => $"A message sent {SentWhen(sends[0].CreatedAt)} wasn't confirmed before Message Link closed. Check the conversation before sending it again.",
-            _ => $"{sends.Count} messages sent before Message Link closed weren't confirmed. Check the conversation before sending them again."
+            1 => $"A message sent {SentWhen(sends[0].CreatedAt)} wasn't confirmed before Messages closed. Check the conversation before sending it again.",
+            _ => $"{sends.Count} messages sent before Messages closed weren't confirmed. Check the conversation before sending them again."
         };
     }
     // A warning is kept up to a week, so a bare time can point at the wrong day (owner, 2026-10-26: one "sent at 5:19 PM" was days old).
@@ -276,7 +276,7 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
         catch
         {
             if (id is not null) unreadableDrafts.Add(id);
-            DraftStorageStatus = "Couldn't bring back the saved draft: Message Link couldn't read it on this PC."; OnPropertyChanged(nameof(DraftStorageStatus));
+            DraftStorageStatus = "Couldn't bring back the saved draft: Messages couldn't read it on this PC."; OnPropertyChanged(nameof(DraftStorageStatus));
         }
         finally
         {

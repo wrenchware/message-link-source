@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- What only Windows can do for the backends' ports: DPAPI, the media player and imaging (SWITCHBOARD.md stage 3). It uses the
-       Windows SDK's own WinRT projection and nothing else, so the app and a MessageLinkServer.exe without the Windows App SDK load
+       Windows SDK's own WinRT projection and nothing else, so the app and a MessagesServer.exe without the Windows App SDK load
        the same code; a harness check fails if this project ever names the Windows App SDK, WinUI or WebView2. -->
   <!-- The namespace is NativeBeeper.WindowsPlatform, not NativeBeeper.Windows: a NativeBeeper.Windows namespace would make every
        Windows.Foundation or Windows.UI in the app's NativeBeeper.* namespaces resolve to it. -->

@@ -326,7 +326,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             "waiting" or "running" => $"Connected. {counted}, still loading older ones.",
             "complete" => $"Connected. {counted}; Facebook says there are no older ones.",
             "settled" => $"Connected. {counted}; Facebook stopped sending older ones.",
-            "done" => $"Connected. {counted}, as far back as Message Link loads.",
+            "done" => $"Connected. {counted}, as far back as Messages loads.",
             "failed" or "stopped" => $"Connected. {counted}. Loading older ones did not finish; reconnect to try again.",
             _ => $"Connected. {counted}.",
         };
@@ -669,7 +669,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             new { chatId = MessengerModels.Native(chatId), count = PageSize, before = olderThan ?? "" }, cancellationToken);
         var providerPage = result.Deserialize<MessengerMessagePage>(Json)
             ?? throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable,
-                "Messenger sent back something Message Link couldn't read. Refresh and try again.");
+                "Messenger sent back something Messages couldn't read. Refresh and try again.");
         var messages = providerPage.Messages ?? [];
         // The helper reports a restored page as refreshing only until its first background refresh finishes, judged by
         // what it has done rather than by who has read the page.
@@ -701,7 +701,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         }, cancellationToken);
         var window = result.Deserialize<MessengerMessageWindow>(Json)
             ?? throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable,
-                "Messenger sent back something Message Link couldn't read. Refresh and try again.");
+                "Messenger sent back something Messages couldn't read. Refresh and try again.");
         var messages = window.Messages ?? [];
         MessengerLog.Write($"history window chat={MessengerLog.Tag(chatId)} older={older} newer={newer} returned={messages.Length} " +
             $"more_older={window.MoreOlder} more_newer={window.MoreNewer}");
@@ -1030,7 +1030,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // Attachments. Facebook takes the file first and gives it a number, and the message then names that number, so
     // the bytes go over the pipe a chunk at a time before anything is sent. An encrypted conversation uploads them
     // itself instead, which the helper decides; both are the same call from here.
-    private const string EncryptedNotYet = "Files can't be sent to an end-to-end encrypted conversation from Message Link.";
+    private const string EncryptedNotYet = "Files can't be sent to an end-to-end encrypted conversation from Messages.";
     private readonly SemaphoreSlim transfers = new(1);
 
     private SendPermission FilePermission(string chatId)

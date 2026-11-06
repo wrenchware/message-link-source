@@ -361,7 +361,7 @@ func serve(in io.Reader, out io.Writer) {
 	// The name the phone lists this computer under in Device pairing, sent only when pairing. It stays a tablet, as
 	// upstream is: a web client would take the single web slot from Messages for web in a real browser, while one web
 	// client and two tablets can be connected at once. The library's own "libgm" said nothing to anyone.
-	util.BrowserDetailsMessage.OS = "Message Link"
+	util.BrowserDetailsMessage.OS = "Messages for Windows"
 	o := &output{encoder: json.NewEncoder(out)}
 	a := &adapter{out: o}
 	defer func() {

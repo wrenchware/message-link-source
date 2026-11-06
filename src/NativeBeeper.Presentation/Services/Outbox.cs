@@ -183,7 +183,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                     if (holding.Undo.IsCancellationRequested || version != generation || lifetime.IsCancellationRequested || !messages.ContainsKey(item.LocalId)) return;
                     if (!ended)
                     {
-                        messages[item.LocalId] = item with { State = OutgoingState.Rejected, Explanation = "The message wasn't sent. Message Link couldn't update its saved draft." };
+                        messages[item.LocalId] = item with { State = OutgoingState.Rejected, Explanation = "The message wasn't sent. Messages couldn't update its saved draft." };
                         Notify(chatId, item.LocalId);
                         return;
                     }
@@ -227,7 +227,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                 if (version != generation || !messages.ContainsKey(localId)) return new(receipt is null ? index : index + 1, null);
                 if (receipt is null) { Withdraw(index); return new(index, null); }
                 if (receipt.ChatId != chatId || string.IsNullOrWhiteSpace(receipt.PendingMessageId) || receipt.PendingMessageIds is { Count: > 1 })
-                    throw new SendException(true, "Message Link couldn't confirm the photo was sent. Check the conversation before sending it again.");
+                    throw new SendException(true, "Messages couldn't confirm the photo was sent. Check the conversation before sending it again.");
             }
             catch (Exception ex)
             {
@@ -398,7 +398,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
             if (receipt.ChatId != chatId || string.IsNullOrWhiteSpace(receipt.PendingMessageId) ||
                 receipt.PendingMessageIds is { Count: > 0 } ids &&
                 (ids.Any(string.IsNullOrWhiteSpace) || ids.Distinct(StringComparer.Ordinal).Count() != ids.Count || !ids.Contains(receipt.PendingMessageId)))
-                throw new SendException(true, "Message Link couldn't confirm the message was sent. Check the conversation before sending it again.");
+                throw new SendException(true, "Messages couldn't confirm the message was sent. Check the conversation before sending it again.");
             // Accepted: the receipt names it from here, so the name given before sending is dropped.
             messages[item.LocalId] = item with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null,
                 PendingMessageIds = receipt.PendingMessageIds?.ToArray() };

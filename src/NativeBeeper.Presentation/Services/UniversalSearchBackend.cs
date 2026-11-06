@@ -17,9 +17,9 @@ public sealed class UniversalSearchBackend(ISearchBackend archive, LocalSearchCa
     // Instagram's and Voice's recent conversations are in the catalogue from their saved copies too, once the app puts them
     // there (SavedSearchSeeding); Messenger's are its helper's own store.
     public string SearchScopeDescription => kept is null
-        ? "Searches Google Messages history saved on this PC, the Messenger, Instagram and Voice messages opened since Message Link started, and call records."
+        ? "Searches Google Messages history saved on this PC, the Messenger, Instagram and Voice messages opened since Messages started, and call records."
         : $"Searches Google Messages and {kept.Covers} history saved on this PC, the " +
-          $"{Join([.. SessionServices.Where(service => service != kept.Covers)])} messages opened since Message Link started" +
+          $"{Join([.. SessionServices.Where(service => service != kept.Covers)])} messages opened since Messages started" +
           (catalog.HoldsSavedCopies && kept.Covers == "Messenger" ? " or kept on this PC" : "") + ", and call records.";
     private static string Join(string[] names) => names.Length < 2 ? string.Concat(names) : string.Join(", ", names[..^1]) + " and " + names[^1];
     private const int PageSize = 30;

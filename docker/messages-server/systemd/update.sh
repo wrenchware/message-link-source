@@ -1,5 +1,5 @@
 #!/bin/sh
-# The nightly update of Message Link Server installed by install.sh, run by messages-server-update.timer (or by hand as root:
+# The nightly update of Messages Server installed by install.sh, run by messages-server-update.timer (or by hand as root:
 # systemctl start messages-server-update, then journalctl -u messages-server-update). Two things, each only when it
 # applies, and the server is stopped and started at most once for both:
 #
@@ -22,7 +22,7 @@ say() { echo "update: $*"; }
 fail() { echo "update: $*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || fail "run it as root."
-[ -x "$app/messages-server" ] || fail "Message Link Server is not installed in $app."
+[ -x "$app/messages-server" ] || fail "Messages Server is not installed in $app."
 
 url=""
 if [ -r "$settings" ]; then
@@ -60,7 +60,7 @@ if [ -n "$url" ]; then
         for folder in "$work/package"/messages-server-*-linux-x64; do
             [ -x "$folder/install.sh" ] && [ -x "$folder/messages-server" ] && package="$folder"
         done
-        [ -n "$package" ] || fail "the download is not a Message Link Server package; nothing was updated."
+        [ -n "$package" ] || fail "the download is not a Messages Server package; nothing was updated."
         say "a newer release is ready: $(basename "$package")."
     fi
 else

@@ -67,7 +67,7 @@ public sealed partial class ConsoleSessionViewModel
         var shown = kept.TakeLast(count).ToArray();
         lock (gate) messageRefs = [.. shown];
         log($"console msgs conversations=1 held={kept.Count.ToString(CultureInfo.InvariantCulture)} shown={shown.Length.ToString(CultureInfo.InvariantCulture)}");
-        if (shown.Length == 0) { Out($"Nothing from {target.Title} is kept on this PC yet. Opening it in Message Link keeps its history; /search looks deeper.", ConsoleTone.Dim); return; }
+        if (shown.Length == 0) { Out($"Nothing from {target.Title} is kept on this PC yet. Opening it in Messages keeps its history; /search looks deeper.", ConsoleTone.Dim); return; }
         var services = string.Join(", ", target.Networks.Where(n => n.Length > 0).Distinct());
         Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {services} · the last {shown.Length.ToString(CultureInfo.CurrentCulture)} kept here, newest last", ConsoleTone.Dim));
         for (var i = 0; i < shown.Length; i++) Emit(MessageLine(i + 1, shown[i], withConversation: false));
@@ -190,7 +190,7 @@ public sealed partial class ConsoleSessionViewModel
         MessageActionOptions? options;
         try { options = await host.MessageOptionsAsync(item.Message); }
         catch (Exception) { options = null; }
-        if (options is null) Fail($"{Service(item.Chat)} can't {what} this message from here right now (it isn't connected, or Message Link can't say). Nothing was sent.");
+        if (options is null) Fail($"{Service(item.Chat)} can't {what} this message from here right now (it isn't connected, or Messages can't say). Nothing was sent.");
         return options;
     }
 
@@ -322,8 +322,8 @@ public sealed partial class ConsoleSessionViewModel
             {
                 var archived = verb == "archive";
                 if (row.IsArchived == archived) { Out(archived ? $"{target.Title} is already archived." : $"{target.Title} isn't archived.", ConsoleTone.Dim); return; }
-                var where = KeptHere(row) ? "in Message Link" : "on " + Service(row);
-                var why = row.Network == "Instagram" && !MergedConversations.IsMerged(row.Id) ? " (Instagram can't archive from Message Link)" : "";
+                var where = KeptHere(row) ? "in Messages" : "on " + Service(row);
+                var why = row.Network == "Instagram" && !MergedConversations.IsMerged(row.Id) ? " (Instagram can't archive from Messages)" : "";
                 Report(verb, provider, await Safely(() => host.SetArchivedAsync(row, archived)),
                     (archived ? "Archived " : "Unarchived ") + target.Title + " " + where + why + ".", "Not changed. Check your phone before trying again.");
                 return;
@@ -332,14 +332,14 @@ public sealed partial class ConsoleSessionViewModel
             {
                 var pinned = verb == "pin";
                 if (row.IsPinned == pinned) { Out(pinned ? $"{target.Title} is already pinned." : $"{target.Title} isn't pinned.", ConsoleTone.Dim); return; }
-                Report(verb, provider, await Safely(() => host.SetPinnedAsync(row, pinned)), (pinned ? "Pinned " : "Unpinned ") + target.Title + " in Message Link.", "Not changed.");
+                Report(verb, provider, await Safely(() => host.SetPinnedAsync(row, pinned)), (pinned ? "Pinned " : "Unpinned ") + target.Title + " in Messages.", "Not changed.");
                 return;
             }
             case "unread":
                 // The menu offers Mark as unread only where nothing is unread already.
                 if (row.IsMarkedUnread) { Out($"{target.Title} is already marked unread.", ConsoleTone.Dim); return; }
                 if (row.UnreadCount > 0) { Out($"{target.Title} already has unread messages.", ConsoleTone.Dim); return; }
-                Report("unread", provider, await Safely(() => host.MarkUnreadAsync(row)), $"Marked {target.Title} unread in Message Link. The service isn't told.", "Not changed.");
+                Report("unread", provider, await Safely(() => host.MarkUnreadAsync(row)), $"Marked {target.Title} unread in Messages. The service isn't told.", "Not changed.");
                 return;
             case "label" or "unlabel":
             {
@@ -349,7 +349,7 @@ public sealed partial class ConsoleSessionViewModel
                 { Fail($"There's no label called “{rest}”. Yours: {string.Join(", ", names)}."); return; }
                 var on = verb == "label";
                 Report(verb, provider, await Safely(() => host.SetLabelAsync(row, label, on)),
-                    on ? $"Labelled {target.Title} {label}, in Message Link." : $"Took {label} off {target.Title}.", "Not changed.");
+                    on ? $"Labelled {target.Title} {label}, in Messages." : $"Took {label} off {target.Title}.", "Not changed.");
                 return;
             }
             case "snooze":
@@ -359,7 +359,7 @@ public sealed partial class ConsoleSessionViewModel
                     (until = ConsoleCommandParser.When(rest, clock.GetUtcNow(), clock.LocalTimeZone)) is null)
                 { Fail($"“{rest}” isn't a time. Use 30m, 1h, tonight, tomorrow, a time like 17:30, or off."); return; }
                 Report("snooze", provider, await Safely(() => host.SnoozeAsync(row, until)),
-                    until is { } at ? $"Snoozed {target.Title}: notifications wait, and you'll be reminded {Moment(at)}. In Message Link." : $"Called off the reminder for {target.Title}.",
+                    until is { } at ? $"Snoozed {target.Title}: notifications wait, and you'll be reminded {Moment(at)}. In Messages." : $"Called off the reminder for {target.Title}.",
                     "Couldn't save it. Try again.");
                 return;
             }
@@ -409,7 +409,7 @@ public sealed partial class ConsoleSessionViewModel
             if (asked is null)
             {
                 Fail(MergedConversations.IsMerged(row.Id) ? $"{target.Title} links several conversations; delete each one from its own conversation."
-                    : $"{Service(row)} conversations can't be deleted from Message Link.");
+                    : $"{Service(row)} conversations can't be deleted from Messages.");
                 return;
             }
             key = "chat\n" + row.Id;

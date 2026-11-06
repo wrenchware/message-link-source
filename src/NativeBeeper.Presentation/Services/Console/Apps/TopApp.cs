@@ -120,7 +120,7 @@ public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : Co
     {
         var now = Shell.Clock.GetUtcNow();
         var rows = new List<ConsoleRow>();
-        var head = new List<ConsoleSpan> { new("Message Link " + status.Version, ConsoleTone.Strong) };
+        var head = new List<ConsoleSpan> { new("Messages " + status.Version, ConsoleTone.Strong) };
         if (perf is { } p)
         {
             head.Add(new(" · up " + ConsoleCells.Uptime(p.Uptime), ConsoleTone.Dim));
@@ -255,7 +255,7 @@ public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : Co
         var rows = table.Render(width).Select(row => new ConsoleRow(row.Spans)).ToList();
         rows.Add(ConsoleRow.Blank);
         rows.Add(ConsoleRow.Of("One helper process per service (one per Voice account). A helper that stops after connecting is", ConsoleTone.Dim));
-        rows.Add(ConsoleRow.Of("resumed from its saved session by Message Link itself; nothing here starts or stops one.", ConsoleTone.Dim));
+        rows.Add(ConsoleRow.Of("resumed from its saved session by Messages itself; nothing here starts or stops one.", ConsoleTone.Dim));
         return rows;
     }
 

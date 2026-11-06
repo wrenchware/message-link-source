@@ -115,7 +115,7 @@ public sealed class ChatsApp : ConsoleApp
 
     private async Task OpenAsync(ChatTarget chat)
     {
-        Message = await Shell.OpenAsync(chat) ? $"Opened {chat.Title} in Message Link." : $"Couldn't open {chat.Title}.";
+        Message = await Shell.OpenAsync(chat) ? $"Opened {chat.Title} in Messages." : $"Couldn't open {chat.Title}.";
         Invalidate();
     }
 

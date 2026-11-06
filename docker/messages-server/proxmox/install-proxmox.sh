@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Message Link Server in a container of its own on Proxmox VE. Run it in the Proxmox host's shell, as root (the node's
+# Messages Server in a container of its own on Proxmox VE. Run it in the Proxmox host's shell, as root (the node's
 # Shell button in the web interface is root):
 #
 #   bash -c "$(curl -fsSL <address of this script>)"
@@ -19,7 +19,7 @@
 #   --tarball <file or https address>   the package to install (messages-server-<version>-linux-x64.tar.gz). Needed until
 #                                       a release is published at RELEASE_URL below. An address needs its .sha256 beside it;
 #                                       a file is checked against a .sha256 beside it when there is one.
-#   --ctid <number>                     the container's id (default: the next free one, or the existing Message Link Server's)
+#   --ctid <number>                     the container's id (default: the next free one, or the existing Messages Server's)
 #   --yes                               take every default without asking (no page password, no auth key)
 #   --no-google                         no Chrome: the page can't connect any account, so accounts only arrive by a move from a PC
 #   --help                              this text
@@ -124,7 +124,7 @@ if [ -f "$work/package.sha256" ]; then
     say "The package matches its .sha256."
 fi
 top=$(tar -tzf "$package" 2>/dev/null | head -n 1 | cut -d / -f 1) || true
-[[ "$top" =~ ^messages-server-[0-9A-Za-z.+-]+-linux-x64$ ]] || fail "$tarball is not a Message Link Server package (messages-server-<version>-linux-x64.tar.gz)."
+[[ "$top" =~ ^messages-server-[0-9A-Za-z.+-]+-linux-x64$ ]] || fail "$tarball is not a Messages Server package (messages-server-<version>-linux-x64.tar.gz)."
 for member in install.sh messages-server messages-tailnet; do
     tar -tzf "$package" "$top/$member" >/dev/null 2>&1 || fail "$tarball has no $member: use a package from 10.11 or later."
 done
@@ -132,7 +132,7 @@ if [ "$google" = yes ] && ! tar -tzf "$package" "$top/gmessages-helper" >/dev/nu
     fail "$tarball has no Google helpers; use a newer package, or add --no-google."
 fi
 version=${top#messages-server-}; version=${version%-linux-x64}
-say "Message Link Server $version."
+say "Messages Server $version."
 
 # ---- An existing container: update it ----
 existing=""
@@ -160,8 +160,8 @@ update=no
 if pct status "$ctid" >/dev/null 2>&1; then
     pct config "$ctid" | grep -Eq '^tags:.*messages-server' \
         || fail "container $ctid exists and is not one this script made. Choose another id (--ctid), or remove it first."
-    say "Container $ctid is the Message Link Server container this script made earlier."
-    if ! ask_yes "Update Message Link Server in it to $version? Its data, keys, sign-ins and paired devices stay" y; then
+    say "Container $ctid is the Messages Server container this script made earlier."
+    if ! ask_yes "Update Messages Server in it to $version? Its data, keys, sign-ins and paired devices stay" y; then
         say "Nothing was changed."; exit 0
     fi
     update=yes
@@ -186,13 +186,13 @@ if [ "$update" = yes ]; then
         echo $sha > /opt/messages-server/.package-sha256
         rm -rf /root/messages-server-install /root/messages-server.tar.gz"
     say ""
-    say "Message Link Server in container $ctid is now $version."
+    say "Messages Server in container $ctid is now $version."
     exit 0
 fi
 
 # ---- A new container: the questions ----
 say ""
-say "A new container for Message Link Server. Press Enter to take the value in brackets."
+say "A new container for Messages Server. Press Enter to take the value in brackets."
 host=$(ask "Hostname" "$hostname_default")
 [[ "$host" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || fail "the hostname must be lowercase letters, digits and dashes."
 
@@ -289,7 +289,7 @@ say "Template: $template"
 # ---- The container ----
 options=(--hostname "$host" --unprivileged 1 --features nesting=1 --ostype debian --cores "$cores" --memory "$memory" --swap 512
     --rootfs "$dstore:$disk" --net0 "$net" --onboot 1 --tags messages-server --timezone host
-    --description "Message Link Server (install-proxmox.sh). Its settings: /etc/messages-server/environment inside the container.")
+    --description "Messages Server (install-proxmox.sh). Its settings: /etc/messages-server/environment inside the container.")
 if [ -n "$backups_host" ]; then
     mkdir -p "$backups_host"
     # The server's account is 2787 inside the container (install.sh takes that number in a fresh container), which an
@@ -314,7 +314,7 @@ ip=$(in_ct sh -c "hostname -I 2>/dev/null" | tr ' ' '\n' | grep -E '^[0-9]+(\.[0
 # The settings, written before the first start (install.sh keeps a settings file it finds). Root only, in the container
 # and in this script's private folder until it is pushed; the secrets are never on a command line.
 {
-    printf '# Message Link Server'"'"'s settings (install-proxmox.sh). systemctl restart messages-server after a change.\n'
+    printf '# Messages Server'"'"'s settings (install-proxmox.sh). systemctl restart messages-server after a change.\n'
     printf 'MESSAGES_HOSTNAMES=%s\n' "$host${ip:+,$ip}"
     printf 'MESSAGES_TAILNET=%s\n' "$([ "$tailnet" = yes ] && echo 1 || echo 0)"
     printf 'MESSAGES_TAILNET_NAME=%s\n' "$host"
@@ -337,7 +337,7 @@ pct push "$ctid" "$work/update" /etc/messages-server/update --perms 0600
 pct push "$ctid" "$work/proxmox.conf" /etc/systemd/system/messages-server.service.d/proxmox.conf --perms 0644
 rm -f "$work/environment"
 
-say "Installing Message Link Server $version$([ "$google" = yes ] && printf ' with Google Chrome')..."
+say "Installing Messages Server $version$([ "$google" = yes ] && printf ' with Google Chrome')..."
 flag=""; [ "$google" = yes ] && flag="--google"
 pct push "$ctid" "$package" /root/messages-server.tar.gz
 in_ct bash -c "set -e; rm -rf /root/messages-server-install; mkdir -p /root/messages-server-install
@@ -361,7 +361,7 @@ login=$(printf '%s\n' "$log" | sed -n 's/.*tailnet login url=\([^ ]*\).*/\1/p' |
 where="$ip"
 [ -n "$where" ] || where="<the container's address>"
 say ""
-say "Message Link Server $version is running in container $ctid ($host)."
+say "Messages Server $version is running in container $ctid ($host)."
 say "  Its page:      https://$where:$port/   (your browser warns about the certificate once: the server made it itself)"
 if [ -n "$setup" ]; then say "  Setup code:    $setup"
 else say "  Setup code:    pct exec $ctid -- journalctl -u messages-server --no-pager | grep -i 'setup code'"; fi

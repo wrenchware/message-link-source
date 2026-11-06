@@ -27,10 +27,10 @@ internal static class MessengerEncryptedStatus
 
     public const string DeviceGone = "Facebook no longer lists this PC as one of your Messenger devices, so end-to-end encrypted " +
         "conversations cannot send or receive. Turn encrypted conversations on again to register it.";
-    public const string DeviceMissing = "This PC's encrypted-device keys are missing, so end-to-end encrypted conversations cannot send or receive, and Message Link did not register a new device on its own. "
+    public const string DeviceMissing = "This PC's encrypted-device keys are missing, so end-to-end encrypted conversations cannot send or receive, and Messages did not register a new device on its own. "
         + "To use them here again, turn encrypted conversations on in Settings, which registers this computer as a new Messenger device.";
     public const string Down = "Encrypted conversations are on, but their connection is down, so they can't send or receive here " +
-        "right now. Message Link keeps trying; choose Refresh to check again.";
+        "right now. Messages keeps trying; choose Refresh to check again.";
     public const string Connecting = "Encrypted conversations are still connecting; new messages in them arrive once they have.";
 
     /// <summary>

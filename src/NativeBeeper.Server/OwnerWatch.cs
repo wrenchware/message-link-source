@@ -44,7 +44,7 @@ internal sealed class OwnerWatch : IDisposable
     /// it began no later than this server did (<paramref name="serverStart"/>, this process's own start by default) and its image is
     /// <paramref name="image"/> (the app's <c>Messages</c>). Anything else, or a start time or image that cannot be read, is an owner that is gone.
     /// </summary>
-    public static Task WatchProcess(int processId, Action<string> log, DateTime? serverStart = null, string image = "MessageLink")
+    public static Task WatchProcess(int processId, Action<string> log, DateTime? serverStart = null, string image = "Messages")
     {
         System.Diagnostics.Process process;
         try { process = System.Diagnostics.Process.GetProcessById(processId); }

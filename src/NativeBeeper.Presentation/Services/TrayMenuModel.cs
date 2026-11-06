@@ -29,7 +29,7 @@ public static class TrayMenuModel
     {
         var items = new List<TrayMenuItem>
         {
-            new(OpenId, "Open Message Link", TrayCommand.Open, IsDefault: true),
+            new(OpenId, "Open Messages", TrayCommand.Open, IsDefault: true),
             Separator(),
         };
         var shown = Math.Min(unread.Count, UnreadShown);
@@ -62,8 +62,8 @@ public static class TrayMenuModel
         // signed in; Stop Messages Server closes both. The page is the server's own, on this PC.
         if (ownServer) items.Add(new(ServerPageId, "Manage server", TrayCommand.ServerPage));
         items.Add(Separator());
-        items.Add(new(QuitId, "Quit Message Link", TrayCommand.Quit));
-        if (ownServer) items.Add(new(StopServerId, "Stop Message Link Server", TrayCommand.StopServer));
+        items.Add(new(QuitId, "Quit Messages", TrayCommand.Quit));
+        if (ownServer) items.Add(new(StopServerId, "Stop Messages Server", TrayCommand.StopServer));
         return items;
     }
 
@@ -74,9 +74,9 @@ public static class TrayMenuModel
     // The menu before anything else is known, and whenever building one fails: Open, and Quit.
     public static IReadOnlyList<TrayMenuItem> Fallback { get; } =
     [
-        new(OpenId, "Open Message Link", TrayCommand.Open, IsDefault: true),
+        new(OpenId, "Open Messages", TrayCommand.Open, IsDefault: true),
         Separator(),
-        new(QuitId, "Quit Message Link", TrayCommand.Quit),
+        new(QuitId, "Quit Messages", TrayCommand.Quit),
     ];
 
     // The chosen entry, from the list the menu was drawn from. Id 0 is never an answer.

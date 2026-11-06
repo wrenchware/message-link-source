@@ -263,7 +263,7 @@ internal sealed class HelperRestarts(TimeProvider time, Action<string> log)
         "budget_spent" => "Instagram restarted 3 times without staying connected for 2 minutes. To protect the account, it isn't restarted again yet.",
         "not_signed_in" => "Not signed in on this PC.",
         "not_started" => "Not running here. Reconnect it in Settings.",
-        "closing" => "Message Link is closing.",
+        "closing" => "Messages is closing.",
         _ => "Can't restart now. Try again in a minute.",
     };
 }

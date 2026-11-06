@@ -39,9 +39,9 @@ internal sealed class MessagingRouter(GoogleMessagesBackend google, MessengerBac
     // deleting one are not implemented. Each is named separately rather than left to fall through to Google Messages,
     // which is what an unrecognized id does here.
     private static Task Read(string what) =>
-        Task.FromException(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Message Link cannot {what}."));
+        Task.FromException(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Messages cannot {what}."));
     private static Task<T> Read<T>(string what) =>
-        Task.FromException<T>(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Message Link cannot {what}."));
+        Task.FromException<T>(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Messages cannot {what}."));
 
     // Google Messages that was never paired on this PC is not set up: it has no conversations to add, nothing to connect
     // and nothing to report, whether or not any other network is signed in. It was expected whenever nothing else was,
@@ -255,7 +255,7 @@ internal sealed class MessagingRouter(GoogleMessagesBackend google, MessengerBac
             {
                 ChatSetting.Archived => voice.SetArchivedAsync(chatId, value, cancellationToken),
                 ChatSetting.Spam when !value => voice.RemoveSpamAsync(chatId, cancellationToken),
-                ChatSetting.Spam => Task.FromException<ChatSummary>(GoogleVoiceBackend.Refused("Message Link can remove a Google Voice conversation from spam, but cannot mark one as spam.")),
+                ChatSetting.Spam => Task.FromException<ChatSummary>(GoogleVoiceBackend.Refused("Messages can remove a Google Voice conversation from spam, but cannot mark one as spam.")),
                 _ => Task.FromException<ChatSummary>(GoogleVoiceBackend.Refused("That setting is kept on this PC only, not on Google Voice.")),
             }
             : Mine(chatId) ? messenger.SetAsync(chatId, setting, value, cancellationToken) : google.SetAsync(chatId, setting, value, cancellationToken);

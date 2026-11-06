@@ -1,4 +1,4 @@
-# Message Link Server
+# Messages Server
 
 ## Install
 
@@ -25,8 +25,8 @@ its first visit and then walks you through Tailscale, your accounts, your phone 
 - **Linux with systemd and no Docker** (Debian, Ubuntu, an LXC you made yourself):
   `tar -xzf messages-server-<version>-linux-x64.tar.gz && sudo ./messages-server-<version>-linux-x64/install.sh --google`
   (`systemd/README.md`; without `--google` there is no Chrome, so the page can't connect any account).
-- **Windows.** Message Link for Windows connects your accounts on the PC itself, with no server; it can also use any server
-  above (Settings, Message Link Server).
+- **Windows.** Messages for Windows connects your accounts on the PC itself, with no server; it can also use any server
+  above (Settings, Messages Server).
 
 ## Build the image (on the Unraid server)
 
@@ -60,7 +60,7 @@ Local builds remain the default. To publish private images from a copy of this r
    Avoid the broad `repo` and `delete:packages` scopes. The token's account must be allowed to create and write packages
    under `wrenchware`; authorize organization SSO if required. If the token belongs to a different username, set the
    repository Actions variable **`MESSAGES_GHCR_USERNAME`** to that username.
-2. Run **Message Link Server image** from Actions on `main`, or wait for the next main push. It builds the Linux x64
+2. Run **Messages Server image** from Actions on `main`, or wait for the next main push. It builds the Linux x64
    image on every main push and each Sunday at 06:23 UTC. A missing secret skips the build and publishes
    nothing; manual runs from other branches cannot publish. Removing the secret disables future publishing.
 3. Check that the new `messages-server` package is **Private**, and give the Unraid token's account read access.
@@ -138,7 +138,7 @@ another server is refused too (`key_mismatch`).
 An install from before this layout has its keys, certificate and Messenger files moved into the keys volume at the
 first start (`server key moved`, `server tls moved`, `server helper store moved` in the log).
 
-The owner's Message Link keeps copies of the server's logs (`server.log` and the run before it, Google Messages and its
+The owner's Messages keeps copies of the server's logs (`server.log` and the run before it, Google Messages and its
 sign-in history, Google Voice, Instagram, and the Messenger helper's log from the keys volume), refreshed about once a
 minute while it is connected, in `ServerLogs` under its data folder (`%LOCALAPPDATA%\Messages for Windows\ServerLogs`)
 and in its log viewer as "Server · …". Any paired device can read them, and only by those names; nothing
@@ -171,7 +171,7 @@ tailnet, turn on its own door (below) rather than publishing the port there.
 
 ## Your tailnet
 
-Message Link on a phone reaches the server through Tailscale built into the app. With `MESSAGES_TAILNET=1` the server joins
+Messages on a phone reaches the server through Tailscale built into the app. With `MESSAGES_TAILNET=1` the server joins
 your tailnet as a machine of its own, `messages-server` (`MESSAGES_TAILNET_NAME` to change it), from inside the container
 (Tailscale's `tsnet`, which needs no capability, tun device or host network). Your devices reach it at
 `messages-server:8787`. The published port stays on the LAN address, and nothing on Unraid changes, its own Tailscale
@@ -196,7 +196,7 @@ To turn it on:
      console), the card says so and offers **Sign in again**, with no restart.
    - **Approve the server**, when your Tailscale network asks for new machines to be approved.
    - **Keep the server signed in** (key expiry off), otherwise Tailscale signs it out after 180 days; and the same for
-     each Message Link phone, listed by name.
+     each Messages phone, listed by name.
    - **Only your devices reach it**: the server reads its own access rules. Tailscale's default rule (everyone reaches
      everything) counts as done while your network holds only your own devices; otherwise the card gives the rule to
      add (below), filled in with your login and its address.
@@ -266,13 +266,13 @@ server answers devices meanwhile. A start with no Messenger or Instagram account
 
 ## Notifications on phones
 
-Message Link on Android shows new messages as notifications through a Firebase project of your own (no relay; each push is
+Messages on Android shows new messages as notifications through a Firebase project of your own (no relay; each push is
 sealed for the phone it goes to, so Google carries it without being able to read it). Set it up from the server's page:
 its **Notifications on phones** card lists the four steps in Firebase's console, then takes the project's
 `google-services.json` and a private key from Service accounts, with the server's password. The server checks the two
-files are one project's with an app for Message Link (`com.wrenchware.messages.dev`, or `com.wrenchware.messages`), asks
+files are one project's with an app for Messages (`com.wrenchware.messages.dev`, or `com.wrenchware.messages`), asks
 Google whether it takes the key, keeps both in the keys volume (`push/`) and turns notifications on at once. A phone
-signs up the next time Message Link on it connects; the card then names it. Replacing the files works the same way.
+signs up the next time Messages on it connects; the card then names it. Replacing the files works the same way.
 
 In the log: `push setup outcome=on apps=` (or `on_unchecked` when Google could not be reached to check the key, or
 `refused reason=` with nothing changed), `push on apps=` at each start, `push registered` when a phone signs up, and
@@ -398,7 +398,7 @@ cleared; it passes the value to Docker by name, so its own command line never ho
 
 ## Moving a PC's choices here (a fresh start)
 
-A PC moves its pins, names, drafts, labels and saved messages onto this server with Settings → Message Link Server → **Move
+A PC moves its pins, names, drafts, labels and saved messages onto this server with Settings → Messages Server → **Move
 to this server…**. The
 server's shared space must be empty first (or already belong to that PC), so a server that has been used starts again with
 one command. It removes only the server's shared choices (`Server/shared.db` and `Server/space.protected`); sign-ins, keys and
@@ -413,10 +413,10 @@ docker start messages-server
 ```
 
 It refuses while the server is running, without a terminal (`-it`), while the shared state still holds a scheduled message or a send
-that may not have gone through (it names how many; send or cancel them from Message Link first), or if anything but `RESET` is typed.
+that may not have gone through (it names how many; send or cancel them from Messages first), or if anything but `RESET` is typed.
 The server rejects an argument it does not know, so a typo cannot start a full server.
 
-Keep every other device closed (Message Link on a second PC, a phone) from the reset until the move has finished: a device that is
+Keep every other device closed (Messages on a second PC, a phone) from the reset until the move has finished: a device that is
 connected writes its choices into the new, empty space, and the move then refuses it as already in use.
 
 ## Moving Messenger and Instagram here, and back
@@ -429,7 +429,7 @@ keeps its encrypted-device keys on the server; if the same account then moves in
 `Messenger/set-aside` in the keys volume (kept, never deleted; the log says `account move set aside`). The PC's copies are
 deleted once the server has signed the account in.
 
-A move back (Settings → Message Link Server → **Move back to this PC…**) holds the accounts on the server and takes them home;
+A move back (Settings → Messages Server → **Move back to this PC…**) holds the accounts on the server and takes them home;
 the server then keeps a paused copy with a note that they moved away, which **Remove** on the server's page forgets. While that note is there the server will not restore, connect, turn on encryption
 for or sign in Messenger or Instagram; a new move from the PC takes it away. If the PC is lost and the server should run them
 again, clear the note with a command like the reset's (stop the container, mount both volumes, type `CLEAR`):

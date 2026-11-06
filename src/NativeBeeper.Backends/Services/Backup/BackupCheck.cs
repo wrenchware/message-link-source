@@ -144,7 +144,7 @@ internal static class BackupCheck
         "online_only" => "The latest backup is stored online only, so it wasn't checked.",
         "missing" => "No backup from this PC is in the folder.",
         "old_password" => "The latest backup uses your previous password. The next one will use the new password.",
-        "unsupported" => "The latest backup was made by a newer version of Message Link.",
+        "unsupported" => "The latest backup was made by a newer version of Messages.",
         "password" => BackupSettings.Failure("password"),
         _ => "The backup folder is busy. It will be checked again later.",
     };

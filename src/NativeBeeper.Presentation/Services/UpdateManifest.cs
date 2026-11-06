@@ -4,9 +4,8 @@ namespace NativeBeeper.Presentation.Services;
 
 /// <summary>
 /// The newest release as tools\Copy-Installer.ps1 describes it in latest.json, in the folder installers are shared from:
-/// {"version":"0.1.366","installer":"MessageLink-Setup-0.1.366.exe","sha256":"…","published":"2026-10-03"}
-/// (Messages-Setup-… before the Message Link name, which copies from then still read). Only the version is required, so
-/// they also see a release named either way; anything else that does not read cleanly is left out rather than guessed.
+/// {"version":"0.1.366","installer":"Messages-Setup-0.1.366.exe","sha256":"…","published":"2026-10-03"}. Only the version
+/// is required; anything else that does not read cleanly is left out rather than guessed.
 /// </summary>
 public sealed record UpdateManifest(Version Version, string? Installer, string? Sha256, DateOnly? Published)
 {
@@ -24,7 +23,7 @@ public sealed record UpdateManifest(Version Version, string? Installer, string? 
             var root = document.RootElement;
             if (ReadVersion(String(root, "version")) is not { } version) return null;
             var sha = String(root, "sha256") is { Length: 64 } hash && hash.All(Uri.IsHexDigit) ? hash.ToLowerInvariant() : null;
-            var installer = String(root, "installer") is { } name && (name.StartsWith("MessageLink-Setup-", StringComparison.Ordinal) || name.StartsWith("Messages-Setup-", StringComparison.Ordinal)) &&
+            var installer = String(root, "installer") is { } name && name.StartsWith("Messages-Setup-", StringComparison.Ordinal) &&
                 name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && name.IndexOfAny(['/', '\\']) < 0 ? name : null;
             DateOnly? published = DateOnly.TryParseExact(String(root, "published"), "yyyy-MM-dd", out var day) ? day : null;
             return new(version, installer, sha, published);

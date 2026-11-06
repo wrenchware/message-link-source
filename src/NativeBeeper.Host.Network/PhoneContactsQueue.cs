@@ -17,8 +17,8 @@ namespace NativeBeeper.Host.Network;
 /// nobody has taken goes to whichever phone's turn it is when it is taken.</para>
 /// <para><b>Never twice.</b> A request is kept by the PC's id: the same id again is the same request. Once a phone takes it, it is that phone's for good: it is offered
 /// again only to that phone (which keeps its own record of the ids it wrote and looks the number up first), and never handed to another, which could not tell it had
-/// been written. A phone that turns the setting off or is removed with a request taken and unanswered leaves it <c>unknown</c>, for the person to check.
-/// A number for an existing contact names that contact by its key on the phone that found it, so it goes to that phone and that account alone.</para>
+/// been written. A phone that turns the setting off or is removed with a request taken and unanswered leaves it <c>unknown</c>, for the person to check (code review,
+/// 2026-11-05). A number for an existing contact names that contact by its key on the phone that found it, so it goes to that phone and that account alone.</para>
 /// <para><b>Woken by a push.</b> A phone not showing Messages is woken with its encrypted push (kind <c>contacts</c>): at normal priority for a request, which may wait
 /// until Android lets it run, and urgently for a search, which a PC is waiting on (owner, 2026-11-05: searches are rare, so the urgent pushes that show nothing stay
 /// few). An open phone hears the <c>phoneContacts</c> signal instead.</para>
@@ -160,7 +160,7 @@ internal sealed class PhoneContactsQueue
     }
 
     // Submits and takes one at a time: a request is seen by a take only once it is on disk, a second submit of an id waits for the first one's save, and an owner
-    // is given out only once it is on disk.
+    // is given out only once it is on disk (code review, 2026-11-05).
     private readonly SemaphoreSlim committing = new(1, 1);
 
     public async Task<PhoneContactState> SubmitAsync(PhoneContactRequest request)

@@ -21,17 +21,17 @@ internal interface IServerLifecycle
 
 /// <summary>
 /// The server's one STA thread: a Win32 message loop and a top-level window that is never shown. It is the process's address for the things only
-/// a window can receive: <c>MessageLinkServer.exe --quit</c> from another process (a registered message), Restart Manager's close when an installer
+/// a window can receive: <c>MessagesServer.exe --quit</c> from another process (a registered message), Restart Manager's close when an installer
 /// replaces the program, and the end of the Windows session (SWITCHBOARD.md stage 3). A message-only window would hear none of the last two,
 /// since Windows broadcasts them to top-level windows. The Google renewal's WebView2 controllers live on this thread too: it carries a
 /// DispatcherQueue (<see cref="Sta"/>) that the same loop drains, and a synchronization context that brings awaits back to it (3.1c).
 /// </summary>
 internal sealed class ServerShell
 {
-    public const string WindowClassName = "MessageLinkServer";
+    public const string WindowClassName = "MessagesServer";
     private const uint StoppedMessage = Native.WM_APP + 1;
 
-    public static string WindowTitle => "Message Link Server" + AppPaths.InstanceSuffix;
+    public static string WindowTitle => "Messages Server" + AppPaths.InstanceSuffix;
     public static string MutexName => AppPaths.ServerLockName;
     public static uint QuitMessage => Native.RegisterWindowMessageW("Messages.Server.Quit" + AppPaths.InstanceSuffix);
 
@@ -144,8 +144,8 @@ internal sealed class ServerShell
         return Native.DefWindowProcW(handle, message, wParam, lParam);
     }
 
-    // The tray's Quit without anything shown (as the app's MessageLink.exe --quit): where it would have to ask, this refuses and says why in the log.
-    // The window procedure's answer goes back to the process that sent the message (MessageLinkServer.exe --quit), so a refusal is told at once rather
+    // The tray's Quit without anything shown (as the app's Messages.exe --quit): where it would have to ask, this refuses and says why in the log.
+    // The window procedure's answer goes back to the process that sent the message (MessagesServer.exe --quit), so a refusal is told at once rather
     // than waited out: QuitTaken when the stop is under way (begun now or earlier), QuitRefused when something is still being sent.
     public const nint QuitTaken = 1, QuitRefused = 2;
 

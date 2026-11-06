@@ -20,7 +20,7 @@ public sealed partial class ComposerViewModel
         var reply = replies.TryGetValue(target, out var selectedReply) ? selectedReply : default;
         try { await scheduledSends.ScheduleAsync(target, body, due, reply.Id, reply.Preview); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { Status = ex.Message; return false; }
-        catch (Exception) { Status = "Couldn't schedule this message: Message Link couldn't save it."; return false; }
+        catch (Exception) { Status = "Couldn't schedule this message: Messages couldn't save it."; return false; }
         // The words go only once they are kept; typing that happened meanwhile stays, as it does for a send.
         if (reply.Id is not null && replies.TryGetValue(target, out var current) && current == reply) { replies.Remove(target); NotifyReply(); }
         ClearSubmittedText(target, body);

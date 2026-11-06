@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs or updates Message Link Server from this folder (the extracted messages-server-<version>-linux-x64.tar.gz) on a
+# Installs or updates Messages Server from this folder (the extracted messages-server-<version>-linux-x64.tar.gz) on a
 # Linux host with systemd and no Docker: Ubuntu, Debian, a Proxmox LXC. Run it as root from anywhere:
 #
 #   sudo ./install.sh              Messenger and Instagram (and Google, if an earlier install turned it on)
@@ -175,7 +175,7 @@ if [ ! -e "$settings/environment" ]; then
     (
     umask 077
     cat > "$settings/environment" <<'EOF'
-# Message Link Server's settings, read by messages-server.service when it starts (systemctl restart messages-server after a
+# Messages Server's settings, read by messages-server.service when it starts (systemctl restart messages-server after a
 # change). Root only: the page's password and a Tailscale key can be in it. Remove the # to use a line.
 
 # The names and addresses devices reach this server by, written into its certificate on the first start (what a device
@@ -200,7 +200,7 @@ fi
 if ! grep -q 'MESSAGES_TAILNET' "$settings/environment"; then
     cat >> "$settings/environment" <<'EOF'
 
-# 1 puts the server on your Tailscale network as a machine of its own, so Message Link on a phone reaches it from anywhere
+# 1 puts the server on your Tailscale network as a machine of its own, so Messages on a phone reaches it from anywhere
 # (README.md, "Your tailnet"). The server's page then walks you through signing it in.
 #MESSAGES_TAILNET=1
 # Its name there: lowercase letters, digits and dashes.
@@ -244,9 +244,9 @@ systemctl start messages-server
 
 sleep 3
 if systemctl is-active --quiet messages-server; then
-    if [ "$running" = yes ]; then echo "Message Link Server updated and running."; else echo "Message Link Server installed and running."; fi
+    if [ "$running" = yes ]; then echo "Messages Server updated and running."; else echo "Messages Server installed and running."; fi
 else
-    echo "Message Link Server did not stay running. Its last lines:" >&2
+    echo "Messages Server did not stay running. Its last lines:" >&2
     journalctl -u messages-server -n 20 --no-pager >&2 || true
     exit 1
 fi

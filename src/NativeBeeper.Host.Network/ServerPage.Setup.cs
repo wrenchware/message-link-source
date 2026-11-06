@@ -147,7 +147,7 @@ internal sealed partial class ServerPage
 
     private static string SetupCodeBody(string? problem) =>
         "<section>" + (problem is null ? "" : Notice(problem))
-        + Para("Welcome. This is the first visit to your Message Link Server's page. To prove it's you, enter the setup code the server printed when it started, then choose a password for this page.")
+        + Para("Welcome. This is the first visit to your Messages Server's page. To prove it's you, enter the setup code the server printed when it started, then choose a password for this page.")
         + "<p class=\"quiet\">It's on the line with “setup code” in the server's output: on Unraid, the container's log; with Docker, <span class=\"copy\">docker logs messages-server</span>; "
         + "on Linux or Proxmox, <span class=\"copy\">journalctl -u messages-server</span>.</p>"
         + "<form method=\"post\" action=\"/setup\"><label for=\"code\">Setup code</label><input id=\"code\" name=\"code\" type=\"text\" autocomplete=\"off\" autocapitalize=\"characters\" "
@@ -310,14 +310,14 @@ internal sealed partial class ServerPage
         if (index == 0)
             body.Append("<section><h2>A small nerd alert</h2>")
                 .Append(Para("This takes about 20 minutes and a couple of free accounts, but you won't write any code. Each step says exactly what to click, and you can skip anything and come back later."))
-                .Append(Para("It's do-it-yourself on purpose. Message Link has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
+                .Append(Para("It's do-it-yourself on purpose. Messages has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
                 .Append("</section>");
         var done = false;
         var waiting = false;
         switch (step)
         {
             case "tailscale":
-                body.Append(Para("Tailscale lets Message Link on your phone reach this server from anywhere, without opening it to the internet. It's free for personal use."));
+                body.Append(Para("Tailscale lets Messages on your phone reach this server from anywhere, without opening it to the internet. It's free for personal use."));
                 if (tailnet is not null)
                 {
                     TailnetCard(body, tailnet, token);
@@ -334,7 +334,7 @@ internal sealed partial class ServerPage
                 if (PhoneWaitsForNotifications) body.Append(Para(PhoneNeedsNotifications)).Append("<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p>");
                 else
                 {
-                    body.Append(Para("Message Link on your phone joins by scanning a code from this page: no codes to type or match. Install Message Link on the phone first."))
+                    body.Append(Para("Messages on your phone joins by scanning a code from this page: no codes to type or match. Install Messages on the phone first."))
                         .Append(Para("The code holds a one-time pairing code, so the server's password is asked for before it's shown."))
                         .Append(PasswordForm("/phone", token, "Show the code"));
                 }
@@ -342,7 +342,7 @@ internal sealed partial class ServerPage
                 done = PhonesPaired() > 0;
                 break;
             case "notifications":
-                body.Append("<section>").Append(Para("Message Link on a phone needs this. Without it, the phone only gets new messages while the app is open. Notifications go through a Firebase project of your own; the server walks you through making one."));
+                body.Append("<section>").Append(Para("Messages on a phone needs this. Without it, the phone only gets new messages while the app is open. Notifications go through a Firebase project of your own; the server walks you through making one."));
                 if (pushes is null) body.Append(Para("This server doesn't send notifications."));
                 else if (PushesReady()) { body.Append(Para("Notifications are on, and a phone gets them.")); done = true; }
                 else if (pushes.Switch.Current is not null)
@@ -354,7 +354,7 @@ internal sealed partial class ServerPage
                 body.Append("</section>");
                 break;
             case "pc":
-                body.Append("<section>").Append(Para("Message Link on a Windows PC joins with one line copied from here and pasted into Settings → Connections → Message Link Server. The line holds a one-time pairing code, so the server's password is asked for first."))
+                body.Append("<section>").Append(Para("Messages on a Windows PC joins with one line copied from here and pasted into Settings → Connections → Messages Server. The line holds a one-time pairing code, so the server's password is asked for first."))
                     .Append(PasswordForm("/pair", token, "Show the line")).Append("</section>");
                 done = devices.Count - PhonesPaired() > 0;
                 break;
@@ -479,8 +479,8 @@ internal sealed partial class ServerPage
         var remote = context.Connection.RemoteIpAddress;
         var address = remote is not null && TailnetRelay.IsTailnet(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote) ? null : Address(context.Request);
         var link = JoinLink.Build(view?.Name ?? tailnet?.Latest?.Name, address, fingerprint(), code, view?.Owner);
-        var body = new StringBuilder("<section><div class=\"qr-card\"><div class=\"qr\">").Append(QrCode.Encode(link).ToSvg(label: "The join code for Message Link on a phone")).Append("</div><div class=\"grow\">")
-            .Append(Para("Open Message Link on your phone, choose I have a server, then Scan your server's code."))
+        var body = new StringBuilder("<section><div class=\"qr-card\"><div class=\"qr\">").Append(QrCode.Encode(link).ToSvg(label: "The join code for Messages on a phone")).Append("</div><div class=\"grow\">")
+            .Append(Para("Open Messages on your phone, choose I have a server, then Scan your server's code."))
             .Append("<p class=\"quiet\">It works once, for the next ").Append((int)PairingCodes.Lifetime.TotalMinutes).Append(" minutes. The phone pins this server's fingerprint and joins with it: there's nothing to type or match.</p>")
             .Append("<p><a href=\"").Append(Html(link)).Append("\">On this phone? Open the link instead.</a></p>")
             .Append("<form method=\"post\" action=\"/phone\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"grant\" value=\"")

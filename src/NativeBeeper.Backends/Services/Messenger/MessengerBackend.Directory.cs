@@ -46,9 +46,7 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
     public ChatSummary? FindDirectChat(ContactPerson contact)
     {
         if (contact.AccountId != MessengerModels.Account) return null;
-        // Somebody picked from a conversation carries the "fb:" form; search answers with Facebook's own id.
-        var id = MessengerGroupChanges.NativePerson(contact.Id);
-        var found = chats.FirstOrDefault(chat => !chat.Group && !chat.ReadOnly && chat.Participants.Any(person => person.Id == id && !person.Self));
+        var found = chats.FirstOrDefault(chat => !chat.Group && !chat.ReadOnly && chat.Participants.Any(person => person.Id == contact.Id && !person.Self));
         return found is null ? null : MessengerModels.Map(found);
     }
 
@@ -70,7 +68,7 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
         if (helper is not { } started) throw new SendException(false, "Connect Messenger in Settings first.");
         try
         {
-            var result = await started.CallAsync("ui.startDirect", new { personId = MessengerGroupChanges.NativePerson(contact.Id) }, cancellationToken);
+            var result = await started.CallAsync("ui.startDirect", new { personId = contact.Id }, cancellationToken);
             var created = result.Deserialize<MessengerChat>(Json) ?? throw new InvalidOperationException("start_failed");
             chats = chats.Where(chat => chat.Id != created.Id).Append(created).ToArray();
             _ = SaveChatsAsync(chats);
@@ -86,14 +84,6 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
                 "start_unavailable" => "Messenger started the conversation but hasn't finished setting it up. Refresh chats, then try again.",
                 _ => "Messenger may have started the conversation. Refresh chats before trying again."
             });
-        }
-        // The helper refuses these before asking Facebook anything, so nothing was made: a plain failure. Reported as an
-        // unknown outcome it closed New chat to that person for good.
-        catch (InvalidOperationException ex) when (ex.Message is "invalid_input" or "login_required" or "not_connected")
-        {
-            throw new SendException(false, ex.Message is "invalid_input"
-                ? "Messenger couldn't start a conversation with that person."
-                : "Messenger isn't connected right now. Try again in a moment.");
         }
         catch (Exception ex) when (ex is not SendException)
         {

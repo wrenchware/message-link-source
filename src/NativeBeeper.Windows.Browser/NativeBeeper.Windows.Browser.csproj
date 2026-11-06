@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The Google renewal's browser (SWITCHBOARD.md 3.1c): GoogleBrowserRecovery and WebViewGoogleBrowser, which load a kept Google
        sign-in profile in WebView2 on a thread the host gives them through IStaQueue. The app (over its DispatcherQueue) and
-       MessageLinkServer.exe (over its own STA thread) both use it. It names WebView2 and nothing of WinUI or the Windows App SDK, so the
+       MessagesServer.exe (over its own STA thread) both use it. It names WebView2 and nothing of WinUI or the Windows App SDK, so the
        server needs no App SDK; NativeBeeper.Windows stays free of WebView2 (a harness check fails if either changes). -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
@@ -13,8 +13,8 @@
     <WebView2EnableCsWinRTProjection>true</WebView2EnableCsWinRTProjection>
   </PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="MessageLink" />
-    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="Messages" />
+    <InternalsVisibleTo Include="MessagesServer" />
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />
   </ItemGroup>
   <ItemGroup>

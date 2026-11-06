@@ -73,11 +73,11 @@ internal static class InstagramConnectionFailure
         "session_expired" or "invalid_session" or "identity_mismatch" or "invalid_cookies" or "missing_cookies" when firstSignIn =>
             "The Instagram sign-in didn't finish. Choose Connect to try again.",
         "session_expired" or "invalid_session" or "identity_mismatch" or "invalid_cookies" or "missing_cookies" =>
-            "Instagram has signed Message Link out. Choose Sign out, then Connect to sign in again.",
+            "Instagram has signed Messages out. Choose Sign out, then Connect to sign in again.",
         "account_suspended" => "Instagram reports that this account is suspended.",
         // Messages already reloads once from the saved sign-in when Instagram asks for this, so reaching here means
         // that reload did not finish either; another launch gets its own.
-        "resnapshot_required" => "Instagram asked to load this account again from the start, and that did not finish. Restart Message Link to try again.",
+        "resnapshot_required" => "Instagram asked to load this account again from the start, and that did not finish. Restart Messages to try again.",
         _ => "Instagram couldn't connect. Try Reconnect again later.",
     };
 

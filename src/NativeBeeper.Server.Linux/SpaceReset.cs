@@ -53,7 +53,7 @@ internal static class SpaceReset
         }
         if (lease is null)
         {
-            output.WriteLine("The Message Link Server for this data folder is running, so nothing was changed. Stop the server first, then run this again.");
+            output.WriteLine("The Messages Server for this data folder is running, so nothing was changed. Stop the server first, then run this again.");
             return new(3, Refused, "server_running");
         }
         using (lease)
@@ -74,7 +74,7 @@ internal static class SpaceReset
                 var parts = new List<string>();
                 if (waiting.Scheduled > 0) parts.Add(waiting.Scheduled == 1 ? "1 scheduled message" : $"{waiting.Scheduled} scheduled messages");
                 if (waiting.Unsettled > 0) parts.Add(waiting.Unsettled == 1 ? "1 send that may not have gone through" : $"{waiting.Unsettled} sends that may not have gone through");
-                output.WriteLine($"The server still holds {string.Join(" and ", parts)}, so nothing was changed. Send or cancel the scheduled messages and dismiss the others from Message Link first, then run this again.");
+                output.WriteLine($"The server still holds {string.Join(" and ", parts)}, so nothing was changed. Send or cancel the scheduled messages and dismiss the others from Messages first, then run this again.");
                 return new(3, Refused, "sends_waiting");
             }
             output.WriteLine("This removes everything this server keeps of your choices: merges, labels, drafts, names, pins, saved messages and the other shared settings.");

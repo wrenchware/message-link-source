@@ -1,5 +1,5 @@
 #!/bin/sh
-# Removes Message Link Server installed by install.sh. Run it as root:
+# Removes Messages Server installed by install.sh. Run it as root:
 #
 #   sudo /opt/messages-server/uninstall.sh            the service, the nightly update and the program; the data, keys, backups and settings stay
 #   sudo /opt/messages-server/uninstall.sh --data     also the data folder: sign-ins, paired devices, the server's stores and log
@@ -8,7 +8,7 @@
 #   sudo /opt/messages-server/uninstall.sh --backups  also the server's own backups (never removed otherwise, not even by --all)
 #
 # The data is useless without the keys and the keys hold the Messenger history, so keep both or remove both. Nothing
-# here signs out at a service: remove the accounts first (Settings → Message Link Server → Manage server) to sign the server
+# here signs out at a service: remove the accounts first (Settings → Messages Server → Manage server) to sign the server
 # out of them, and unpair it on the phone for Google Messages. Google Chrome, when install.sh --google put it here, stays
 # installed (apt-get remove google-chrome-stable takes it away); its policy for the server goes.
 set -eu
@@ -28,7 +28,7 @@ done
 units=/etc/systemd/system
 systemctl disable --now messages-server-update.timer 2>/dev/null || true
 if [ -e "$units/messages-server.service" ]; then
-    echo "Stopping Message Link Server (pending sends finish first; up to 60 s)..."
+    echo "Stopping Messages Server (pending sends finish first; up to 60 s)..."
     systemctl disable --now messages-server 2>/dev/null || true
 fi
 rm -f "$units/messages-server.service" "$units/messages-server-update.service" "$units/messages-server-update.timer"

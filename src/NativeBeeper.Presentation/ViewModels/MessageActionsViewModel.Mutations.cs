@@ -56,7 +56,7 @@ public sealed partial class MessageActionsViewModel
         catch (Exception)
         {
             ChangeFailed?.Invoke(message);
-            Status = "Couldn't make this change. Your edited text is kept until you close Message Link.";
+            Status = "Couldn't make this change. Your edited text is kept until you close Messages.";
             return MessageMutationOutcome.Rejected;
         }
         finally { IsBusy = false; }

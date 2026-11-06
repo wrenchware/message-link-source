@@ -204,7 +204,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var (title, preview) = options.Detail switch
         {
             NotificationDetail.SenderOnly => ("Reminder · " + chat.Title, "A message you saved"),
-            NotificationDetail.None => ("Message Link", "Reminder"),
+            NotificationDetail.None => ("Messages", "Reminder"),
             _ => ("Reminder · " + chat.Title, text),
         };
         var away = preferences.AwayReason();
@@ -241,7 +241,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
             GroupId: NotificationIdentity.Hash(profile + "\n" + (merges?.DisplayId(chat.Id) ?? chat.Id)), SourceScope: sourceScope, IsReminder: true);
         if (!await store.UpdateAsync(id, prior => prior is null ? (record, true) : (prior, false), token)) return true;
         var options = preferences.Options;
-        var title = options.Detail == NotificationDetail.None ? "Message Link" : chat.Title;
+        var title = options.Detail == NotificationDetail.None ? "Messages" : chat.Title;
         const string Words = "Your scheduled message wasn't sent. Open it to send or drop it.";
         var content = new NotificationContent(record, Clip(title, 100), Words, chat.Network, Silent: preferences.AwayReason() is not null,
             Attribution: "Send later", Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)));
@@ -281,7 +281,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var record = new NotificationRecord(id, profile, message.ChatId, message.Id, remindAt, false, false,
             GroupId: groupId, SourceScope: sourceScope, IsReminder: true, ScheduledFor: remindAt);
         var options = preferences.Options;
-        var (title, preview) = options.Detail == NotificationDetail.None ? ("Message Link", "Reminder") : ("Reminder · " + chat.Title, "A message you saved");
+        var (title, preview) = options.Detail == NotificationDetail.None ? ("Messages", "Reminder") : ("Reminder · " + chat.Title, "A message you saved");
         return new NotificationContent(record, Clip(title, 100), preview, chat.Network, Silent: PausedAt(remindAt), Attribution: "Reminder",
             Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)));
     }
@@ -314,7 +314,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var record = new NotificationRecord(id, profile, source.Id, message?.Id ?? "", until, false, false,
             GroupId: groupId, SourceScope: sourceScope, ScheduledFor: until);
         var options = preferences.Options;
-        var title = options.Detail == NotificationDetail.None ? "Message Link" : chat.Title;
+        var title = options.Detail == NotificationDetail.None ? "Messages" : chat.Title;
         return (new NotificationContent(record, Clip(title, 100), "Snoozed reminder", chat.Network, Silent: PausedAt(until), Attribution: "Snoozed reminder",
             Sound: options.SoundFor(serviceKey)), false);
     }
@@ -339,7 +339,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var record = new NotificationRecord(SnoozeReminderId(profile, target, until), profile, clicked.ChatId, "", until, false, false,
             GroupId: NotificationIdentity.Hash(profile + "\n" + target), SourceScope: clicked.SourceScope, ScheduledFor: until);
         var options = preferences.Options;
-        var title = options.Detail == NotificationDetail.None || known is null ? "Message Link" : known.Title;
+        var title = options.Detail == NotificationDetail.None || known is null ? "Messages" : known.Title;
         return new NotificationContent(record, Clip(title, 100), "Snoozed reminder", known?.Network ?? network, Silent: PausedAt(until),
             Attribution: "Snoozed reminder", Sound: options.SoundFor(serviceKey));
     }

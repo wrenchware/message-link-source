@@ -86,7 +86,7 @@ public sealed record PushStatus(bool Available, DateTimeOffset? LastSent = null,
     public static string Reason(PushPhone phone) => phone.Reason switch
     {
         PushFailureReasons.Refused => phone.Status > 0 ? $"Google refused it, status {phone.Status}" : "Google refused it",
-        PushFailureReasons.Gone => "Google says its address is gone; it signs up again when Message Link opens",
+        PushFailureReasons.Gone => "Google says its address is gone; it signs up again when Messages opens",
         _ => "Google couldn't be reached",
     };
 

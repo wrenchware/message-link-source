@@ -4,8 +4,8 @@
        host it (SWITCHBOARD.md). Namespaces are the ones they had inside the app, and the app and harness see its internals. -->
   <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="MessageLink" />
-    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="Messages" />
+    <InternalsVisibleTo Include="MessagesServer" />
     <InternalsVisibleTo Include="messages-server" />
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />
     <InternalsVisibleTo Include="NativeBeeper.Host" />

@@ -2,7 +2,7 @@ namespace NativeBeeper.Host;
 
 /// <summary>
 /// The right to host the backends for one data root (SWITCHBOARD.md stage 3, "one host per data root"): whichever process runs the providers, the
-/// in-process app or <c>MessageLinkServer.exe</c>, holds this for as long as it does. Two hosts on one account is the worst failure here (two
+/// in-process app or <c>MessagesServer.exe</c>, holds this for as long as it does. Two hosts on one account is the worst failure here (two
 /// Messenger devices, a second Instagram login), so a second one does not start.
 /// </summary>
 /// <remarks>

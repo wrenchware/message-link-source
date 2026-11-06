@@ -1,7 +1,7 @@
 namespace NativeBeeper.Presentation.Services;
 
 // Files handed to Messages from outside it: Explorer's Send to menu (a shortcut the installer puts there, which adds
-// --share before the paths), or files dropped on MessageLink.exe or a shortcut to it (the paths alone). The Windows Share
+// --share before the paths), or files dropped on Messages.exe or a shortcut to it (the paths alone). The Windows Share
 // sheet lists only packaged apps, and Messages is not one, so these are the ways in. Nothing here sends: a share ends
 // staged in the composer of a conversation the user picks, and the user presses Send.
 public sealed record ShareRequest(IReadOnlyList<string> Paths)
@@ -143,7 +143,7 @@ public static class ShareInspection
         foreach (var path in request.Paths)
         {
             if (!Path.IsPathFullyQualified(path)) return Missing(request);
-            if (Directory.Exists(path)) return Refuse("Message Link can attach files, not folders.", "folder");
+            if (Directory.Exists(path)) return Refuse("Messages can attach files, not folders.", "folder");
             FileInfo file;
             try { file = new FileInfo(path); } catch (Exception) { return Missing(request); }
             if (!file.Exists) return Missing(request);
@@ -152,7 +152,7 @@ public static class ShareInspection
                 return Refuse("Share the file itself rather than a shortcut to it.", "shortcut");
             if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
             {
-                if (ReadLink(file) is not { } link) return Refuse("That shortcut doesn't hold a web link Message Link can add.", "link");
+                if (ReadLink(file) is not { } link) return Refuse("That shortcut doesn't hold a web link Messages can add.", "link");
                 items.Add(new(SharedKind.Link, path, link));
                 continue;
             }
@@ -168,7 +168,7 @@ public static class ShareInspection
     }
 
     private static ShareCheck Missing(ShareRequest request) => Refuse(request.Paths.Count == 1
-        ? "Message Link couldn't find the shared file." : "Message Link couldn't find one of the shared files.", "missing");
+        ? "Messages couldn't find the shared file." : "Messages couldn't find one of the shared files.", "missing");
     private static ShareCheck Refuse(string text, string reason) => new([], text, reason);
 
     private static string? ReadLink(FileInfo file)

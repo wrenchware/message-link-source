@@ -32,7 +32,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     public const string LostSentence = "The connection to the server was lost.";
     public const string FailedSentence = "The server could not complete that request.";
     public const string UnreadableSentence = "The server's answer could not be read.";
-    public const string VersionSentence = "This version of Message Link cannot talk to that server.";
+    public const string VersionSentence = "This version of Messages cannot talk to that server.";
 
     /// <summary>How many interrupted mutations a client remembers to ask about; the oldest is forgotten first.</summary>
     public const int RememberedOperations = 256;

@@ -66,7 +66,7 @@ public static class Program
         if (keys is null)
         {
             AppLog.Write($"server start refused reason={refusal}");
-            Console.Error.WriteLine("Message Link Server didn't start: " + Explain(refusal ?? ""));
+            Console.Error.WriteLine("Messages Server didn't start: " + Explain(refusal ?? ""));
             RunMarker.End(RunMarkerPath);
             FlushLogs();
             return 3;
@@ -168,7 +168,7 @@ public static class Program
         }
         if (!NativeBeeper.Host.Backup.ServerRestore.IsUnfinished(paths) && !NativeBeeper.Host.Backup.ServerRestore.ResetPlanned(paths)) return true;
         AppLog.Write("server start refused reason=restore_unfinished");
-        Console.Error.WriteLine("Message Link Server didn't start: " + Explain("restore_unfinished"));
+        Console.Error.WriteLine("Messages Server didn't start: " + Explain("restore_unfinished"));
         return false;
     }
 
@@ -200,7 +200,7 @@ public static class Program
     {
         "data_missing" => "The data folder doesn't exist. Create it, or set MESSAGES_DATA to the folder the server should use.",
         "data_not_writable" => "The server can't write to its data folder. Check that the folder belongs to the user the server runs as.",
-        "host_locked" => "Another Message Link Server is already running on this data folder.",
+        "host_locked" => "Another Messages Server is already running on this data folder.",
         "keys_folder_missing" => "The keys folder doesn't exist. Create it (with Docker, it's the keys volume).",
         "keys_in_data" => "The keys folder and the data folder overlap. Keep them apart.",
         "key_missing" => "The data folder has data but the keys folder has no key for it: the keys were lost, or belong with other data. The data can't be read without them. "
@@ -216,7 +216,7 @@ public static class Program
     {
         var line = $"{DateTimeOffset.Now:HH:mm:ss.fff} server start refused reason={reason}\n";
         Console.Out.Write(line);
-        Console.Error.WriteLine("Message Link Server didn't start: " + Explain(reason));
+        Console.Error.WriteLine("Messages Server didn't start: " + Explain(reason));
         if (toFile && Diagnostics.Recording)
         {
             try { File.AppendAllText(AppPaths.Combine("server.log"), line); }

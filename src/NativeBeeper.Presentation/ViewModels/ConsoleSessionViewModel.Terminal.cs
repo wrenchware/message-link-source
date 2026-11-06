@@ -124,7 +124,7 @@ public sealed partial class ConsoleSessionViewModel
         Command("status");
         var status = host.SystemStatus;
         var now = clock.GetUtcNow();
-        Out(new ConsoleSpan("Message Link " + status.Version, ConsoleTone.Strong), new ConsoleSpan(" · " + WelcomeStatus, ConsoleTone.Dim));
+        Out(new ConsoleSpan("Messages " + status.Version, ConsoleTone.Strong), new ConsoleSpan(" · " + WelcomeStatus, ConsoleTone.Dim));
         if (status.Processes.Count > 0)
         {
             var chats = targets.Entries();
@@ -318,7 +318,7 @@ public sealed partial class ConsoleSessionViewModel
         if (inputs.Length == 0) { Out("No matching input history.", ConsoleTone.Dim); return; }
         foreach (var (number, text) in inputs)
             Out(new ConsoleSpan($"{number,5}  ", ConsoleTone.Dim), new ConsoleSpan(text.Replace("\n", " ↵ ")));
-        Out("Kept in memory while Message Link runs · !n runs one again · Ctrl+R searches", ConsoleTone.Dim);
+        Out("Kept in memory while Messages runs · !n runs one again · Ctrl+R searches", ConsoleTone.Dim);
     }
 
     // ---- /help ----
@@ -356,7 +356,7 @@ public sealed partial class ConsoleSessionViewModel
 
     private void HelpIndex()
     {
-        Out(new ConsoleSpan("Message Link console", ConsoleTone.Strong), new ConsoleSpan(" · /help talk lists a group · /help command its manual · /help word searches", ConsoleTone.Dim));
+        Out(new ConsoleSpan("Messages console", ConsoleTone.Strong), new ConsoleSpan(" · /help talk lists a group · /help command its manual · /help word searches", ConsoleTone.Dim));
         foreach (var category in ConsoleCatalog.Categories)
         {
             var names = ConsoleCatalog.All.Where(c => c.Category == category).Select(c => c.Name).ToArray();
@@ -372,7 +372,7 @@ public sealed partial class ConsoleSessionViewModel
             ("", "Ctrl+L clear · PgUp/PgDn scroll · Esc clear the line, then the target · Ctrl+Plus/Minus zoom"),
             ("SHELL", "a ; b  both · a && b  b if a worked · cmd | grep x | head 5 | copy | less"),
             ("", "!! last command · !n command n · !word the last starting with word · /alias name=command"),
-            ("NAMES", "a name, \"a name\", name@service, N from the last list, or . for what Message Link has open"),
+            ("NAMES", "a name, \"a name\", name@service, N from the last list, or . for what Messages has open"),
             ("MESSAGES", "m3 from the last /msgs, N from /search, ^ the newest from the person the prompt shows (^2 before it)"),
             ("", "cmd --help shows a command's manual without running it · no one selected: commands work without /"),
         ];
@@ -383,7 +383,7 @@ public sealed partial class ConsoleSessionViewModel
     private void Manual(ConsoleCommandInfo info)
     {
         var head = info.Name.ToUpperInvariant() + "(1)";
-        Out(new ConsoleSpan(head, ConsoleTone.Strong), new ConsoleSpan(new string(' ', Math.Max(2, Math.Min(Columns, 80) - head.Length * 2 - 16)) + "Message Link console", ConsoleTone.Dim),
+        Out(new ConsoleSpan(head, ConsoleTone.Strong), new ConsoleSpan(new string(' ', Math.Max(2, Math.Min(Columns, 80) - head.Length * 2 - 16)) + "Messages console", ConsoleTone.Dim),
             new ConsoleSpan(new string(' ', 4) + head, ConsoleTone.Strong));
         void Section(string name) => Out(name, ConsoleTone.Accent);
         Section("NAME");

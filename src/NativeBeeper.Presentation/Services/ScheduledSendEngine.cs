@@ -155,7 +155,7 @@ public sealed class ScheduledSendEngine : IDisposable
         if (items.Count >= Limit) throw new InvalidOperationException("Too many messages are scheduled. Send or cancel some first.");
         var scope = conditions.TracksAccounts ? await conditions.AccountOfAsync(chatId) : null;
         if (scope is null && conditions.TracksAccounts && conditions.ExpectsAccount(chatId))
-            throw new InvalidOperationException("Message Link can't tell which account this conversation belongs to yet. Try again in a moment.");
+            throw new InvalidOperationException("Messages can't tell which account this conversation belongs to yet. Try again in a moment.");
         var item = new ScheduledSend(id ?? "local:scheduled:" + Guid.NewGuid().ToString("N"), chatId, text, due, now, replyToId,
             replyToId is null ? null : replyPreview, Scope: scope);
         items.Add(item);
@@ -170,7 +170,7 @@ public sealed class ScheduledSendEngine : IDisposable
         {
             items.Remove(item);
             try { await SaveAsync(); } catch (Exception) { /* The store failed already; it holds what it held before. */ }
-            throw new IOException("Couldn't schedule this message: Message Link couldn't save it on this PC.");
+            throw new IOException("Couldn't schedule this message: Messages couldn't save it on this PC.");
         }
         Log("scheduled", item, $"in_min={(long)Math.Ceiling((due - now).TotalMinutes)}{(replyToId is null ? "" : " reply=1")}");
         Changed?.Invoke(this, chatId);
@@ -218,7 +218,7 @@ public sealed class ScheduledSendEngine : IDisposable
                 try { await SaveAsync(); } catch (Exception) { /* The store is still failing. */ }
             }
             Log("cancel_failed", item, detail);
-            throw new IOException("Couldn't cancel this scheduled message: Message Link couldn't save the change on this PC.");
+            throw new IOException("Couldn't cancel this scheduled message: Messages couldn't save the change on this PC.");
         }
         Log(step, item, detail);
         Changed?.Invoke(this, item.ChatId);
