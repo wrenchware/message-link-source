@@ -103,7 +103,6 @@ internal sealed partial class ServerPage
         this.credential = credential ?? (stored is not null ? StoredCredential(secret, stored) : RandomNumberGenerator.GetBytes(32));
         settingUp = credential is null && stored is null;
         sessionKey = SessionKey(generation);
-        LoadTheme();
     }
 
     /// <summary>
@@ -270,13 +269,19 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/theme" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
-        or "/push/test" or "/mirror" or LogoPath or PicturesPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+        or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
     public const string LogoPath = "/logo.png";
 
     private static readonly Lazy<byte[]> Logo = new(() => Picture("server-page-logo.png"));
+
+    // The page's typeface, Inter (SIL Open Font License, Assets/inter-OFL.txt), its Latin letters only: served here, since the page loads nothing from anywhere else.
+    // Like the logo it needs no sign-in. A browser keeps it a year, so it costs one of the door's two places per address once, not on every page.
+    internal const string FontPath = "/page-font.woff2";
+
+    private static readonly Lazy<byte[]> Font = new(() => Picture("server-page-font.woff2"));
 
     private static byte[] Picture(string name)
     {
@@ -293,7 +298,6 @@ internal sealed partial class ServerPage
         var request = context.Request;
         var response = context.Response;
         Secure(response);
-        context.Items[ThemeItem] = theme;
         if (draining)
         {
             await PlainAsync(context, StatusCodes.Status503ServiceUnavailable, "The server is stopping.").ConfigureAwait(false);
@@ -302,17 +306,17 @@ internal sealed partial class ServerPage
         var path = request.Path.Value;
         var get = HttpMethods.IsGet(request.Method);
         var post = HttpMethods.IsPost(request.Method);
-        if (get && path is LogoPath or PicturesPath)
+        if (get && path is LogoPath or PicturesPath or FontPath)
         {
             response.StatusCode = StatusCodes.Status200OK;
-            response.ContentType = "image/png";
-            response.Headers.CacheControl = "max-age=86400";
-            var bytes = path == LogoPath ? Logo.Value : Pictures.Value;
+            response.ContentType = path == FontPath ? "font/woff2" : "image/png";
+            response.Headers.CacheControl = path == FontPath ? "max-age=31536000, immutable" : "max-age=86400";
+            var bytes = path == LogoPath ? Logo.Value : path == FontPath ? Font.Value : Pictures.Value;
             response.ContentLength = bytes.Length;
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" or "/theme" || post && (path is "/" or "/log" or LogTailPath or LogoPath or PicturesPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/log" or LogTailPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -386,6 +390,7 @@ internal sealed partial class ServerPage
             return;
         }
         var token = FormToken(session);
+        context.Items[NavItem] = Nav(path ?? "/", token);
         switch (path)
         {
             case "/logout":
@@ -428,9 +433,6 @@ internal sealed partial class ServerPage
                     return;
                 }
                 Redirect(response, "/");
-                return;
-            case "/theme":
-                await ThemeAsync(context, form!).ConfigureAwait(false);
                 return;
             case { } manage when IsManagePath(manage):
                 await ManageAsync(context, manage, token).ConfigureAwait(false);
@@ -490,7 +492,7 @@ internal sealed partial class ServerPage
                 return;
             default:
                 var home = await HomeBodyAsync(request, token, request.Query["done"].ToString(), context.RequestAborted).ConfigureAwait(false);
-                await PageAsync(context, StatusCodes.Status200OK, SiteName, home.Body, home.Refresh, home.RefreshTo, home.Actions).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status200OK, SiteName, home.Body, home.Refresh, home.RefreshTo).ConfigureAwait(false);
                 return;
         }
     }
@@ -884,17 +886,16 @@ internal sealed partial class ServerPage
     }
 
     // The server's check of its copy against each service (SWITCHBOARD.md stage 9): what the newest one found, and a button to check now.
-    private async Task CopiesCardAsync(StringBuilder body, string token, CancellationToken cancellationToken)
+    // Whether a check runs: the page then looks again sooner, so its state turns into the results.
+    private async Task<bool> CopiesCardAsync(StringBuilder body, string token, CancellationToken cancellationToken)
     {
         HistoryMirrorResult? mirror = null;
         try { mirror = await history!.MirrorAsync(new HistoryMirrorParams(), cancellationToken).ConfigureAwait(false); }
         catch (Exception failure) when (failure is not OperationCanceledException) { }
         body.Append("<section id=\"sync\"><h2>Sync check</h2>");
         if (mirror is null) body.Append(Para("The server couldn't say how its last check went just now."));
-        else if (mirror.Reports.Count == 0) body.Append(Para(mirror.Running ? "Checking now." : "Not checked yet. The server checks every half hour."));
-        else
+        else if (mirror.Reports.Count > 0)
         {
-            if (mirror.Running) body.Append(Notice("Checking again now."));
             body.Append("<div class=\"box\">");
             foreach (var report in mirror.Reports.OrderBy(report => Array.IndexOf(MirrorOrder, report.Service)))
             {
@@ -903,8 +904,12 @@ internal sealed partial class ServerPage
             }
             body.Append("</div>");
         }
-        body.Append("<p class=\"hint\">Every half hour the server compares its most active conversations with each service and fixes any that differ. Nothing is sent or marked read.</p>");
-        body.Append(Form("/mirror", token, "Check now", quiet: true)).Append("</section>");
+        // Checking now is a line of its own: its button, or while a check runs, that it does.
+        var running = mirror?.Running == true;
+        body.Append("<div class=\"box\">").Append(Row("Check now", "Keeps the server's copy matching each service. Nothing is sent or marked read.",
+            running ? "Checking now" : mirror is { Reports.Count: 0 } ? "Not checked yet" : null,
+            running ? null : "<form method=\"post\" action=\"/mirror\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><button type=\"submit\" class=\"quiet\">Check now</button></form>")).Append("</div></section>");
+        return running;
     }
 
     private static readonly string[] MirrorOrder = ["google-direct", "messenger", "gvoice", "instagram"];
@@ -969,7 +974,7 @@ internal sealed partial class ServerPage
 
     private static string Para(string text) => "<p>" + Html(text) + "</p>";
 
-    private static string Notice(string text) => "<p class=\"notice\" role=\"status\">" + Html(text) + "</p>";
+    private static string Notice(string text) => "<p class=\"notice\" role=\"status\">" + Glyph(InfoGlyph) + "<span>" + Html(text) + "</span></p>";
 
     private static void Row(StringBuilder body, string name, string value, bool copy = false, bool large = false) =>
         body.Append("<dt>").Append(Html(name)).Append("</dt><dd").Append(copy ? large ? " class=\"copy large\"" : " class=\"copy\"" : "").Append('>').Append(Html(value)).Append("</dd>");
@@ -978,68 +983,88 @@ internal sealed partial class ServerPage
         $"<form method=\"post\" action=\"{action}\"><input type=\"hidden\" name=\"form\" value=\"{Html(token)}\"><button type=\"submit\"{(quiet ? " class=\"quiet\"" : "")}>{Html(button)}</button></form>";
 
     private const string Style =
-        // Every look: the same names, read by everything below. All five are dark; colour is for what needs someone.
-        "html{color-scheme:dark;--danger:#ff8a80;--on-danger:#2a0d0a;--card:var(--box);--quiet:var(--muted);--accent:var(--acc);--on-accent:var(--btnfg);--attention:var(--warnbg);--ok:var(--muted);--off:var(--muted);--wait:var(--warn)}"
-        + ".t-night{--bg:#0a0d13;--fg:#e8edf5;--muted:#93a0b4;--box:rgba(255,255,255,.035);--line:rgba(255,255,255,.09);--hair:rgba(255,255,255,.06);--warn:#ffb23e;--warnbg:rgba(255,178,62,.08);--warnline:rgba(255,178,62,.32);--btn:#3884ff;--btnfg:#fff;--acc:#6aa8ff;--glow:radial-gradient(900px 260px at 18% -60px,rgba(56,132,255,.22),transparent 70%)}"
-        + ".t-graphite{--bg:#141516;--fg:#ededed;--muted:#8d8f94;--box:#1b1c1e;--line:#2b2c2f;--hair:#26272a;--warn:#f5a524;--warnbg:#1f1b12;--warnline:#4a3a17;--btn:#ededed;--btnfg:#141516;--acc:#ededed;--capt:none;--caps:0;--capsize:13px;--capc:#ededed;--icons:grayscale(1)}"
-        + ".t-aurora{--bg:#0a0f1f;--fg:#eaf0fb;--muted:#94a2c0;--box:rgba(255,255,255,.04);--line:rgba(255,255,255,.09);--hair:rgba(255,255,255,.06);--warn:#ffb84d;--warnbg:rgba(255,184,77,.09);--warnline:rgba(255,184,77,.32);--btn:linear-gradient(100deg,#19c8c0,#7c6cff);--btnfg:#fff;--acc:#4fd1c5;--glow:radial-gradient(620px 240px at 18% -40px,rgba(25,211,197,.26),transparent 72%),radial-gradient(760px 280px at 62% -70px,rgba(139,92,246,.3),transparent 72%)}"
-        + ".t-glass{--bg:#0d0b1e;--fg:#fff;--muted:rgba(255,255,255,.68);--box:rgba(255,255,255,.075);--line:rgba(255,255,255,.16);--hair:rgba(255,255,255,.09);--warn:#ffd27a;--warnbg:rgba(255,190,90,.14);--warnline:rgba(255,205,120,.42);--btn:rgba(255,255,255,.92);--btnfg:#171330;--acc:#fff;--blur:blur(16px);--r:14px;--rb:999px;--glow:radial-gradient(40vw 40vw at 12% 18%,rgba(43,123,255,.6),transparent 70%),radial-gradient(44vw 44vw at 60% 92%,rgba(236,72,153,.42),transparent 70%),radial-gradient(38vw 38vw at 94% 22%,rgba(20,200,190,.4),transparent 70%)}"
-        + ".t-phosphor{--font:'Cascadia Mono',ui-monospace,Consolas,Menlo,monospace;--bg:#060a08;--fg:#d3ecdc;--muted:#6f9580;--box:#0b120e;--line:#1c3327;--hair:#14241b;--warn:#ffb84d;--warnbg:#171208;--warnline:#57401a;--btn:transparent;--btnfg:#5dffa0;--btnline:#5dffa0;--acc:#5dffa0;--r:3px;--rb:3px;--ri:3px;--capc:#5dffa0;--icons:grayscale(1)}"
-        // The frame.
-        + "*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 var(--font,'Segoe UI',system-ui,-apple-system,Roboto,sans-serif);color:var(--fg);background-image:var(--glow,none);background-repeat:no-repeat;background-attachment:fixed}"
-        + "main{max-width:720px;margin:0 auto;padding:14px 16px 32px}main:has(.cols),main:has(pre.log){max-width:1040px}pre.log{height:calc(100vh - 124px);min-height:240px;overflow:auto;margin:0}"
-        + "header.top{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--line)}header.top .ic{display:block}[hidden]{display:none!important}h1{font-size:15px;font-weight:600;margin:0}header.top h1 a{color:var(--muted);font-size:inherit;font-weight:400;text-decoration:none;white-space:normal}header.top h1 a:hover{color:var(--fg)}.sep{color:var(--muted);font-weight:400;margin:0 7px}"
-        + "header.top .r{margin-left:auto;display:flex;gap:12px;align-items:center}"
+        // One look (owner, 2026-11-05; themes deferred, ROADMAP.md), in the manner of a settings window: every colour is a property set here, so a theme is a class that sets them again. Black, a side list of places, plain section titles over bordered cards of lines.
+        "html{color-scheme:dark;--bg:#000;--side:#111;--sideline:#232323;--here:#1c1c1c;--fg:#ececec;--soft:#bdbdbd;--muted:#8c8c8c;--faint:#808080;--box:#080808;--rowhover:#0f0f0f;--line:#1e1e1e;--hair:#151515;--field:#111;--fieldhover:#1a1a1a;--fieldline:#2c2c2c;--pop:#151515;--popshadow:rgba(0,0,0,.6);--switchoff:#2e2e2e;--knob:#f2f2f2;--knoboff:#a3a3a3;--acc:#2f62d8;--acchover:#3567df;--link:#7fa6ff;--warn:#f5a524;--warnbg:rgba(245,165,36,.05);--warnline:rgba(245,165,36,.3);--danger:#c9343a;--dangerhover:#d33a40;--danger-ink:#ff7b7b;--on-danger:#fff;--card:var(--box);--quiet:var(--muted);--accent:var(--acc);--on-accent:#fff;--attention:var(--warnbg);--ok:var(--muted);--off:var(--muted);--wait:var(--warn)}"
+        // The frame: the side list (once signed in), the bar saying where you are, and the page under it.
+        + "@font-face{font-family:'Inter Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url(/page-font.woff2) format('woff2-variations');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}"
+        + "*{box-sizing:border-box}[hidden]{display:none!important}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 'Inter Variable','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;font-feature-settings:normal;color:var(--fg);-webkit-font-smoothing:antialiased}body.framed{display:flex;align-items:flex-start}.pane{flex:1;min-width:0}"
+        + ".side{position:sticky;top:0;flex:none;width:232px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;background:var(--side);border-right:1px solid var(--sideline);padding:12px 10px}.brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 10px 18px;color:var(--fg);font-weight:600;text-decoration:none}.brand .ic.logo{width:40px;height:40px;background-size:40px 200px}"
+        + ".side nav{display:flex;flex-direction:column;gap:2px}.side nav a,.side .out button{display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border:0;border-radius:7px;background:none;color:var(--soft);font:inherit;font-weight:400;text-align:left;text-decoration:none;cursor:pointer}"
+        + ".side nav a:hover,.side .out button:hover{background:var(--here);color:var(--fg);filter:none}.side nav a.here{background:var(--here);color:var(--fg);font-weight:600}.side svg{flex:none;color:var(--muted)}.side a.here svg,.side a:hover svg,.side button:hover svg{color:var(--fg)}"
+        + ".grp{margin:18px 10px 4px;font-size:12px;font-weight:500;color:var(--faint)}.side form.out{margin:auto 0 0;padding-top:12px}"
+        + "header.top{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 24px;background:var(--bg);border-bottom:1px solid var(--hair)}header.top .ic{display:block}"
+        + "h1{font-size:14px;font-weight:400;margin:0;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}header.top h1 a{color:var(--muted);text-decoration:none}header.top h1 a:hover{color:var(--fg)}h1 .here{color:var(--fg);font-weight:600}.sep{margin:0 8px;color:var(--faint)}"
+        + "main{max-width:800px;margin:0 auto;padding:28px 24px 56px}body.solo main{max-width:560px;padding-top:40px}main:has(pre.log){max-width:none}pre.log{height:calc(100vh - 150px);min-height:240px;overflow:auto;margin:0}"
         // The front page's sections and lines.
-        + "section.sec{background:none;border:0;padding:0;margin:0 0 16px;backdrop-filter:none;min-width:0}.sh{display:flex;align-items:center;gap:12px;padding:0 2px 6px;min-height:24px}.sh .r{margin-left:auto;display:flex;gap:12px}"
-        + "section.sec h2,.sh h2{font-size:var(--capsize,11px);letter-spacing:var(--caps,.08em);text-transform:var(--capt,uppercase);color:var(--capc,var(--muted));font-weight:600;margin:0}section.sec h2.warn{color:var(--warn)}"
-        + ".box{background:var(--box);border:1px solid var(--line);border-radius:var(--r,10px);backdrop-filter:var(--blur,none);overflow:hidden}.box.alert{background:var(--warnbg);border-color:var(--warnline)}.box>*+*{border-top:1px solid var(--hair)}"
-        + ".row{display:flex;align-items:center;gap:10px;min-height:48px;padding:6px 12px;scroll-margin-top:12px}.btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}.btns form{margin:0}.g{flex:1;min-width:0;overflow-wrap:anywhere}.g small{display:block;color:var(--muted);font-size:12px;line-height:1.25}"
-        + ".v{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}.v.warn{color:var(--warn)}.act{width:12px;display:flex;justify-content:flex-end;flex:none}.chev{width:7px;height:7px;border:solid var(--muted);border-width:1.5px 1.5px 0 0;transform:rotate(45deg);display:block}"
-        + ".sec a:not(.button):not(.go),.row a:not(.button),header.top a,footer a,button.link{color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;white-space:nowrap;background:none;border:0;padding:0;cursor:pointer}.sec a:not(.button):not(.go):hover,.row a:not(.button):hover,header.top a:hover,footer a:hover,button.link:hover{color:var(--fg)}"
-        + "a.go{color:var(--fg);text-decoration:none}a.go:hover{background:var(--hair)}a.go[aria-expanded=true] .chev{transform:rotate(135deg)}form.plain{display:inline;margin:0}.more{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 12px 10px 50px;margin:0}.more.flat{padding-left:12px}.hint{color:var(--muted);font-size:12.5px;margin:6px 2px 0}.more .hint{margin:0}.more .copy{overflow-wrap:anywhere;color:var(--muted)}.more details{width:100%;margin:0}.more details p{margin:6px 0}.more pre{margin:6px 0 8px}"
-        + ".ic{width:28px;height:28px;flex:none;display:block;background:url(/page-pictures.png) no-repeat;background-size:28px 140px;filter:var(--icons,none)}.ic.logo{width:24px;height:24px;background-size:24px 120px;filter:none}.ic.gm{background-position:0 -28px}.ic.me{background-position:0 -56px}.ic.gv{background-position:0 -84px}.ic.ig{background-position:0 -112px}a.go:focus{outline:none}a.go:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}"
-        + ".cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;align-items:start}@media(min-width:800px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}"
-        + "footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:2px 2px 0}footer .end{margin-left:auto}"
+        + "section.sec{background:none;border:0;padding:0;margin:0 0 28px;min-width:0}.sh{display:flex;align-items:center;gap:12px;padding:0 2px 10px;min-height:24px}.sh .r{margin-left:auto;display:flex;gap:12px}"
+        + "section.sec h2,.sh h2,section .sh h2{font-size:15px;font-weight:600;color:var(--fg);margin:0}section.sec h2.warn{color:var(--warn)}"
+        + ".box{background:var(--box);border:1px solid var(--line);border-radius:12px}.box>:first-child{border-top-left-radius:11px;border-top-right-radius:11px}.box>:last-child{border-bottom-left-radius:11px;border-bottom-right-radius:11px}.box+.box{margin-top:12px}.box.alert{background:var(--warnbg);border-color:var(--warnline)}.box>*+*{border-top:1px solid var(--hair)}[id]{scroll-margin-top:64px}"
+        + ".row{display:flex;align-items:center;gap:14px;min-height:52px;padding:11px 16px;scroll-margin-top:64px}.btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 0}.btns form{margin:0}"
+        + ".g{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}.g small{display:block;margin-top:1px;color:var(--muted);font-size:13px;font-weight:400;line-height:1.4}"
+        + ".v{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}.v.warn{color:var(--warn)}.act{width:28px;display:flex;justify-content:flex-end;flex:none}.acts{display:flex;gap:8px;flex:none}.chev{width:7px;height:7px;border:solid var(--faint);border-width:1.5px 1.5px 0 0;transform:rotate(45deg);display:block}"
+        + ".sec a:not(.button):not(.go):not(.item),.row a:not(.button):not(.item),button.link{color:var(--soft);font:inherit;font-size:13px;text-decoration:underline;text-decoration-color:var(--fieldline);text-underline-offset:3px;white-space:nowrap;background:none;border:0;padding:0;cursor:pointer}.sec a:not(.button):not(.go):not(.item):hover,.row a:not(.button):not(.item):hover,button.link:hover{color:var(--fg);background:none}"
+        + "a.go{color:var(--fg);text-decoration:none}a.go:hover{background:var(--rowhover)}a.go:hover .chev{border-color:var(--soft)}a.go[aria-expanded=true] .chev{transform:rotate(135deg)}form.plain{display:inline;margin:0}"
+        + ".more{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 16px 12px 54px;margin:0}.more.flat{padding-left:16px}.hint{color:var(--muted);font-size:13px;margin:8px 2px 0}.more .hint{margin:0}.more .copy{overflow-wrap:anywhere;color:var(--muted)}.more details{width:100%;margin:0}.more details p{margin:6px 0}.more pre{margin:6px 0 8px}"
+        + ".ic{width:24px;height:24px;flex:none;display:block;background:url(/page-pictures.png) no-repeat;background-size:24px 120px}.ic.logo{width:22px;height:22px;background-size:22px 110px}.ic.gm{background-position:0 -24px}.ic.me{background-position:0 -48px}.ic.gv{background-position:0 -72px}.ic.ig{background-position:0 -96px}"
+        + "a.go:focus{outline:none}a.go:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}:focus-visible{outline:2px solid var(--acc);outline-offset:2px}"
         // Everything else: the cards of the pages under /manage, the forms and the steps of setting up.
-        + "section{background:var(--box);border:1px solid var(--line);border-radius:var(--r,10px);padding:14px;margin:0 0 14px;backdrop-filter:var(--blur,none)}section.attention{background:var(--warnbg);border-color:var(--warnline)}section>:last-child{margin-bottom:0}"
-        + "h2{font-size:14px;font-weight:600;margin:0 0 10px}.manage>section>h2:first-child{display:none}.manage>section:has(>.box){background:none;border:0;padding:0;backdrop-filter:none}section>.sh{margin-top:14px}section.sec>.sh,section>.notice+.sh,section>h2+.sh{margin-top:0}.row>.v.copy{font:inherit;font-size:13px;white-space:normal;overflow-wrap:anywhere;text-align:right;min-width:0;user-select:all}.row form{margin:0}.row details summary{font-size:13px}.row a.button.small{margin:0}section .sh h2,.sh h2{font-size:var(--capsize,11px);letter-spacing:var(--caps,.08em);text-transform:var(--capt,uppercase);color:var(--capc,var(--muted));font-weight:600;margin:0}p{margin:0 0 10px}form{margin:12px 0 10px}section>form:first-child{margin-top:0}"
-        + "dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:0 0 10px;align-items:baseline}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}"
-        + ".copy{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12.5px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--muted)}"
-        + "ul.rows{list-style:none;margin:0 0 10px;padding:0}ul.rows li{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair)}ul.rows li:first-child{border-top:0}"
-        + ".grow{flex:1;min-width:0;display:flex;flex-direction:column}.grow strong{font-weight:500}.grow .quiet{font-size:12.5px}ul.rows form{margin:0}.manage>section>form:not(.btns){display:inline-block;margin:6px 8px 6px 0}"
+        + "section{background:var(--box);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 20px}section.attention{background:var(--warnbg);border-color:var(--warnline)}section>:last-child{margin-bottom:0}"
+        + "h2{font-size:15px;font-weight:600;margin:0 0 10px}.manage>section:has(.sh)>h2:first-child{display:none}.manage>section:has(>.box){background:none;border:0;padding:0}section>.sh{margin-top:18px}section.sec>.sh,section>.notice+.sh,section>h2+.sh{margin-top:0}"
+        + ".row>.v.copy{font:inherit;font-size:13px;white-space:normal;overflow-wrap:anywhere;text-align:right;min-width:0;user-select:all}.row form{margin:0}.row details summary{font-size:13px}.row a.button.small{margin:0}p{margin:0 0 10px}form{margin:12px 0 10px}section>form:first-child{margin-top:0}"
+        + "dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:0 0 10px;align-items:baseline}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}"
+        + ".copy{font-family:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--muted)}"
+        + "ul.rows{list-style:none;margin:0 0 10px;padding:0}ul.rows li{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--hair)}ul.rows li:first-child{border-top:0}"
+        + ".grow{flex:1;min-width:0;display:flex;flex-direction:column}.grow strong{font-weight:600}.grow .quiet{font-size:13px}ul.rows form{margin:0}.manage>section>form:not(.btns){display:inline-block;margin:6px 8px 6px 0}"
         + ".state{font-size:13px;white-space:nowrap;color:var(--muted)}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--muted)}.dot.wait{background:var(--warn)}"
-        + ".code{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:28px;letter-spacing:3px;margin:8px 0 12px}"
-        + "a{color:var(--acc)}a.button,button{display:inline-block;font:inherit;font-size:13px;font-weight:600;padding:5px 13px;border-radius:var(--rb,7px);border:1px solid var(--btnline,transparent);background:var(--btn);color:var(--btnfg);text-decoration:none;white-space:nowrap;cursor:pointer}"
-        + "a.button.quiet,button.quiet{background:transparent;color:var(--fg);border-color:var(--line);font-weight:400}button.danger{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}"
-        + ".notice{border-left:2px solid var(--acc);padding:6px 12px;background:var(--box);border-radius:0 6px 6px 0;margin:0 0 14px}a.cancel{margin-left:16px}"
-        + "label{display:block;margin:0 0 4px}input[type=password],input[type=text],input:not([type]),select{font:inherit;color:var(--fg);background:var(--box);border:1px solid var(--line);border-radius:var(--rb,6px);padding:6px 9px;width:100%;max-width:360px;margin:0 0 12px;display:block}select option{color:#111}"
-        + "pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,Consolas,Menlo,monospace;background:var(--box);border:1px solid var(--line);padding:12px;border-radius:var(--r,10px)}"
+        + ".code{font-family:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;font-size:28px;letter-spacing:3px;margin:8px 0 12px}"
+        + "a{color:var(--link)}a.button,button{display:inline-block;font:inherit;font-size:13px;font-weight:500;line-height:20px;padding:5px 12px;border-radius:7px;border:1px solid var(--acc);background:var(--acc);color:var(--on-accent);text-decoration:none;white-space:nowrap;cursor:pointer}a.button:hover,button:hover{background:var(--acchover);border-color:var(--acchover)}"
+        + "a.button.quiet,button.quiet{background:var(--field);color:var(--fg);border-color:var(--fieldline)}a.button.quiet:hover,button.quiet:hover{background:var(--fieldhover);border-color:var(--fieldline)}button.danger{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}button.danger:hover{background:var(--dangerhover);border-color:var(--dangerhover)}a.button.quiet.danger,button.quiet.danger{background:var(--field);border-color:var(--fieldline);color:var(--danger-ink)}"
+        + ".notice{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);padding:11px 16px;background:var(--box);border-radius:12px;margin:0 0 20px}.notice svg{flex:none;margin-top:2px;color:var(--muted)}a.cancel{margin-left:16px}"
+        + "label{display:block;margin:0 0 6px;font-weight:500}input[type=password],input[type=text],input:not([type]),select{font:inherit;color:var(--fg);background:var(--field);border:1px solid var(--fieldline);border-radius:7px;padding:6px 10px;width:100%;max-width:360px;margin:0 0 14px;display:block}"
+        + "input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}select option{background:var(--field);color:var(--fg)}"
+        + "pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;background:var(--box);border:1px solid var(--line);padding:12px 14px;border-radius:12px}"
         // The tailnet card's steps: a command or a rule to copy, and a link into Tailscale's console, under a step's words.
-        + ".copy.block{display:block;margin:6px 0 0;overflow-wrap:anywhere}.grow>a.button,.grow>.copy.block{align-self:flex-start}.grow>pre{margin:8px 0 6px}a.button.small{font-size:12.5px;font-weight:400;padding:3px 10px;margin-top:6px;background:transparent;color:var(--fg);border-color:var(--line)}"
+        + ".copy.block{display:block;margin:6px 0 0;overflow-wrap:anywhere}.grow>a.button,.grow>.copy.block{align-self:flex-start}.grow>pre{margin:8px 0 6px}a.button.small{font-size:12.5px;padding:3px 10px;margin-top:6px;background:var(--field);color:var(--fg);border-color:var(--fieldline)}"
         // The notifications card's steps and form.
         + "ol.steps{margin:0 0 12px;padding-left:22px}ol.steps li{margin:0 0 6px}input[type=file]{font:inherit;display:block;margin:0 0 12px;max-width:100%}"
         + PushStyle
         + "label.grow{cursor:pointer}"
-        + "@media(max-width:520px){ul.rows li{flex-wrap:wrap}.more{padding-left:12px}}";
+        // A line's menu: "⋯" at its end, opening a short list over what is below.
+        + "details.menu{position:relative;margin:0}details.menu>summary{list-style:none;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;color:var(--muted);cursor:pointer}details.menu>summary::-webkit-details-marker{display:none}"
+        + "details.menu>summary:hover,details.menu[open]>summary{background:var(--fieldhover);color:var(--fg)}.pop{position:absolute;right:0;top:calc(100% + 4px);z-index:5;display:flex;flex-direction:column;min-width:190px;padding:4px;background:var(--pop);border:1px solid var(--fieldline);border-radius:9px;box-shadow:0 10px 28px var(--popshadow)}"
+        + "a.item{display:block;padding:7px 10px;border-radius:6px;color:var(--fg);font-size:13px;text-decoration:none;white-space:nowrap}a.item:hover{background:var(--fieldhover)}a.item.danger{color:var(--danger-ink)}.pop p{margin:0;padding:7px 10px;max-width:280px;color:var(--muted);font-size:12.5px}"
+        // A switch: on in the accent colour, its knob to the right.
+        + "button.switch{position:relative;flex:none;width:36px;height:20px;padding:0;border:0;border-radius:999px;background:var(--switchoff)}button.switch span{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--knoboff);transition:left .12s}"
+        + "button.switch[aria-checked=true]{background:var(--acc)}button.switch[aria-checked=true] span{left:18px;background:var(--knob)}button.switch:hover{background:var(--fieldline)}button.switch[aria-checked=true]:hover{background:var(--acchover)}button.switch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}"
+        + ".g small.copy{margin-top:4px;font-size:12px;color:var(--soft);overflow-wrap:anywhere}"
+        // A narrow window: the side list becomes a strip across the top that scrolls sideways.
+        + "@media(max-width:760px){body.framed{display:block}.side{position:static;width:auto;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px;border-right:0;border-bottom:1px solid var(--sideline);padding:6px 10px}"
+        + ".brand{flex:1;flex-direction:row;padding:6px 8px}.brand .ic.logo{width:22px;height:22px;background-size:22px 110px}.side form.out{margin:0;padding:0}.side .out button{width:auto}.side nav{order:3;width:100%;flex-direction:row;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}.side nav a{flex:none;width:auto;white-space:nowrap}.grp{display:none}"
+        + "header.top{position:static;padding:0 16px;min-height:46px}main{padding:20px 14px 40px}.more{padding-left:16px}ul.rows li{flex-wrap:wrap}.row:has(.acts){flex-wrap:wrap}.acts{margin-left:auto}}";
 
     private const string SiteName = "Message Link Server";
 
-    // The page around a body: the logo and the title, with `actions` at its end; `refresh` reloads it every so many seconds (the home page, so a request to
-    // join shows up without a click). It reloads the plain home page, so a notice (removed, joined) is said once.
-    private static Task PageAsync(HttpContext context, int status, string title, string body, int? refresh = null, string refreshTo = "/", string? actions = null)
+    // The page around a body: once signed in, the side list of places (Nav) beside it; above it, the bar saying where it is. `refresh` reloads it every so many seconds
+    // (the home page, so a request to join shows up without a click). It reloads the plain home page, so a notice (removed, joined) is said once.
+    private static Task PageAsync(HttpContext context, int status, string title, string body, int? refresh = null, string refreshTo = "/")
     {
         var response = context.Response;
         response.StatusCode = status;
         response.ContentType = "text/html; charset=utf-8";
-        // Every page is the server's, so its name always comes first, and is the way back to the front page.
+        var nav = context.Items[NavItem] as string;
+        // Signed in, the side list names the site and leads back, so the bar says only the page (the front page is the list's Overview). Signed out, the bar is all there is,
+        // so the site's name comes first and is the way back. The window's title always starts with it.
         var inner = title != SiteName;
         var whole = inner ? SiteName + " › " + title : SiteName;
-        var crumbs = inner ? "<a href=\"/\">" + SiteName + "</a><span class=\"sep\" aria-hidden=\"true\">›</span>" + Html(title) : SiteName;
-        var html = $"<!doctype html><html lang=\"en\" class=\"t-{context.Items[ThemeItem] ?? Themes[0].Id}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
+        var page = inner ? Html(title) : "Overview";
+        var crumbs = nav is not null ? "<span class=\"here\">" + page + "</span>"
+            : inner ? "<a href=\"/\">" + SiteName + "</a><span class=\"sep\" aria-hidden=\"true\">/</span><span class=\"here\">" + page + "</span>" : "<span class=\"here\">" + SiteName + "</span>";
+        // Signed out there is no list, so the bar carries the logo.
+        var logo = nav is null ? "<a href=\"/\" aria-label=\"The server's page\"><span class=\"ic logo\" aria-hidden=\"true\"></span></a>" : "";
+        var html = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
-            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body><main>"
-            + $"<header class=\"top\"><a href=\"/\" aria-label=\"The server's page\"><span class=\"ic logo\" aria-hidden=\"true\"></span></a><h1>{crumbs}</h1>{(actions is null ? "" : $"<span class=\"r\">{actions}</span>")}</header>{WithoutPasswordAgain(context, body)}</main></body></html>";
+            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
+            + $"<header class=\"top\">{logo}<h1>{crumbs}</h1></header><main>{WithoutPasswordAgain(context, body)}</main></div></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }
 
@@ -1074,7 +1099,7 @@ internal sealed partial class ServerPage
     {
         var headers = response.Headers;
         headers.CacheControl = "no-store";
-        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}' '{PageScriptHash}'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
         headers.XFrameOptions = "DENY";
         headers.XContentTypeOptions = "nosniff";
         // same-origin, not no-referrer: under no-referrer a browser sends a form post with Origin: null, which the origin check above refuses (checked in Chromium,

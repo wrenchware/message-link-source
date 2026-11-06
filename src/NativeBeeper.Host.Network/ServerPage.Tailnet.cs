@@ -98,8 +98,10 @@ internal sealed partial class ServerPage
         var name = view.Name is { Length: > 0 } n ? n : "messages-server";
         body.Append("<div class=\"sh\"><h2>This server</h2></div><div class=\"box\">").Append(CopyRow("Name", board.Port == NetworkEndpoint.DefaultPort ? name : $"{name}:{board.Port}"));
         if (view.Address is { Length: > 0 } address) body.Append(CopyRow("Address", address));
-        if (!view.Tagged && view.Owner is { Length: > 0 } owner) body.Append(Row("Signed in as", null, owner, null));
-        body.Append("</div><div class=\"btns\"><a class=\"button quiet\" href=\"/tailnet/signout\">Use another Tailscale account…</a></div>");
+        // Signing in as someone else sits in the account's own line.
+        body.Append(Row("Tailscale account", !view.Tagged && view.Owner is { Length: > 0 } owner ? owner : null, null,
+            "<a class=\"button quiet\" href=\"/tailnet/signout\" aria-label=\"Use another Tailscale account\">Change…</a>"));
+        body.Append("</div>");
 
         body.Append("<div class=\"sh\"><h2>Checks</h2></div><div class=\"box\">");
         if (view.Tagged) body.Append(Line(false, "Tagged", "The server has a tag in Tailscale, so it can't tell which devices are yours. Your Tailscale access rules alone decide who can reach it.", null));

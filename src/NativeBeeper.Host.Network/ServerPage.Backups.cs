@@ -83,26 +83,25 @@ internal sealed partial class ServerPage
         };
         if (said is not null) body.Append(Notice(said));
         var idle = status.State != ServerBackupStates.Running;
-        string Do(string what, string words) => "<button type=\"submit\" name=\"do\" value=\"" + what + "\" class=\"quiet\">" + Html(words) + "</button>";
+        // Each button sits in the line it acts on, as one small form.
+        string Do(string what, string words) =>
+            "<form method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><button type=\"submit\" name=\"do\" value=\"" + what + "\" class=\"quiet\">" + Html(words) + "</button></form>";
         body.Append("<div class=\"sh\"><h2>Daily backup</h2></div><div class=\"box\">")
-            .Append(Row("Daily backups", null, status.Enabled ? "On" : "Off", null))
-            .Append(Row("Last backup", null, status.LastGood is { } good ? Ago(good) + " · " + BackupSettings.Size(status.Bytes) : "None yet", null));
-        if (status.Next is { } next && status.Enabled) body.Append(Row("Next", null, next <= time.GetUtcNow() ? "shortly" : When(next), null));
-        if (status.Kept > 0) body.Append(Row("Kept", null, status.Kept == 1 ? "1 backup" : $"{status.Kept} backups (the newest 5)", null));
+            .Append(Row("Daily backups", "Conversations, settings and devices.", status.Enabled ? null : "Off", Switch("/backups", token, status.Enabled, "do", status.Enabled ? "off" : "on", "Daily backups")))
+            .Append(Row("Last backup", string.Join(" · ", new[] { status.Next is { } next && status.Enabled ? "Next " + (next <= time.GetUtcNow() ? "shortly" : When(next)) : null, status.Kept > 0 ? $"{status.Kept} of {BackupFolder.Keep} kept" : null }.OfType<string>()) is { Length: > 0 } under ? under : null,
+                status.LastGood is { } good ? Ago(good) + " · " + BackupSettings.Size(status.Bytes) : "None yet", status.HasPassword && idle ? Do("now", "Back up now") : null));
         if (status.LastGood is not null)
-            body.Append(Row("Read back", status.Check is { } check && check != "ok" ? CheckWords(check) : null, status.Check is null || status.CheckedAt is null ? "Not checked" : (status.Check == "ok" ? "Good · " : "Problem · ") + Ago(status.CheckedAt.Value), null, warn: status.Check is not (null or "ok")));
-        body.Append("</div><form class=\"btns\" method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
-            .Append(status.HasPassword && idle ? Do("now", "Back up now") : "")
-            .Append(status.LastGood is not null && idle ? Do("check", "Check latest") : "")
-            .Append(Do(status.Enabled ? "off" : "on", status.Enabled ? "Turn off daily backups" : "Turn on daily backups")).Append("</form>");
+            body.Append(Row("Backup integrity", status.Check is { } check && check != "ok" ? CheckWords(check) : "Checked by itself a day after each backup, then weekly.",
+                status.Check is null || status.CheckedAt is null ? "Not checked" : (status.Check == "ok" ? "Good · " : "Problem · ") + Ago(status.CheckedAt.Value), idle ? Do("check", "Check now") : null, warn: status.Check is not (null or "ok")));
+        body.Append("</div>");
         body.Append("<div class=\"sh\"><h2>Where and how</h2></div><div class=\"box\">");
         if (service.FolderChoiceFile is not null)
             body.Append("<div class=\"line\">").Append(CopyRow("Folder", service.Folder!)).Append("<div class=\"more flat\">").Append(tried is null ? "<details><summary>" : "<details open><summary>").Append("Use another folder</summary>").Append(FolderForm(token, tried ?? service.Folder, fromSteps)).Append("</details></div></div>");
         else body.Append(CopyRow("Folder", service.Folder!));
-        body.Append(Row("Password", null, status.HasPassword ? "Set" : "Not set", null, warn: !status.HasPassword));
-        body.Append("</div><div class=\"btns\"><a class=\"button quiet\" href=\"/backups/password\">").Append(status.HasPassword ? "Change the password…" : "Set a password…").Append("</a>");
+        body.Append(Row("Backup password", "Needed to restore a backup, so be sure to remember it.", status.HasPassword ? null : "Not set",
+            "<a class=\"button quiet\" href=\"/backups/password\" aria-label=\"" + (status.HasPassword ? "Change the password" : "Set a password") + "\">" + (status.HasPassword ? "Change…" : "Set…") + "</a>", warn: !status.HasPassword));
         // A restore goes only onto a server with no service signed in; one in use is reset first.
-        if (accounts == 0) body.Append("<a class=\"button quiet\" href=\"/restore\">Restore from a backup…</a>");
+        if (accounts == 0) body.Append(Row("Restore", "Restore your conversations, settings and devices.", null, "<a class=\"button quiet\" href=\"/restore\" aria-label=\"Restore from a backup\">Restore…</a>"));
         body.Append("</div><p class=\"hint\">Each backup holds your conversations, the server's settings and its devices, never a sign-in: after a restore you sign in to each account again.</p></section>");
     }
 

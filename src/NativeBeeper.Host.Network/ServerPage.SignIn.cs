@@ -216,7 +216,7 @@ internal sealed partial class ServerPage
     {
         var host = request.Host.Value;
         var socket = host is { Length: > 0 and <= 255 } && host.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or ':' or '[' or ']') ? " wss://" + host : "";
-        return $"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src '{SignInScriptHash}'; connect-src 'self'{socket}; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+        return $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{SignInScriptHash}'; connect-src 'self'{socket}; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
     }
 
     // ---- The socket ----

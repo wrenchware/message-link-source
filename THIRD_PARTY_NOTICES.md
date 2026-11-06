@@ -25,6 +25,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+# Inter
+
+The server's page is set in Inter (its variable Latin subset, as packaged by Fontsource 5.3.0), from https://github.com/rsms/inter .
+Copyright 2016 The Inter Project Authors. Licensed under the SIL Open Font License, Version 1.1; the full licence is beside
+the font in `src/NativeBeeper.Host.Network/Assets/inter-OFL.txt` and at https://openfontlicense.org .
+
 # Unicode Emoji 17.0 data
 
 UNICODE LICENSE V3

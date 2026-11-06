@@ -37,30 +37,30 @@ internal sealed partial class ServerPage
         if (card.Health.Test is { } test) body.Append("<p class=\"notice\" role=\"status\">").Append(Html(TestWords(test))).Append("</p>");
         body.Append("<div class=\"sh\"><h2>Phones</h2></div><div class=\"box\">");
         var any = false;
-        var tests = new StringBuilder();
         // One device at a time, so each line knows the device its test goes to: two phones can share a name.
         foreach (var device in devices.List(null).OrderBy(device => device.Name, StringComparer.CurrentCulture))
         {
             if (card.Health.Status(true, card.Registry, [device]).Phones is not [var phone]) continue;
             any = true;
-            if (card.Registry.Get(device.Id) is not null && card.Registry.Paired(device.Id))
-                tests.Append("<form method=\"post\" action=\"/push/test\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"id\" value=\"").Append(Html(device.Id))
-                    .Append("\"><button type=\"submit\" class=\"quiet\">").Append(Html("Send a test to " + phone.Name)).Append("</button></form>");
+            // A phone that can be sent a test has its button in its own line.
+            var testButton = card.Registry.Get(device.Id) is not null && card.Registry.Paired(device.Id)
+                ? "<form method=\"post\" action=\"/push/test\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><input type=\"hidden\" name=\"id\" value=\"" + Html(device.Id)
+                    + "\"><button type=\"submit\" class=\"quiet\" aria-label=\"" + Html("Send a test to " + phone.Name) + "\">Send test</button></form>"
+                : null;
             body.Append(phone.State switch
             {
-                PushPhoneStates.On => Row(phone.Name, null, "Signed up", null),
-                PushPhoneStates.Failing => Row(phone.Name, $"{phone.Failures} failed: {PushStatus.Reason(phone)}", "Failing", null, warn: true),
+                PushPhoneStates.On => Row(phone.Name, "Push notifications on.", "Signed up", testButton),
+                PushPhoneStates.Failing => Row(phone.Name, $"{phone.Failures} failed: {PushStatus.Reason(phone)}", "Failing", testButton, warn: true),
                 PushPhoneStates.MissingApp => Line(false, phone.Name, $"Add {phone.Package} in Firebase, download google-services.json again and replace the files.", Link(FirebasePage(project, GeneralPage), "Open Project settings"), "No app in Firebase"),
                 _ => Row(phone.Name, "Open Message Link on it; its Settings say what it needs.", "Not signed up", null, warn: true),
             });
         }
         if (!any) body.Append(Row("No phone yet", "Open Message Link on your phone once: it signs up by itself when it connects.", null, null));
         body.Append("</div>");
-        if (tests.Length > 0) body.Append("<div class=\"btns\">").Append(tests).Append("</div>");
         body.Append("<div class=\"sh\"><h2>Firebase</h2></div><div class=\"box\">")
-            .Append(Row("Project", null, setup.Offer.ProjectId ?? "", null))
+            .Append(Row("Project", null, setup.Offer.ProjectId ?? "", "<a class=\"button quiet\" href=\"/push\" aria-label=\"Replace the files\">Replace…</a>"))
             .Append(Row("Last sent", null, card.Health.LastSent is { } sent ? Ago(sent) : "Nothing yet", null))
-            .Append("</div><div class=\"btns\"><a class=\"button quiet\" href=\"/push\">Replace the files…</a></div></section>");
+            .Append("</div></section>");
     }
 
     // The test push as it stands, in the page's words.

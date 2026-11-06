@@ -57,7 +57,7 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>The log page's policy: every other page's, with its script instead and a way to its own server.</summary>
-    internal static string LogPolicy => $"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src '{LogScriptHash}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+    internal static string LogPolicy => $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{LogScriptHash}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
     /// <summary>
     /// The log page's script: asks about once a second what was written since, while the tab is in view, one question at a time, and later and later while it gets no answer. New lines go in as
