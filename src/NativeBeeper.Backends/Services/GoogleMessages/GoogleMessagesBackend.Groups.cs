@@ -12,14 +12,14 @@ internal sealed partial class GoogleMessagesBackend : IGroupBackend
     private const int GroupMaximum = 20, GroupNameMaximum = 100;
 
     public Task<GroupOptions> GetGroupOptionsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Task.FromResult(accountId == GoogleModels.Account
+        => Task.FromResult(accountId == Models.Account
             ? new GroupOptions(true, "Choose one person to start a chat, or several for a group.", Maximum: GroupMaximum, NameAllowed: true, NameMaximum: GroupNameMaximum)
             : new GroupOptions(false, "Choose the Google Messages account."));
 
     public async Task<ChatSummary> CreateGroupAsync(string accountId, IReadOnlyList<ContactPerson> people, string title, CancellationToken cancellationToken = default)
     {
         var phones = people.Select(p => GoogleDirectory.Phone(p.Phone)).ToArray();
-        if (accountId != GoogleModels.Account || people.Count is < 2 or > GroupMaximum || people.Any(p => p.CannotMessage) ||
+        if (accountId != Models.Account || people.Count is < 2 or > GroupMaximum || people.Any(p => p.AccountId != accountId || p.CannotMessage) ||
             phones.Any(p => p is null) || phones.Distinct(StringComparer.Ordinal).Count() != phones.Length || title.Trim().Length > GroupNameMaximum)
             throw new SendException(false, $"Choose 2–{GroupMaximum} different people with valid phone numbers.");
         await ConnectAsync(cancellationToken);
@@ -37,7 +37,7 @@ internal sealed partial class GoogleMessagesBackend : IGroupBackend
         catch { throw new SendException(true, "The group may have been created. Check your conversations before trying again."); }
         SetChat(chat);
         ArchiveChats([chat]);
-        Publish(new(RealtimeKind.ChatChanged, GoogleModels.Qualify(chat.Id)));
-        return GoogleModels.Map(chat);
+        Publish(new(RealtimeKind.ChatChanged, Models.Qualify(chat.Id)));
+        return Models.Map(chat);
     }
 }

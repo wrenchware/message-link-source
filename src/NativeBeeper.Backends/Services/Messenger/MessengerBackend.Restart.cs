@@ -26,7 +26,7 @@ internal sealed partial class MessengerBackend
     /// <summary>Why a restart may not run now, as a fixed word, or null when it may.</summary>
     internal string? RestartRefusal()
     {
-        if (!HasSavedSession) return "not_signed_in";
+        if (!SessionSaved) return "not_signed_in";
         if (closing) return "closing";
         // A connect already under way holds the gate for the whole sign-in.
         if (gate.CurrentCount == 0) return HelperRestarts.Busy;

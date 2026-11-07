@@ -12,16 +12,18 @@ namespace NativeBeeper.App.Services;
 /// </summary>
 internal sealed class IncomingCardRequester(MessengerBackend messenger, GoogleMessagesBackend google, GoogleIncomingCards cards, Action<string> log) : IIncomingCards
 {
+    internal ProviderAccounts? Accounts { get; set; }
     public async Task RequestAsync(string chatId, string messageId, bool linkPreviews, bool? listedAsSpam, CancellationToken cancellationToken = default)
     {
         if (MessengerModels.Owns(chatId))
         {
-            if (linkPreviews) await messenger.LoadLinkPreviewsAsync(chatId, [messageId], cancellationToken);
+            if (linkPreviews) await (Accounts?.Messenger(chatId) ?? messenger).LoadLinkPreviewsAsync(chatId, [messageId], cancellationToken);
             return;
         }
         if (!GoogleModels.Owns(chatId)) return;
-        var refusal = await cards.RefusalAsync(chatId, linkPreviews, listedAsSpam, cancellationToken);
+        var target = Accounts?.Google(chatId) ?? google;
+        var refusal = await (ReferenceEquals(target, google) ? cards : target.IncomingCards).RefusalAsync(target.Slot.Ids.Native(chatId), linkPreviews, listedAsSpam, cancellationToken);
         log($"link card ahead provider=google outcome={(refusal is null ? "asked" : "refused")} reason={refusal ?? "-"}");
-        if (refusal is null) await google.LoadLinkPreviewsAsync(chatId, [messageId], cancellationToken);
+        if (refusal is null) await target.LoadLinkPreviewsAsync(chatId, [messageId], cancellationToken);
     }
 }

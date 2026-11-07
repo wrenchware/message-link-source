@@ -23,12 +23,12 @@ internal sealed partial class GoogleMessagesBackend
             {
                 connected = false;
                 LastSignInFailure = null;
-                var saved = GoogleSessionProfile.HasSavedSession;
+                var saved = Files.SessionSaved;
                 // A QR pairing has no sign-in to renew, so a Google-account sign-in over it is a new pairing.
                 var fresh = asNewDevice || !saved || qrSession;
                 renewing = !fresh;
                 if (renewOnly && fresh) throw new BackendException(BackendFailure.AuthenticationRequired,"There is no saved Google Messages pairing to renew.");
-                GoogleMessagesLog.Write($"sign_in starting mode={(!fresh ? "renew" : saved ? "new_device" : "pair")} age_min={GoogleSignInClock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
+                GoogleMessagesLog.Write($"sign_in starting mode={(!fresh ? "renew" : saved ? "new_device" : "pair")} age_min={Files.Clock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
                 // Detach before disposal so the old pump's EOF callback cannot mark the
                 // replacement connection disconnected or enqueue an obsolete status. What it last handed over (a token it
                 // refreshed while the connection was down) is saved first, as ConnectAsync does when it replaces one.
@@ -37,7 +37,7 @@ internal sealed partial class GoogleMessagesBackend
                 helper = null;
                 if (previousHelper is not null) await previousHelper.DisposeAsync();
                 while (realtime.Reader.TryRead(out _)) { }
-                await using var renewal = await HelperConnection.StartAsync(HelperExecutables.PathFor("gmessages-helper"), null, token);
+                await using var renewal = await HelperConnection.StartAsync(HelperExecutables.PathFor("gmessages-helper"), null, token, Slot.HelperEnvironment);
                 JsonElement result;
                 // Whether Google issued new sign-in cookies, which is what restarts its two-hour clock (GoogleSignInClock).
                 string[] minted=[];
@@ -45,11 +45,11 @@ internal sealed partial class GoogleMessagesBackend
                 byte[]? replaced = null;
                 if(!fresh)
                 {
-                    var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(GoogleSessionProfile.SessionPath,token));
+                    var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(Files.SessionFile,token));
                     try
                     {
                         using var document = JsonDocument.Parse(plain);
-                        minted = GoogleSignInCookies.Changed(document.RootElement, cookies);
+                        minted = Files.Cookies.Changed(document.RootElement, cookies);
                         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                         timeout.CancelAfter(TimeSpan.FromSeconds(135));
                         result = await renewal.CallAsync("reauthenticate",new { auth=document.RootElement,cookies },timeout.Token);
@@ -58,7 +58,7 @@ internal sealed partial class GoogleMessagesBackend
                 }
                 else
                 {
-                    if (saved) replaced = await File.ReadAllBytesAsync(GoogleSessionProfile.SessionPath,token);
+                    if (saved) replaced = await File.ReadAllBytesAsync(Files.SessionFile,token);
                     var challenge=await renewal.CallAsync("pair.start",new {cookies},token);
                     GoogleMessagesLog.Write("sign_in challenge=ready");
                     pairingEmoji.Report(challenge.GetProperty("emoji").GetString() ?? "");
@@ -69,6 +69,7 @@ internal sealed partial class GoogleMessagesBackend
                 // written durably. A pairing the phone had accepted used to be thrown away by a cancellation or a failed
                 // profile copy before it. The bookkeeping for a new pairing (the old one kept beside it, local state kept
                 // under the old device) comes first but cannot fail it, and is harmless if the write then fails.
+                if (ValidateAccount is { } validate) await validate(AccountIdentity(result), CancellationToken.None);
                 if (replaced is not null) await KeepLocalProfileAsync(result,replaced,protector);
                 var updated = Encoding.UTF8.GetBytes(result.GetRawText());
                 try
@@ -81,14 +82,14 @@ internal sealed partial class GoogleMessagesBackend
                 // answers with the new key at once whether or not its window tells it (HostIdentityPort).
                 if (tokens is GoogleSessionProfile profile) profile.Invalidate();
                 NoteSessionKind(result);
-                GoogleSignInCookies.Remember(cookies);
+                Files.Cookies.Remember(cookies);
                 NoteSignedIn();
                 // A new pairing may be another phone; what the old one said about its default SMS app or its SIMs no longer holds.
                 if (fresh) { ForgetDefaultSms(); ForgetSims(); }
                 // A browser sign-in, a new pairing, or a refresh in which Google issued new cookies starts the clock again;
                 // a refresh that handed back the same cookies does not, since Google still counts from the old sign-in.
                 var madeNow = fresh || minted.Length > 0;
-                if (madeNow) await GoogleSignInClock.RecordAsync(DateTimeOffset.UtcNow);
+                if (madeNow) await Files.Clock.RecordAsync(DateTimeOffset.UtcNow);
                 GoogleMessagesLog.Write($"sign_in saved minted={(fresh ? "new" : minted.Length > 0 ? "yes" : "no")} changed=[{string.Join(",", minted)}]");
             }
             catch (InvalidOperationException ex)
@@ -120,18 +121,18 @@ internal sealed partial class GoogleMessagesBackend
     // there; a different account starts afresh, as it should. The old pairing is kept beside the new one, not deleted.
     // Runs after the new pairing is written, from the old one's bytes read before it, and never undoes the pairing: a
     // failure here costs only this bookkeeping, which is logged.
-    private static async Task KeepLocalProfileAsync(JsonElement paired,byte[] replaced,IStateProtector protector)
+    private async Task KeepLocalProfileAsync(JsonElement paired,byte[] replaced,IStateProtector protector)
     {
         byte[]? previous = null;
         try
         {
-            await NativeBeeper.Storage.DurableFile.WriteAsync(GoogleSessionProfile.SessionPath + ".previous", replaced);
+            await NativeBeeper.Storage.DurableFile.WriteAsync(Files.SessionFile + ".previous", replaced);
             previous = await protector.UnprotectAsync(replaced);
             using var old = JsonDocument.Parse(previous);
             var (oldDevice, oldAccount) = GooglePairingIdentity.Identity(old.RootElement);
             var (newDevice, newAccount) = GooglePairingIdentity.Identity(paired);
             var sameAccount = oldAccount is not null && oldAccount == newAccount;
-            var kept = GooglePairingIdentity.KeepsOldDevice(oldDevice, oldAccount, newDevice, newAccount) && await GoogleSessionProfile.KeepAsync(protector, oldDevice!, oldAccount!, CancellationToken.None);
+            var kept = GooglePairingIdentity.KeepsOldDevice(oldDevice, oldAccount, newDevice, newAccount) && await Files.KeepAccountAsync(protector, oldDevice!, oldAccount!, CancellationToken.None);
             GoogleMessagesLog.Write($"sign_in new_device same_account={sameAccount} same_device={oldDevice == newDevice} profile_kept={kept}");
         }
         catch (Exception failure) { GoogleMessagesLog.Write($"sign_in new_device profile_kept=failed reason={GoogleMessagesLog.Reason(failure)}"); }

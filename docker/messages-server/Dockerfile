@@ -5,8 +5,8 @@
 #   docker build -f docker/messages-server/Dockerfile --build-arg CHROME_REFRESH=$(date -u +%Y%m%dT%H%M%SZ) -t messages-server:local .
 #
 # Chrome and Google stay off until the container is given MESSAGES_GOOGLE=1 and MESSAGES_GOOGLE_CHROME=1 (the install script, compose and the Unraid templates give both), and it needs
-# MESSAGES_RESTORE=1 (only the restore starts the renewal) and, in a container with every capability dropped, MESSAGES_CHROMIUM_NO_SANDBOX=1 (also given by the script; see the ENV
-# below). Chrome always runs headed on its own Xvfb. Written for the classic builder as well as BuildKit.
+# MESSAGES_RESTORE=1 (only the restore starts the renewal). Under Docker's default seccomp profile, which refuses user namespaces to a container with every capability dropped,
+# Chrome also needs MESSAGES_CHROMIUM_NO_SANDBOX=1, unless the container is given chrome-seccomp.json or seccomp=unconfined (see the ENV below). Chrome always runs headed on its own Xvfb. Written for the classic builder as well as BuildKit.
 
 # ---- Google Messages helper (Go). The version is experiments/GoogleMessages/helper/go.mod's "go" line. -------------------------------------------
 FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS gmessages-helper
@@ -86,12 +86,19 @@ COPY experiments/ experiments/
 # Locked: the project lists its Linux runtimes (RuntimeIdentifiers), which is what lets a self-contained restore stay
 # inside its lock file on a Linux SDK.
 RUN dotnet restore src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj --locked-mode -p:SelfContained=true
+# SMBLibrary (LGPL-3.0) ships with its licence texts, replacement notice and exact source: NativeBeeper.Host.csproj
+# copies them from here to licenses/SMBLibrary. A wildcard that matches nothing is no error, so the publish is checked below.
+COPY third_party/SMBLibrary/ third_party/SMBLibrary/
 RUN dotnet publish src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj -c Release --no-restore \
       -r linux-x64 -p:SelfContained=true -o /out \
  && if [ ! -x /out/messages-server ]; then \
       echo "Message Link Server build: the publish has no messages-server executable (expected AssemblyName messages-server, linux-x64)." >&2; \
       exit 1; \
-    fi
+    fi \
+ && for file in SMBLibrary.dll licenses/SMBLibrary/NOTICE.txt licenses/SMBLibrary/LGPL-3.0.txt licenses/SMBLibrary/GPL-3.0.txt \
+      licenses/SMBLibrary/source-1.5.8.1.zip; do \
+      if [ ! -s "/out/$file" ]; then echo "Message Link Server build: the publish has no $file." >&2; exit 1; fi; \
+    done
 
 # ---- Runtime --------------------------------------------------------------------------------------------------------------------------------------
 FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS runtime
@@ -176,8 +183,9 @@ COPY --from=server /root/.nuget/packages/skiasharp.nativeassets.linux.nodependen
 
 # The server's settings, and the browser's: MESSAGES_CHROME (Google Chrome) and MESSAGES_CHROME_BUILT (this image's build time, for its age).
 # MESSAGES_GOOGLE=1 and MESSAGES_GOOGLE_CHROME=1 are given by whatever starts the container, not baked in (Google Messages stays off in this image until the container says so).
-# Not set here, on purpose: MESSAGES_CHROMIUM_NO_SANDBOX. Chromium's own sandbox needs user namespaces or a setuid helper, which a container with
-# every capability dropped and no-new-privileges does not give it, so in such a container the browser starts only if the run passes
+# Not set here, on purpose: MESSAGES_CHROMIUM_NO_SANDBOX. Chromium's own sandbox needs user namespaces (no-new-privileges rules out its setuid helper),
+# which Docker's default seccomp profile refuses a container with every capability dropped. Such a container is given chrome-seccomp.json
+# (install-unraid.sh --chrome-sandbox) or seccomp=unconfined (the Community Applications template), or the run passes
 # MESSAGES_CHROMIUM_NO_SANDBOX=1 itself (the log then says sandbox=off). Without its sandbox, a page's code that broke out of the renderer could read
 # what the server's account can, the keys volume included; what limits that is described in docs/research/google-linux-renewal.md. Choosing it
 # is up to whoever runs the container, not baked into the image.

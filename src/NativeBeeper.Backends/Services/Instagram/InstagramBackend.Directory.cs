@@ -55,7 +55,7 @@ internal sealed partial class InstagramBackend : IContactBackend, IDirectChatLoo
                 .Select(person => new ContactPerson(known.Account, person.Id, person.Name, person.Username, null, null,
                     // Whether a conversation can be opened is not known until it is looked up, so nobody is marked
                     // unmessageable here on a guess. A pair with no thread yet is refused at that point, by name.
-                    CannotMessage: false, IsSelf: false, AvatarUrl: InstagramIdentity.QualifyMedia(person.Avatar)))];
+                    CannotMessage: false, IsSelf: false, AvatarUrl: identity.Media(person.Avatar)))];
         }, cancellationToken);
     }
 

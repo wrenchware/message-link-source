@@ -62,6 +62,11 @@ internal sealed class HostSavedPhotos : IDisposable
     /// </summary>
     public void Ended(string account, string? key)
     {
+        if (account == "account-slot" && NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(key))
+        {
+            foreach (var service in new[] { "google-direct:", "messenger:", "instagram:" }) keys.Writer.TryWrite(new Look(null, null, new NativeBeeper.Core.Messaging.AccountNamespace(key).Qualify(service), "signed_out"));
+            return;
+        }
         var (prefix, reason) = account switch
         {
             "messenger" => ("messenger:", "signed_out"),

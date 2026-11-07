@@ -12,6 +12,7 @@ namespace NativeBeeper.Host.Backup;
 /// <summary>Messenger as the server's backup reaches it: its connection, the account the helper's store belongs to, and the helper's export and import.</summary>
 internal interface IServerBackupMessenger
 {
+    IReadOnlyDictionary<string, IServerBackupMessenger> AdditionalAccounts => new Dictionary<string, IServerBackupMessenger>();
     bool Saved { get; }
     bool Connected { get; }
     string? AccountKey { get; }
@@ -22,9 +23,10 @@ internal interface IServerBackupMessenger
 }
 
 /// <summary>The server's Messenger backend as <see cref="IServerBackupMessenger"/>.</summary>
-internal sealed class BackendBackupMessenger(MessengerBackend messenger) : IServerBackupMessenger
+internal sealed class BackendBackupMessenger(MessengerBackend messenger, NativeBeeper.App.Services.ProviderAccounts? accounts = null) : IServerBackupMessenger
 {
-    public bool Saved => MessengerBackend.HasSavedSession;
+    public IReadOnlyDictionary<string, IServerBackupMessenger> AdditionalAccounts => accounts?.Added.Where(a => a.Messenger is not null).ToDictionary(a => a.Registration.Key, a => (IServerBackupMessenger)new BackendBackupMessenger(a.Messenger!)) ?? [];
+    public bool Saved => messenger.SessionSaved;
     public bool Connected => messenger.IsConnected;
     public string? AccountKey => messenger.HistoryAccountKey;
     public Task<MessengerHistoryPage> ExportPageAsync(string? cursor, CancellationToken cancellationToken) => messenger.ExportHistoryPageAsync(cursor, cancellationToken);
@@ -44,8 +46,9 @@ internal static class PendingImports
     internal sealed record MessengerPending(string Account, int Pages);
 
     public static string Folder(ServerBackupPaths paths) => Path.Combine(paths.Restore, ServerRestore.PendingFolder);
-    public static string MessengerAccountPath(ServerBackupPaths paths) => Path.Combine(Folder(paths), "messenger", "account.json");
-    public static string MessengerPagePath(ServerBackupPaths paths, int number) => Path.Combine(Folder(paths), "messenger", $"page-{number:D6}.protected");
+    public static string MessengerAccountPath(ServerBackupPaths paths, string? slot = null) => Path.Combine(MessengerFolder(paths, slot), "account.json");
+    public static string MessengerPagePath(ServerBackupPaths paths, int number, string? slot = null) => Path.Combine(MessengerFolder(paths, slot), $"page-{number:D6}.protected");
+    private static string MessengerFolder(ServerBackupPaths paths, string? slot) => slot is null ? Path.Combine(Folder(paths), "messenger") : NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(slot) ? Path.Combine(Folder(paths), "accounts", slot, "messenger") : throw new ArgumentException("Invalid account slot.");
     public static string PcLocalPath(ServerBackupPaths paths) => Path.Combine(Folder(paths), "pc-local.protected");
 
     /// <summary>What waits: Messenger's pages (0 for none) and whether a PC's choices do.</summary>
@@ -57,6 +60,19 @@ internal static class PendingImports
             if (File.Exists(MessengerAccountPath(paths)) && JsonSerializer.Deserialize<MessengerPending>(File.ReadAllBytes(MessengerAccountPath(paths))) is { } pending) pages = pending.Pages;
         }
         catch (Exception failure) when (failure is IOException or JsonException or UnauthorizedAccessException) { }
+        var accounts = Path.Combine(Folder(paths), "accounts");
+        if (Directory.Exists(accounts))
+            foreach (var directory in Directory.EnumerateDirectories(accounts))
+            {
+                var slot = Path.GetFileName(directory);
+                if (!NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(slot) || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) continue;
+                try
+                {
+                    if (File.Exists(MessengerAccountPath(paths, slot)) && JsonSerializer.Deserialize<MessengerPending>(File.ReadAllBytes(MessengerAccountPath(paths, slot))) is { Pages: >= 0 and <= 100000 } pending)
+                        pages += pending.Pages;
+                }
+                catch (Exception failure) when (failure is IOException or JsonException or UnauthorizedAccessException) { }
+            }
         return (pages, File.Exists(PcLocalPath(paths)));
     }
 
@@ -75,13 +91,13 @@ internal static class PendingImports
     /// (not connected), <c>other_account</c> (another account is signed in; the pages stay), <c>imported</c>, or <c>failed</c> (tried again at the next poll).
     /// </summary>
     public static async Task<string?> TryMessengerAsync(ServerBackupPaths paths, IStateProtector protector, IServerBackupMessenger? messenger, Action<string> log,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? slot = null)
     {
         MessengerPending? pending;
         try
         {
-            if (!File.Exists(MessengerAccountPath(paths))) return null;
-            pending = JsonSerializer.Deserialize<MessengerPending>(await File.ReadAllBytesAsync(MessengerAccountPath(paths), cancellationToken).ConfigureAwait(false));
+            if (!File.Exists(MessengerAccountPath(paths, slot))) return null;
+            pending = JsonSerializer.Deserialize<MessengerPending>(await File.ReadAllBytesAsync(MessengerAccountPath(paths, slot), cancellationToken).ConfigureAwait(false));
         }
         catch (JsonException) { pending = null; }
         if (pending is not { Pages: >= 0, Account.Length: > 0 }) { Say(log, "messenger", "unreadable"); return "failed"; }
@@ -92,7 +108,7 @@ internal static class PendingImports
         {
             for (var number = 0; number < pending.Pages; number++)
             {
-                var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(MessengerPagePath(paths, number), cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
+                var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(MessengerPagePath(paths, number, slot), cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
                 JsonElement page;
                 using (var document = JsonDocument.Parse(plain)) page = document.RootElement.Clone();
                 var result = await messenger.ImportPageAsync(page, cancellationToken).ConfigureAwait(false);
@@ -107,7 +123,7 @@ internal static class PendingImports
             return "failed";
         }
         if (imported > 0) messenger.Imported();
-        Directory.Delete(Path.GetDirectoryName(MessengerAccountPath(paths))!, recursive: true);
+        Directory.Delete(Path.GetDirectoryName(MessengerAccountPath(paths, slot))!, recursive: true);
         Say(log, "messenger", "imported", $" pages={imported} added={added} skipped={skipped}");
         return "imported";
     }

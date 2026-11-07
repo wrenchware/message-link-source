@@ -6,7 +6,8 @@ namespace NativeBeeper.Server.Linux;
 /// <summary>
 /// Chrome's own sandbox in the container (an external security review, 2026-10-11). Chrome runs as the server's account, which can read the keys volume, so a page's code that broke out of a
 /// renderer is the whole server's secrets unless the renderer is sandboxed. The sandbox needs unprivileged user namespaces, which Docker's default seccomp profile refuses a container with no
-/// capability (<c>docker/messages-server/chrome-seccomp.json</c> allows them, and install-unraid.sh <c>--chrome-sandbox</c> uses it). Two things are done here, neither of which can be a guess:
+/// capability (<c>docker/messages-server/chrome-seccomp.json</c> allows them, and install-unraid.sh <c>--chrome-sandbox</c> uses it; the Community Applications template uses
+/// <c>seccomp=unconfined</c>, as a template cannot place that file on the host). Two things are done here, neither of which can be a guess:
 /// <list type="bullet">
 /// <item>Before Chrome is started with its sandbox on, the container is asked whether it can make a user namespace at all (<see cref="Preflight"/>). If it cannot, Chrome is not started
 /// (<c>server google refused reason=sandbox_unavailable</c>) rather than being started to fail, or started without a sandbox behind the owner's back.</item>

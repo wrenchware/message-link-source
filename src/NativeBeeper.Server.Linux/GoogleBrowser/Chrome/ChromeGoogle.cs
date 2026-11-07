@@ -11,8 +11,8 @@ namespace NativeBeeper.Server.Linux;
 internal sealed record ChromeGoogle(PersistentChrome Chrome, ChromeKeptBrowser Browser, IChromeCookieSource Cookies, IFrameEncoder Encoder, ChromeBuild Build, bool SignInOffered)
 {
     /// <summary>The remote sign-in host, or null when this host does not offer it.</summary>
-    public ChromeRemoteSignIn? SignIn(IGoogleMessagesAccount account, Action<string> log, SignInGuard guard) =>
-        SignInOffered ? new ChromeRemoteSignIn(Chrome, Cookies, Encoder, account, log, guard, Build) : null;
+    public ChromeRemoteSignIn? SignIn(IGoogleMessagesAccount account, Action<string> log, SignInGuard guard, GoogleAccountBrowserProfile? profile = null) =>
+        SignInOffered ? new ChromeRemoteSignIn(Chrome, Cookies, Encoder, account, log, guard, Build) { Profile = profile ?? GoogleMessagesBrowserProfile.Default } : null;
 
     /// <summary>
     /// At start: Chrome up on the kept profile, when there is one (a server that has never been signed in has no Chrome running; the first sign-in starts it). The profile is the one the keeper's
@@ -49,9 +49,9 @@ internal static class MessagesChrome
 /// <summary><see cref="IChromeRenewalTarget"/> over the Google Messages backend (the same calls the keeper's early renewal makes).</summary>
 internal sealed class BackendRenewalTarget(GoogleMessagesBackend backend) : IChromeRenewalTarget
 {
-    public DateTimeOffset? MadeAt => GoogleSignInClock.MadeAt;
+    public DateTimeOffset? MadeAt => backend.Files.Clock.MadeAt;
     public bool Ready => backend.CanReceive && !backend.SignInExpired && !backend.PairingLost;
-    public string? ProfileId => GoogleMessagesBrowserProfile.Id;
+    public string? ProfileId => backend.Files.BrowserProfile.Id;
     public Task<string[]> ChangedFromSavedAsync(IReadOnlyDictionary<string, string> cookies) => backend.ChangedFromSavedAsync(cookies);
     public Task<string> AdoptAsync(IReadOnlyDictionary<string, string> cookies, CancellationToken cancellationToken) => backend.AdoptCookiesAsync(cookies, cancellationToken);
 }

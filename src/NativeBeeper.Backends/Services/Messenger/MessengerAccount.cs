@@ -7,7 +7,7 @@ namespace NativeBeeper.App.Services.Messenger;
 internal sealed class MessengerAccount(MessengerBackend messenger) : IMessengerAccount
 {
     public MessengerAccountState State =>
-        new(messenger.IsConnected, MessengerBackend.HasSavedSession, MessengerBackend.EncryptedEnabled, messenger.EncryptedState);
+        new(messenger.IsConnected, messenger.SessionSaved, messenger.EncryptionEnabled, messenger.EncryptedState);
 
     public event EventHandler? Changed
     {

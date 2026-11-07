@@ -10,13 +10,13 @@ internal sealed record MessengerContact(string Id, string Name, string? Username
 internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLookup
 {
     public Task<ContactOptions> GetContactOptionsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Task.FromResult(accountId == MessengerModels.Account && helper is not null
+        => Task.FromResult(accountId == Models.Account && helper is not null
             ? new ContactOptions(true, true, "Search Messenger people by name, then start the conversation without sending a message.", RemoteSearch: true)
             : new ContactOptions(false, false, "Connect Messenger in Settings first."));
 
     public async Task<IReadOnlyList<ContactPerson>> FindContactsAsync(string accountId, string query, CancellationToken cancellationToken = default)
     {
-        if (accountId != MessengerModels.Account || helper is not { } started)
+        if (accountId != Models.Account || helper is not { } started)
             throw new BackendException(BackendFailure.Unavailable, "Connect Messenger in Settings first.");
         if (string.IsNullOrWhiteSpace(query) || query.Length > 1000) return [];
         // The search rules of the window (three characters, 900 ms apart, answers kept five minutes) are held here, for whoever asks: see PacedDirectorySearch.
@@ -27,9 +27,9 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
             {
                 var result = await started.CallAsync("ui.searchContacts", new { query = text }, cancellationToken);
                 return (IReadOnlyList<ContactPerson>)(result.Deserialize<MessengerContact[]>(Json) ?? [])
-                    .Select(person => new ContactPerson(MessengerModels.Account, person.Id, person.Name,
+                    .Select(person => new ContactPerson(Models.Account, person.Id, person.Name,
                         person.Username, null, null, person.CannotMessage, person.Self,
-                        MessengerModels.QualifyMedia(person.AvatarUrl ?? ""))).ToArray();
+                        Models.QualifyMedia(person.AvatarUrl ?? ""))).ToArray();
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (ex is not BackendException)
@@ -45,26 +45,26 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
 
     public ChatSummary? FindDirectChat(ContactPerson contact)
     {
-        if (contact.AccountId != MessengerModels.Account) return null;
+        if (contact.AccountId != Models.Account) return null;
         // Somebody picked from a conversation carries the "fb:" form; search answers with Facebook's own id.
         var id = MessengerGroupChanges.NativePerson(contact.Id);
         var found = chats.FirstOrDefault(chat => !chat.Group && !chat.ReadOnly && chat.Participants.Any(person => person.Id == id && !person.Self));
-        return found is null ? null : MessengerModels.Map(found);
+        return found is null ? null : Models.Map(found);
     }
 
     // A conversation of the list as last read, without asking the helper: how a host with no window's catalogue presents a
     // kept search's conversations (MessengerKeptHistory's liveChat).
     internal ChatSummary? KnownChat(string chatId)
     {
-        if (!MessengerModels.Owns(chatId)) return null;
-        var native = MessengerModels.Native(chatId);
+        if (!Models.Owns(chatId)) return null;
+        var native = Models.Native(chatId);
         var found = chats.FirstOrDefault(chat => chat.Id == native);
-        return found is null ? null : MessengerModels.Map(found);
+        return found is null ? null : Models.Map(found);
     }
 
     public async Task<ChatSummary> StartDirectAsync(ContactPerson contact, bool allowInvite, CancellationToken cancellationToken = default)
     {
-        if (contact.AccountId != MessengerModels.Account || contact.CannotMessage || contact.IsSelf || string.IsNullOrWhiteSpace(contact.Id))
+        if (contact.AccountId != Models.Account || contact.CannotMessage || contact.IsSelf || string.IsNullOrWhiteSpace(contact.Id))
             throw new SendException(false, "Choose a Messenger contact you can message.");
         if (FindDirectChat(contact) is { } existing) return existing;
         if (helper is not { } started) throw new SendException(false, "Connect Messenger in Settings first.");
@@ -75,7 +75,7 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
             chats = chats.Where(chat => chat.Id != created.Id).Append(created).ToArray();
             _ = SaveChatsAsync(chats);
             ChatsChanged?.Invoke(this, EventArgs.Empty);
-            return MessengerModels.Map(created);
+            return Models.Map(created);
         }
         catch (OperationCanceledException) { throw; }
         catch (InvalidOperationException ex) when (ex.Message is "start_rejected" or "start_failed" or "start_unavailable")

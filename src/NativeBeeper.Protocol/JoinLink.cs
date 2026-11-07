@@ -19,19 +19,27 @@ public static class JoinLink
     /// <summary>The website's pictured guide to the Firebase project a phone's notifications need, which the server's page links to.</summary>
     public const string FirebaseGuide = "https://wrenchware.github.io/messages/firebase/";
 
-    /// <summary>The only version written and read.</summary>
+    public const string SetupGuide = "https://wrenchware.github.io/messages/setup/";
+
+    /// <summary>The original link version; a non-default Tailscale port needs version 2 so older phones ask for an update.</summary>
     public const string Version = "1";
 
     /// <summary>What a link or a pasted line held. <paramref name="Address"/> or <paramref name="TailnetName"/> is there, or both.</summary>
     /// <param name="Address">The home network's address, <c>host</c> or <c>host:port</c>.</param>
     /// <param name="Fingerprint">64 lowercase hex characters.</param>
     /// <param name="Code">The pairing code as the server prints it, <c>XXXXX-XXXXX</c>.</param>
-    public sealed record Parsed(string? TailnetName, string? Address, string Fingerprint, string Code, string? TailscaleUser);
+    public sealed record Parsed(string? TailnetName, string? Address, string Fingerprint, string Code, string? TailscaleUser, int TailnetPort = NetworkEndpoint.DefaultPort)
+    {
+        public string? TailnetAddress => TailnetName is null ? null : TailnetPort == NetworkEndpoint.DefaultPort ? TailnetName : $"{TailnetName}:{TailnetPort}";
+    }
 
     /// <summary>The link for a phone. Each value is percent-encoded; a missing one is left out.</summary>
-    public static string Build(string? tailnetName, string? address, string fingerprint, string code, string? tailscaleUser)
+    public static string Build(string? tailnetName, string? address, string fingerprint, string code, string? tailscaleUser, int tailnetPort = NetworkEndpoint.DefaultPort)
     {
-        var link = new StringBuilder(Page).Append("#v=").Append(Version);
+        ArgumentOutOfRangeException.ThrowIfLessThan(tailnetPort, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(tailnetPort, 65535);
+        var customPort = !string.IsNullOrWhiteSpace(tailnetName) && tailnetPort != NetworkEndpoint.DefaultPort;
+        var link = new StringBuilder(Page).Append("#v=").Append(customPort ? "2" : Version);
         void Add(string key, string? value)
         {
             if (string.IsNullOrWhiteSpace(value)) return;
@@ -42,6 +50,7 @@ public static class JoinLink
         Add("f", fingerprint.ToLowerInvariant());
         Add("c", code);
         Add("u", tailscaleUser);
+        if (customPort) Add("p", tailnetPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return link.ToString();
     }
 
@@ -76,12 +85,15 @@ public static class JoinLink
             catch (UriFormatException) { return null; }
             values.TryAdd(key, value);
         }
-        if (!values.TryGetValue("v", out var version) || version != Version) return null;
+        if (!values.TryGetValue("v", out var version) || version is not (Version or "2")) return null;
+        var port = NetworkEndpoint.DefaultPort;
+        if (version == "2" && (!int.TryParse(values.GetValueOrDefault("p"), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out port) || port is < 1 or > 65535)) return null;
         var name = Blank(values.GetValueOrDefault("n"));
         var address = Blank(values.GetValueOrDefault("a"));
         if (name is null && address is null) return null;
         if (Fingerprint(values.GetValueOrDefault("f")) is not { } fingerprint || PairingCode(values.GetValueOrDefault("c")) is not { } code) return null;
-        return new(name, address, fingerprint, code, Blank(values.GetValueOrDefault("u")));
+        return new(name, address, fingerprint, code, Blank(values.GetValueOrDefault("u")), port);
     }
 
     private static Parsed? ParseLine(string line)

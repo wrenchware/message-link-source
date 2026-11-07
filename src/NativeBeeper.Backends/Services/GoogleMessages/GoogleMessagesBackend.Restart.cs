@@ -17,7 +17,7 @@ internal sealed partial class GoogleMessagesBackend
     internal string? RestartRefusal()
     {
         if (stopping) return "closing";
-        if (!GoogleSessionProfile.HasSavedSession) return "not_signed_in";
+        if (!Files.SessionSaved) return "not_signed_in";
         // Pairing, a renewal, or the invisible refresh the window runs after a refusal.
         if (signingIn || signIn.Held(DateTimeOffset.UtcNow)) return "signing_in";
         if (signIn.PairingLost || signIn.SignInExpired || authenticationRequired) return "needs_sign_in";

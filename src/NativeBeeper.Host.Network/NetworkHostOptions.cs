@@ -130,6 +130,7 @@ internal sealed record NetworkHostOptions(string DataFolder, IStateProtector Pro
     /// those windows). Takes the server's word for the service (<c>ServerAccountProviders</c>); false when it could not ask. Null on every other host.
     /// </summary>
     public Func<string, bool>? DesktopSignIn { get; init; }
+    public Func<string, string?, Func<bool>, Task<bool>>? DesktopAccountSignIn { get; init; }
 
     // A record's own text prints every member, the password with them: this one names only what is safe to see.
     public override string ToString() => $"NetworkHostOptions {{ BindAddress = {BindAddress}, Port = {Port}, Page = {(PagePassword is null ? "off" : "set")}, Relay = {(RelaySocket is null ? "off" : "on")} }}";

@@ -37,8 +37,8 @@ internal sealed partial class LinuxHostStartup
     // The real restarter with Google's backend in it; the account keeps a browser profile of this host's own at every sign-in a client hands over. With Google Voice running (the server's own
     // Chrome), its accounts are the real ones, behind a port that refuses the hand-over of cookies from a client.
     private static HostUnavailablePorts GooglePorts(LinuxGoogle withGoogle, IGoogleMessagesAccount account, GoogleMessagesBackend google, GoogleSignInKeeper keeper,
-        MessengerBackend messenger, InstagramBackend instagram, GoogleVoiceAccounts voice, IGoogleVoiceAccounts voicePort, Action<string> log) =>
-        UnavailableProviders.PortsWithGoogle(new HostHelperRestarter(google, keeper, messenger, instagram, voice, log),
+        MessengerBackend messenger, InstagramBackend instagram, GoogleVoiceAccounts voice, IGoogleVoiceAccounts voicePort, Action<string> log, ProviderAccounts accounts) =>
+        UnavailableProviders.PortsWithGoogle(new HostHelperRestarter(google, keeper, messenger, instagram, voice, log) { Accounts = accounts },
             new ProfileKeepingGoogleAccount(account, withGoogle.Browser, withGoogle.Guard, refuseHandOver: withGoogle.RefusesHandOver), withGoogle.VoiceRuns ? voicePort : null);
 
     // A sign-in in the server's own browser (SWITCHBOARD.md 5.4), only with a headed browser: it pairs through the backend's own account, since it keeps the profile it signed in with

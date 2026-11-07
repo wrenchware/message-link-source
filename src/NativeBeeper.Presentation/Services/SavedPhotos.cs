@@ -110,7 +110,7 @@ public sealed class SavedPhotos(ISavedPhotoStore store, Func<IMediaReader?> read
     /// </summary>
     public async Task<SavedPhotoChange> ForgetAsync(string chatPrefix, string reason)
     {
-        bool Matches(string chat) => chat.StartsWith(chatPrefix, StringComparison.Ordinal);
+        bool Matches(string chat) => chat.StartsWith(chatPrefix, StringComparison.Ordinal) && (chatPrefix is not ("google-direct:" or "messenger:" or "instagram:") || NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(chat) is null);
         lock (pending)
             foreach (var (reference, work) in pending.ToArray())
                 if (Matches(work.Owner)) { pending.Remove(reference); work.Cancel.Cancel(); }

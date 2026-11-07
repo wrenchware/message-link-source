@@ -15,13 +15,13 @@ internal sealed partial class MessengerBackend : IChatSettingsBackend
         if (helper is not { } started) throw new SendException(false, "Connect Messenger in Settings first.");
         try
         {
-            var result = await started.CallAsync("ui.updateChat", new { chatId = MessengerModels.Native(chatId), archived = value }, cancellationToken);
+            var result = await started.CallAsync("ui.updateChat", new { chatId = Models.Native(chatId), archived = value }, cancellationToken);
             var updated = result.Deserialize<MessengerChat>(Json) ?? throw new InvalidOperationException("update_failed");
             MessengerLog.Write($"archive chat={MessengerLog.Tag(chatId)} archived={value} outcome=confirmed");
             chats = chats.Select(chat => chat.Id == updated.Id ? updated : chat).ToArray();
             await SaveChatsAsync(chats);
             ChatsChanged?.Invoke(this, EventArgs.Empty);
-            return MessengerModels.Map(updated);
+            return Models.Map(updated);
         }
         catch (OperationCanceledException) { throw; }
         catch (InvalidOperationException failure)

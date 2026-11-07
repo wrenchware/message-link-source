@@ -28,7 +28,8 @@ namespace NativeBeeper.Server.Linux;
 /// </param>
 /// <param name="ChromiumGiven"><c>MESSAGES_CHROMIUM</c>, or <c>/usr/bin/chromium</c> (the Google image's): the browser the renewal starts.</param>
 /// <param name="ChromiumNoSandbox">
-/// <c>MESSAGES_CHROMIUM_NO_SANDBOX=1</c>: start Chromium without its own sandbox, which a container with every capability dropped cannot give it.
+/// <c>MESSAGES_CHROMIUM_NO_SANDBOX=1</c>: start Chromium without its own sandbox, which a container with every capability dropped cannot give it under Docker's
+/// default seccomp profile (<c>chrome-seccomp.json</c> or <c>seccomp=unconfined</c> can).
 /// Never assumed; the image that needs it says so.
 /// </param>
 /// <param name="ChromiumHeaded">

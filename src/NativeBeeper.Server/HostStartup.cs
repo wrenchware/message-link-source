@@ -21,7 +21,7 @@ namespace NativeBeeper.Server;
 /// catalogue and the conversation cache stay in the client, SWITCHBOARD.md stage 3). Building it connects nothing; the providers are started
 /// only by <see cref="RestoreAsync"/>, and only when the server was started with <c>--restore</c>.
 /// </summary>
-internal sealed class HostStartup : IDisposable
+internal sealed partial class HostStartup : IDisposable
 {
     // The conversation-id prefix Google Messages' events and conversations carry (as the app's connection health and the feed's composite name it).
     private const string GoogleScope = "google-direct:";
@@ -119,7 +119,7 @@ internal sealed class HostStartup : IDisposable
         var folderChoice = Path.Combine(paths.Backup, "folder.txt");
         PcBackupHandover.Take(AppPaths.DataRoot, paths, folderChoice, log);
         var backup = new NativeBeeper.Host.Backup.ServerBackupService(paths, protector, NativeBeeper.Host.Backup.ServerBackupService.ReadFolderChoice(folderChoice),
-            new NativeBeeper.Host.Backup.BackendBackupMessenger(messenger), version, log) { FolderChoiceFile = folderChoice };
+            new NativeBeeper.Host.Backup.BackendBackupMessenger(messenger, services.GetRequiredService<ProviderAccounts>()), version, log);
         var host = ProtocolHost.Create(new ProtocolHostOptions(services.GetRequiredService<MessagingRouter>(), services.GetRequiredService<DirectoryRouter>(),
             services.GetRequiredService<MediaRouter>(), services.GetRequiredService<TypingRouter>(), google, services.GetRequiredService<GoogleMediaBackend>(),
             messenger, instagram, services.GetRequiredService<GoogleVoiceAccounts>(), feed,
@@ -140,7 +140,7 @@ internal sealed class HostStartup : IDisposable
             // Every conversation kept whole (SWITCHBOARD.md stage 8, protocol 24), in the server's own folder: the app's in-process host keeps none.
             WholeHistory: new NativeBeeper.Storage.HistoryDatabase(AppPaths.Combine("Server", "history.db"), protector),
             // Its status, accounts and their removal (protocol 20), its logs by name for the page (protocol 18), and its backup (protocol 26), as the Linux host's.
-            Admin: admin, Logs: new HostLogFiles(ServerLogs.Paths(AppPaths.DataRoot)), Backup: backup));
+            Admin: admin, Logs: new HostLogFiles(ServerLogs.Paths(AppPaths.DataRoot)), Backup: backup, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: services.GetRequiredService<IHelperCellUnprotector>()));
         built = host;
         backup.Changed += status => host.Services.Events?.AppendSignal(new AccountSignal(AccountSignals.Backup, !status.Stale));
         backup.CurrentKey = shared.Space.CurrentKeyAsync;
@@ -153,7 +153,9 @@ internal sealed class HostStartup : IDisposable
         step.Took("host");
         // The sign-in keeper is not started here: it listens for Google's refusals and renews, so it starts with the restore and only with --restore
         // (RestoreAsync), the one thing that lets a provider touch the network.
-        return new HostStartup(services, host, feed, sta, restores, log) { Backup = backup };
+        var startup = new HostStartup(services, host, feed, sta, restores, log) { Backup = backup };
+        startup.ConfigureAccounts();
+        return startup;
     }
 
     /// <summary>
@@ -163,6 +165,7 @@ internal sealed class HostStartup : IDisposable
     /// </summary>
     public async Task RestoreAsync(CancellationToken stop)
     {
+        await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
         try
         {
             // The window starts the keeper as it is built, ahead of the launch's connect, so a refusal that connect hears is renewed. Same here.
@@ -206,7 +209,7 @@ internal sealed class HostStartup : IDisposable
     /// Whether the start's restore would log a Messenger or Instagram account in: the restore ledger counts only those (<see cref="RestoreLedger.StartAsync"/>), as the
     /// Linux host's does, so a start with only Google or nothing saved does not spend the hour.
     /// </summary>
-    public bool RestoresAccounts => Services.GetRequiredService<IMessengerAccount>().State.Saved || Services.GetRequiredService<IInstagramAccount>().State.Saved;
+    public bool RestoresAccounts => Services.GetRequiredService<ProviderAccounts>().Added.Any(a => a.Messenger?.SessionSaved == true || a.Instagram?.HasSavedSession == true) || Services.GetRequiredService<IMessengerAccount>().State.Saved || Services.GetRequiredService<IInstagramAccount>().State.Saved;
 
     // A provider with no saved session, or already connected, is not restored: the answer a client gets for it is "skipped", as the app's own restore says.
     private async Task<string> RestoreAccountAsync(string provider, bool restorable, Func<Task<AccountRestore>> restore)

@@ -12,6 +12,26 @@ namespace NativeBeeper.Host.Backup;
 internal sealed record ServerBackupManifest(string Format, int Version, string Id, DateTimeOffset Created, string App, string? Epoch,
     Dictionary<string, int> Counts, Dictionary<string, int> Pages, BackupMessengerSummary? Messenger, string? LeftOut)
 {
+    public List<BackupAccountPart>? Accounts { get; init; }
+    public int MessengerPageCount => (Messenger?.Pages ?? 0) + (Accounts?.Sum(a => a.MessengerPages) ?? 0);
+    public bool IncompleteMessenger => LeftOut is "not_connected" or "failed";
+    public IEnumerable<BackupMessengerSummary> CompleteMessenger =>
+        (Messenger is { } legacy ? new[] { legacy } : []).Concat((Accounts ?? []).Where(a => a.Messenger is not null).Select(a => a.Messenger!));
+    // A partial archive never supersedes any last complete anchor, even for accounts it did manage to export.
+    public Dictionary<string, string> KeptAfter(IReadOnlyDictionary<string, string>? previous, string name)
+    {
+        var kept = new Dictionary<string, string>(previous ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+        if (!IncompleteMessenger) foreach (var summary in CompleteMessenger) kept[summary.Account] = name;
+        return kept;
+    }
+    // Both destinations use the same protected names. Older partial copies remain bounded by BackupFolder.Keep.
+    public HashSet<string> RetentionNames(BackupSettings current, string name)
+    {
+        var kept = KeptAfter(current.MessengerKept, name).Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        kept.Add(name);
+        if (IncompleteMessenger && current.CompleteArchive is { } complete) kept.Add(complete);
+        return kept;
+    }
     public int Count(string part) => Counts.GetValueOrDefault(part);
     public int PagesOf(string part) => Pages.GetValueOrDefault(part);
 }
@@ -48,7 +68,7 @@ internal sealed record HistoryPart(byte[] Key, string Epoch, long Seq);
 internal static class ServerBackupArchive
 {
     public const string Format = "nativebeeper.server-backup";
-    public const int Version = 1;
+    public const int Version = 2;
     public const string ManifestEntry = "manifest.json", IdentityEntry = "identity.json", HistoryEntry = "history.json", ArchiveEntry = "archive.json";
 
     /// <summary>The paged parts, by the name their pages are filed under.</summary>
@@ -64,6 +84,8 @@ internal static class ServerBackupArchive
     internal const int PageBytes = 4 << 20;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    internal static string AccountPart(string key) => "accounts/" + key + "/archive";
+    internal static string AccountMessengerPage(string key, int number) => "accounts/" + key + "/" + BackupArchive.PageEntry(number);
     public static string PageEntry(string part, int number) => $"{part}/page-{number:D6}.json";
 
     public static void Put(ZipArchive zip, string name, byte[] content)
@@ -82,6 +104,12 @@ internal static class ServerBackupArchive
         foreach (var part in Parts.All)
             for (var number = 0; number < manifest.PagesOf(part); number++) names.Add(PageEntry(part, number));
         for (var number = 0; number < (manifest.Messenger?.Pages ?? 0); number++) names.Add(BackupArchive.PageEntry(number));
+        foreach (var account in manifest.Accounts ?? [])
+        {
+            var part = AccountPart(account.Account.Key);
+            for (var n = 0; n < manifest.PagesOf(part); n++) names.Add(PageEntry(part, n));
+            for (var n = 0; n < account.MessengerPages; n++) names.Add(AccountMessengerPage(account.Account.Key, n));
+        }
         return names;
     }
 }
@@ -149,10 +177,11 @@ internal sealed class ServerBackupContents : IDisposable
             var manifest = Read<ServerBackupManifest>(zip, ServerBackupArchive.ManifestEntry, ServerBackupArchive.MaxSmall);
             if (manifest?.Format != ServerBackupArchive.Format || manifest.Counts is null || manifest.Pages is null || manifest.Id is not { Length: > 0 })
                 throw new BackupFileException(BackupFileFailure.Unreadable);
-            if (manifest.Version != ServerBackupArchive.Version) throw new BackupFileException(BackupFileFailure.Unsupported);
+            if (manifest.Version is < 1 or > ServerBackupArchive.Version) throw new BackupFileException(BackupFileFailure.Unsupported);
             if (manifest.Messenger is { } messenger && (messenger.Pages < 1 || messenger.Counts is null ||
                 messenger.Account is not { Length: 32 } || !messenger.Account.All(char.IsAsciiHexDigitLower)))
                 throw new BackupFileException(BackupFileFailure.Unreadable);
+            ServerBackupAccounts.Validate(manifest);
             return new(zip, manifest);
         }
         catch { zip.Dispose(); throw; }
@@ -171,15 +200,23 @@ internal sealed class ServerBackupContents : IDisposable
     }
 
     /// <summary>Messenger's pages in the order they were exported.</summary>
-    public IEnumerable<JsonElement> ReadMessengerPages()
+    public IEnumerable<JsonElement> ReadMessengerPages(BackupAccountPart? account = null)
     {
-        for (var number = 0; number < (Manifest.Messenger?.Pages ?? 0); number++)
+        var summary = account is null ? Manifest.Messenger : account.Messenger;
+        var total = account?.MessengerPages ?? Manifest.Messenger?.Pages ?? 0;
+        string? export = null;
+        for (var number = 0; number < total; number++)
         {
-            var entry = zip.GetEntry(BackupArchive.PageEntry(number));
+            var entry = zip.GetEntry(account is null ? BackupArchive.PageEntry(number) : ServerBackupArchive.AccountMessengerPage(account.Account.Key, number));
             if (entry is null || entry.Length > BackupArchive.MaxPage) throw Unreadable();
             JsonElement page;
             using (var stream = entry.Open())
             using (var document = JsonDocument.Parse(stream)) page = document.RootElement.Clone();
+            var read = NativeBeeper.App.Services.Messenger.MessengerHistoryPage.Read(page);
+            var identity = account?.Account.Identity is { } bound ? bound[..32] : summary?.Account;
+            if (read is null || read.Number != number || identity is not null && read.Account != identity || export is not null && read.Export != export
+                || summary is not null && read.IsLast != (number == total - 1)) throw Unreadable();
+            export = read.Export;
             yield return page;
         }
     }
@@ -189,7 +226,7 @@ internal sealed class ServerBackupContents : IDisposable
     /// </summary>
     public void Verify(CancellationToken cancellationToken)
     {
-        if (!zip.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.Ordinal).SetEquals(ServerBackupArchive.ExpectedEntries(Manifest))) throw Unreadable();
+        if (zip.Entries.Count != ServerBackupArchive.ExpectedEntries(Manifest).Count || !zip.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.Ordinal).SetEquals(ServerBackupArchive.ExpectedEntries(Manifest))) throw Unreadable();
         _ = ReadIdentity();
         _ = ReadHistory();
         _ = ReadArchiveKeys();
@@ -211,6 +248,11 @@ internal sealed class ServerBackupContents : IDisposable
         var pages = 0;
         foreach (var _ in ReadMessengerPages()) { pages++; cancellationToken.ThrowIfCancellationRequested(); }
         if (pages != (Manifest.Messenger?.Pages ?? 0)) throw Unreadable();
+        foreach (var account in Manifest.Accounts ?? [])
+        {
+            Count<NativeBeeper.Storage.ArchiveRawRecord>(ServerBackupArchive.AccountPart(account.Account.Key));
+            foreach (var _ in ReadMessengerPages(account)) cancellationToken.ThrowIfCancellationRequested();
+        }
     }
 
     private static BackupFileException Unreadable() => new(BackupFileFailure.Unreadable);

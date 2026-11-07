@@ -15,7 +15,7 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
     {
         if (setting == ChatSetting.Spam) return await SetSpamAsync(chatId, value, cancellationToken);
         if (setting != ChatSetting.Archived) throw new BackendException(BackendFailure.Unsupported, "Pin and mute are saved in Message Link.");
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         var outcome = await UpdateChatAsync(native, value ? "archive" : "unarchive", cancellationToken);
         if (outcome == "rejected") throw new SendException(false, value ? "Google Messages didn't archive this conversation." : "Google Messages didn't unarchive this conversation.");
         if (outcome != "accepted") throw new SendException(true, "The archive change is unknown. Check your phone before trying again.");
@@ -30,7 +30,7 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
     // Not spam is its Unblock. Google's own event or the next list read corrects this if the phone did otherwise.
     private async Task<ChatSummary> SetSpamAsync(string chatId, bool value, CancellationToken cancellationToken)
     {
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         var outcome = await UpdateChatAsync(native, value ? "blockAndReport" : "unblock", cancellationToken);
         GoogleMessagesLog.Write($"spam change chat={GoogleMessagesLog.Tag(chatId)} to={value} outcome={outcome}");
         if (outcome == "rejected") throw new SendException(false, value ? "Google Messages didn't block this conversation." : "Google Messages didn't take this conversation out of spam.");
@@ -44,7 +44,7 @@ internal sealed partial class GoogleMessagesBackend : IChatSettingsBackend, ICha
 
     public async Task DeleteChatAsync(string chatId, CancellationToken cancellationToken = default)
     {
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         var outcome = await UpdateChatAsync(native, "delete", cancellationToken);
         if (outcome == "rejected") throw new SendException(false, "Google Messages didn't delete this conversation.");
         if (outcome != "accepted") throw new SendException(true, "The delete outcome is unknown. Check your phone before trying again.");

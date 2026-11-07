@@ -70,18 +70,24 @@ public sealed class RemoteSignInSessions
     /// <see cref="NotSupportedException"/> for a service the host does not sign in.
     /// </summary>
     public async Task<RemoteSignInResult> RunAsync(ProtocolServices services, string service, RemoteSignInDriver driver, string clientOpId, bool asNewDevice, int width, int height,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? accountKey = null)
     {
         if (!Offers(services, service)) throw new NotSupportedException();
-        Func<object, IReadOnlyList<RemoteSignInInput>, CancellationToken, Task> input = service switch
+        ProtocolServices selected = services;
+        Task Input(object owner, IReadOnlyList<RemoteSignInInput> events, CancellationToken token) => (service switch
         {
-            RemoteSignInServices.Google => services.RemoteSignIn!.InputAsync,
-            RemoteSignInServices.Voice => services.VoiceRemoteSignIn!.InputAsync,
-            _ => services.MetaRemoteSignIn!.InputAsync,
-        };
-        var session = await EnterAsync(driver, input, cancellationToken).ConfigureAwait(false);
+            RemoteSignInServices.Google => (Func<object, IReadOnlyList<RemoteSignInInput>, CancellationToken, Task>)selected.RemoteSignIn!.InputAsync,
+            RemoteSignInServices.Voice => selected.VoiceRemoteSignIn!.InputAsync,
+            _ => selected.MetaRemoteSignIn!.InputAsync,
+        })(owner, events, token);
+        var session = await EnterAsync(driver, Input, cancellationToken).ConfigureAwait(false);
         try
         {
+            if (accountKey is not null)
+            {
+                if (driver.Face != RemoteSignInFaces.Page || services.AccountSignIn is null) throw new NotSupportedException();
+                selected = services = await services.AccountSignIn(service, accountKey, cancellationToken).ConfigureAwait(false);
+            }
             var request = new RemoteSignInRequest(driver.Owner, clientOpId, service == RemoteSignInServices.Google && asNewDevice, width, height);
             switch (service)
             {
@@ -100,7 +106,7 @@ public sealed class RemoteSignInSessions
                     return await RemoteSignInFinish.ConnectAsync(services, service, cookies, driver.Progress, driver.Log, cancellationToken).ConfigureAwait(false);
             }
         }
-        finally { Leave(session); }
+        finally { try { selected.AccountSignInEnded?.Invoke(); } finally { Leave(session); } }
     }
 
     /// <summary>Delivers what the person did to the sign-in <paramref name="owner"/> holds. Refused (<see cref="InvalidOperationException"/>, <c>no_sign_in</c>) when it holds none; nothing in the events is looked at then.</summary>

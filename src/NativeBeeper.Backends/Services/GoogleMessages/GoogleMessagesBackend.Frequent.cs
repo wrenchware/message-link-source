@@ -15,7 +15,7 @@ internal sealed partial class GoogleMessagesBackend : IFrequentContacts
     public async Task<IReadOnlyList<ContactPerson>?> GetFrequentContactsAsync(string accountId, CancellationToken cancellationToken = default)
     {
         // Never connects just for this: a New chat opened while Google Messages is down simply has no Frequent section.
-        if (accountId != GoogleModels.Account || !connected || helper is not { } owner) return null;
+        if (accountId != Models.Account || !connected || helper is not { } owner) return null;
         Task<IReadOnlyList<ContactPerson>> load;
         lock (frequentLock)
         {
@@ -39,6 +39,6 @@ internal sealed partial class GoogleMessagesBackend : IFrequentContacts
         var result = await ReadAsync("ui.topContacts", null, CancellationToken.None);
         var people = GoogleDirectory.Frequent(result.Deserialize<GoogleContact[]>(Json) ?? []);
         GoogleMessagesLog.Write($"top contacts returned={people.Count}");
-        return people;
+        return people.Select(person => person with { AccountId = Models.Account, AvatarUrl = Slot.Ids.Media(person.AvatarUrl) }).ToArray();
     }
 }

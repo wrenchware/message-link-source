@@ -40,7 +40,8 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         (IsMergedSource ? " · " + SourceNetwork : "") +
         (Message.Transport is { Length: > 0 } transport && Message.Delivery.SendState?.StartsWith("LOCAL_", StringComparison.Ordinal) != true ? " · " + transport : "");
     public bool ShowDate { get; private set; }
-    public string DateLabel => Message.Timestamp.LocalDateTime.Date == DateTime.Today ? "Today" : Message.Timestamp.ToLocalTime().ToString("D");
+    private DateTimeOffset headerTimestamp;
+    public string DateLabel => headerTimestamp.LocalDateTime.Date == DateTime.Today ? "Today" : headerTimestamp.ToLocalTime().ToString("D");
     // Centered divider on a new day; within a day, group headers carry the time.
     public bool ShowDivider => ShowDate;
     public string DividerText => DateLabel;
@@ -52,6 +53,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     // each message's own time stays on hover.
     public bool ShowHeader { get; private set; }
     public bool ShowTime { get; private set; }
+    public string HeaderTime => headerTimestamp.ToLocalTime().ToString("t");
     public static readonly TimeSpan TimeGap = TimeSpan.FromMinutes(10);
     public string HeaderName { get; private set; }
     public bool HasHeaderName => HeaderName.Length > 0;
@@ -144,6 +146,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     public void UpdateFrom(MessageItemViewModel value)
     {
         Message = value.Message; Sender = value.Sender; ShowDate = value.ShowDate; ShowUnreadDivider = value.ShowUnreadDivider;
+        headerTimestamp = value.headerTimestamp;
         SourceNetwork = value.SourceNetwork;
         SourceChat = value.SourceChat; IsMergedSource = value.IsMergedSource;
         ShowSender = value.ShowSender; Reply = value.Reply; Attachments = value.Attachments;
@@ -168,7 +171,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         SourceChat.AccountId == other.SourceChat.AccountId && SourceChat.Title == other.SourceChat.Title && SourceChat.IsEncrypted == other.SourceChat.IsEncrypted &&
         Status == other.Status && Sender == other.Sender && SenderAvatarUrl == other.SenderAvatarUrl && Reply == other.Reply && ReplyAuthor == other.ReplyAuthor &&
         ShowDate == other.ShowDate && DateLabel == other.DateLabel && ShowUnreadDivider == other.ShowUnreadDivider && ShowSender == other.ShowSender && ContinuesGroup == other.ContinuesGroup &&
-        ShowHeader == other.ShowHeader && ShowTime == other.ShowTime && HeaderName == other.HeaderName && ReceiptStage == other.ReceiptStage && ShowReceipt == other.ShowReceipt &&
+        ShowHeader == other.ShowHeader && ShowTime == other.ShowTime && (!ShowTime || HeaderTime == other.HeaderTime) && HeaderName == other.HeaderName && ReceiptStage == other.ReceiptStage && ShowReceipt == other.ShowReceipt &&
         // A reader's face moves from one message to another as they read on, which changes no other part of the row.
         ReadBy.SequenceEqual(other.ReadBy) && ShowLock == other.ShowLock && IsPhotoGroupMember == other.IsPhotoGroupMember &&
         PhotoGroupMessages.SequenceEqual(other.PhotoGroupMessages) && MediaReloadVersion == other.MediaReloadVersion;
@@ -176,7 +179,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     // Quoted: messages a reply quotes that are not loaded rows, by MessageIdentity.Key, as a service's memory gave them whole
     // (ConversationViewModel.PeekQuotesAsync). Not rows of the conversation, so they never place a reader's face.
     public MessageItemViewModel(ChatMessage message, ChatMessage? previous, ChatSummary chat, IReadOnlyDictionary<string, ChatMessage> loaded, ChatMessage? next=null, bool latestOutgoing=true, bool newest=false, bool showService=false,
-        IReadOnlyDictionary<string, ChatMessage>? quoted = null)
+        IReadOnlyDictionary<string, ChatMessage>? quoted = null, DateTimeOffset? now = null)
     {
         Message = message;
         SourceNetwork = chat.Network;
@@ -191,11 +194,14 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         IsLargeEmoji = !message.IsDeleted && !message.IsHidden && message.Attachments.Count == 0 && message.ReplyToId is null &&
             NativeBeeper.Presentation.Services.EmojiText.IsShortEmojiOnly(NativeBeeper.Presentation.Services.MessageText.PlainText(message.Text ?? ""));
         Sender = message.IsOutgoing ? "You" : message.SenderName ?? chat.Participants.FirstOrDefault(p => p.Id == message.SenderId)?.DisplayName ?? "Unknown sender";
-        ShowDate = previous is null || previous.Timestamp.LocalDateTime.Date != message.Timestamp.LocalDateTime.Date;
+        // Scheduled rows sit after today's history; their due time belongs to the footer. Group them as a send of now
+        // so Send now neither removes tomorrow's divider nor adds today's date/time header in an old or empty thread.
+        var current = now ?? DateTimeOffset.Now;
+        headerTimestamp = ScheduledSendRows.Is(message) ? current : message.Timestamp;
+        var previousTime = previous is not null && ScheduledSendRows.Is(previous) ? current : previous?.Timestamp;
+        ShowDate = previousTime is null || previousTime.Value.LocalDateTime.Date != headerTimestamp.LocalDateTime.Date;
         var headed = !message.IsHidden && message.Type != "system";
-        // A message kept to send later has its time in its own footer: a time above it as well would go the moment Send now made it a send of now, and
-        // the row jumped 20 px (history probe, 2026-10-29).
-        ShowTime = headed && !ScheduledSendRows.Is(message) && (ShowDate || message.Timestamp - previous!.Timestamp >= TimeGap);
+        ShowTime = headed && (ShowDate || headerTimestamp - previousTime!.Value >= TimeGap);
         HeaderName = !message.IsOutgoing && chat.Type == "group" ? Sender : "";
         ShowHeader = ShowTime || headed && HeaderName.Length > 0 && !ContinuesGroup;
         ShowSender = !message.IsOutgoing && (ShowDate || previous!.SenderId != message.SenderId || previous.IsOutgoing != message.IsOutgoing ||

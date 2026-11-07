@@ -49,6 +49,11 @@
         "resolved": "1.0.3719.77",
         "contentHash": "t+ucyKw5NTwMjsUrDF6R9Lk40lpcKQD1/HgyGFxl49tdA4h9dKlsj6FYGEmDRpFNfnTpENuTypMcdbrlkqBdDA=="
       },
+      "SMBLibrary": {
+        "type": "Transitive",
+        "resolved": "1.5.8.1",
+        "contentHash": "C7fVrj7AiF9C9E3VwEVJgQIeml1qKea7blhtIpK6eZsgoVI7r6iniKRUWHBDEFa9msq24AdJmpLUrbXjeoH2EQ=="
+      },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.12",
@@ -94,7 +99,8 @@
           "NativeBeeper.Backends": "[1.0.0, )",
           "NativeBeeper.Core": "[1.0.0, )",
           "NativeBeeper.Presentation": "[1.0.0, )",
-          "NativeBeeper.Protocol": "[1.0.0, )"
+          "NativeBeeper.Protocol": "[1.0.0, )",
+          "SMBLibrary": "[1.5.8.1, )"
         }
       },
       "nativebeeper.host.network": {

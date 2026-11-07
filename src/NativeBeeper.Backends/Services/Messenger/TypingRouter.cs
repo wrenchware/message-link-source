@@ -11,8 +11,13 @@ namespace NativeBeeper.App.Services.Messenger;
 internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBackend messenger, InstagramBackend instagram,
     NativeBeeper.Presentation.Services.ComposerActivity typing, NativeBeeper.Presentation.Services.PrivateReading? reading = null) : ITypingService, IComposerActivitySink
 {
-    public bool CanReceive => google.CanReceive || messenger.CanReceive || instagram.CanReceive;
-    public bool CanSend => google.CanSend || messenger.CanSend || instagram.CanSend;
+    internal ProviderAccounts? Accounts { get; set; }
+    private GoogleMessagesBackend Google(string id) => Accounts?.Google(id) ?? google;
+    private MessengerBackend Messenger(string id) => Accounts?.Messenger(id) ?? messenger;
+    private NativeBeeper.App.Services.Instagram.InstagramBackend InstagramAccount(string id) => Accounts?.Instagram(id) ?? instagram;
+    public bool CanReceive => Sources().Any(source => source.CanReceive);
+    public bool CanSend => Sources().Any(source => source.CanSend);
+    private IEnumerable<ITypingService> Sources() => Accounts is null ? new ITypingService[] { google, messenger, instagram } : Accounts.Googles.Cast<ITypingService>().Concat(Accounts.Messengers).Concat(Accounts.Instagrams);
 
     // Every actual composer edit yields Google history indexing, including edits inside the five-second window
     // where the remote typing notification is deliberately throttled. Both are noted: Google yields its background
@@ -20,9 +25,13 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
     // that one. Messenger and Instagram put off telling the other end the typing stopped.
     public void NoteComposerActivity(string? chatId)
     {
-        google.NoteComposerActivity(chatId);
-        messenger.NoteComposerActivity(chatId);
-        instagram.NoteComposerActivity(chatId);
+        foreach (var account in Accounts?.Googles ?? new[] { google }) account.NoteComposerActivity(chatId);
+        try
+        {
+            if (chatId is not null && InstagramIdentity.OwnsAny(chatId)) InstagramAccount(chatId).NoteComposerActivity(chatId);
+            else if (chatId is not null && MessengerModels.Owns(chatId)) Messenger(chatId).NoteComposerActivity(chatId);
+        }
+        catch (NativeBeeper.Core.Backend.BackendException) { /* A removed account can remain open in a client until its next refresh. */ }
         typing.Note(chatId);
     }
 
@@ -37,9 +46,9 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
             NativeBeeper.Presentation.Services.TypingPings.Shared.Sent(chatId);
         return route switch
         {
-            TypingProvider.Instagram => instagram.SetTypingAsync(chatId, isTyping, cancellationToken),
-            TypingProvider.Messenger => messenger.SetTypingAsync(chatId, isTyping, cancellationToken),
-            TypingProvider.Google => google.SetTypingAsync(chatId, isTyping, cancellationToken),
+            TypingProvider.Instagram => InstagramAccount(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
+            TypingProvider.Messenger => Messenger(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
+            TypingProvider.Google => Google(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
             _ => Task.CompletedTask,
         };
     }
@@ -53,12 +62,14 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
             try { await foreach (var update in source.WatchAsync(stop.Token)) await merged.Writer.WriteAsync(update, stop.Token); }
             catch (OperationCanceledException) { }
         }
-        var pumps = Task.WhenAll(Pump(google), Pump(messenger), Pump(instagram));
-        _ = pumps.ContinueWith(_ => merged.Writer.TryComplete(), TaskScheduler.Default);
+        var pumps = new Dictionary<ITypingService, Task>();
+        void Changed() { lock (pumps) foreach (var source in Sources()) if (!pumps.ContainsKey(source)) pumps.Add(source, Pump(source)); }
+        if (Accounts is not null) Accounts.Changed += Changed;
+        Changed();
         try
         {
             await foreach (var update in merged.Reader.ReadAllAsync(cancellationToken)) yield return update;
         }
-        finally { stop.Cancel(); }
+        finally { if (Accounts is not null) Accounts.Changed -= Changed; stop.Cancel(); Task[] tasks; lock (pumps) tasks = pumps.Values.ToArray(); await Task.WhenAll(tasks); }
     }
 }

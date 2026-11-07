@@ -44,15 +44,15 @@ internal sealed partial class ServerPage
     // Only Google Voice does today: its helper runs one process per account, and the other services' ports hold one account each (ROADMAP.md, Several accounts on one service).
     private static readonly (string Service, string Name, string Provider, bool Many)[] SignInServiceList =
     [
-        (RemoteSignInServices.Google, "Google Messages", ServerAccountProviders.GoogleMessages, false),
-        (RemoteSignInServices.Messenger, "Messenger", ServerAccountProviders.Messenger, false),
+        (RemoteSignInServices.Google, "Google Messages", ServerAccountProviders.GoogleMessages, true),
+        (RemoteSignInServices.Messenger, "Messenger", ServerAccountProviders.Messenger, true),
         (RemoteSignInServices.Voice, "Google Voice", ServerAccountProviders.GoogleVoice, true),
-        (RemoteSignInServices.Instagram, "Instagram", ServerAccountProviders.Instagram, false),
+        (RemoteSignInServices.Instagram, "Instagram", ServerAccountProviders.Instagram, true),
     ];
 
     private static string SignInName(string service) => SignInServiceList.First(item => item.Service == service).Name;
 
-    private static bool SignInMany(string service) => SignInServiceList.First(item => item.Service == service).Many;
+    private bool SignInMany(string service) => service == RemoteSignInServices.Voice || signInServices?.AccountSignIn is not null;
 
     // ---- The Connect buttons, on the Accounts card and the walkthrough's accounts step ----
 
@@ -62,7 +62,7 @@ internal sealed partial class ServerPage
         if (DesktopSignIn is not null)
         {
             DesktopSignInForms(body, context, token, accounts);
-            if (!OnThisPc(context)) body.Append(Para("Accounts are connected on the PC this server runs on: in Message Link there (Settings → Connections), or with Connect on this page in a browser on that PC."));
+            if (!OnThisPc(context)) body.Append(Para("Open this server page in a browser on the PC that runs the server to connect accounts."));
             return;
         }
         var services = signInServices;
@@ -79,12 +79,12 @@ internal sealed partial class ServerPage
             var has = accounts?.Any(account => account.Provider == provider) == true;
             var offered = services is not null && RemoteSignInSessions.Offers(services, service);
             any |= offered;
-            var button = many ? has ? "Add another account" : "Add an account" : has ? "Sign in again" : "Connect";
+            var button = SignInMany(service) ? has ? "Add another account" : "Add an account" : has ? "Sign in again" : "Connect";
             body.Append("<li><span class=\"grow\"><strong>").Append(Html(name)).Append("</strong><span class=\"quiet\">")
                 .Append(Html(offered ? ConnectHint(service) : Elsewhere(service, services))).Append("</span></span>");
             if (offered)
                 body.Append("<a class=\"button").Append(has ? " quiet" : "").Append("\" href=\"").Append(SignInPath).Append("?service=").Append(service)
-                    .Append(walkthrough ? "&amp;from=welcome" : "").Append("\" aria-label=\"").Append(Html($"{button}: {name}")).Append("\">").Append(Html(button)).Append("…</a>");
+                    .Append(has && SignInMany(service) && service != RemoteSignInServices.Voice ? "&amp;account=new" : "").Append(walkthrough ? "&amp;from=welcome" : "").Append("\" aria-label=\"").Append(Html($"{button}: {name}")).Append("\">").Append(Html(button)).Append("…</a>");
             body.Append("</li>");
         }
         body.Append("</ul>");
@@ -123,6 +123,8 @@ internal sealed partial class ServerPage
     {
         var request = context.Request;
         var service = request.Query["service"].ToString();
+        var accountKey = request.Query["account"].ToString();
+        if (accountKey.Length > 0 && accountKey != "new" && !NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(accountKey)) { context.Response.StatusCode = 400; return; }
         // The Windows server signs in on its own desktop (ServerPage.Desktop.cs), never in a view here.
         if (!RemoteSignInServices.Known(service) || DesktopSignIn is not null)
         {
@@ -133,7 +135,7 @@ internal sealed partial class ServerPage
         var back = walkthrough ? "/welcome?step=accounts" : "/#accounts";
         var backWords = walkthrough ? "Back to setting up" : "Back to the server";
         var name = SignInName(service);
-        var title = SignInMany(service) ? $"Add a {name} account" : "Connect " + name;
+        var title = (accountKey == "new" || service == RemoteSignInServices.Voice) ? $"Add a {name} account" : "Connect " + name;
         var services = signInServices;
         if (services is null || !RemoteSignInSessions.Offers(services, service))
         {
@@ -141,7 +143,7 @@ internal sealed partial class ServerPage
                 .ConfigureAwait(false);
             return;
         }
-        var action = SignInPath + "?service=" + service + (walkthrough ? "&amp;from=welcome" : "");
+        var action = SignInPath + "?service=" + service + (accountKey.Length > 0 ? "&amp;account=" + accountKey : "") + (walkthrough ? "&amp;from=welcome" : "");
         string Ask(string? problem) => AskBody(action, token, "This opens the server's own browser, which can hold your signed-in accounts, so it asks for the server password again.", "Continue", problem);
         if (form is null)
         {
@@ -149,10 +151,10 @@ internal sealed partial class ServerPage
             return;
         }
         if (!await PasswordAgainAsync(context, form, "open_browser", title, Ask).ConfigureAwait(false)) return;
-        var grant = SignInGrant(Session(request)!, service);
+        var grant = SignInGrant(Session(request)!, service + "|" + accountKey);
         var meta = RemoteSignInServices.EndsWithDone(service);
         var body = new StringBuilder("<style>").Append(SignInStyle).Append("</style>");
-        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-form=\"").Append(Html(token)).Append("\" data-grant=\"").Append(grant).Append("\" data-ready=\"")
+        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-account=\"").Append(accountKey).Append("\" data-form=\"").Append(Html(token)).Append("\" data-grant=\"").Append(grant).Append("\" data-ready=\"")
             .Append(Html(ReadyWords(service))).Append("\">")
             .Append("<p id=\"status\" role=\"status\" aria-live=\"polite\">Starting the server's browser…</p>")
             .Append("<div id=\"emoji\" class=\"emoji\" hidden><p id=\"emoji-text\" class=\"emoji-big\" aria-live=\"assertive\"></p><p>In Google Messages on your phone, tap this emoji.</p></div>")
@@ -169,7 +171,7 @@ internal sealed partial class ServerPage
             .Append("</section>");
         body.Append("<section id=\"outcome\" class=\"outcome\" tabindex=\"-1\" hidden><h2 id=\"outcome-title\"></h2><p id=\"outcome-text\"></p><p class=\"actions\"><a class=\"button\" href=\"")
             .Append(back).Append("\">").Append(Html(backWords)).Append("</a> <a id=\"again\" class=\"button quiet\" href=\"").Append(SignInPath).Append("?service=").Append(service)
-            .Append(walkthrough ? "&amp;from=welcome" : "").Append("\">Start again</a></p></section>");
+            .Append(accountKey.Length > 0 ? "&amp;account=" + accountKey : "").Append(walkthrough ? "&amp;from=welcome" : "").Append("\">Start again</a></p></section>");
         body.Append("<script>").Append(SignInScript).Append("</script>");
         context.Response.Headers.ContentSecurityPolicy = SignInPolicy(request);
         await PageAsync(context, StatusCodes.Status200OK, title, body.ToString()).ConfigureAwait(false);
@@ -232,6 +234,8 @@ internal sealed partial class ServerPage
         var response = context.Response;
         response.Headers.CacheControl = "no-store";
         var service = request.Query["service"].ToString();
+        var accountKey = request.Query["account"].ToString();
+        if (accountKey.Length > 0 && accountKey != "new" && !NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(accountKey)) { response.StatusCode = 400; return; }
         var known = RemoteSignInServices.Known(service);
         var session = Session(request);
         var services = signInServices;
@@ -244,7 +248,7 @@ internal sealed partial class ServerPage
             : !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(request.Query["form"].ToString()), Encoding.ASCII.GetBytes(FormToken(session))) ? (StatusCodes.Status403Forbidden, "token")
             : !known ? (StatusCodes.Status400BadRequest, "service")
             : DesktopSignIn is not null || services is null || !RemoteSignInSessions.Offers(services, service) ? (StatusCodes.Status404NotFound, "not_supported")
-            : !TakeSignInGrant(request.Query["grant"].ToString(), session, service) ? (StatusCodes.Status403Forbidden, "grant")
+            : !TakeSignInGrant(request.Query["grant"].ToString(), session, service + "|" + accountKey) ? (StatusCodes.Status403Forbidden, "grant")
             : (0, null);
         if (refusal is not null)
         {
@@ -272,12 +276,13 @@ internal sealed partial class ServerPage
         }
         // Through the door: the socket no longer holds one of its places.
         admitted();
-        await RunSignInAsync(socket, services!, service, session!, stopping).ConfigureAwait(false);
+        await RunSignInAsync(socket, services!, service, session!, stopping, accountKey.Length == 0 ? null : accountKey).ConfigureAwait(false);
     }
 
-    private async Task RunSignInAsync(WebSocket socket, ProtocolServices services, string service, string session, CancellationToken stopping)
+    private async Task RunSignInAsync(WebSocket socket, ProtocolServices services, string service, string session, CancellationToken stopping, string? accountKey = null)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(stopping);
+        using var receiveStop = new CancellationTokenSource();
         var signedOut = 0;
         await using var link = new PageSignInLink(socket, service);
         var driver = new RemoteSignInDriver(link, RemoteSignInFaces.Page, link, link, log);
@@ -292,8 +297,9 @@ internal sealed partial class ServerPage
             return false;
         }
         using var recheck = new Timer(_ => StillSignedIn(), null, SignInRecheck, SignInRecheck);
-        var run = Task.Run(() => services.SignIns.RunAsync(services, service, driver, "page-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8)), false, 0, 0, stop.Token));
-        var reading = ReadInputAsync(socket, link, services, StillSignedIn, stop.Token);
+        var run = Task.Run(() => services.SignIns.RunAsync(services, service, driver, "page-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8)), false, 0, 0, stop.Token, accountKey));
+        // Cancelling a pending WebSocket receive aborts the socket. Keep reading through the sign-in's cancellation so its final status and close handshake can still reach the page.
+        var reading = ReadInputAsync(socket, link, services, StillSignedIn, receiveStop.Token, stop.Token);
         // The page going away (Cancel, a closed tab) or a sign-out cancels the sign-in; the server stopping does through `stopping`.
         if (await Task.WhenAny(run, reading).ConfigureAwait(false) == reading)
             try { stop.Cancel(); } catch (ObjectDisposedException) { }
@@ -336,13 +342,16 @@ internal sealed partial class ServerPage
         try { await reading.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
         catch (Exception) { }
         try { stop.Cancel(); } catch (ObjectDisposedException) { }
+        receiveStop.Cancel();
         socket.Abort();
+        try { await reading.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+        catch (Exception) { }
         socket.Dispose();
     }
 
     // What the page sends: batches of input, {"events": [...]}, each passed on in order to the sign-in this socket holds. A message too large ends the socket; one that is not a batch is dropped.
     // Nothing read here is logged, kept or put into an error.
-    private static async Task ReadInputAsync(WebSocket socket, PageSignInLink link, ProtocolServices services, Func<bool> stillSignedIn, CancellationToken cancellationToken)
+    private static async Task ReadInputAsync(WebSocket socket, PageSignInLink link, ProtocolServices services, Func<bool> stillSignedIn, CancellationToken cancellationToken, CancellationToken signInStop)
     {
         var buffer = new byte[MaxSignInMessage];
         try
@@ -368,8 +377,9 @@ internal sealed partial class ServerPage
                 try { batch = JsonSerializer.Deserialize<RemoteSignInInputParams>(buffer.AsSpan(0, length), ProtocolJson.Options); }
                 catch (JsonException) { continue; }
                 if (batch?.Events is not { Count: > 0 and <= RemoteSignIn.MaxEvents } events || events.Any(item => item is null)) continue;
-                if (!stillSignedIn()) return;
-                try { await services.SignIns.InputAsync(link, events, cancellationToken).ConfigureAwait(false); }
+                if (!stillSignedIn()) continue;
+                try { await services.SignIns.InputAsync(link, events, signInStop).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (signInStop.IsCancellationRequested) { }
                 // The sign-in ended (or has not reached its browser yet): what was sent goes nowhere.
                 catch (InvalidOperationException) { }
             }
@@ -433,7 +443,7 @@ var svc=v.getAttribute('data-service'),tok=v.getAttribute('data-form'),ready=v.g
 var cv=$('screen'),cx=cv.getContext('2d'),keys=$('keys'),st=$('status'),stage=$('stage'),frame=$('frame'),em=$('emoji'),emt=$('emoji-text'),out=$('outcome'),
 outh=$('outcome-title'),outt=$('outcome-text'),bar=$('bar'),done=$('done'),cancel=$('cancel'),kb=$('keyboard'),zoom=$('zoom'),hint=$('hint');
 var W=cv.width,H=cv.height,ended=false,shown=false,q=[],pend=null,timer=0,held=0,clicks=0,lastDown=0,lastAt=null,touch=null,downs={},composing=false,justComposed=false;
-var ws=new WebSocket('wss://'+location.host+'/page/sign-in?service='+encodeURIComponent(svc)+'&form='+encodeURIComponent(tok)+'&grant='+encodeURIComponent(v.getAttribute('data-grant')));
+var ws=new WebSocket('wss://'+location.host+'/page/sign-in?service='+encodeURIComponent(svc)+'&account='+encodeURIComponent(v.getAttribute('data-account')||'')+'&form='+encodeURIComponent(tok)+'&grant='+encodeURIComponent(v.getAttribute('data-grant')));
 ws.binaryType='blob';
 function say(t){st.textContent=t}
 function finish(title,text,ok){if(ended)return;ended=true;v.hidden=true;$('again').hidden=!!ok;

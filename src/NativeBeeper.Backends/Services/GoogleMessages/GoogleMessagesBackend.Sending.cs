@@ -8,9 +8,9 @@ namespace NativeBeeper.App.Services.GoogleMessages;
 internal sealed partial class GoogleMessagesBackend : INotificationActionHints
 {
     public (bool Reply, bool Read) GetNotificationActions(string chatId)
-        => connected && chats.TryGetValue(GoogleModels.Native(chatId), out var chat)
+        => connected && chats.TryGetValue(Models.Native(chatId), out var chat)
             ? (!chat.ReadOnly, true) : (false, false);
-    private const string PendingPrefix = GoogleModels.PendingPrefix;
+    private string PendingPrefix => Models.PendingPrefix;
     internal string SendTimingSummary { get; private set; } = "No text sends measured yet this session.";
     public async Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken = default)
     {
@@ -20,7 +20,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
         // minute old (a lookup, a list or the event the phone sends when it changes) and a fresh lookup otherwise
         // (conversation_cache.go). Trusting it for that minute was chosen on 2026-10-14: a lookup before every
         // send was about 250 ms of a 628 ms median send.
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         if (!chats.ContainsKey(native) && !await SavedChatsReadAsync(cancellationToken)) return new(false, "Google Messages is still starting. Try again in a moment.");
         if (GoneFromList(chatId)) return new(false, GoneFromListWords);
         if (connected && (chats.TryGetValue(native, out var known) ? known : archive.Chat(native)) is { ReadOnly: false, OutgoingId.Length: > 0 })
@@ -31,7 +31,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
             {
                 await ConnectAsync(cancellationToken);
                 if (GoneFromList(chatId)) return new(false, GoneFromListWords);
-                var result = await ReadAsync("ui.sendPermission", new { chatId = GoogleModels.Native(chatId) }, cancellationToken);
+                var result = await ReadAsync("ui.sendPermission", new { chatId = Models.Native(chatId) }, cancellationToken);
                 return WithDefaultSmsCaution(result.Deserialize<SendPermission>(Json) ?? new(false,"Couldn't verify Google Messages send permission."));
             }
             catch (BackendException ex) when (ex.Failure == BackendFailure.Unavailable && attempt < 2)
@@ -68,7 +68,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
                 GoogleMessagesLog.Write($"send chat={GoogleMessagesLog.Tag(chatId)} outcome=not_sent reason=no_helper");
                 throw new SendException(false, "Not sent. Google Messages is reconnecting; send it again in a moment.");
             }
-            try { result = await connection.CallAsync("ui.sendText",new { chatId = GoogleModels.Native(chatId), text, replyTo = replyTo is null ? null : GoogleModels.Native(replyTo) },timeout.Token); }
+            try { result = await connection.CallAsync("ui.sendText",new { chatId = Models.Native(chatId), text, replyTo = replyTo is null ? null : Models.Native(replyTo) },timeout.Token); }
             catch (InvalidOperationException refused)
             {
                 GoogleMessagesLog.Write($"send chat={GoogleMessagesLog.Tag(chatId)} outcome=not_sent reason={GoogleMessagesLog.Reason(refused)}");
@@ -116,16 +116,16 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
             ? " reason=" + GoogleMessagesLog.Reason(new InvalidOperationException(error.GetString())) : "";
     private async Task<ChatMessage> ResolvePendingAsync(string chatId,string pendingId,CancellationToken token)
     {
-        var nativeChat = GoogleModels.Native(chatId);
+        var nativeChat = Models.Native(chatId);
         await GetChatAsync(chatId,token);
         var txn = pendingId[PendingPrefix.Length..];
         GoogleMessage? Find() => GoogleModels.FindEcho(messages.Values,nativeChat,txn);
         var message = Find();
         // Finding the initial echo is not confirmation that the phone sent it.
         // Re-read while it is pending, including when a status event was missed.
-        if (message is null || GoogleModels.Map(message, chats[nativeChat]).Delivery.SendState == "PENDING")
+        if (message is null || Models.Map(message, chats[nativeChat]).Delivery.SendState == "PENDING")
         { await FetchMessagePageAsync(chatId,null,StatusPageSize,token); message = Find(); }
         if (message is null) throw new BackendException(BackendFailure.Unavailable,"Waiting for the phone to confirm this message.");
-        return GoogleModels.Map(message,chats[nativeChat]);
+        return Models.Map(message,chats[nativeChat]);
     }
 }

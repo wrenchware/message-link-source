@@ -36,7 +36,7 @@ internal sealed partial class GoogleMessagesBackend
     {
         if (!historyIndexingEnabled || Interlocked.Exchange(ref priorityConnection, connection) == connection) return;
         // Tracked, so the launch's still-loading sign waits for it (StartupProgress).
-        priorityCatchUp = CatchUpRuns.Shared.Track("google-direct:", Task.Run(() => PriorityCatchUpAsync(connection, listed)));
+        priorityCatchUp = CatchUpRuns.Shared.Track(Models.Qualify(""), Task.Run(() => PriorityCatchUpAsync(connection, listed)));
     }
 
     private async Task PriorityCatchUpAsync(int connection, GoogleChat[] listed)
@@ -118,9 +118,9 @@ internal sealed partial class GoogleMessagesBackend
     private void NameCaughtUp(string native, GoogleMessage[] list, DateTimeOffset? after)
     {
         if (CaughtUp is not { } listener) return;
-        var named = GoogleCaughtUp.Named(native, list, after);
+        var named = GoogleCaughtUp.Named(native, list, after).Select(Slot.Ids.Qualify).ToArray();
         if (named.Length == 0) return;
-        try { listener(GoogleModels.Qualify(native), named); }
+        try { listener(Models.Qualify(native), named); }
         catch (Exception) { }
     }
 

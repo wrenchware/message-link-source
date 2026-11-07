@@ -111,7 +111,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
                     var before = chats.ToDictionary(pair => pair.Key, pair => JsonSerializer.Serialize(pair.Value, Json), StringComparer.Ordinal);
                     var (list, _) = await ReadListLiveAsync(count, firstPage: true, connection, CancellationToken.None);
                     var changed = list.Where(chat => !before.TryGetValue(chat.Id, out var was) || was != JsonSerializer.Serialize(chat, Json)).Select(chat => chat.Id).ToArray();
-                    foreach (var id in changed) Publish(new(RealtimeKind.ChatChanged, GoogleModels.Qualify(id)));
+                    foreach (var id in changed) Publish(new(RealtimeKind.ChatChanged, Models.Qualify(id)));
                     GoogleMessagesLog.Write($"conversations refreshed behind changed={changed.Length} ms={(long)System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalMilliseconds}");
                 }
                 finally { directoryGate.Release(); }
@@ -222,23 +222,24 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!request.CanSearch) return new([], false, null, null);
-        if (request.ChatId is not null && !GoogleModels.Owns(request.ChatId)) return new([], false, null, null);
+        if (request.ChatId is not null && !Models.Owns(request.ChatId)) return new([], false, null, null);
         if (request.Filters?.Service is { Length: > 0 } service && service != "Google Messages") return new([], false, null, null);
         var offset = 0;
         if (cursor is not null && (!int.TryParse(cursor, out offset) || offset < 0))
             throw new BackendException(BackendFailure.Unsupported, "Couldn't load more results. Search again.");
         if (request.Kind == SearchKind.Messages) await WaitForArchiveAsync(cancellationToken);
-        var known = KnownChats().Where(pair => MessageSearch.MatchesChat(GoogleModels.Map(pair.Value), request))
+        var known = KnownChats().Where(pair => MessageSearch.MatchesChat(Models.Map(pair.Value), request))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         if (request.Kind != SearchKind.Messages || !archive.IsLoaded || archive.Profile is not { } profile)
         {
-            var hits = GoogleDirectory.Search(known.Values.ToArray(), messages.Values.ToArray(), request);
-            var slice = hits.Skip(offset).Take(30).ToArray();
+            var hits = GoogleDirectory.Search(known.Values.ToArray(), messages.Values.ToArray(), request with { ChatId = request.ChatId is null ? null : Slot.Ids.Native(request.ChatId), Filters = request.Filters is { } filters ? filters with
+                { LinkedChatIds = filters.LinkedChatIds?.Where(id => Models.Owns(id)).Select(Slot.Ids.Native).ToArray() } : null });
+            var slice = hits.Skip(offset).Take(30).Select(hit => new SearchHit(Slot.Ids.Map(hit.Chat), hit.Message is null ? null : Slot.Ids.Map(hit.Message))).ToArray();
             var hasMore = hits.Count > offset + slice.Length;
             return new(slice, hasMore, hasMore ? (offset + slice.Length).ToString(CultureInfo.InvariantCulture) : null, null);
         }
         // Encrypted archive: word index in memory, bodies read back only for this page.
-        var nativeChat = request.ChatId is null ? null : GoogleModels.Native(request.ChatId);
+        var nativeChat = request.ChatId is null ? null : Models.Native(request.ChatId);
         var found = await Task.Run(() => archive.Search(request.Query, nativeChat, request.Filters, cancellationToken)
             .Where(hit => known.ContainsKey(hit.ChatId)).ToArray(), cancellationToken);
         var page = new List<SearchHit>();
@@ -249,8 +250,8 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
             var id = found[index].MessageId;
             var message = messages.TryGetValue(id, out var live) ? live : await archive.ReadMessageAsync(profile, id, cancellationToken);
             if (message is null || !known.TryGetValue(message.ChatId, out var chat)) continue;
-            var mapped = GoogleModels.Map(message, chat);
-            if (MessageSearch.Matches(GoogleModels.Map(chat), mapped, request)) page.Add(new(GoogleModels.Map(chat), mapped));
+            var mapped = Models.Map(message, chat);
+            if (MessageSearch.Matches(Models.Map(chat), mapped, request)) page.Add(new(Models.Map(chat), mapped));
         }
         var more = index < found.Length;
         return new(page, more, more ? index.ToString(CultureInfo.InvariantCulture) : null, null);
@@ -258,14 +259,14 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
 
     public async Task<ContactOptions> GetContactOptionsAsync(string accountId, CancellationToken cancellationToken = default)
     {
-        if (accountId != GoogleModels.Account) return new(false, false, "Choose your Google Messages account.");
+        if (accountId != Models.Account) return new(false, false, "Choose your Google Messages account.");
         await ConnectAsync(cancellationToken);
         return new(true, true, "Choose a contact or enter a phone number.");
     }
 
     public async Task<IReadOnlyList<ContactPerson>> FindContactsAsync(string accountId, string query, CancellationToken cancellationToken = default)
     {
-        if (accountId != GoogleModels.Account || string.IsNullOrWhiteSpace(query) || query.Length > 1000) return [];
+        if (accountId != Models.Account || string.IsNullOrWhiteSpace(query) || query.Length > 1000) return [];
         await ConnectAsync(cancellationToken);
         await contactsGate.WaitAsync(cancellationToken);
         try
@@ -301,7 +302,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
                 }
             var participants=known.SelectMany(c=>c.Participants).Where(p=>!p.Self && GoogleDirectory.Phone(p.Id) is not null)
                 .Select(p=>new GoogleContact(p.Id,p.Name,GoogleDirectory.Phone(p.Id)!));
-            return GoogleDirectory.Find(contacts.Concat(participants), query.Trim(), recent);
+            return GoogleDirectory.Find(contacts.Concat(participants), query.Trim(), recent).Select(person => person with { AccountId = Models.Account, AvatarUrl = Slot.Ids.Media(person.AvatarUrl) }).ToArray();
         }
         finally { contactsGate.Release(); }
     }
@@ -309,7 +310,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
     public async Task<ChatSummary> StartDirectAsync(ContactPerson contact, bool allowInvite, CancellationToken cancellationToken = default)
     {
         var phone = GoogleDirectory.Phone(contact.Phone);
-        if (contact.AccountId != GoogleModels.Account || contact.CannotMessage || phone is null)
+        if (contact.AccountId != Models.Account || contact.CannotMessage || phone is null)
             throw new SendException(false, "Choose a contact with a valid phone number.");
         await ConnectAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
@@ -328,7 +329,7 @@ internal sealed partial class GoogleMessagesBackend : ISearchBackend, ISearchSco
         catch { throw new SendException(true, "The chat may have been created. Check your conversations before trying again."); }
         SetChat(chat);
         ArchiveChats([chat]);
-        Publish(new(RealtimeKind.ChatChanged, GoogleModels.Qualify(chat.Id)));
-        return GoogleModels.Map(chat);
+        Publish(new(RealtimeKind.ChatChanged, Models.Qualify(chat.Id)));
+        return Models.Map(chat);
     }
 }

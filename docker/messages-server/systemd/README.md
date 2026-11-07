@@ -12,7 +12,7 @@ time zone data, and `install.sh` adds whichever of them is missing with `apt-get
 
 ```sh
 tar -xzf messages-server-<version>-linux-x64.tar.gz
-sudo ./messages-server-<version>-linux-x64/install.sh            # Messenger and Instagram
+sudo ./messages-server-<version>-linux-x64/install.sh            # keeps existing accounts; no new sign-in without Chrome
 sudo ./messages-server-<version>-linux-x64/install.sh --google   # with Google Chrome (Debian, Ubuntu), which the page connects accounts in
 ```
 
@@ -23,8 +23,15 @@ started again with the same sign-ins, paired devices and Google setting. `--no-g
 ## Google
 
 `--google` installs official Google Chrome from Google's own apt repository (its signing key checked against a pinned
-fingerprint), Xvfb for the virtual display Chrome draws on, and Chrome's policy, which keeps it to Google's sign-in
-pages. The server keeps Chrome running and signed in, and you sign in on the server's page. Chrome runs with its own
+fingerprint), Xvfb for the virtual display Chrome draws on, and Chrome's policy for Google, Facebook and Instagram
+sign-in. Chrome is needed to connect any new account on the page. On a plain Linux host the installer asks whether
+you trust the other local users and programs before allowing sign-in on its shared network. For an unattended install
+on a trusted host, use `--google --allow-host-sign-in`. The choice is kept across updates as
+`MESSAGES_REMOTE_SIGNIN_HOST_NETWORK=1` in `/etc/messages-server/environment`; remove that line to withdraw it.
+An update with no flags keeps the existing sign-in permission, including when it is off. To enable sign-in on an
+older plain-Linux install, run the installer with `--google` and answer its question.
+The Proxmox installer gives the server its own network and needs no such override.
+The server keeps Chrome running and signed in, and you sign in on the server's page. Chrome runs with its own
 sandbox, which is made of user namespaces: the kernel must let an ordinary account make them
 (`/proc/sys/user/max_user_namespaces` above 0, and on Ubuntu 24.04 and later
 `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` at 0). The server never starts Chrome without its sandbox; it

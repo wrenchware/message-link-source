@@ -43,6 +43,7 @@ internal sealed partial class ServerPage
     /// windows (owner D2). Null on every other host, whose page has no such buttons.
     /// </summary>
     internal Func<string, bool>? DesktopSignIn { get; set; }
+    internal Func<string, string?, Func<bool>, Task<bool>>? DesktopAccountSignIn { get; set; }
 
     private static readonly (string Service, string Name)[] DesktopServices =
         [("google-messages", "Google Messages"), ("messenger", "Messenger"), ("google-voice", "Google Voice"), ("instagram", "Instagram")];
@@ -60,6 +61,14 @@ internal sealed partial class ServerPage
         foreach (var (service, name) in DesktopServices)
         {
             var mine = accounts?.Where(account => Provider(account.Provider) == name).ToArray() ?? [];
+            if (DesktopAccountSignIn is not null)
+            {
+                void Action(string key, string words) => body.Append("<form method=\"post\" action=\"/signin/desktop\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"account\" value=\"").Append(Html(key)).Append("\"><button type=\"submit\" name=\"service\" value=\"").Append(service).Append("\" class=\"quiet\">").Append(Html(words)).Append("</button></form>");
+                if (service != "google-voice")
+                    foreach (var account in mine) Action(AccountSignInKey(ServiceOf(account.Provider), account) ?? "legacy", "Sign in again to " + name + ": " + account.Name);
+                Action(service == "google-voice" || mine.Length > 0 ? "new" : "legacy", mine.Length == 0 ? "Connect " + name : "Add another " + name + " account");
+                continue;
+            }
             if (service != "google-voice" && mine.Length > 0 && mine.All(account => Tone(account.State) == "ok")) continue;
             var words = mine.Length == 0 ? "Connect " + name : service == "google-voice" ? "Add another Google Voice number" : "Sign in again to " + name;
             body.Append("<form method=\"post\" action=\"/signin/desktop\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
@@ -69,7 +78,7 @@ internal sealed partial class ServerPage
         if (any) body.Append("</details>");
     }
 
-    private void DesktopSignInPost(HttpContext context, IFormCollection form)
+    private async Task DesktopSignInPostAsync(HttpContext context, IFormCollection form)
     {
         var service = form["service"].ToString();
         if (DesktopSignIn is not { } open || !OnThisPc(context) || !DesktopServices.Any(known => known.Service == service))
@@ -77,7 +86,11 @@ internal sealed partial class ServerPage
             Redirect(context.Response, "/");
             return;
         }
-        var opened = open(service);
+        var cookie = Session(context.Request);
+        var account = form["account"].ToString();
+        var opened = DesktopAccountSignIn is { } selected
+            ? cookie is not null && await selected(service, account.Length == 0 ? null : account, () => SessionOf(cookie) is not null).ConfigureAwait(false)
+            : open(service);
         log($"server page desktop sign_in service={service} outcome={(opened ? "opened" : "failed")}");
         Redirect(context.Response, opened ? "/?done=desktop_sign_in#accounts" : "/?done=desktop_sign_in_failed#accounts");
     }

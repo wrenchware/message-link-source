@@ -62,10 +62,11 @@ internal sealed record InstagramMessagePage(InstagramMessage[] Messages, bool Ha
 /// Identities are account-scoped because the partition is, which is what lets a second Instagram account exist later
 /// without every stored id meaning something different than it did.
 /// </remarks>
-internal sealed class InstagramIdentity(string accountKey)
+internal sealed class InstagramIdentity(string accountKey, AccountNamespace? slot = null)
 {
     public const string Network = "Instagram";
-    private readonly string prefix = "instagram:" + accountKey + ":";
+    private readonly string prefix = (slot ?? new()).Qualify("instagram:" + accountKey + ":");
+    public string Media(string? id) => (slot ?? new()).Qualify(QualifyMedia(id));
 
     public string AccountKey { get; } = accountKey;
     public string Account => prefix + "account";
@@ -135,8 +136,8 @@ internal sealed class InstagramIdentity(string accountKey)
             chat.Unread ? 1 : 0, chat.Muted, chat.Pinned, false, chat.ReadOnly,
             // An id the helper issued, not an Instagram address: the helper fetches the picture with the session's
             // own cookies and the app never reaches Instagram itself.
-            QualifyMedia(chat.Avatar), preview, [], null, null, Capabilities,
-            chat.Participants.Select(person => new ChatParticipant(Person(person.Id), person.Name, QualifyMedia(person.Avatar), person.Self,
+            Media(chat.Avatar), preview, [], null, null, Capabilities,
+            chat.Participants.Select(person => new ChatParticipant(Person(person.Id), person.Name, Media(person.Avatar), person.Self,
                 Username: person.Username)).ToArray(),
             // Somebody the helper could not name still counts, so a group is never called read before they have.
             chat.Participants.Length + Math.Max(0, chat.Unnamed),
@@ -239,7 +240,7 @@ internal sealed class InstagramIdentity(string accountKey)
         return message with { Delivery = message.Delivery with { SeenBy = readers ?? new Dictionary<string, bool?>() } };
     }
 
-    private static MessageAttachment[] Attachments(InstagramMessage message)
+    private MessageAttachment[] Attachments(InstagramMessage message)
     {
         if (Shared(message) && message.Media is not { Length: > 0 })
             return [new(message.Title ?? SharedLinkPresentation.InstagramKind(SharedLinkPresentation.Destination(message.Link)) ?? "Shared link",
@@ -250,18 +251,18 @@ internal sealed class InstagramIdentity(string accountKey)
     /// <summary>What a recording is called before it is played: the words the player shows under its waveform.</summary>
     public const string RecordingName = "Voice message";
 
-    private static MessageAttachment Attachment(InstagramMessage message, InstagramMedia item)
+    private MessageAttachment Attachment(InstagramMessage message, InstagramMedia item)
     {
         // A voice message plays in place, with the player the voicemails use. Nothing is downloaded until Play is
         // pressed (ProviderMedia: Instagram's recordings wait for it), and the length Instagram gives shows until then.
         // No media type: nothing Instagram sends names one, so the player goes by the bytes.
         if (item.Audio)
-            return new(RecordingName, "audio", null, null, false, false, false, QualifyMedia(item.Id),
+            return new(RecordingName, "audio", null, null, false, false, false, Media(item.Id),
                 DurationSeconds: item.Duration > 0 ? item.Duration / 1000.0 : null);
         // A GIF sent as a clip loops silently over its still, as Messenger's do.
         if (item.Gif && item.Mime == "video/mp4")
-            return new("GIF", "video", item.Mime, null, false, true, false, QualifyMedia(item.Id),
-                string.IsNullOrEmpty(item.Preview) ? null : QualifyMedia(item.Preview),
+            return new("GIF", "video", item.Mime, null, false, true, false, Media(item.Id),
+                string.IsNullOrEmpty(item.Preview) ? null : Media(item.Preview),
                 item.Width == 0 ? null : item.Width, item.Height == 0 ? null : item.Height);
         return new(
             // A share's title names its card; a photograph has no name to give.
@@ -271,7 +272,7 @@ internal sealed class InstagramIdentity(string accountKey)
             item.Video ? null : item.Mime, null, false, item.Gif, item.Sticker,
             // SourceUrl carries the smaller copy, as the other providers do, so the conversation draws a thumbnail
             // inline and opening the picture asks for the full one.
-            QualifyMedia(item.Id), string.IsNullOrEmpty(item.Preview) ? null : QualifyMedia(item.Preview),
+            Media(item.Id), string.IsNullOrEmpty(item.Preview) ? null : Media(item.Preview),
             item.Width == 0 ? null : item.Width, item.Height == 0 ? null : item.Height,
             // A share becomes a card that opens the reel or post: its picture, its title and its host, following
             // one link. A photograph is just a photograph.

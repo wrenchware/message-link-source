@@ -120,7 +120,8 @@ namespace NativeBeeper.Protocol;
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 29;
+    public const int Current = 30;
+    public const int MultipleAccounts = 30;
     /// <summary>The first version with contacts saved through the phone (<see cref="ProtocolMethods.PhoneContactsOffer"/> and the <c>phoneContacts</c> signal).</summary>
     public const int PhoneContacts = 29;
     /// <summary>The first version with the password a move asks for (<see cref="ProtocolMethods.AccountMoveAuthorize"/>).</summary>

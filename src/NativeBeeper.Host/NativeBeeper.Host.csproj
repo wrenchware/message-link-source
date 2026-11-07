@@ -18,4 +18,10 @@
     <ProjectReference Include="../NativeBeeper.Backends/NativeBeeper.Backends.csproj" />
     <ProjectReference Include="../NativeBeeper.Presentation/NativeBeeper.Presentation.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SMBLibrary" Version="1.5.8.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../third_party/SMBLibrary/*" Link="licenses/SMBLibrary/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

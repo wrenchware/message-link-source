@@ -90,7 +90,7 @@ internal sealed partial class ServerPage
     public const string ChecklistFile = "server-page.checklist";
 
     /// <summary>The walkthrough's screens, in order.</summary>
-    public static readonly string[] Steps = ["tailscale", "accounts", "notifications", "phone", "pc", "backups"];
+    public static readonly string[] Steps = ["start", "accounts", "tailscale", "notifications", "phone", "pc", "backups"];
 
     /// <summary>Whether the page still waits for its first password (the harness's view).</summary>
     internal bool SettingUp => settingUp;
@@ -293,6 +293,7 @@ internal sealed partial class ServerPage
 
     private static string StepTitle(string step) => step switch
     {
+        "start" => "Set up your server",
         "tailscale" => "Away from home",
         "accounts" => "Your accounts",
         "phone" => "Add a phone",
@@ -306,16 +307,25 @@ internal sealed partial class ServerPage
     {
         var body = new StringBuilder();
         body.Append("<p class=\"quiet\">Step ").Append(index + 1).Append(" of ").Append(Steps.Length).Append(" · every step can be skipped and done later from the server's page.</p>");
-        // The owner's words (2026-11-02): why this is more work than an app from a store, before the first thing it asks for.
-        if (index == 0)
-            body.Append("<section><h2>A small nerd alert</h2>")
-                .Append(Para("This takes about 20 minutes and a couple of free accounts, but you won't write any code. Each step says exactly what to click, and you can skip anything and come back later."))
-                .Append(Para("It's do-it-yourself on purpose. Message Link has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
-                .Append("</section>");
         var done = false;
         var waiting = false;
         switch (step)
         {
+            case "start":
+                // The owner's introduction (2026-11-02) stays ahead of the first setup choice.
+                body.Append("<section><h2>A small nerd alert</h2>")
+                    .Append(Para("This takes about 20 minutes and a couple of free accounts, but you won't write any code. Each step says exactly what to click, and you can skip anything and come back later."))
+                    .Append(Para("It's do-it-yourself on purpose. Message Link has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
+                    .Append(Para("This server connects to your messaging accounts and keeps your history. Your phone and PCs connect to it."))
+                    .Append(Para("Anyone with this page's password can manage the server. A phone or PC that joins can read and send messages; it doesn't become the server's administrator."));
+                if (DesktopTrust)
+                    body.Append(Para("Using just this Windows PC? Connect your accounts next. Tailscale and phone notifications can wait until you add a phone."));
+                if (backups is not null)
+                    body.Append("<p><a class=\"button quiet\" href=\"/restore\">Restore from a backup</a></p>")
+                        .Append(Para("Have a backup from another server or PC? Restore it before connecting accounts. Stop the old server first."));
+                body.Append("<p><a href=\"").Append(JoinLink.SetupGuide).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a></p></section>");
+                done = true;
+                break;
             case "tailscale":
                 body.Append(Para("Tailscale lets Message Link on your phone reach this server from anywhere, without opening it to the internet. It's free for personal use."));
                 if (tailnet is not null)
@@ -331,7 +341,8 @@ internal sealed partial class ServerPage
                 break;
             case "phone":
                 body.Append("<section>");
-                if (PhoneWaitsForNotifications) body.Append(Para(PhoneNeedsNotifications)).Append("<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p>");
+                if (DesktopJoinUnavailable) body.Append(DesktopJoinHelp);
+                else if (PhoneWaitsForNotifications) body.Append(Para(PhoneNeedsNotifications)).Append("<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p>");
                 else
                 {
                     body.Append(Para("Message Link on your phone joins by scanning a code from this page: no codes to type or match. Install Message Link on the phone first."))
@@ -354,6 +365,7 @@ internal sealed partial class ServerPage
                 body.Append("</section>");
                 break;
             case "pc":
+                if (DesktopJoinUnavailable) { body.Append("<section>").Append(DesktopJoinHelp).Append("</section>"); break; }
                 body.Append("<section>").Append(Para("Message Link on a Windows PC joins with one line copied from here and pasted into Settings → Connections → Message Link Server. The line holds a one-time pairing code, so the server's password is asked for first."))
                     .Append(PasswordForm("/pair", token, "Show the line")).Append("</section>");
                 done = devices.Count - PhonesPaired() > 0;
@@ -411,12 +423,19 @@ internal sealed partial class ServerPage
     private bool PhoneWaitsForNotifications => pushes is { Switch.Current: null };
     private const string PhoneNeedsNotifications = "Set up notifications first. Without them, the phone only gets new messages while the app is open.";
 
+    // The Windows server listens on loopback only. A code containing that address sends another device to itself.
+    private bool DesktopJoinUnavailable => DesktopTrust && tailnet is not { Enabled: true, Latest: { Running: true, Name.Length: > 0 } };
+    private static string DesktopJoinHelp => Para("Set up Tailscale before adding another device. This PC's server accepts other devices through Tailscale, including at home.")
+        + "<p><a class=\"button\" href=\"/welcome?step=tailscale\">Set up Tailscale</a></p>";
+    private string PairAddress(HttpRequest request) => DesktopTrust && tailnet?.Latest is { Running: true } view
+        ? $"{(view.DnsName ?? view.Name)!.TrimEnd('.')}:{tailnet.Port}" : Address(request);
+
     // Backups are set up once a good one exists in the mapped folder.
     private bool BackupsReady() => backups?.Service.Status() is { HasFolder: true, LastGood: not null };
 
     private bool BackupsMapped => backups?.Service.Status() is { HasFolder: true };
 
-    private const string MapBackups = "On Unraid, fill in Backups in the container's settings (for example /mnt/user/backups/messages). With Docker, map a folder to /backups. On Linux, set MESSAGES_BACKUPS. Then restart the server.";
+    private const string MapBackups = "Choose a folder or network share on the Backups page. A network share needs no Docker folder mapping.";
 
     // What is left of setting up, on the front page, each line reopening its screen; nothing once everything is done or the owner hid it.
     private async Task ChecklistAsync(StringBuilder body, string token, CancellationToken cancellationToken)
@@ -451,6 +470,11 @@ internal sealed partial class ServerPage
     {
         const string title = "Add a phone";
         string Ask(string? problem) => AskBody("/phone", token, "The code lets a phone read every conversation on the server, so the server's password is asked for again.", "Show the code", problem);
+        if (DesktopJoinUnavailable)
+        {
+            await PageAsync(context, StatusCodes.Status200OK, title, "<section>" + DesktopJoinHelp + "</section>").ConfigureAwait(false);
+            return;
+        }
         if (PhoneWaitsForNotifications)
         {
             await PageAsync(context, StatusCodes.Status200OK, title, "<section>" + Para(PhoneNeedsNotifications) + "<p><a class=\"button\" href=\"/welcome?step=notifications\">Set up notifications…</a></p></section>").ConfigureAwait(false);
@@ -477,10 +501,10 @@ internal sealed partial class ServerPage
         var view = tailnet?.Latest is { Running: true, Tagged: false } running ? running : null;
         // The home network's address only when the browser came that way: through the tailnet the page's address is the server's tailnet name, already in the code.
         var remote = context.Connection.RemoteIpAddress;
-        var address = remote is not null && TailnetRelay.IsTailnet(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote) ? null : Address(context.Request);
-        var link = JoinLink.Build(view?.Name ?? tailnet?.Latest?.Name, address, fingerprint(), code, view?.Owner);
+        var address = DesktopTrust || remote is not null && TailnetRelay.IsTailnet(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote) ? null : Address(context.Request);
+        var link = JoinLink.Build(view?.Name ?? tailnet?.Latest?.Name, address, fingerprint(), code, view?.Owner, tailnet?.Port ?? NetworkEndpoint.DefaultPort);
         var body = new StringBuilder("<section><div class=\"qr-card\"><div class=\"qr\">").Append(QrCode.Encode(link).ToSvg(label: "The join code for Message Link on a phone")).Append("</div><div class=\"grow\">")
-            .Append(Para("Open Message Link on your phone, choose I have a server, then Scan your server's code."))
+            .Append(Para("Open Message Link on your phone, choose I have a server, then Scan your server's code. Check the server shown and choose Join."))
             .Append("<p class=\"quiet\">It works once, for the next ").Append((int)PairingCodes.Lifetime.TotalMinutes).Append(" minutes. The phone pins this server's fingerprint and joins with it: there's nothing to type or match.</p>")
             .Append("<p><a href=\"").Append(Html(link)).Append("\">On this phone? Open the link instead.</a></p>")
             .Append("<form method=\"post\" action=\"/phone\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"grant\" value=\"")

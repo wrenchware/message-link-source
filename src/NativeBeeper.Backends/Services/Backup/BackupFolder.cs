@@ -91,10 +91,12 @@ internal static class BackupFolder
         name is not null && Name.Match(name) is { Success: true } match && match.Groups[2].Value == install;
 
     // This install's backups, newest first: the order Prune keeps by and Newest picks from.
-    private static IReadOnlyList<string> Ours(string folder, string install)
+    private static IReadOnlyList<string> Ours(string folder, string install) => OrderOwnNames(Directory.GetFiles(folder), install);
+
+    internal static IReadOnlyList<string> OrderOwnNames(IEnumerable<string> files, string install)
     {
         var ours = new List<(string Path, DateTime At, int Copy)>();
-        foreach (var path in Directory.GetFiles(folder))
+        foreach (var path in files)
         {
             if (Name.Match(Path.GetFileName(path)) is not { Success: true } match || match.Groups[2].Value != install) continue;
             if (!DateTime.TryParseExact(match.Groups[1].Value, "yyyy-MM-dd HHmm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at)) continue;
@@ -105,6 +107,8 @@ internal static class BackupFolder
 
     /// <summary>Removes what this install's backup interrupted mid-write left behind, once it is old enough that nothing
     /// can still be writing it. Only this install's temporary names are touched: another PC's may still be arriving.</summary>
+    internal static bool IsOwnTemporaryName(string name, string install) => Temporary.Match(name) is { Success: true } match && match.Groups[1].Value == install;
+
     public static int SweepTemporary(string folder, string install, TimeSpan age, DateTime nowUtc)
     {
         var removed = 0;

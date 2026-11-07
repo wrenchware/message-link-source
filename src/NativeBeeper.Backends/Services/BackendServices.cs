@@ -45,6 +45,7 @@ public static class BackendServices
         collection.AddSingleton<IMessengerAccount, MessengerAccount>();
         collection.AddSingleton<InstagramBackend>();
         collection.AddSingleton<IInstagramAccount, InstagramAccountLifecycle>();
+        collection.AddSingleton<ProviderAccounts>();
         collection.AddSingleton<MessagingRouter>();
         collection.AddSingleton<DirectoryRouter>();
         collection.AddSingleton<TypingRouter>();

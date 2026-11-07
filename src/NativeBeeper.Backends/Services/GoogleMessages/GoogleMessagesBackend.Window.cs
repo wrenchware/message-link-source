@@ -18,7 +18,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
 
     public bool CanReadWindow(string chatId) =>
         chatId.StartsWith("google-direct:", StringComparison.Ordinal) && archive.IsLoaded && archive.Profile is not null &&
-        CrawledFrom(archive.CrawlState(GoogleModels.Native(chatId))) is not null;
+        CrawledFrom(archive.CrawlState(Models.Native(chatId))) is not null;
 
     // How far back a conversation's archive is known to be whole: everything once its crawl finished, otherwise from the
     // oldest message the crawl has reached (its cursor names it). Null when it has not begun.
@@ -38,7 +38,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
 
     public async Task<HistoryWindow> ReadWindowAsync(string chatId, DateTimeOffset at, int older, int newer, CancellationToken cancellationToken = default)
     {
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         var account = archive.Profile ?? throw new BackendException(BackendFailure.Unavailable, "Google Messages history is still loading.");
         var chat = chats.GetValueOrDefault(native) ?? archive.Chat(native)
             ?? throw new BackendException(BackendFailure.Unavailable, "This conversation is not available.");
@@ -62,7 +62,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
         }
         GoogleMessagesLog.Write($"history window chat={GoogleMessagesLog.Tag(chatId)} older={older} newer={newer} returned={rows.Count} " +
             $"more_older={start > 0} more_newer={end < timeline.Length} photos_from_phone={unfetchable}");
-        var window = new HistoryWindow([.. rows.Select(message => GoogleModels.Map(message, chat))], start > 0, end < timeline.Length);
+        var window = new HistoryWindow([.. rows.Select(message => Models.Map(message, chat))], start > 0, end < timeline.Length);
         if (!unfetchable || rows.Count == 0) return window;
         // The phone's page that ends at the window's newest message starts just past it: at the next message the archive
         // knows of, or at the newest page when there is none.
@@ -89,7 +89,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
     public async Task<HeldHistory?> ReadHeldAsync(string chatId, DateTimeOffset after, int limit, CancellationToken cancellationToken = default)
     {
         if (!chatId.StartsWith("google-direct:", StringComparison.Ordinal)) return null;
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         var tag = GoogleMessagesLog.Tag(chatId);
         var refused = GoogleHeldRules.Refusal(connected, archive.CrawlState(native), headsAtConnect.TryGetValue(native, out var head) ? head : null);
         if (refused is not null) { GoogleMessagesLog.Write($"history held chat={tag} outcome={refused}"); return null; }
@@ -105,7 +105,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
                 var held = inMemory.Where(message => message.At > after).ToArray();
                 var newest = held.TakeLast(limit).ToArray();
                 GoogleMessagesLog.Write($"history held chat={tag} outcome=ok source=memory newer={held.Length} returned={newest.Length}");
-                return new([.. newest.Select(message => GoogleModels.Map(message, chat))], after >= from && newest.Length == held.Length);
+                return new([.. newest.Select(message => Models.Map(message, chat))], after >= from && newest.Length == held.Length);
             case GoogleHeldSource.None:
                 GoogleMessagesLog.Write($"history held chat={tag} outcome=archive_not_loaded fresh={from is not null}");
                 return null;
@@ -117,7 +117,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
         var fromMemory = 0;
         foreach (var (id, _) in taken)
         {
-            if (messages.TryGetValue(id, out var held)) { rows.Add(GoogleModels.Map(held, chat)); fromMemory++; continue; }
+            if (messages.TryGetValue(id, out var held)) { rows.Add(Models.Map(held, chat)); fromMemory++; continue; }
             var kept = await archive.ReadMessageAsync(account, id, cancellationToken);
             refused = kept is null ? "missing" : kept.Media is { Length: > 0 } || MaybeLink.IsMatch(kept.Text ?? "") ? "phone_only" : null;
             if (refused is not null)
@@ -125,7 +125,7 @@ internal sealed partial class GoogleMessagesBackend : IHistoryWindowReader
                 GoogleMessagesLog.Write($"history held chat={tag} outcome={refused} newer={newer.Length}");
                 return null;
             }
-            rows.Add(GoogleModels.Map(kept!, chat));
+            rows.Add(Models.Map(kept!, chat));
         }
         GoogleMessagesLog.Write($"history held chat={tag} outcome=ok source=archive newer={newer.Length} returned={rows.Count} from_memory={fromMemory}");
         return new(rows, taken.Length == newer.Length);

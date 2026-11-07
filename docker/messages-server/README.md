@@ -7,8 +7,10 @@ warns about the certificate once: the server made it itself), which asks for the
 its first visit and then walks you through Tailscale, your accounts, your phone and PCs, notifications and backups.
 
 - **Unraid.** `install-unraid.sh` with the image from GitHub's registry (below, "Updates from GitHub's registry"), or
-  built on the server ("Build the image"). Backups go to the `backups` share, `/mnt/user/backups/messages`. A
-  Community Applications template is ready in `unraid/ca/` for when the image is public.
+  built on the server ("Build the image"). Backups go to the `backups` share, `/mnt/user/backups/messages`. The
+  Community Applications template in `unraid/ca/templates/` installs with no console step: data and keys in Docker
+  volumes, backups to a network share chosen on the page, and Chrome's sandbox kept with `seccomp=unconfined`
+  ("Chrome's sandbox"). It is not listed until the image is public (`docs/release.md`, "Community Applications listing").
 - **Proxmox VE.** In the node's **Shell**:
 
   ```sh
@@ -127,6 +129,8 @@ the plugin's stop timeout: [updateDocker.php](https://github.com/Squidly271/ca.u
   permission tool can reach it.
 - **Data** (`/data`, `/mnt/user/appdata/messages-server`): the signed-in sessions, paired devices, the server's own
   stores and its log. Everything secret in it is sealed with the keys, so a copy of this folder alone is useless.
+  Installed from Community Applications, it is the named volume `messages-server-data` instead, beside the keys in
+  `docker.img`: in the commands below, use `-v messages-server-data:/data` in place of the appdata folder.
 - **Backups** (`/backups`, `/mnt/user/backups/messages`): where the server writes its own backups (see Backups). Owned
   by 2787:2787, mode 700, like the data folder.
 
@@ -313,6 +317,12 @@ rather than starting it to fail. Once Chrome has shown a page it reads its proce
 `google chrome sandbox=active renderers=N filtered=N`. `active` means every renderer carries a seccomp filter, which `--no-sandbox`
 never gives it; `inactive` or `unknown` means the sandbox is not proven. `server google enabled ... sandbox=on` only says what was asked.
 
+**Community Applications** turns the sandbox on another way, because a template cannot put `chrome-seccomp.json` on the
+host: `--security-opt=seccomp=unconfined` removes Docker's system call filter for the container instead of widening it by
+four calls. The user, `--cap-drop=ALL` and `no-new-privileges` stay, and the server's pre-flight and `sandbox=active` line
+are the same. Chrome opens Facebook's and Instagram's sign-in pages as well as Google's, so without its sandbox a page
+that broke out of a renderer would reach every sign-in on the server.
+
 **What you must do on Unraid:** nothing, if the kernel allows unprivileged user namespaces, which the script checks first
 (`cat /proc/sys/user/max_user_namespaces` must be above 0, as it is on Unraid's stock kernel). If it
 says they are off, leave the sandbox off.
@@ -445,7 +455,9 @@ It removes only the note and the marker files it left in the accounts' folders; 
 
 ## Stop
 
-Stop it from the Docker tab, or `docker stop -t 60 messages-server`. Give it the full 60 seconds so pending sends finish.
+Stop it from the Docker tab, or `docker stop -t 60 messages-server`. Give it the full 60 seconds so pending sends finish:
+the Docker tab, Apply and updates wait only Settings › Docker › Docker Stop Timeout (10 seconds unless changed), not the
+container's own `--stop-timeout`, so set that to at least 60.
 
 ## Backups
 

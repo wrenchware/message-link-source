@@ -33,7 +33,7 @@ internal sealed partial class InstagramBackend : IGroupBackend
         if (identity is not { } known || accountId != known.Account)
             throw new SendException(false, "Choose the Instagram account.");
         var ids = people.Select(person => person.Id).ToArray();
-        if (people.Count is < 2 or > GroupMaximum || people.Any(person => person.CannotMessage || person.IsSelf) ||
+        if (people.Count is < 2 or > GroupMaximum || people.Any(person => person.AccountId != accountId || person.CannotMessage || person.IsSelf) ||
             ids.Any(string.IsNullOrWhiteSpace) || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
             throw new SendException(false, $"Choose 2–{GroupMaximum} different Instagram accounts.");
         var name = title.Trim();

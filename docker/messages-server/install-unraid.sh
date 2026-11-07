@@ -9,8 +9,9 @@
 #
 # The one image is Debian with official Google Chrome (SWITCHBOARD.md stage 11; 4.3, 5.4): always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
 # Messages on. Chromium runs without its own sandbox there, chosen for the 5.4 test (2026-10-09):
-# the container drops every capability, so the sandbox cannot start, and the browser loads only Google's own sites
-# (docs/research/google-linux-renewal.md). It also runs Chromium headed, with a window on a virtual display (Xvfb, one
+# the container drops every capability, so the sandbox cannot start, and the browser then loaded only Google's own sites
+# (docs/research/google-linux-renewal.md). Since 10.5 it also opens Facebook's and Instagram's sign-ins, so --chrome-sandbox
+# is the safer choice; the Community Applications template keeps the sandbox by default (docs/release.md). It also runs Chromium headed, with a window on a virtual display (Xvfb, one
 # per browser run, inside the container): the headless browser loaded Google's page signed in but Google never rotated
 # its sign-in cookie (5.4, 2026-10-10). The log says headed=yes on `server google enabled` and each `google browser`
 # line, and the keeper's `browser early=` lines now appear in `docker logs`.

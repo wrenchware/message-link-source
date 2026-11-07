@@ -399,6 +399,11 @@ internal sealed partial class ServerPage
                 Redirect(response, kept ? "/login" : "/login?signed_out=unsaved");
                 return;
             case "/pair":
+                if (DesktopJoinUnavailable)
+                {
+                    await PageAsync(context, StatusCodes.Status200OK, "Add a PC", "<section>" + DesktopJoinHelp + "</section>").ConfigureAwait(false);
+                    return;
+                }
                 // A code lets a device read everything: the password itself is asked for, not only the sign-in a copied cookie would be.
                 if (get)
                 {
@@ -467,7 +472,7 @@ internal sealed partial class ServerPage
                 await WalkthroughAsync(context, walkthrough, form, token).ConfigureAwait(false);
                 return;
             case "/signin/desktop" when post:
-                DesktopSignInPost(context, form!);
+                await DesktopSignInPostAsync(context, form!).ConfigureAwait(false);
                 return;
             case SignInPath:
                 await SignInViewAsync(context, form, token).ConfigureAwait(false);
@@ -835,11 +840,12 @@ internal sealed partial class ServerPage
         var body = new StringBuilder("<section>");
         // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
         body.Append(Para($"In Message Link on the PC, open Settings → Connections → Message Link Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
-        body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(Address(request), fingerprint(), code))).Append("</p>");
+        body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(PairAddress(request), fingerprint(), code))).Append("</p>");
+        if (DesktopTrust) body.Append(Para("Install Tailscale on the other PC and sign in to the same Tailscale account as this server before connecting."));
         body.Append(Para("Or choose to use a pairing code there, and enter these three:"));
         body.Append("<dl>");
         Row(body, "Pairing code", code, copy: true, large: true);
-        Row(body, "Address", Address(request), copy: true);
+        Row(body, "Address", PairAddress(request), copy: true);
         Row(body, "Fingerprint", fingerprint(), copy: true);
         body.Append("</dl>");
         body.Append(Para("Check that the fingerprint Message Link shows is this one before you accept it."));

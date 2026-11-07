@@ -11,8 +11,11 @@ using NativeBeeper.Presentation.Services;
 
 namespace NativeBeeper.App.Services.GoogleMessages;
 
-internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] PrivateState privateState, IStateProtector protector) : IBeeperBackend, IChatReader, IMessageSender, IRealtimeFeed, ITypingService, IReadStateWriter, IMessageActions, ILinkPreviewLoader, IMessageMutations, IDisposable
+internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] PrivateState privateState, IStateProtector protector, ProviderAccountSlot? accountSlot = null) : IBeeperBackend, IChatReader, IMessageSender, IRealtimeFeed, ITypingService, IReadStateWriter, IMessageActions, ILinkPreviewLoader, IMessageMutations, IDisposable
 {
+    internal ProviderAccountSlot Slot { get; } = accountSlot ?? ProviderAccountSlot.Legacy;
+    internal GoogleSessionProfile Files { get; } = tokens as GoogleSessionProfile ?? new(protector, accountSlot);
+    internal GoogleAccountModels Models { get; } = new((accountSlot ?? ProviderAccountSlot.Legacy).Ids);
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
     private readonly SemaphoreSlim gate = new(1);
     private readonly ConcurrentDictionary<string, GoogleChat> chats = new();
@@ -97,6 +100,16 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
         if (evt.Kind == RealtimeKind.ResyncRequired) lastList = null;
         if (!realtime.Writer.TryWrite(evt)) { lastList = null; while(realtime.Reader.TryRead(out _)) {} realtime.Writer.TryWrite(new(RealtimeKind.ResyncRequired)); }
     }
+    internal GoogleIncomingCards IncomingCards { get; } = new(archive, tokens);
+    internal Func<string?, CancellationToken, Task>? ValidateAccount { get; set; }
+    internal async Task<string?> SavedIdentityAsync()
+    {
+        if (!Files.SessionSaved) return null;
+        var bytes = await protector.UnprotectAsync(await File.ReadAllBytesAsync(Files.SessionFile));
+        try { using var document = JsonDocument.Parse(bytes); return AccountIdentity(document.RootElement); }
+        finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); }
+    }
+    internal static string? AccountIdentity(JsonElement session) => GooglePairingIdentity.Identity(session).Item2 is { } account ? ProviderAccounts.Identity("google", account) : null;
     private async Task ConnectAsync(CancellationToken token)
     {
         if (connected) return;
@@ -111,7 +124,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
             ThrowIfNotConnectable();
             // A sign-in about as old as Google allows is refreshed from the kept profile first; connecting with it would
             // only be refused (connect_refresh at every launch after a couple of hours closed, 2026-09-24).
-            if (!stopping && GoogleSessionProfile.HasSavedSession && PresumeExpired()) throw GoogleReadFailure.Renewing();
+            if (!stopping && Files.SessionSaved && PresumeExpired()) throw GoogleReadFailure.Renewing();
             held = false;
         }
         finally { if (held) gate.Release(); }
@@ -120,8 +133,8 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
         try
         {
             if (stopping) throw new OperationCanceledException();
-            GoogleMessagesLog.Write($"connect starting sign_in_age_min={GoogleSignInClock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
-            if (!File.Exists(GoogleSessionProfile.SessionPath)) throw new BackendException(BackendFailure.AuthenticationRequired,"Pair your Google Messages account to connect.");
+            GoogleMessagesLog.Write($"connect starting sign_in_age_min={Files.Clock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
+            if (!File.Exists(Files.SessionFile)) throw new BackendException(BackendFailure.AuthenticationRequired,"Pair your Google Messages account to connect.");
             var oldHelper = helper;
             if (oldHelper is not null && latestSession is { } lastKnown) await PersistSessionAsync(oldHelper,lastKnown,"replaced");
             helper = null;
@@ -131,8 +144,8 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
             // AuthenticationRequired must not arrive after the new Connected event:
             // SyncViewModel would remain offline even with a healthy new connection.
             while (realtime.Reader.TryRead(out _)) { }
-            helper = await HelperConnection.StartAsync(HelperExecutables.PathFor("gmessages-helper"), null, current.Token);
-            helper.Scope = "google-direct:";
+            helper = await HelperConnection.StartAsync(HelperExecutables.PathFor("gmessages-helper"), null, current.Token, Slot.HelperEnvironment);
+            helper.Scope = Models.Qualify("");
             var owner = helper;
             helper.Received += (kind, data) =>
             {
@@ -150,8 +163,8 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
             var hello = await helper.CallAsync("hello", null, current.Token);
             if (hello.GetProperty("protocol").GetInt32() != 7) throw new BackendException(BackendFailure.Unsupported,HelperStartFailure.OutOfDateSentence);
             GoogleMessagesLog.Write("helper hello protocol=7");
-            var bytes = await protector.UnprotectAsync(await File.ReadAllBytesAsync(GoogleSessionProfile.SessionPath,current.Token));
-            try { using var auth = JsonDocument.Parse(bytes); NoteSessionKind(auth.RootElement); await helper.CallAsync("connect",auth.RootElement,current.Token); }
+            var bytes = await protector.UnprotectAsync(await File.ReadAllBytesAsync(Files.SessionFile,current.Token));
+            try { using var auth = JsonDocument.Parse(bytes); if (ValidateAccount is { } validate) await validate(AccountIdentity(auth.RootElement), current.Token); NoteSessionKind(auth.RootElement); await helper.CallAsync("connect",auth.RootElement,current.Token); }
             finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); }
             // Connect starts the library's listener asynchronously. Verify an authenticated
             // read before reporting Connected; a running helper alone does not prove login.
@@ -160,7 +173,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
             headsAtConnect.Clear(); freshFrom.Clear();
             // A new helper session has handed nothing out yet (nothing is read before this): what the last one named no
             // longer says a picture is gone.
-            NativeBeeper.Presentation.Services.MediaNews.Forget("google-direct:");
+            NativeBeeper.Presentation.Services.MediaNews.Forget(Models.Qualify(""));
             connected = true;
             authenticationRequired = false;
             NoteConnected();
@@ -201,7 +214,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
         {
             if (kind=="typing")
             {
-                var chat=GoogleModels.Qualify(value.GetProperty("chatId").GetString()!);
+                var chat=Models.Qualify(value.GetProperty("chatId").GetString()!);
                 lock(typingLock)
                 {
                     typingChats.Add(chat);
@@ -253,19 +266,19 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
                 // Google still describes a dropped placeholder. That does not bring it back: it would sit in the list refusing every send.
                 if (!c.Hidden && placeholders.ContainsKey(c.Id)) { GoogleMessagesLog.Write($"event=chat state=placeholder chat={GoogleMessagesLog.Tag(c.Id)}"); ArchiveChats([c with { Hidden = true }]); return; }
                 ArchiveChats([c]);
-                if (c.Hidden) { GoogleMessagesLog.Write($"event=chat state=deleted chat={GoogleMessagesLog.Tag(c.Id)}"); RemoveChat(c.Id,out _); ArrivalHold.Discard(c.Id); Publish(new(RealtimeKind.ChatDeleted,GoogleModels.Qualify(c.Id))); }
-                else { var was=chats.TryGetValue(c.Id,out var held) ? held.Unread : (bool?)null; GoogleMessagesLog.Write($"event=chat state=changed chat={GoogleMessagesLog.Tag(c.Id)} unread={c.Unread} was={(was?.ToString() ?? "unknown")} spam={c.Spam}"); SetChat(c); ArrivalHold.Deliver(c.Id,new(RealtimeKind.ChatChanged,GoogleModels.Qualify(c.Id))); }
+                if (c.Hidden) { GoogleMessagesLog.Write($"event=chat state=deleted chat={GoogleMessagesLog.Tag(c.Id)}"); RemoveChat(c.Id,out _); ArrivalHold.Discard(c.Id); Publish(new(RealtimeKind.ChatDeleted,Models.Qualify(c.Id))); }
+                else { var was=chats.TryGetValue(c.Id,out var held) ? held.Unread : (bool?)null; GoogleMessagesLog.Write($"event=chat state=changed chat={GoogleMessagesLog.Tag(c.Id)} unread={c.Unread} was={(was?.ToString() ?? "unknown")} spam={c.Spam}"); SetChat(c); ArrivalHold.Deliver(c.Id,new(RealtimeKind.ChatChanged,Models.Qualify(c.Id))); }
             }
             else if((kind=="message" || kind=="messageUpdate") && value.Deserialize<GoogleMessage>(Json) is { } m)
-            { var from=messages.TryGetValue(m.Id,out var before) && before.ChatId!=m.ChatId ? before.ChatId : null; var isNew=messages.TryAdd(m.Id,m); GoogleMessagesLog.Write($"event=message state={(isNew ? "new" : "updated")} chat={GoogleMessagesLog.Tag(m.ChatId)} message={GoogleMessagesLog.Tag(m.Id)} status={GoogleMessagesLog.Status(m.Status)} chatUnread={(chats.TryGetValue(m.ChatId,out var owner) ? owner.Unread.ToString() : "unknown")}{ReaderCounts([m],owner)}"); if(!isNew) RememberMessage(m); else ArchiveMessages([m]); if(isNew && kind=="message") NoteRealtimeMessage(); if(isNew) HoldIfUnsettled(m); ReinstateIfReal(m); ArrivalHold.Deliver(m.ChatId,new(RealtimeKind.MessageChanged,GoogleModels.Qualify(m.ChatId),[GoogleModels.Qualify(m.Id)],isNew && kind=="message",DateTimeOffset.UtcNow)); ReleaseIfSettled(m.ChatId); if(from is not null) MessageMoved(from,m); }
+            { var from=messages.TryGetValue(m.Id,out var before) && before.ChatId!=m.ChatId ? before.ChatId : null; var isNew=messages.TryAdd(m.Id,m); GoogleMessagesLog.Write($"event=message state={(isNew ? "new" : "updated")} chat={GoogleMessagesLog.Tag(m.ChatId)} message={GoogleMessagesLog.Tag(m.Id)} status={GoogleMessagesLog.Status(m.Status)} chatUnread={(chats.TryGetValue(m.ChatId,out var owner) ? owner.Unread.ToString() : "unknown")}{ReaderCounts([m],owner)}"); if(!isNew) RememberMessage(m); else ArchiveMessages([m]); if(isNew && kind=="message") NoteRealtimeMessage(); if(isNew) HoldIfUnsettled(m); ReinstateIfReal(m); ArrivalHold.Deliver(m.ChatId,new(RealtimeKind.MessageChanged,Models.Qualify(m.ChatId),[Models.Qualify(m.Id)],isNew && kind=="message",DateTimeOffset.UtcNow)); ReleaseIfSettled(m.ChatId); if(from is not null) MessageMoved(from,m); }
         }
         catch (Exception) { GoogleMessagesLog.Write("event=invalid action=resync"); Publish(new(RealtimeKind.ResyncRequired)); }
     }
     public async Task<BackendInfo> DiscoverAsync(CancellationToken cancellationToken=default) { ClearPause(); await ConnectAsync(cancellationToken); return new("Google Messages","Direct",true); }
-    public async Task<IReadOnlyList<ChatAccount>> GetAccountsAsync(CancellationToken cancellationToken=default) { await ConnectAsync(cancellationToken); return [new(GoogleModels.Account,"Google Messages","Google Messages","Connected","libgm","direct")]; }
+    public async Task<IReadOnlyList<ChatAccount>> GetAccountsAsync(CancellationToken cancellationToken=default) { await ConnectAsync(cancellationToken); return [new(Models.Account,"Google Messages","Google Messages","Connected","libgm","direct")]; }
     public async Task<ChatSummary> GetChatAsync(string chatId,CancellationToken cancellationToken=default)
     {
-        var id=GoogleModels.Native(chatId);
+        var id=Models.Native(chatId);
         if(!chats.TryGetValue(id,out var chat)) return Summary(await RefreshChatAsync(chatId,cancellationToken));
         return chat is null ? throw new BackendException(BackendFailure.Unavailable,"That conversation isn't available right now. Refresh and try again.") : Summary(chat);
     }
@@ -278,22 +291,22 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
         await ConnectAsync(cancellationToken);
         await GetChatAsync(chatId,cancellationToken);
         using var cursor = olderThan is null ? null : JsonDocument.Parse(olderThan);
-        var result=await ReadAsync("ui.messagePage",new {chatId=GoogleModels.Native(chatId),cursor=cursor?.RootElement,count},cancellationToken);
+        var result=await ReadAsync("ui.messagePage",new {chatId=Models.Native(chatId),cursor=cursor?.RootElement,count},cancellationToken);
         var list=result.GetProperty("messages").Deserialize<GoogleMessage[]>(Json) ?? [];
-        GoogleMessagesLog.Write($"history chat={GoogleMessagesLog.Tag(chatId)} returned={list.Length} older={olderThan is not null}{ReaderCounts(list,chats.GetValueOrDefault(GoogleModels.Native(chatId)))}");
-        foreach(var message in list) if(message.ChatId==GoogleModels.Native(chatId)) RememberMessage(message);
+        GoogleMessagesLog.Write($"history chat={GoogleMessagesLog.Tag(chatId)} returned={list.Length} older={olderThan is not null}{ReaderCounts(list,chats.GetValueOrDefault(Models.Native(chatId)))}");
+        foreach(var message in list) if(message.ChatId==Models.Native(chatId)) RememberMessage(message);
         var next=result.GetProperty("cursor").ValueKind==JsonValueKind.Null ? null : result.GetProperty("cursor").GetRawText();
         var more=list.Length>0 && next is not null && next!=olderThan;
-        return new(list.Where(m=>m.ChatId==GoogleModels.Native(chatId)).Select(m=>GoogleModels.Map(m,chats[m.ChatId])).OrderBy(m=>m.Timestamp).ToArray(),more,more?next:null,null);
+        return new(list.Where(m=>m.ChatId==Models.Native(chatId)).Select(m=>Models.Map(m,chats[m.ChatId])).OrderBy(m=>m.Timestamp).ToArray(),more,more?next:null,null);
     }
     public async Task<ChatMessage> ResolveMessageAsync(string chatId,string messageId,CancellationToken cancellationToken=default)
     {
         if (messageId.StartsWith(PendingPrefix, StringComparison.Ordinal)) return await ResolvePendingAsync(chatId,messageId,cancellationToken);
-        var native=GoogleModels.Native(messageId);
+        var native=Models.Native(messageId);
         if(!messages.TryGetValue(native,out var message)) { await FetchMessagePageAsync(chatId,null,StatusPageSize,cancellationToken); messages.TryGetValue(native,out message); }
-        if(message is null || message.ChatId!=GoogleModels.Native(chatId)) throw new BackendException(BackendFailure.Unavailable,"That message isn't available right now. Refresh and try again.");
+        if(message is null || message.ChatId!=Models.Native(chatId)) throw new BackendException(BackendFailure.Unavailable,"That message isn't available right now. Refresh and try again.");
         await GetChatAsync(chatId,cancellationToken);
-        return GoogleModels.Map(message,chats[message.ChatId]);
+        return Models.Map(message,chats[message.ChatId]);
     }
     // The memory half of ResolveMessageAsync and nothing else: no page read, no conversation read, no pending lookup.
     // A display-only caller (the activity stream) uses it, so a miss is an answer rather than a reason to ask the phone.
@@ -301,8 +314,8 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
     {
         if (messageId.StartsWith(PendingPrefix, StringComparison.Ordinal) ||
             !chatId.StartsWith("google-direct:", StringComparison.Ordinal) || !messageId.StartsWith("google-direct:", StringComparison.Ordinal)) return null;
-        if (!messages.TryGetValue(GoogleModels.Native(messageId),out var message) || message.ChatId!=GoogleModels.Native(chatId)) return null;
-        return chats.TryGetValue(message.ChatId,out var chat) ? GoogleModels.Map(message,chat) : null;
+        if (!messages.TryGetValue(Models.Native(messageId),out var message) || message.ChatId!=Models.Native(chatId)) return null;
+        return chats.TryGetValue(message.ChatId,out var chat) ? Models.Map(message,chat) : null;
     }
     private void RememberMessage(GoogleMessage message)
     {
@@ -376,13 +389,13 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
     public async Task LoadLinkPreviewsAsync(string chatId, IReadOnlyList<string> messageIds, CancellationToken cancellationToken = default)
     {
         if (!connected || helper is not { } connection) { LinkPreviewsDeferred("not_connected"); throw NotConnectedYet(); }
-        var ids = messageIds.Where(GoogleModels.Owns).Distinct(StringComparer.Ordinal).TakeLast(200).Select(GoogleModels.Native).ToArray();
+        var ids = messageIds.Where(Models.Owns).Distinct(StringComparer.Ordinal).TakeLast(200).Select(Models.Native).ToArray();
         if (ids.Length == 0) return;
         // Best effort, like typing: a website is never a reason to queue behind history or hold the pipe open. A pipe busy
         // for the moment is asked again a moment later, a few times, and then left to the conversation's next render.
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         if (await GoogleSkippedCalls.TryAsync(token => connection.CallAsync("ui.linkPreviews", new { chatId = native, messageIds = ids }, token, skipIfBusy: true),
             LinkPreviewBusyRetries, timeout.Token)) return;
         LinkPreviewsDeferred("busy");
@@ -406,7 +419,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
         // Best effort: never queue behind a send/history call or reconnect just to send typing.
         // UI cancellation must not kill the shared helper while its response is being drained.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await connection.CallAsync("ui.typing",new {chatId=GoogleModels.Native(chatId),expiresAt=DateTimeOffset.UtcNow.AddSeconds(3)},timeout.Token,skipIfBusy:true);
+        await connection.CallAsync("ui.typing",new {chatId=Models.Native(chatId),expiresAt=DateTimeOffset.UtcNow.AddSeconds(3)},timeout.Token,skipIfBusy:true);
     }
     public async IAsyncEnumerable<TypingUpdate> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken=default)
     {
@@ -423,7 +436,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
                 foreach(var chat in typingChats.ToArray())
                 {
                     var users=connected ? typing.Active(chat,DateTimeOffset.UtcNow) : [];
-                    chats.TryGetValue(GoogleModels.Native(chat),out var detail);
+                    chats.TryGetValue(Models.Native(chat),out var detail);
                     var persons=users.Where(id=>detail?.Participants.Any(p=>p.Id==id && p.Self)!=true).Select(id=>new TypingParticipant(id,detail?.Participants.FirstOrDefault(p=>p.Id==id)?.Name ?? "Someone",typing.ExpiresAt(chat,id))).ToArray();
                     current.Add(new(chat,persons));
                     if(users.Count==0) typingChats.Remove(chat);

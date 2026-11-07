@@ -128,7 +128,7 @@ internal sealed partial class ServerPage
             case "/manage/backups" when backups is not null:
                 title = "Backups";
                 await BackupsCardAsync(card, token, context.Request, context.RequestAborted).ConfigureAwait(false);
-                if (backups.Service.FolderChoiceFile is not null) refresh = null;
+                refresh = null; // A refresh must not erase a share sign-in being entered.
                 break;
             case "/manage/storage" when storage is not null:
                 title = "Storage";
@@ -225,7 +225,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         _ => "Account",
     };
 
-    private static string SignInHref(string service) => SignInPath + "?service=" + service;
+    private static string? AccountSignInKey(string service, ServerAccount account) => service != RemoteSignInServices.Voice && NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(account.Key) ? account.Key : null;
+    private static string SignInHref(string service, string? account = null) => SignInPath + "?service=" + service + (account is null ? "" : "&amp;account=" + account);
 
     private static string ServiceOf(string provider) => SignInServiceList.FirstOrDefault(item => item.Provider == provider).Service ?? "";
 
@@ -277,7 +278,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         {
             var service = ServiceOf(account.Provider);
             var offered = DesktopSignIn is null && signInServices is { } services && RemoteSignInSessions.Offers(services, service);
-            rows.Append(Row($"{Provider(account.Provider)} isn't connected", Who(account), null, offered ? "<a class=\"button\" href=\"" + SignInHref(service) + "\">Sign in</a>" : null, Icon(account.Provider)));
+            rows.Append(Row($"{Provider(account.Provider)} isn't connected", Who(account), null, offered ? "<a class=\"button\" href=\"" + SignInHref(service, AccountSignInKey(service, account)) + "\">Sign in</a>" : null, Icon(account.Provider)));
         }
         if (tailnet?.Latest is { NeedsAttention: true } view)
             rows.Append(Row(view.State == "NeedsLogin" ? "Tailscale needs signing in" : view.NeedsApproval ? "Tailscale needs the server approved" : "Tailscale has a step left", null, null, "<a class=\"button\" href=\"/manage/tailscale\">Review</a>"));
@@ -309,6 +310,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
     private void AccountsSection(StringBuilder body, IReadOnlyList<ServerAccount>? accounts, ServerAccount[] ordered, string open, HttpContext context, string token)
     {
         body.Append("<section class=\"sec\" id=\"accounts\"><div class=\"sh\"><h2>Accounts</h2></div><div class=\"box\">");
+        if (DesktopAccountSignIn is not null || signInServices?.AccountSignIn is not null)
+            body.Append(Para("Before adding another account, update Message Link on every device. Older apps cannot connect after an additional account is added."));
         if (accounts is null) body.Append(Row("The server couldn't list its accounts just now.", null, null, null));
         else
         {
@@ -336,7 +339,11 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
                 {
                     var id = AccountId(account);
                     var items = new List<string>();
-                    if (offered) items.Add(Item(SignInHref(service), SignInMany(service) ? "Add a number…" : "Sign in again…", (SignInMany(service) ? "Add a number: " : "Sign in again: ") + name));
+                    if (offered)
+                    {
+                        items.Add(Item(SignInHref(service, AccountSignInKey(service, account)), service == RemoteSignInServices.Voice ? "Add a number…" : "Sign in again…", "Sign in: " + name));
+                        if (service != RemoteSignInServices.Voice && SignInMany(service)) items.Add(Item(SignInHref(service, "new"), "Add account…", "Add account: " + name));
+                    }
                     if (account.Removable) items.Add(Item("/accounts/remove?id=" + Html(Uri.EscapeDataString(id)), "Remove…", "Remove " + AccountLabel(account), danger: true));
                     else items.Add(MenuNote(provider == ServerAccountProviders.GoogleMessages ? UnpairGoogle : "An account being moved between this server and a PC can't be removed until the move finishes."));
                     body.Append(Row(name, Who(account), Word(account.State), Act(Menu("Manage " + AccountLabel(account), open == id, items)), Icon(provider), account.State == ServerAccountStates.Saved, "row-" + id));

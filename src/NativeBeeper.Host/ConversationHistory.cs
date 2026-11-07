@@ -182,23 +182,29 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     /// </summary>
     public void Ended(string account, string? key)
     {
+        if (account == "account-slot" && NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(key))
+        {
+            foreach (var service in new[] { "google-direct:", "messenger:", "instagram:" }) Ended(new NativeBeeper.Core.Messaging.AccountNamespace(key).Qualify(service), null);
+            return;
+        }
         var prefix = account switch
         {
             "messenger" => "messenger:",
             "instagram" => InstagramPrefix,
             "voice" when !string.IsNullOrEmpty(key) => NativeBeeper.App.Services.GoogleVoice.GoogleVoiceModels.Account(key) + ":",
             "google-reset" => "google-direct:",
-            _ => null,
+            _ => NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(account) is not null ? account : null,
         };
         if (prefix is null) return;
+        bool Matches(string id) => id.StartsWith(prefix, StringComparison.Ordinal) && (NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(prefix) is not null || NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(id) is null);
         _ = Task.Run(async () =>
         {
             try
             {
                 await ready.Task.ConfigureAwait(false);
-                var forgotten = await ForgetAsync(held.Keys.Where(id => id.StartsWith(prefix, StringComparison.Ordinal)).ToArray()).ConfigureAwait(false);
+                var forgotten = await ForgetAsync(held.Keys.Where(id => Matches(id)).ToArray()).ConfigureAwait(false);
                 // Its list rows leave the feed too, the conversations never filled among them.
-                var rows = (await db.ReadListedAsync(stop.Token).ConfigureAwait(false)).Where(id => id.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+                var rows = (await db.ReadListedAsync(stop.Token).ConfigureAwait(false)).Where(id => Matches(id)).ToArray();
                 foreach (var id in rows) listed.TryRemove(id, out _);
                 var gone = await db.WriteRowsAsync([.. rows.Select(id => new HistoryListRow(id, null))], stop.Token).ConfigureAwait(false);
                 log($"history store forgotten account={account} chats={forgotten} rows={gone.Count}");

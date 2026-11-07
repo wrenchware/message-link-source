@@ -93,6 +93,11 @@ public static class ProviderScopes
     /// </summary>
     public static string? OfChat(string chatId)
     {
+        if (AccountNamespace.KeyOf(chatId) is { } slot)
+        {
+            var service = chatId.StartsWith(Instagram, StringComparison.Ordinal) ? Instagram : chatId.StartsWith(Messenger, StringComparison.Ordinal) ? Messenger : chatId.StartsWith(Google, StringComparison.Ordinal) ? Google : null;
+            return service is null ? null : new AccountNamespace(slot).Qualify(service);
+        }
         if (chatId.StartsWith(Instagram, StringComparison.Ordinal)) return Instagram;
         if (chatId.StartsWith(VoicePrefix, StringComparison.Ordinal)) return VoiceKeyOf(chatId, VoicePrefix) is { } key ? Voice(key) : null;
         return chatId.StartsWith(Messenger, StringComparison.Ordinal) ? Messenger : Google;
@@ -106,13 +111,20 @@ public static class ProviderScopes
     public static string? OfAttachment(MessageAttachment attachment)
     {
         if (attachment.Id is { } id && id.StartsWith(VoiceMedia, StringComparison.Ordinal)) return VoiceKeyOf(id, VoiceMedia) is { } key ? Voice(key) : null;
-        if (Has(attachment, InstagramMedia)) return Instagram;
-        if (Has(attachment, MessengerMedia)) return Messenger;
-        return attachment.Id?.StartsWith(GoogleMedia, StringComparison.Ordinal) == true ? Google : null;
+        if (Has(attachment, InstagramMedia)) return MediaScope(attachment, InstagramMedia, Instagram);
+        if (Has(attachment, MessengerMedia)) return MediaScope(attachment, MessengerMedia, Messenger);
+        return attachment.Id?.StartsWith(GoogleMedia, StringComparison.Ordinal) == true ? MediaScope(attachment, GoogleMedia, Google) : null;
     }
 
     /// <summary>An attachment id that <see cref="OfAttachment"/> maps back to <paramref name="scope"/>: what the host asks its own port about to learn whether a scope saves.</summary>
-    public static string ProbeAttachmentId(string scope) => scope switch
+    private static string MediaScope(MessageAttachment attachment, string prefix, string service)
+    {
+        var value = attachment.Id?.StartsWith(prefix, StringComparison.Ordinal) == true ? attachment.Id : attachment.SourceUrl!;
+        return new AccountNamespace(AccountNamespace.KeyOf(value)).Qualify(service);
+    }
+
+    public static string ProbeAttachmentId(string scope) => AccountNamespace.KeyOf(scope) is { } slot
+        ? new AccountNamespace(slot).Qualify(ProbeAttachmentId(new AccountNamespace(slot).Native(scope))) : scope switch
     {
         Google => GoogleMedia + "probe",
         Messenger => MessengerMedia + "probe",

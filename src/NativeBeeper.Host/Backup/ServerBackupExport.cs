@@ -24,7 +24,7 @@ internal static class ServerBackupExport
     internal static readonly string[] SharedLeftOut = [Protocol.SharedCategories.Outbox + ":"];
 
     public static ServerBackupManifest Write(Stream payload, ServerBackupPaths paths, IStateProtector protector, BackupSettingsPart settings,
-        IEnumerable<MessengerHistoryPage>? messenger, string? leftOut, string app, DateTimeOffset created, CancellationToken cancellationToken)
+        IEnumerable<MessengerHistoryPage>? messenger, string? leftOut, string app, DateTimeOffset created, CancellationToken cancellationToken, IReadOnlyDictionary<string, IServerBackupMessenger>? additionalMessenger = null)
     {
         byte[] Open(byte[] sealedBytes) => protector.UnprotectAsync(sealedBytes).GetAwaiter().GetResult();
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -124,8 +124,10 @@ internal static class ServerBackupExport
                 }
                 summary = exported is null || account is null ? throw new InvalidDataException("messenger_incomplete") : new(account, number, exported);
             }
-            manifest = new(ServerBackupArchive.Format, ServerBackupArchive.Version, Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)),
-                created, app, epoch, counts, pages, summary, summary is null ? leftOut : null);
+            var added = ServerBackupAccounts.Write(zip, paths, protector, additionalMessenger, counts, pages, cancellationToken);
+            if (added.LeftOut is not null && leftOut != "failed") leftOut = added.LeftOut;
+            manifest = new(ServerBackupArchive.Format, added.Accounts is null ? 1 : ServerBackupArchive.Version, Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)),
+                created, app, epoch, counts, pages, summary, leftOut is "not_connected" or "failed" ? leftOut : summary is null ? leftOut : null) { Accounts = added.Accounts };
             // Last, as a PC backup's: only now are the counts known. A reader finds it through the ZIP's directory.
             ServerBackupArchive.Put(zip, ServerBackupArchive.ManifestEntry, JsonSerializer.SerializeToUtf8Bytes(manifest, ServerBackupArchive.Json));
         }

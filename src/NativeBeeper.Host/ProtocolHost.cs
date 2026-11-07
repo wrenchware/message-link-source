@@ -61,7 +61,7 @@ internal sealed record ProtocolHostOptions(
     SharedStateStore? SharedState = null, HostUnarchive? IncomingUnarchive = null, SavedPhotos? SavedPhotos = null, HostScheduled? Scheduled = null,
     IRemoteSignInHost? RemoteSignIn = null, Func<bool>? BrowserOutOfDate = null, IRemoteSignInHost? VoiceRemoteSignIn = null,
     IAccountMove? AccountMove = null, IAccountGate? AccountGate = null, IHostLogs? Logs = null, IServerAdmin? Admin = null, IPrivateStateStore? ConversationSyncStore = null,
-    NativeBeeper.Storage.HistoryDatabase? WholeHistory = null, IServerBackup? Backup = null, IRemoteCookieSignInHost? MetaRemoteSignIn = null);
+    NativeBeeper.Storage.HistoryDatabase? WholeHistory = null, IServerBackup? Backup = null, IRemoteCookieSignInHost? MetaRemoteSignIn = null, ProviderAccounts? Accounts = null, IHelperCellUnprotector? HelperCells = null);
 
 /// <summary>
 /// The ports a host serves in place of the providers it does not run (the Linux server: Google Messages, Google Voice and Instagram, SWITCHBOARD.md
@@ -117,7 +117,10 @@ internal sealed class ProtocolHost : IDisposable
         return StatePublisher.Latest?.State.Identity;
     }
 
-    public ProtocolServices Services { get; }
+    public ProtocolServices Services { get; private set; }
+    internal Func<string, string?, CancellationToken, Task<NativeAuthenticationTarget>>? NativeAuthentication { get; set; }
+
+    internal void ConfigureAccountSignIn(Func<string, string, CancellationToken, Task<ProtocolServices>> select) => Services = Services with { AccountSignIn = select };
     public string Version { get; }
     public EventLog EventLog { get; }
     public StatePublisher StatePublisher { get; }
@@ -132,6 +135,12 @@ internal sealed class ProtocolHost : IDisposable
         var directory = options.Directory;
         var media = options.Media;
         var google = options.Google;
+        var accounts = options.Accounts;
+        if (accounts is not null)
+        {
+            accounts.LoadAsync().GetAwaiter().GetResult();
+            messaging.Accounts = accounts; directory.Accounts = accounts; media.Accounts = accounts; options.Typing.Accounts = accounts;
+        }
         var log = options.Log;
         // The account ports as BackendServices registers them. The window's own registrations are replaced by proxies over these
         // (App.Protocol.cs), so they are made here rather than asked of the container; the adapters hold no state of their own.
@@ -149,11 +158,11 @@ internal sealed class ProtocolHost : IDisposable
         // Each connection's version: the incoming unarchive leaves groups to a connected client older than the version that gave them to the host.
         var roster = new ConnectionRoster();
         // A server runs the incoming unarchive in the log's source, so it sees every provider event once however many clients read the log (slice 9).
-        var source = options.ProviderFeed;
+        var source = accounts?.Over(options.ProviderFeed) ?? options.ProviderFeed;
         // A server's whole history sees each event first, nearest the providers: the messages it names are in the copy before anything else reads them (stage 8).
         var history = options.WholeHistory is { } historyStore
             ? new ConversationHistory(historyStore, messaging, messaging, messaging, messaging, messaging, messaging, log,
-                chatId => !chatId.StartsWith("instagram:", StringComparison.Ordinal) || options.Instagram.TryTakeHistoryRead(DateTimeOffset.UtcNow))
+                chatId => !chatId.StartsWith("instagram:", StringComparison.Ordinal) || (accounts?.Instagram(chatId) ?? options.Instagram).TryTakeHistoryRead(DateTimeOffset.UtcNow))
             : null;
         if (history is not null) source = history.Over(source);
         // The identity the host serves, made below: the key its shared rows are filed under, which the incoming unarchive reads the merges by.
@@ -181,6 +190,7 @@ internal sealed class ProtocolHost : IDisposable
         history?.Attach(eventLog);
         // Not told of every sign-in the way the window's own port is, so it follows the files the key is read from itself.
         IHostIdentity? identity = options.HostTokens is { } tokens ? HostIdentityPort.Over(tokens, options.Messenger, options.Instagram, options.VoiceAccounts, followsFiles: true) : null;
+        if (identity is not null && accounts is not null) identity = new MultipleAccountIdentity(identity, accounts);
         // A server's shared state is filed under its space key (Server\space.protected), pinned at the first write, and that key is what the host serves as
         // LocalKey from then on, so a later Google pairing on the server cannot orphan the rows (stage 6 slice 2). Only a host given a shared state (the two
         // servers) does this; the app's in-process and loopback hosts serve the live key exactly as before and never touch the file.
@@ -206,10 +216,12 @@ internal sealed class ProtocolHost : IDisposable
             instagramAccount, googleAccount, voiceAccounts, options.Typing, identity,
             GoogleAbsent: unavailable?.GoogleAbsent == true, VoiceAbsent: unavailable?.VoiceAbsent == true, InstagramAbsent: unavailable?.Instagram is not null,
             UnarchivesChats: unarchivesChats, FiresScheduled: scheduled is not null,
-            ChromeOutOfDate: () => options.RemoteSignIn?.BrowserOutOfDate == true || options.BrowserOutOfDate?.Invoke() == true),
+            ChromeOutOfDate: () => options.RemoteSignIn?.BrowserOutOfDate == true || options.BrowserOutOfDate?.Invoke() == true,
+            AdditionalScopes: accounts is null ? null : () => accounts.Added.Select(ProviderAccounts.Scope).ToArray()),
             AttachmentBatchRules.ItemLimit);
         var statePublisher = new StatePublisher(eventLog, builder.Build, write: log);
         publisher = statePublisher;
+        if (accounts is not null) accounts.Changed += () => statePublisher.Refresh();
         statePublisher.Attach(messengerAccount, instagramAccount, googleAccount, voiceAccounts);
         var step = new StepClock(log);
         statePublisher.Start();
@@ -226,10 +238,12 @@ internal sealed class ProtocolHost : IDisposable
         // Files and a first message go around the history's own ports, so they are read back into it (stage 9).
         var readBack = history is null ? null : new HistoryReadBack(media, media, directory, history);
         // chats.sync lists the rows as the history builds them, their last message from its copy (stage 9), as chats.list does.
-        var services = new ProtocolServices(Backend: unavailable?.Backend ?? google, Chats: history is null ? messaging : history,
+        var multiAdmin = accounts is not null && options.Admin is not null ? new MultipleAccountAdmin(options.Admin, accounts) : null;
+        if (options.IncomingCards is IncomingCardRequester incomingCards) incomingCards.Accounts = accounts;
+        var services = new ProtocolServices(Backend: accounts is null ? unavailable?.Backend ?? google : new MultipleAccountBackend(unavailable?.Backend ?? google, accounts, log), Chats: history is null ? messaging : history,
             ConversationSync: new ConversationSync(history is null ? messaging : history, options.ConversationSyncStore, log), Sender: history is null ? messaging : history,
             Peek: history is null ? messaging : history, Actions: history is null ? messaging : history, History: history is null ? messaging : history, WholeHistory: history,
-            Contacts: directory, FrequentContacts: directory, Groups: directory, Search: google, ReadState: new PrivateReadingHostReadState(messaging), Settings: messaging,
+            Contacts: directory, FrequentContacts: directory, Groups: directory, Search: accounts is null ? google : new ProviderAccountSearch(accounts, google), ReadState: new PrivateReadingHostReadState(messaging), Settings: messaging,
             Attachments: readBack ?? (IAttachmentBackend)media, Snoozes: options.Snoozes, Mutations: history is null ? messaging : history, Deletion: messaging,
             GroupManagement: directory, FirstMessage: readBack ?? (IFirstMessageStarter)directory,
             Events: eventLog, Media: media, AttachmentBatches: readBack ?? (IAttachmentBatchBackend)media, Uploads: uploads,
@@ -238,9 +252,9 @@ internal sealed class ProtocolHost : IDisposable
             InstagramAccount: options.AccountGate is { } instagramGate ? new GatedInstagramAccount(instagramAccount, instagramGate) : instagramAccount,
             GoogleAccount: googleAccount, VoiceAccounts: voiceAccounts, State: statePublisher, Typing: new PrivateReadingHostTyping(options.Typing), TypingFeed: typingHub, ComposerActivity: options.Typing,
             Diagnostics: options.Diagnostics,
-            HelperRestarts: GateRestarts(unavailable?.HelperRestarts ?? new HostHelperRestarter(google, options.Keeper, options.Messenger, options.Instagram, options.VoiceAccounts, log), options.AccountGate), KeptHistory: options.KeptHistory,
+            HelperRestarts: GateRestarts(unavailable?.HelperRestarts ?? new HostHelperRestarter(google, options.Keeper, options.Messenger, options.Instagram, options.VoiceAccounts, log) { Accounts = accounts }, options.AccountGate), KeptHistory: accounts is not null && options.HelperCells is { } cells ? new ProviderAccountKeptHistory(accounts, options.KeptHistory ?? new MessengerKeptHistory(() => options.Messenger.SelfId is { } self ? MessengerKeptAccount.For(self) : null, options.Messenger.KnownChat, log, cells), cells, log) : options.KeptHistory,
             MediaPreparer: media, IncomingCards: options.IncomingCards, ClientState: options.ClientState, Restores: options.Restores,
-            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: options.AccountMove, Logs: options.Logs, Admin: options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, RemoteSignIn: options.RemoteSignIn, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
+            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: accounts is not null && options.AccountMove is { } move ? new MultipleAccountMove(move, accounts) : options.AccountMove, Logs: options.Logs, Admin: multiAdmin ?? options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, RemoteSignIn: options.RemoteSignIn, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
             AccountEnded: (account, key) =>
             {
                 savedPhotos?.Ended(account, key);
@@ -249,12 +263,14 @@ internal sealed class ProtocolHost : IDisposable
             // A PC's choices taken into the shared state once (slice 13): only a server with a shared state and an identity, and a key it adopts is put in its state.
             Imports: options.SharedState is { } importing && identity is not null
                 ? new HostStateImport(importing, uploads, () => Task.Run(() => statePublisher.Refresh()), log) : null);
+        services = services with { RequiredProtocol = () => accounts?.RequiresAccountProtocol == true ? ProtocolVersion.MultipleAccounts : ProtocolVersion.Minimum };
+        if (multiAdmin is not null) multiAdmin.Ended = services.AccountEnded;
         // Each commit to the shared state goes into the log in rev order, and the keys it may hold are judged under the profile the host files them under
         // now: the one its clients take as theirs from the state (IdentityAccessTokens), which with an identity is the space's (attached above). Without an
         // identity no single row is shared.
         if (identity is null) options.SharedState?.Attach(change => eventLog.AppendShared(change), null);
         // What the providers' catch-ups name goes into the log in the order they happen, ahead of the events that follow them.
-        var caughtUp = new BackendCaughtUp(google, options.Messenger, options.Instagram);
+        var caughtUp = new BackendCaughtUp(google, options.Messenger, options.Instagram, accounts);
         caughtUp.CaughtUp += notice => eventLog.AppendCaughtUp(notice);
         // A server keeps its clients' saved photos' originals, from the rows they write (slice 8).
         savedPhotos = options.SharedState is { } sharedRows && options.SavedPhotos is { } kept ? new HostSavedPhotos(sharedRows, kept, log) : null;

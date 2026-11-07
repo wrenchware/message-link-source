@@ -10,7 +10,7 @@ using NativeBeeper.Protocol;
 namespace NativeBeeper.Host.Backup;
 
 /// <summary>
-/// The server's own backup (SWITCHBOARD.md stage 10, step 10.2, D7 and D8): one encrypted file a day into the folder its host maps (<c>/backups</c> in Docker), with
+/// The server's own backup (SWITCHBOARD.md stage 10, step 10.2, D7 and D8): one encrypted file a day into a local folder or SMB share chosen on the page, with
 /// the server's data and identity and never a service's sign-in, on the PC backup's rules (<see cref="BackupSettings"/>): every 24 hours, an hour after a failure, the
 /// newest read back a day after it was written and weekly after that, five kept under the server's own tag (the newest holding each Messenger account's history never
 /// pruned), at below-normal priority and never in the first minutes after a start.
@@ -22,7 +22,7 @@ namespace NativeBeeper.Host.Backup;
 /// good backup while backups are on raises <see cref="StaleNotice"/> once (a push to the phones).
 /// Logged: <c>server backup written|failed|verify|cancelled|schedule ...</c> with fixed words, counts and milliseconds only.
 /// </remarks>
-internal sealed class ServerBackupService : IServerBackup
+internal sealed partial class ServerBackupService : IServerBackup
 {
     /// <summary>How long without a good backup, while backups are on, before the phones are told.</summary>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromDays(2);
@@ -30,7 +30,7 @@ internal sealed class ServerBackupService : IServerBackup
 
     private readonly ServerBackupPaths paths;
     private readonly IStateProtector protector;
-    // The host's mapping on Linux, fixed for the run; on Windows the person's choice, which ChooseFolder changes (volatile: read by the schedule and the page).
+    // The local path or SMB display address; the schedule and page read it across threads.
     private volatile string? folder;
     private readonly IServerBackupMessenger? messenger;
     private readonly string app;
@@ -46,13 +46,20 @@ internal sealed class ServerBackupService : IServerBackup
     private CancellationToken lifetime => stopped.Token;
     private volatile bool busy, checking;
 
-    /// <param name="folder">Where backups go (<c>MESSAGES_BACKUPS</c>, or <c>/backups</c> when that is mapped); null leaves backups off, and the page says how to map one.</param>
+    /// <param name="folder">Where backups go (<c>MESSAGES_BACKUPS</c>, or <c>/backups</c> when that is mapped); used until the page keeps an explicit destination.</param>
     public ServerBackupService(ServerBackupPaths paths, IStateProtector protector, string? folder, IServerBackupMessenger? messenger, string app, Action<string> log,
         TimeProvider? time = null)
     {
         this.paths = paths; this.protector = protector; this.folder = folder; this.messenger = messenger; this.app = app; this.log = log; this.time = time ?? TimeProvider.System;
         // A server's backups are on unless its page turned them off: a mapped folder is the owner's request for them, and nothing runs before a password is set.
-        settings = (File.Exists(paths.BackupSettings) ? BackupSettings.Load(paths.BackupSettings) : new BackupSettings(Enabled: true)) with { Folder = folder };
+        LoadDestination();
+        settings = (File.Exists(paths.BackupSettings) ? BackupSettings.Load(paths.BackupSettings) : new BackupSettings(Enabled: true)) with { Folder = this.folder };
+        if (destination is { Id: not null } && settings.DestinationId != destination.Id) settings = ForDestination(settings, destination.Id);
+        // The password and its change time are one protected file. Recover the time if a settings save was interrupted.
+        if (HasPassword)
+            try { if (ReadPasswordRecordAsync().GetAwaiter().GetResult().At is { } at) settings = settings with { PasswordSetAt = at }; }
+            catch (BackupFailedException) { }
+        SweepTransfers();
     }
 
     /// <summary>The wait before the schedule first looks (well clear of the start), and between looks. The harness makes them short.</summary>
@@ -75,12 +82,6 @@ internal sealed class ServerBackupService : IServerBackup
     public string? Folder => folder;
     public ServerBackupPaths Paths => paths;
 
-    /// <summary>
-    /// Where the person's choice of folder is kept, on a host whose folder is that choice (the Windows server, SWITCHBOARD.md 10.7, D7: any folder its user can write
-    /// to, a mapped drive, <c>\\nas\share</c> or OneDrive included); null on a host whose folder is its mapping (Docker's <c>/backups</c>), which the page cannot change.
-    /// </summary>
-    public string? FolderChoiceFile { get; init; }
-
     /// <summary>The folder kept in <paramref name="file"/>, or null when there is none (or it cannot be read).</summary>
     public static string? ReadFolderChoice(string file)
     {
@@ -93,35 +94,44 @@ internal sealed class ServerBackupService : IServerBackup
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    /// <summary>
-    /// Backups go to <paramref name="chosen"/> from the next one on: a full path, on a drive or share that is there now. A folder that is not there yet is made (only here: a Windows
-    /// path names its drive or share, so one that is not mounted fails rather than filling the PC's own disk, and a Docker server's folder is its mapping), and is checked by writing to it.
-    /// Kept for the next start. Answers <c>chosen</c>, or with nothing changed why not: <c>fixed</c> (this host's folder is its mapping), <c>not_full</c>, <c>missing</c>, <c>denied</c> or <c>unsaved</c>.
-    /// </summary>
+    // Existing Linux directories only: a missing bind path must not become a disposable container directory.
     public string ChooseFolder(string? chosen)
     {
-        if (FolderChoiceFile is not { } file) return "fixed";
         chosen = chosen?.Trim().Trim('"');
         if (string.IsNullOrEmpty(chosen) || chosen.Length > 1024 || !Path.IsPathFullyQualified(chosen)) return "not_full";
         try
         {
             chosen = Path.TrimEndingDirectorySeparator(Path.GetFullPath(chosen));
-            if (Path.GetPathRoot(chosen) is not { Length: > 0 } root || !Directory.Exists(root)) return "missing";
-            Directory.CreateDirectory(chosen);
-            var probe = Path.Combine(chosen, ".messages-write-check");
-            File.WriteAllBytes(probe, []);
-            File.Delete(probe);
-            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            var temporary = file + ".tmp";
-            File.WriteAllText(temporary, chosen);
-            File.Move(temporary, file, overwrite: true);
+            if (Inside(chosen, paths.Data) || Inside(chosen, paths.Keys)) return "internal";
+            // On Linux a missing bind path must never be created on the container's own filesystem.
+            if (!Directory.Exists(chosen))
+            {
+                if (!OperatingSystem.IsWindows() || !Directory.Exists(Path.GetPathRoot(chosen))) return "missing";
+                Directory.CreateDirectory(chosen);
+            }
+            return ChooseDestinationAsync(new("local", Local: chosen), lifetime).GetAwaiter().GetResult();
         }
         catch (UnauthorizedAccessException) { return "denied"; }
-        catch (Exception failure) when (failure is IOException or ArgumentException or NotSupportedException) { return "unsaved"; }
-        folder = chosen;
-        Update(current => current);
-        log("server backup folder chosen");
-        return "chosen";
+        catch (Exception e) when (e is IOException or ArgumentException or NotSupportedException) { return "unsaved"; }
+    }
+
+    private static bool Inside(string chosen, string root)
+    {
+        static string Resolved(string path)
+        {
+            var full = Path.GetFullPath(path);
+            var current = Path.GetPathRoot(full)!;
+            foreach (var part in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = Path.Combine(current, part);
+                if (Directory.Exists(current) && new DirectoryInfo(current).ResolveLinkTarget(true) is { } resolved) current = resolved.FullName;
+            }
+            return Path.TrimEndingDirectorySeparator(current);
+        }
+        var path = Resolved(chosen);
+        var boundary = Resolved(root);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return path.Equals(boundary, comparison) || path.StartsWith(boundary + Path.DirectorySeparatorChar, comparison);
     }
     public bool HasPassword => File.Exists(paths.BackupPassword);
     public bool IsBusy => busy;
@@ -142,11 +152,11 @@ internal sealed class ServerBackupService : IServerBackup
             : !hasPassword ? ServerBackupStates.NoPassword
             : current.LastFailed ? ServerBackupStates.Failing
             : ServerBackupStates.On;
-        int kept = 0;
-        if (hasFolder && BackupFolder.IsInstallTag(current.Install))
+        int kept = UsesSmb ? remoteKept : 0;
+        if (hasFolder && !UsesSmb && BackupFolder.IsInstallTag(current.Install))
             try { kept = Directory.GetFiles(folder!).Count(file => BackupFolder.IsOwnBackupName(Path.GetFileName(file), current.Install!)); }
             catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { }
-        return new ServerBackupStatus(state, current.Enabled, hasFolder, hasPassword, current.LastSuccess, current.NextDue(now, hasPassword), current.LastBytes,
+        return new ServerBackupStatus(state, current.Enabled, hasFolder, hasPassword, current.LastSuccess, AuthenticationBlocked ? null : current.NextDue(now, hasPassword), current.LastBytes,
             current.LastFailed ? current.LastFailure : null, current.LastFailed ? current.LastFailureAt : null, current.LastVerifyResult, current.LastVerifiedAt,
             IsStale(current, now, hasFolder, hasPassword), kept);
     }
@@ -157,6 +167,7 @@ internal sealed class ServerBackupService : IServerBackup
 
     public Task<ServerBackupStarted> RunAsync(CancellationToken cancellationToken = default)
     {
+        if (AuthenticationBlocked) return Task.FromResult(new ServerBackupStarted(false, "auth"));
         if (folder is null) return Task.FromResult(new ServerBackupStarted(false, ServerBackupFailures.NoFolder));
         if (!HasPassword) return Task.FromResult(new ServerBackupStarted(false, ServerBackupFailures.NoPassword));
         if (busy || running.CurrentCount == 0) return Task.FromResult(new ServerBackupStarted(false, ServerBackupFailures.Busy));
@@ -174,15 +185,25 @@ internal sealed class ServerBackupService : IServerBackup
     public async Task SetPasswordAsync(string password, CancellationToken cancellationToken = default)
     {
         if (password is not { Length: >= ServerBackupLimits.MinPassword and <= ServerBackupLimits.MaxPassword }) throw new ArgumentException("The password must be 8 to 256 characters.", nameof(password));
-        var plain = Encoding.UTF8.GetBytes(password);
+        var at = time.GetUtcNow();
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new SavedBackupPassword(password, at));
+        byte[] plain = [.. PasswordHeader, .. payload];
+        CryptographicOperations.ZeroMemory(payload);
         try { await ServerRestore.WritePrivateAsync(paths.BackupPassword, await protector.ProtectAsync(plain).ConfigureAwait(false)).ConfigureAwait(false); }
         finally { CryptographicOperations.ZeroMemory(plain); }
         // As the PC's: a failure that was about the password is no longer the latest word, and backups older than this are sealed under the previous one.
-        Update(current =>
+        BackupSettings ChangedPassword(BackupSettings current)
         {
-            var next = current with { PasswordSetAt = time.GetUtcNow() };
+            var next = current with { PasswordSetAt = at };
             return next.LastFailure == "password" ? next with { LastFailure = null, LastFailureAt = null } : next;
-        });
+        }
+        try { Update(ChangedPassword); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The password WAS kept. Preserve that truthful result; its timestamp survives the same restart as its bytes.
+            lock (gate) settings = ChangedPassword(settings) with { LastFailure = "settings", LastFailureAt = at };
+            log("server backup password settings=unsaved");
+        }
         log("server backup password set");
     }
 
@@ -207,12 +228,20 @@ internal sealed class ServerBackupService : IServerBackup
         log($"server backup schedule enabled={enabled}");
     }
 
-    private async Task<string> ReadPasswordAsync()
+    private static ReadOnlySpan<byte> PasswordHeader => [0xff, 0x4d, 0x4c, 0x31]; // Invalid UTF-8: cannot be the start of a legacy password.
+    private sealed record SavedBackupPassword(string Password, DateTimeOffset? At);
+    private async Task<string> ReadPasswordAsync() => (await ReadPasswordRecordAsync().ConfigureAwait(false)).Password;
+    private async Task<SavedBackupPassword> ReadPasswordRecordAsync()
     {
         byte[] plain;
         try { plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(paths.BackupPassword).ConfigureAwait(false)).ConfigureAwait(false); }
         catch (Exception e) { throw new BackupFailedException("password", e); }
-        try { return Encoding.UTF8.GetString(plain); }
+        try
+        {
+            return plain.AsSpan().StartsWith(PasswordHeader) ? JsonSerializer.Deserialize<SavedBackupPassword>(plain.AsSpan(PasswordHeader.Length))
+                ?? throw new BackupFailedException("password") : new(Encoding.UTF8.GetString(plain), null);
+        }
+        catch (JsonException e) { throw new BackupFailedException("password", e); }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
@@ -226,23 +255,23 @@ internal sealed class ServerBackupService : IServerBackup
         try
         {
             await Task.Delay(FirstCheck, time, token).ConfigureAwait(false);
-            if (folder is not null && BackupFolder.IsInstallTag(Settings.Install))
+            if (folder is not null && !UsesSmb && BackupFolder.IsInstallTag(Settings.Install))
                 try { if (BackupFolder.SweepTemporary(folder, Settings.Install!, TemporaryAge, time.GetUtcNow().UtcDateTime) is > 0 and var swept) log($"server backup swept temporary={swept}"); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             DateTimeOffset? verifyNotBefore = null;
             while (!token.IsCancellationRequested)
             {
                 await PendingAsync(token).ConfigureAwait(false);
-                if (Settings.VerifyIsDue(time.GetUtcNow(), HasPassword, verifyNotBefore))
+                if (!AuthenticationBlocked && Settings.VerifyIsDue(time.GetUtcNow(), HasPassword, verifyNotBefore))
                 {
                     var result = await VerifyAsync(scheduled: true, token).ConfigureAwait(false);
-                    verifyNotBefore = result is "busy" or "password" ? time.GetUtcNow() + BackupSettings.VerifyRetry : null;
+                    verifyNotBefore = result is "busy" or "password" or "unsaved" ? time.GetUtcNow() + BackupSettings.VerifyRetry : null;
                 }
                 var now = time.GetUtcNow();
                 var deferred = false;
-                if (Settings.NextDue(now, HasPassword) is { } due && due <= now)
+                if (!AuthenticationBlocked && Settings.NextDue(now, HasPassword) is { } due && due <= now)
                 {
-                    if (messenger is { Saved: true, Connected: false })
+                    if (messenger is { Saved: true, Connected: false } || messenger?.AdditionalAccounts.Values.Any(a => a.Saved && !a.Connected) == true)
                     {
                         if (waitingForMessenger is null) log("server backup deferred reason=messenger_offline");
                         waitingForMessenger ??= now;
@@ -256,7 +285,7 @@ internal sealed class ServerBackupService : IServerBackup
                 }
                 await TellIfStaleAsync(token).ConfigureAwait(false);
                 Raise();
-                var next = Settings.NextScheduled(time.GetUtcNow(), HasPassword, verifyNotBefore);
+                var next = AuthenticationBlocked ? null : Settings.NextScheduled(time.GetUtcNow(), HasPassword, verifyNotBefore);
                 var wait = !deferred && next is { } at && at - time.GetUtcNow() is var until && until < Poll ? until : Poll;
                 var least = Poll < TimeSpan.FromMinutes(1) ? Poll : TimeSpan.FromMinutes(1);
                 await Task.Delay(wait < least ? least : wait, time, token).ConfigureAwait(false);
@@ -271,6 +300,8 @@ internal sealed class ServerBackupService : IServerBackup
         try
         {
             await PendingImports.TryMessengerAsync(paths, protector, messenger, log, token).ConfigureAwait(false);
+            foreach (var (slot, source) in messenger?.AdditionalAccounts ?? new Dictionary<string, IServerBackupMessenger>())
+                await PendingImports.TryMessengerAsync(paths, protector, source, log, token, slot).ConfigureAwait(false);
             if (CurrentKey is { } key && ImportBundle is { } import) await PendingImports.TryPcLocalAsync(paths, protector, key, import, log, token).ConfigureAwait(false);
         }
         catch (Exception failure) when (failure is not OperationCanceledException) { log($"server restore pending failed type={failure.GetType().Name}"); }
@@ -314,7 +345,7 @@ internal sealed class ServerBackupService : IServerBackup
                     string password;
                     try { password = await ReadPasswordAsync().ConfigureAwait(false); }
                     catch (BackupFailedException) { skipped = "password"; return BackupCheckResult.Busy; }
-                    return await OnQuietThread(() => ServerBackupCheck.Run(folder, current.Install!, current.LastName, password, token, current.PasswordSetAt)).ConfigureAwait(false);
+                    return await OnQuietThread(() => CheckDestination(current, password, token)).ConfigureAwait(false);
                 }
                 finally { checking = false; }
             }).ConfigureAwait(false);
@@ -329,13 +360,23 @@ internal sealed class ServerBackupService : IServerBackup
             log($"server backup verify skipped reason={skipped} trigger={trigger}");
             return skipped;
         }
-        if (result.Result != "busy") Update(current => current.Verified(time.GetUtcNow(), result.Result));
+        if (result.Result != "busy")
+        {
+            try { Update(current => current.Verified(time.GetUtcNow(), result.Result)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                lock (gate) settings = settings with { LastFailure = "settings", LastFailureAt = time.GetUtcNow() };
+                log("server backup settings outcome=unsaved");
+                return "unsaved";
+            }
+        }
         log($"server backup verify result={result.Result} bytes={result.Bytes} ms={watch.ElapsedMilliseconds} trigger={trigger}");
         return result.Result;
     }
 
     private async Task<BackupRun> BackUpAsync(bool scheduled, CancellationToken token)
     {
+        if (AuthenticationBlocked) return new(false, "auth", 0, null);
         if (!await running.WaitAsync(checking ? TimeSpan.FromMinutes(2) : TimeSpan.Zero, CancellationToken.None).ConfigureAwait(false)) return new(false, "busy", 0, null);
         busy = true;
         Raise();
@@ -352,16 +393,23 @@ internal sealed class ServerBackupService : IServerBackup
             var password = await ReadPasswordAsync().ConfigureAwait(false);
             var includeMessenger = messenger is { Connected: true };
             var leftOut = includeMessenger ? null : messenger is { Saved: true } ? "not_connected" : "not_signed_in";
-            var written = await OnQuietThread(() => Write(target, current, password, includeMessenger, leftOut, token)).ConfigureAwait(false);
+            var written = await OnQuietThread(() => WriteDestination(target, current, password, includeMessenger, leftOut, token)).ConfigureAwait(false);
+            if (written.Manifest.IncompleteMessenger)
+            {
+                Update(saved => saved with { LastCompleteName = saved.CompleteArchive, LastName = written.Name, MessengerLeftOut = written.Manifest.LeftOut,
+                    LastWrittenAt = time.GetUtcNow(), LastFailure = "messenger", LastFailureAt = time.GetUtcNow() });
+                log("server backup partial reason=messenger");
+                return new(false, "messenger", written.Bytes, null);
+            }
             Update(settingsNow =>
             {
-                var succeeded = settingsNow.Succeeded(time.GetUtcNow(), written.Bytes, written.Name, Summary(written.Manifest));
+                var succeeded = settingsNow.Succeeded(time.GetUtcNow(), written.Bytes, written.Name, Summary(written.Manifest)) with { LastCompleteName = written.Name, MessengerKept = written.Manifest.KeptAfter(settingsNow.MessengerKept, written.Name) };
                 return succeeded.PasswordSetAt > passwordRead ? succeeded with { PasswordSetAt = time.GetUtcNow() } : succeeded;
             });
             var m = written.Manifest;
             log($"server backup written rows={m.Count(ServerBackupArchive.Parts.Shared) + m.Count(ServerBackupArchive.Parts.State)} " +
                 $"messages={m.Count(ServerBackupArchive.Parts.HistoryMessages)} photos={m.Count(ServerBackupArchive.Parts.Photos)} devices={m.Count("devices")} " +
-                $"pages={m.Messenger?.Pages ?? 0} messenger={m.LeftOut ?? "included"} bytes={written.Bytes} pruned={written.Pruned.Removed.Count} spared={written.Pruned.Spared} " +
+                $"pages={m.MessengerPageCount} messenger={m.LeftOut ?? "included"} bytes={written.Bytes} pruned={written.Pruned.Removed.Count} spared={written.Pruned.Spared} " +
                 $"ms={watch.ElapsedMilliseconds} trigger={trigger}");
             return new(true, null, written.Bytes, null);
         }
@@ -372,8 +420,14 @@ internal sealed class ServerBackupService : IServerBackup
         }
         catch (Exception e)
         {
-            var reason = e is BackupFailedException failed ? failed.Reason : "write";
-            Update(current => current with { LastFailure = reason, LastFailureAt = time.GetUtcNow() });
+            if (UsesSmb) RemoteFailed();
+            var reason = e is BackupFailedException failed ? failed.Reason : e is BackupDestinationException remote ? remote.Code : "write";
+            try { Update(current => current with { LastFailure = reason, LastFailureAt = time.GetUtcNow() }); }
+            catch (Exception save) when (save is IOException or UnauthorizedAccessException)
+            {
+                lock (gate) settings = settings with { LastFailure = "settings", LastFailureAt = time.GetUtcNow() };
+                log("server backup settings outcome=unsaved");
+            }
             log($"server backup failed reason={reason} type={(e is BackupFailedException { InnerException: { } inner } ? inner.GetType().Name : e.GetType().Name)} trigger={trigger} ms={watch.ElapsedMilliseconds}");
             return new(false, reason, 0, null);
         }
@@ -418,9 +472,8 @@ internal sealed class ServerBackupService : IServerBackup
             var name = Path.GetFileName(written.Path);
             var pruned = new PruneResult([], 0);
             // The newest backup of each Messenger account's history stays, however many newer ones lack it.
-            var kept = written.Manifest.Messenger is { } summary
-                ? new Dictionary<string, string>(current.MessengerKept ?? [], StringComparer.Ordinal) { [summary.Account] = name } : current.MessengerKept;
-            try { pruned = BackupFolder.Prune(target, install, kept?.Values); }
+            var kept = written.Manifest.RetentionNames(current, name);
+            try { pruned = BackupFolder.Prune(target, install, kept); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             return new(written.Manifest, name, written.Bytes, pruned);
         }
@@ -438,7 +491,7 @@ internal sealed class ServerBackupService : IServerBackup
                 using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
                 {
                     using var sealedPayload = BackupFile.Create(file, password);
-                    try { manifest = ServerBackupExport.Write(sealedPayload, paths, protector, part, pages, without, app, time.GetUtcNow(), token); }
+                    try { manifest = ServerBackupExport.Write(sealedPayload, paths, protector, part, pages, without, app, time.GetUtcNow(), token, messenger?.AdditionalAccounts); }
                     catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or CryptographicException or JsonException) { throw new BackupFailedException("local", e); }
                     sealedPayload.Complete();
                     file.Flush(flushToDisk: true);
@@ -496,22 +549,15 @@ internal sealed class ServerBackupService : IServerBackup
 
     private void Update(Func<BackupSettings, BackupSettings> change)
     {
-        BackupSettings next;
         lock (gate)
         {
-            next = change(settings) with { Folder = folder };
+            var next = change(settings) with { Folder = folder };
+            Directory.CreateDirectory(paths.Backup);
+            (next with { Folder = null }).Save(paths.BackupSettings);
             settings = next;
         }
-        try
-        {
-            Directory.CreateDirectory(paths.Backup);
-            // The folder is the host's to say at each start, never kept: a server moved to another mapping writes where it is told.
-            (next with { Folder = null }).Save(paths.BackupSettings);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         Raise();
     }
-
     // The status, to whoever listens, when any of it changed.
     private void Raise()
     {
@@ -557,7 +603,7 @@ internal static class ServerBackupCheck
             using var reader = BackupFile.Open(file, password);
             using var contents = ServerBackupContents.Open(reader);
             contents.Verify(ct);
-            return new("ok", name, contents.Manifest.Messenger?.Pages ?? 0, contents.Manifest.Count(ServerBackupArchive.Parts.Shared), bytes);
+            return new("ok", name, contents.Manifest.MessengerPageCount, contents.Manifest.Count(ServerBackupArchive.Parts.Shared), bytes);
         }
         catch (BackupFileException failure) { return new(failure.Failure == BackupFileFailure.Unsupported ? "unsupported" : "unreadable", name, 0, 0, bytes); }
         catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException) { return new("missing", name, 0, 0, 0); }

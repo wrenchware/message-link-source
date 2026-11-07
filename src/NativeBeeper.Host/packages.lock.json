@@ -2,6 +2,12 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "SMBLibrary": {
+        "type": "Direct",
+        "requested": "[1.5.8.1, )",
+        "resolved": "1.5.8.1",
+        "contentHash": "C7fVrj7AiF9C9E3VwEVJgQIeml1qKea7blhtIpK6eZsgoVI7r6iniKRUWHBDEFa9msq24AdJmpLUrbXjeoH2EQ=="
+      },
       "CommunityToolkit.Mvvm": {
         "type": "Transitive",
         "resolved": "8.4.0",

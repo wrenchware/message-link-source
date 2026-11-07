@@ -26,16 +26,16 @@ internal sealed partial class MessengerBackend : IGroupBackend
     private const int GroupNameMaximum = 100;
 
     public Task<GroupOptions> GetGroupOptionsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Task.FromResult(accountId == MessengerModels.Account && helper is not null
+        => Task.FromResult(accountId == Models.Account && helper is not null
             ? new GroupOptions(true, "Choose one person to start a chat, or several for a group. A new group is an ordinary Messenger group, not an end-to-end encrypted one.",
                 Maximum: GroupMaximum, NameAllowed: true, NameMaximum: GroupNameMaximum)
             : new GroupOptions(false, "Connect Messenger in Settings first."));
 
     public async Task<ChatSummary> CreateGroupAsync(string accountId, IReadOnlyList<ContactPerson> people, string title, CancellationToken cancellationToken = default)
     {
-        if (accountId != MessengerModels.Account) throw new SendException(false, "Choose the Messenger account.");
+        if (accountId != Models.Account) throw new SendException(false, "Choose the Messenger account.");
         var ids = people.Select(person => person.Id).ToArray();
-        if (people.Count is < 2 or > GroupMaximum || people.Any(person => person.CannotMessage || person.IsSelf) ||
+        if (people.Count is < 2 or > GroupMaximum || people.Any(person => person.AccountId != accountId || person.CannotMessage || person.IsSelf) ||
             ids.Any(string.IsNullOrWhiteSpace) || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
             throw new SendException(false, $"Choose 2–{GroupMaximum} different Messenger people.");
         var name = title.Trim();
@@ -65,7 +65,7 @@ internal sealed partial class MessengerBackend : IGroupBackend
         chats = [.. chats.Where(chat => chat.Id != created.Chat.Id), created.Chat];
         _ = SaveChatsAsync(chats);
         ChatsChanged?.Invoke(this, EventArgs.Empty);
-        return MessengerModels.Map(created.Chat);
+        return Models.Map(created.Chat);
     }
 }
 
@@ -126,11 +126,11 @@ internal sealed partial class MessengerBackend : IGroupManagement
         }
         MessengerLog.Write($"group change method={method} outcome=ok");
         var change = result.Deserialize<MessengerGroupChange>(Json);
-        if (change?.Chat is not { } updated) return MessengerModels.Map(known);
+        if (change?.Chat is not { } updated) return Models.Map(known);
         chats = [.. chats.Select(chat => chat.Id == updated.Id ? updated : chat)];
         _ = SaveChatsAsync(chats);
         ChatsChanged?.Invoke(this, EventArgs.Empty);
-        return MessengerModels.Map(updated);
+        return Models.Map(updated);
     }
 }
 

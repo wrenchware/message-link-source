@@ -92,8 +92,8 @@ internal sealed partial class LinuxHostStartup : IDisposable
         var restores = !restore ? RestoreOnce.None : withGoogle is null ? new RestoreOnce([RestoreOnce.Messenger, RestoreOnce.Instagram]) : GoogleRestores(withGoogle.VoiceRuns);
         // Google's backend is left out of the real restarter, which then answers its scope not_started; the wrapper answers it first.
         IGoogleMessagesAccount? googleAccount = withGoogle is null ? null : new GoogleMessagesAccountPort(google, services.GetRequiredService<GoogleMediaBackend>());
-        var unavailable = withGoogle is null ? UnavailableProviders.Ports(new HostHelperRestarter(null, keeper, messenger, instagram, voice, log))
-            : GooglePorts(withGoogle, googleAccount!, google, keeper, messenger, instagram, voice, voicePort, log);
+        var unavailable = withGoogle is null ? UnavailableProviders.Ports(new HostHelperRestarter(null, keeper, messenger, instagram, voice, log) { Accounts = services.GetRequiredService<ProviderAccounts>() })
+            : GooglePorts(withGoogle, googleAccount!, google, keeper, messenger, instagram, voice, voicePort, log, services.GetRequiredService<ProviderAccounts>());
         // One object for the browser sign-in of Google Messages and Google Voice, so that only one runs at a time (LinuxHostStartup.Google.cs).
         var remoteSignIn = RemoteSignIn(withGoogle, googleAccount, voicePort, log);
         step.Took("feed");
@@ -126,7 +126,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
         messenger.ChatsChanged += (_, _) => { if (messenger.SelfId is null) kept.Warm(); };
         // The server's own backup (SWITCHBOARD.md stage 10): its data and identity, never a sign-in, once a day into the folder its host maps.
         var backup = new NativeBeeper.Host.Backup.ServerBackupService(new NativeBeeper.Host.Backup.ServerBackupPaths(root, keys.Folder), protector, backups,
-            new NativeBeeper.Host.Backup.BackendBackupMessenger(messenger), version, log);
+            new NativeBeeper.Host.Backup.BackendBackupMessenger(messenger, services.GetRequiredService<ProviderAccounts>()), version, log);
         var host = ProtocolHost.Create(new ProtocolHostOptions(services.GetRequiredService<MessagingRouter>(), services.GetRequiredService<DirectoryRouter>(),
             services.GetRequiredService<MediaRouter>(), services.GetRequiredService<TypingRouter>(), google, services.GetRequiredService<GoogleMediaBackend>(),
             messenger, instagram, voice, feed, SharedChatSnoozes.Over(shared, new SealedChatSnoozeStore(Path.Combine(root, SealedChatSnoozeStore.FolderName), protector)),
@@ -160,7 +160,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
             // Its status to every device, Back up now and its password to the owner (protocol 26).
             Backup: backup,
             // Messenger and Instagram signed in in the server's own Chrome too (protocol 27, SWITCHBOARD.md 10.5), wherever Google's sign-in in it is offered.
-            MetaRemoteSignIn: remoteSignIn.Meta));
+            MetaRemoteSignIn: remoteSignIn.Meta, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: new HelperKeyFileCells(keys.HelperKey)));
         built = host;
         // Each change in how the backup stands is a signal in the host's sequence, so a client of 26 reads the status again.
         backup.Changed += status => host.Services.Events?.AppendSignal(new AccountSignal(AccountSignals.Backup, !status.Stale));
@@ -178,6 +178,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
         // The Google sign-in keeper is never started without Google Messages: it renews through a browser this host then does not have. With it, the
         // restore starts it (LinuxHostStartup.Google.cs), as the Windows server's does.
         var startup = new LinuxHostStartup(services, host, feed, restores, log, withGoogle);
+        startup.ConfigureAccounts();
         startup.Backup = backup;
         made = startup;
         startup.AttachMove(move, runner);
@@ -191,6 +192,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
     /// </summary>
     public async Task RestoreAsync(CancellationToken stop)
     {
+        await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
         if (google is not null) { await RestoreWithGoogleAsync(stop).ConfigureAwait(false); return; }
         try
         {
@@ -218,7 +220,7 @@ internal sealed partial class LinuxHostStartup : IDisposable
     /// Whether the start's restore would log a Messenger or Instagram account in: one is saved here and not held by a move. The restore ledger counts only those
     /// (<see cref="RestoreLedger.StartAsync"/>); a start that restores only Google, or nothing, does not spend the hour a moved account's first login needs.
     /// </summary>
-    public bool RestoresAccounts =>
+    public bool RestoresAccounts => Services.GetRequiredService<ProviderAccounts>().Added.Any(a => a.Messenger?.SessionSaved == true || a.Instagram?.HasSavedSession == true) ||
         Services.GetRequiredService<IMessengerAccount>().State.Saved && Move?.Allows(RestoreOnce.Messenger) != false
         || Services.GetRequiredService<IInstagramAccount>().State.Saved && Move?.Allows(RestoreOnce.Instagram) != false;
 
@@ -300,5 +302,6 @@ internal sealed partial class LinuxHostStartup : IDisposable
         Host.Dispose();
         Services.Dispose();
         signInQueue?.Dispose();
+        accountSignInQueue?.Dispose();
     }
 }

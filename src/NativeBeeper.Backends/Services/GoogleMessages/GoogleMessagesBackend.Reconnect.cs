@@ -67,7 +67,7 @@ internal sealed partial class GoogleMessagesBackend
     // (MessagingRouter.GoogleMessagesExpected).
     internal const string NotSetUp = "Google Messages isn't set up. Pair it in Settings.";
     private int notPairedConnectLogged, notPairedRealtimeLogged;
-    private static bool NeverPaired => !GoogleSessionProfile.HasSavedSession;
+    private bool NeverPaired => !Files.SessionSaved;
     private void ThrowIfNotSetUp()
     {
         if (signingIn || !NeverPaired) return;
@@ -113,7 +113,7 @@ internal sealed partial class GoogleMessagesBackend
         if (!signIn.Expire(DateTimeOffset.UtcNow, SignInRefused is not null, out var held, presumed)) return;
         authenticationRequired = true; connected = false;
         lock (typingLock) typing.Clear();
-        var age = GoogleSignInClock.AgeMinutes(DateTimeOffset.UtcNow);
+        var age = Files.Clock.AgeMinutes(DateTimeOffset.UtcNow);
         GoogleMessagesLog.Write($"sign_in expired reason={reason} notice={(held ? "held" : "shown")} age_min={age?.ToString() ?? "unknown"}");
         if (!held) Publish(new(RealtimeKind.AuthenticationRequired, SignInOnly: signIn.SignInExpired));
         else
@@ -125,12 +125,12 @@ internal sealed partial class GoogleMessagesBackend
         SignInRefused?.Invoke(this, EventArgs.Empty);
     }
 
-    // A sign-in older than GoogleSignInClock.Stale, with a kept profile to refresh it from and the window listening: the
+    // A sign-in older than Files.Clock.Stale, with a kept profile to refresh it from and the window listening: the
     // connect is not tried, since Google refuses these at two hours, and the refresh that follows a refusal runs now
     // instead. Once per sign-in: if the refresh cannot help, the connect goes ahead as it always did.
     private bool PresumeExpired()
     {
-        if (qrSession || GoogleSignInClock.MadeAt is not { } made || DateTimeOffset.UtcNow - made < GoogleSignInClock.Stale || presumedFor == made) return false;
+        if (qrSession || Files.Clock.MadeAt is not { } made || DateTimeOffset.UtcNow - made < Files.Clock.Stale || presumedFor == made) return false;
         if (SignInRefused is null || SilentRefreshAvailable?.Invoke() != true) return false;
         presumedFor = made;
         MarkSignInExpired("stale", presumed: true);

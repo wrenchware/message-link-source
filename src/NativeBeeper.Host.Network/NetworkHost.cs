@@ -168,6 +168,7 @@ internal sealed class NetworkHost : IAsyncDisposable
             page.UseStorage(options.DataFolder, keys);
             page.DesktopTrust = options.DesktopTrust;
             page.DesktopSignIn = options.DesktopSignIn;
+            page.DesktopAccountSignIn = options.DesktopAccountSignIn;
         }
         devices.Revoked += EndDevice;
         devices.Restored = options.Restored;
@@ -204,6 +205,7 @@ internal sealed class NetworkHost : IAsyncDisposable
     internal PairingCodes Pairing => pairing;
     internal JoinRequests Joins => joins;
     internal bool HasPage => page is not null;
+    internal ServerPage? Page => page;
 
     /// <summary>Opens a new pairing code in place of any other and logs it (<c>server pairing code=</c>): what an integrator's <c>--pair</c> does on a host that is running.</summary>
     public string IssuePairingCode() => pairing.Issue();
@@ -753,7 +755,7 @@ internal sealed class NetworkHost : IAsyncDisposable
             : address.Trim();
         var view = options.Tailnet?.Latest is { Running: true } running ? running : null;
         var code = pairing.Issue();
-        var link = JoinLink.Build(view?.Name, address, Fingerprint, code, view is { Tagged: false } ? view.Owner : null);
+        var link = JoinLink.Build(view?.Name, address, Fingerprint, code, view is { Tagged: false } ? view.Owner : null, options.Tailnet?.Port ?? NetworkEndpoint.DefaultPort);
         return new(link, address is null ? null : JoinLink.Line(address, Fingerprint, code), code, (int)PairingCodes.Lifetime.TotalSeconds, Fingerprint, address, view?.Name);
     }
 

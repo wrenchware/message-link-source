@@ -163,7 +163,22 @@ internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string Profile
     /// </summary>
     public static void SweepProfiles(Action<string> log, Func<IReadOnlySet<string>?>? voiceKept = null)
     {
-        SweepMessages(GoogleSessionProfile.SessionPath, GoogleMessagesBrowserProfile.PointerPath, log);
+        var roots = Path.Combine(AppPaths.DataRoot, "ProviderAccounts");
+        if (!Directory.Exists(roots)) SweepMessages(GoogleSessionProfile.SessionPath, GoogleMessagesBrowserProfile.PointerPath, log);
+        else
+        {
+            try
+            {
+                var kept = new HashSet<string>(StringComparer.Ordinal);
+                var pointers = Directory.EnumerateDirectories(roots).Where(path => NativeBeeper.Core.Messaging.AccountNamespace.ValidKey(Path.GetFileName(path)))
+                    .Select(path => new GoogleAccountBrowserProfile(path).PointerPath).Prepend(GoogleMessagesBrowserProfile.PointerPath);
+                var readable = true;
+                foreach (var pointer in pointers) { if (!ReadPointer(pointer, out var id)) { readable = false; break; } if (id is not null) kept.Add(id); }
+                if (readable) Sweep(GoogleSignInProfile.MessagesService, kept, log);
+                else log("browser sweep skipped reason=pointer_unreadable");
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { log("browser sweep skipped reason=pointer_unreadable"); }
+        }
         if (voiceKept is null) { Sweep(GoogleSignInProfile.VoiceService, (string?)null, log); return; }
         SweepVoice(voiceKept(), log);
     }

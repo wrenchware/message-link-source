@@ -5,6 +5,7 @@
 #   sudo ./install.sh              Messenger and Instagram (and Google, if an earlier install turned it on)
 #   sudo ./install.sh --google     with official Google Chrome (Debian, Ubuntu), in which the page connects accounts: without it, accounts only arrive by a move from a PC
 #   sudo ./install.sh --no-google  turns Google off again; Chrome stays installed
+#   sudo ./install.sh --google --allow-host-sign-in  permits sign-in on a trusted Linux host's shared network
 #
 # What it does, and nothing else:
 #   - makes the system account messages-server (no login, no home of its own) if there is none;
@@ -33,13 +34,16 @@ chrome_signer=EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
 fail() { echo "install.sh: $*" >&2; exit 1; }
 
 google=keep
+host_sign_in=no
 for argument in "$@"; do
     case "$argument" in
         --google) google=on ;;
         --no-google) google=off ;;
-        *) fail "it reads --google and --no-google only. Nothing was changed." ;;
+        --allow-host-sign-in) host_sign_in=yes ;;
+        *) fail "it reads --google, --no-google and --allow-host-sign-in only. Nothing was changed." ;;
     esac
 done
+google_choice=$google
 # An update keeps what the last install chose.
 if [ "$google" = keep ]; then
     if [ -e "$dropin" ]; then google=on; else google=off; fi
@@ -58,6 +62,30 @@ if [ "$google" = on ]; then
     done
     [ -s "$here/chrome-policy.json" ] || fail "chrome-policy.json is missing from $here; extract the package again."
     command -v apt-get >/dev/null 2>&1 || fail "--google installs Google Chrome from Google's apt repository, so it needs Debian or Ubuntu."
+fi
+
+# A bare host has no private network namespace. Do not silently claim it does just to offer sign-in.
+# Read only these non-secret settings, never source the environment file (which can hold passwords).
+network_choice() {
+    sed -n "s/^$1=//p" "$settings/environment" 2>/dev/null | tail -n 1 | tr -d '\"'
+}
+save_host_sign_in=no
+isolated=$(network_choice MESSAGES_NETWORK_ISOLATED)
+if [ -z "$isolated" ] && grep -qx 'Environment=MESSAGES_NETWORK_ISOLATED=1' "$units/messages-server.service.d/proxmox.conf" 2>/dev/null; then
+    isolated=1
+fi
+if [ "$google" = on ] && { [ "$google_choice" = on ] || [ "$host_sign_in" = yes ]; } &&
+    [ "$(network_choice MESSAGES_REMOTE_SIGNIN_HOST_NETWORK)" != 1 ] &&
+    [ "$isolated" != 1 ]; then
+    if [ "$host_sign_in" != yes ] && [ -t 0 ]; then
+        echo "Sign-in on this server's page uses Chrome on this computer."
+        echo "This host shares its network with other local programs. Enable sign-in only if you trust the other users and programs on it."
+        printf 'Allow sign-in on this host? [y/N] '
+        read -r answer || answer=
+        case "$answer" in y|Y|yes|YES) host_sign_in=yes ;; esac
+    fi
+    [ "$host_sign_in" = yes ] || fail "sign-in needs a private container or your approval for this host. On a trusted host, run again with --google --allow-host-sign-in. Nothing was changed."
+    save_host_sign_in=yes
 fi
 
 # .NET is in the package, but it uses the host's ICU, OpenSSL 3, CA certificates and time zones, as the images install
@@ -91,7 +119,7 @@ if [ -n "$missing" ]; then
 fi
 
 # Google: official Google Chrome (never Chromium, never a flag that hides what it is: PROVIDERS.md), the virtual display
-# it draws on, and the policy that keeps it to Google's sign-in pages, as the Google image has them (Dockerfile.google).
+# it draws on, and the policy for Google, Facebook and Instagram sign-in, as the image has it (Dockerfile.google).
 if [ "$google" = on ]; then
     apt_update
     echo "Installing Xvfb and what Chrome needs..."
@@ -186,7 +214,7 @@ if [ ! -e "$settings/environment" ]; then
 #MESSAGES_PORT=8787
 
 # The password of the server's own page (https://<this server>:8787/ in a browser): 12 characters or more, used nowhere
-# else. Empty leaves the page off.
+# else. Empty asks for a setup code on the first visit.
 #MESSAGES_ADMIN_PASSWORD=
 
 # Time zone for log timestamps.
@@ -195,6 +223,9 @@ EOF
     )
     chmod 0600 "$settings/environment"
     echo "Made $settings/environment for the settings (all off; see the comments in it)."
+fi
+if [ "$save_host_sign_in" = yes ]; then
+    printf '\n# Approved during install: sign-in on this trusted host shares its network with local programs.\nMESSAGES_REMOTE_SIGNIN_HOST_NETWORK=1\n' >> "$settings/environment"
 fi
 # The tailnet's settings, added once to a settings file from before they existed.
 if ! grep -q 'MESSAGES_TAILNET' "$settings/environment"; then

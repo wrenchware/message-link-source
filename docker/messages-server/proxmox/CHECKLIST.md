@@ -18,7 +18,7 @@ Message Link, and a PC browser.
 2. Copy `docker/messages-server/proxmox/install-proxmox.sh` there too (until the script has a public address).
 3. In the Proxmox web interface: the node, **Shell**. Run:
    `bash /root/install-proxmox.sh --tarball /root/messages-server-<version>-linux-x64.tar.gz`
-4. Take every default, except: answer the backups question with a test folder such as `/root/messages-backups-test`,
+4. Take every default, except: answer the backups question with a test folder such as `/mnt/messages-backups-test`,
    and leave the Tailscale auth key and the page password empty (Enter).
 5. Note how long it took and whether any question was unclear.
 
@@ -34,7 +34,7 @@ pct config <id> | grep -E 'features|unprivileged|mp0|tags'
 pct exec <id> -- systemctl is-active messages-server messages-server-update.timer
 pct exec <id> -- journalctl -u messages-server --no-pager -o cat | grep -E 'server google|google chrome|sandbox|tailnet state|server started|refused'
 pct exec <id> -- stat -c '%U %a %n' /var/lib/messages-server/backups
-ls -ln /root/messages-backups-test -d
+ls -ln /mnt/messages-backups-test -d
 ```
 
 Report all of it. The two things this run is for:
@@ -74,7 +74,7 @@ test account still signed in and the phone still joined (no new pairing). Report
 ```sh
 pct exec <id> -- systemctl start messages-server-update
 pct exec <id> -- journalctl -u messages-server-update --no-pager -o cat | tail -n 5
-ls -l /root/messages-backups-test
+ls -l /mnt/messages-backups-test
 ```
 
 Wanted: "no release address", and with Google on a line about Chrome. Report the lines, and whether a backup file
@@ -140,6 +140,6 @@ the window that looked wrong (a frozen picture, keys that did not type, the Done
 
 1. On the page, remove the Facebook test account (so Facebook forgets the server's device).
 2. Remove the `messages-server` machine in Tailscale's admin console.
-3. `pct stop <id> && pct destroy <id>`, then `rm -rf /root/messages-backups-test`.
+3. `pct stop <id> && pct destroy <id>`, then `rm -rf /mnt/messages-backups-test`.
 
 Report anything that was left behind.

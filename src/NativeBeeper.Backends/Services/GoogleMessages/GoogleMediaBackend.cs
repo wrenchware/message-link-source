@@ -39,7 +39,7 @@ internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, 
     public async Task<byte[]> ReadImageAsync(MessageAttachment attachment,CancellationToken cancellationToken=default,bool inline=false)
     {
         if(attachment.SourceUrl?.StartsWith("google-avatar:",StringComparison.Ordinal)==true)
-            return await ReadAvatarAsync(attachment.SourceUrl[14..],cancellationToken);
+            return await ReadAvatarAsync(backend.Slot.Ids.Native(attachment.SourceUrl)[14..],cancellationToken);
         var profile = await NativeBeeper.Presentation.Services.NotificationIdentity.ProfileAsync(tokens, cancellationToken);
         if (profile is null || !CanSave(attachment)) throw new BackendException(BackendFailure.Unavailable,"This attachment isn't available right now.");
         var id = (attachment.Id ?? "") + (attachment.Type == "video" ? ":thumbnail" : "");
@@ -97,7 +97,7 @@ internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, 
     }
     // Returns how long the helper took to have the file ready (before the first chunk).
     private Task<TimeSpan> DownloadAsync(MessageAttachment attachment,Stream destination,CancellationToken token,bool thumbnail=false)
-        => DownloadAsync(attachment,destination,(parameters,t)=>backend.MediaCallAsync("ui.mediaRead",parameters,t),t=>backend.RelearnMediaAsync(attachment.Id![13..],t),token,thumbnail);
+        => DownloadAsync(attachment with { Id = backend.Slot.Ids.Native(attachment.Id!), SourceUrl = backend.Slot.Ids.NativeMediaValue(attachment.SourceUrl) },destination,(parameters,t)=>backend.MediaCallAsync("ui.mediaRead",parameters,t),t=>backend.RelearnMediaAsync(backend.Slot.Ids.Native(attachment.Id!)[13..],t),token,thumbnail);
     internal static async Task<TimeSpan> DownloadAsync(MessageAttachment attachment,Stream destination,Func<object,CancellationToken,Task<System.Text.Json.JsonElement>> read,
         Func<CancellationToken,Task<bool>> relearn,CancellationToken token,bool thumbnail=false)
     {
@@ -162,13 +162,13 @@ internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, 
             staged=System.Diagnostics.Stopwatch.GetElapsedTime(began);
             backend.ThrowIfGoneFromList(chatId);
             submitted=true; outcome="outcome unknown";
-            var result=await backend.MediaCallAsync("ui.sendMedia",new {chatId=GoogleModels.Native(chatId),name=Path.GetFileName(file.Name),mime=file.MimeType,text=caption ?? ""},cancellationToken);
+            var result=await backend.MediaCallAsync("ui.sendMedia",new {chatId=backend.Models.Native(chatId),name=Path.GetFileName(file.Name),mime=file.MimeType,text=caption ?? ""},cancellationToken);
             outcome=result.GetProperty("outcome").GetString() ?? outcome;
             if(outcome=="rejected") throw new SendException(false,backend.NotDefaultSmsRefusal(result) ?? "Google Messages couldn't send this attachment. Carrier size or format limits may apply.");
             if(outcome=="unknown") throw new SendException(true,"Attachment outcome is unknown. Check the conversation before sending again.");
             var txn=result.GetProperty("pendingId").GetString();
             if(string.IsNullOrWhiteSpace(txn)) throw new IOException("Missing attachment transaction.");
-            return new(chatId,GoogleModels.PendingPrefix+txn);
+            return new(chatId,backend.Models.PendingPrefix+txn);
         }
         catch(SendException) {throw;}
         catch(Exception) {throw new SendException(submitted,submitted?"Attachment outcome is unknown. Check the conversation before sending again.":"Couldn't prepare this file. It was not sent.");}

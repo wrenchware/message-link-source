@@ -22,11 +22,11 @@ internal sealed partial class GoogleMessagesBackend
             try { encrypted=await protector.ProtectAsync(plain); }
             finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain); }
             if (!ReferenceEquals(owner,helper) || !ReferenceEquals(session,latestSession)) return;
-            Directory.CreateDirectory(Path.GetDirectoryName(GoogleSessionProfile.SessionPath)!);
-            temporary=GoogleSessionProfile.SessionPath+"."+Guid.NewGuid().ToString("N")+".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(Files.SessionFile)!);
+            temporary=Files.SessionFile+"."+Guid.NewGuid().ToString("N")+".tmp";
             await NativeBeeper.Storage.DurableFile.WriteAsync(temporary,encrypted);
             if (!ReferenceEquals(owner,helper) || !ReferenceEquals(session,latestSession)) return;
-            File.Move(temporary,GoogleSessionProfile.SessionPath,true);
+            File.Move(temporary,Files.SessionFile,true);
             GoogleMessagesLog.Write($"session saved trigger={trigger}");
         }
         // Keep the last valid protected session if disk storage is unavailable; say so, since a refusal at the next launch
@@ -44,12 +44,12 @@ internal sealed partial class GoogleMessagesBackend
     private async Task CommitSessionAsync(byte[] encrypted)
     {
         await sessionWrites.WaitAsync();
-        var temporary=GoogleSessionProfile.SessionPath+"."+Guid.NewGuid().ToString("N")+".tmp";
+        var temporary=Files.SessionFile+"."+Guid.NewGuid().ToString("N")+".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(GoogleSessionProfile.SessionPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(Files.SessionFile)!);
             await NativeBeeper.Storage.DurableFile.WriteAsync(temporary,encrypted);
-            File.Move(temporary,GoogleSessionProfile.SessionPath,true);
+            File.Move(temporary,Files.SessionFile,true);
         }
         finally
         {
@@ -70,8 +70,8 @@ internal sealed partial class GoogleMessagesBackend
         // that is the running cookies expiring, not Google turning the new ones down, and says nothing about the next try.
         catch (Exception) when (signIn.SignInExpired || signIn.PairingLost) { return "refused_meanwhile"; }
         catch (Exception failure) { return GoogleMessagesLog.Reason(failure); }
-        GoogleSignInCookies.Remember(cookies);
-        await GoogleSignInClock.RecordAsync(DateTimeOffset.UtcNow);
+        Files.Cookies.Remember(cookies);
+        await Files.Clock.RecordAsync(DateTimeOffset.UtcNow);
         return "adopted";
     }
 
@@ -79,11 +79,11 @@ internal sealed partial class GoogleMessagesBackend
     // the kept profile early gets a new sign-in at all is what decides if an expiry can be prevented rather than repaired.
     internal async Task<string[]> ChangedFromSavedAsync(IReadOnlyDictionary<string,string> cookies)
     {
-        var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(GoogleSessionProfile.SessionPath));
+        var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(Files.SessionFile));
         try
         {
             using var document = JsonDocument.Parse(plain);
-            return GoogleSignInCookies.Changed(document.RootElement, cookies);
+            return Files.Cookies.Changed(document.RootElement, cookies);
         }
         finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain); }
     }

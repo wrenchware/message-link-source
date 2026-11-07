@@ -24,7 +24,7 @@ internal sealed partial class ServerPage
     private const int MaxBackupForm = 8 * 1024;
     private static readonly TimeSpan RestoreChoiceLifetime = TimeSpan.FromMinutes(10);
     private readonly object restoreGate = new();
-    private (string Id, string File, string Password, RestorePreview Preview, DateTimeOffset At)? restoreChoice;
+    private (string Id, string File, string Password, RestorePreview Preview, DateTimeOffset At, string PreparedFile)? restoreChoice;
 
     private static bool IsBackupPath(string? path) => path is "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset";
 
@@ -32,11 +32,21 @@ internal sealed partial class ServerPage
     private static string? FolderWords(string? done) => done switch
     {
         "backup_folder" => "Backups go to that folder now.",
-        "backup_folder_not_full" => "Type the whole path, starting with a drive letter, or with \\\\ for a network share.",
+        "backup_folder_not_full" => "Enter the full folder path as this server sees it.",
         "backup_folder_missing" => "That drive or network share isn't available. Check the path and try again.",
         "backup_folder_denied" => "Message Link can't write to that folder. Choose another one.",
+        "backup_folder_internal" => "Choose a folder outside the server's own data and keys folders.",
+        "backup_folder_space" => "That backup location is full. Free some space or choose another location.",
         "backup_folder_unsaved" => "The server couldn't save that choice. Try again.",
+        "backup_folder_chosen_settings" => "The new location was saved, but the backup schedule couldn't be saved. Check the server's disk space and permissions.",
         "backup_folder_fixed" => "This server's backup folder is set where it was installed, so it can't be changed here.",
+        "backup_folder_path" => "Enter a server name, a share name and a folder within that share. Don't use .. or a full path in the subfolder box.",
+        "backup_folder_auth" => "The share refused that sign-in. Check the username, password and domain.",
+        "backup_folder_share" => "That share wasn't found on the server. Check its name.",
+        "backup_folder_unavailable" => "The file server didn't answer. Check its address and connection.",
+        "backup_folder_busy" => "A backup or check is running. Wait for it to finish, then try again.",
+        "backup_folder_wait" => "Wait 30 seconds before checking another destination.",
+        "backup_folder_write" => "The destination didn't keep the test file correctly. The previous choice is still in use.",
         _ => null,
     };
 
@@ -61,15 +71,10 @@ internal sealed partial class ServerPage
                 .Append(PendingCancel(token));
         if (!status.HasFolder)
         {
-            // A Windows server's folder is the person's choice (SWITCHBOARD.md 10.7, D7); a Docker server's is its mapping.
-            if (service.FolderChoiceFile is not null)
-            {
-                body.Append(Para("Backups are off until you choose a folder for them: any folder on this PC, a mapped drive, a network share such as \\\\nas\\backups, or a OneDrive folder."))
-                    .Append(FolderForm(token, tried, fromSteps));
-                body.Append("</section>");
-                return;
-            }
-            body.Append(Para("Backups are off until the server has a folder for them. " + MapBackups));
+            body.Append(Para(service.DestinationUnreadable ? "The saved backup location couldn't be read. Choose it again." :
+                "Choose a folder on this server or a network share for your backups."))
+                .Append(DestinationForms(token, tried, fromSteps));
+            if (accounts == 0) body.Append("<p><a href=\"/restore\">Restore from a backup</a></p>");
             body.Append("</section>");
             return;
         }
@@ -77,11 +82,14 @@ internal sealed partial class ServerPage
         {
             ServerBackupStates.Running => "Backing up now.",
             ServerBackupStates.NoPassword => "Set a password to start. Backups are sealed with it, so a lost password means the backups are lost.",
-            ServerBackupStates.Failing => "The last backup failed. " + ServerFailure(status.Failure) + " It's tried again within the hour.",
+            ServerBackupStates.Failing when status.Failure == "messenger" => "The last backup is incomplete. " +
+                (service.Settings.MessengerLeftOut == "not_connected" ? "A Messenger account wasn't connected." : "Messenger history couldn't be read.") + " Daily backups continue.",
+            ServerBackupStates.Failing => "The last backup failed. " + ServerFailure(status.Failure) + (status.Failure == "auth" ? " Backups wait until you update the share sign-in." : " See the next backup time below."),
             _ when status.Stale => "No backup has worked for two days.",
             _ => null,
         };
         if (said is not null) body.Append(Notice(said));
+        body.Append("<p><a href=\"/manage/backups\">Refresh backup status</a></p>");
         var idle = status.State != ServerBackupStates.Running;
         // Each button sits in the line it acts on, as one small form.
         string Do(string what, string words) =>
@@ -95,13 +103,13 @@ internal sealed partial class ServerPage
                 status.Check is null || status.CheckedAt is null ? "Not checked" : (status.Check == "ok" ? "Good · " : "Problem · ") + Ago(status.CheckedAt.Value), idle ? Do("check", "Check now") : null, warn: status.Check is not (null or "ok")));
         body.Append("</div>");
         body.Append("<div class=\"sh\"><h2>Where and how</h2></div><div class=\"box\">");
-        if (service.FolderChoiceFile is not null)
-            body.Append("<div class=\"line\">").Append(CopyRow("Folder", service.Folder!)).Append("<div class=\"more flat\">").Append(tried is null ? "<details><summary>" : "<details open><summary>").Append("Use another folder</summary>").Append(FolderForm(token, tried ?? service.Folder, fromSteps)).Append("</details></div></div>");
-        else body.Append(CopyRow("Folder", service.Folder!));
+        body.Append("<div class=\"line\">").Append(CopyRow("Location", service.Folder!)).Append("<div class=\"more flat\"><details><summary>Change backup location</summary>")
+            .Append(DestinationForms(token, tried ?? (service.UsesSmb ? null : service.Folder), fromSteps)).Append("</details></div></div>");
         body.Append(Row("Backup password", "Needed to restore a backup, so be sure to remember it.", status.HasPassword ? null : "Not set",
             "<a class=\"button quiet\" href=\"/backups/password\" aria-label=\"" + (status.HasPassword ? "Change the password" : "Set a password") + "\">" + (status.HasPassword ? "Change…" : "Set…") + "</a>", warn: !status.HasPassword));
         // A restore goes only onto a server with no service signed in; one in use is reset first.
         if (accounts == 0) body.Append(Row("Restore", "Restore your conversations, settings and devices.", null, "<a class=\"button quiet\" href=\"/restore\" aria-label=\"Restore from a backup\">Restore…</a>"));
+        else body.Append(Row("Restore", "To restore a backup, first reset this server to sign out its accounts.", null, "<a class=\"button quiet\" href=\"/reset\">Reset server…</a>"));
         body.Append("</div><p class=\"hint\">Each backup holds your conversations, the server's settings and its devices, never a sign-in: after a restore you sign in to each account again.</p></section>");
     }
 
@@ -109,9 +117,11 @@ internal sealed partial class ServerPage
     {
         "ok" => "The latest backup reads back correctly.",
         "unreadable" => "The latest backup couldn't be read back. A new backup runs shortly.",
+        "unavailable" => "The backup location couldn't be reached or opened. The backup itself hasn't been checked; check the connection and sign-in.",
         "missing" => "The latest backup isn't in the folder.",
         "old_password" => "The latest backup uses the previous password.",
         "unsupported" => "The latest backup was made by a newer version.",
+        "unsaved" => "The check finished, but its result couldn't be saved. Check the server's disk space and permissions.",
         _ => "Not checked.",
     };
 
@@ -119,8 +129,14 @@ internal sealed partial class ServerPage
     {
         ServerBackupFailures.Folder => "The backup folder isn't available.",
         ServerBackupFailures.Space => "The backup folder is full.",
+        "local_space" => "The server's own disk is full. Free space there before trying again.",
         ServerBackupFailures.Password => "The saved password can't be read. Set it again.",
-        ServerBackupFailures.Messenger => "Messenger history couldn't be read.",
+        ServerBackupFailures.Messenger => "A partial backup was kept without Messenger history. It doesn't count as a complete backup.",
+        "auth" => "The network share refused the saved sign-in. Enter its credentials again.",
+        "denied" => "The destination refused access. Check its permissions.",
+        "share" or "missing" => "The share or folder wasn't found.",
+        "unavailable" => "The file server didn't answer.",
+        "settings" => "The server couldn't save the backup result. Check its own disk space and permissions.",
         ServerBackupFailures.Local => "The server's own data couldn't be read.",
         _ => "The backup couldn't be written.",
     };
@@ -164,7 +180,12 @@ internal sealed partial class ServerPage
                 return;
             case "on":
             case "off":
-                service.SetEnabled(form["do"] == "on");
+                try { service.SetEnabled(form["do"] == "on"); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    await PlainAsync(context, 500, "The server couldn't save the backup schedule. Try again.").ConfigureAwait(false);
+                    return;
+                }
                 Redirect(context.Response, "/manage/backups");
                 return;
             case "folder":
@@ -174,11 +195,31 @@ internal sealed partial class ServerPage
                 var from = form["from"].ToString() == "steps" ? "/welcome?step=backups&done=" : "/manage/backups?done=";
                 Redirect(context.Response, chosen == "chosen" ? from + "backup_folder#backups" : from + "backup_folder_" + chosen + "&tried=" + Uri.EscapeDataString(form["folder"].ToString()) + "#backups");
                 return;
+            case "smb":
+                var result = await service.ChooseSmbAsync(form["server"].ToString(), form["share"].ToString(), form["subfolder"].ToString(),
+                    form["user"].ToString(), form["domain"].ToString(), form["share_password"].ToString(), context.RequestAborted).ConfigureAwait(false);
+                log($"server page backup destination outcome={result}");
+                var back = form["from"].ToString() == "steps" ? "/welcome?step=backups&done=" : "/manage/backups?done=";
+                Redirect(context.Response, back + (result == "chosen" ? "backup_folder" : "backup_folder_" + result) + "#backups");
+                return;
             default:
                 Redirect(context.Response, "/");
                 return;
         }
     }
+
+    private static string DestinationForms(string token, string? current, bool fromSteps) =>
+        "<h3>Folder on this server</h3><p>A local folder or mapped drive outside the server's data folder. With Docker, use an existing mapped folder: a folder inside the container is lost when it is replaced.</p>" + FolderForm(token, current, fromSteps) +
+        "<h3>Network share (SMB)</h3><p>Save directly to a file server or NAS. No Docker folder mapping is needed. Create the subfolder on the share first.</p>" +
+        "<form method=\"post\" action=\"/backups\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\">" +
+        (fromSteps ? "<input type=\"hidden\" name=\"from\" value=\"steps\">" : "") +
+        "<label for=\"smb-server\">File server</label><input id=\"smb-server\" name=\"server\" required maxlength=\"253\" placeholder=\"nas\" spellcheck=\"false\">" +
+        "<label for=\"smb-share\">Share</label><input id=\"smb-share\" name=\"share\" required maxlength=\"255\" placeholder=\"backups\">" +
+        "<label for=\"smb-folder\">Subfolder (optional)</label><input id=\"smb-folder\" name=\"subfolder\" maxlength=\"768\" placeholder=\"Message Link\">" +
+        "<label for=\"smb-user\">Username</label><input id=\"smb-user\" name=\"user\" required maxlength=\"256\" autocomplete=\"off\">" +
+        "<label for=\"smb-domain\">Domain (optional)</label><input id=\"smb-domain\" name=\"domain\" maxlength=\"256\" autocomplete=\"off\">" +
+        "<label for=\"smb-password\">Share password</label><input id=\"smb-password\" name=\"share_password\" type=\"password\" required maxlength=\"1024\" autocomplete=\"off\">" +
+        "<p class=\"hint\">The server keeps this sign-in protected. Your backup password is separate.</p><button type=\"submit\" name=\"do\" value=\"smb\">Check and use share</button></form>";
 
     // The Windows server's folder, typed as a path: the server runs as the person, so whatever they can open in File Explorer it can write to.
     private static string FolderForm(string token, string? current, bool fromSteps) =>
@@ -241,18 +282,22 @@ internal sealed partial class ServerPage
             await PlainAsync(context, StatusCodes.Status409Conflict, "A backup is restored only onto a server with no account signed in. To restore onto this one, reset it first (at the bottom of the server's page).").ConfigureAwait(false);
             return;
         }
-        var files = ServerRestore.List(service.Folder);
+        IReadOnlyList<BackupListing> files = [];
+        var unavailable = false;
+        try { files = await service.ListRestoreAsync(context.RequestAborted).ConfigureAwait(false); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { unavailable = true; }
         string Ask(string? problem)
         {
             var body = new StringBuilder("<section>");
             if (problem is not null) body.Append(Notice(problem));
             if (files.Count == 0)
             {
-                body.Append(Para(service.Folder is null ? "The server has no backups folder. Map one to /backups, start the server again, then come back here."
-                    : "There's no backup in the backups folder. Copy the backup file (it ends in .msgbackup) into that folder, then reload this page."));
-                return body.Append("<p><a href=\"/\">Back</a></p></section>").ToString();
+                body.Append(Para(unavailable ? "The backup location couldn't be read. Check its connection and sign-in."
+                    : service.Folder is null ? "Choose the folder or network share that holds your backup first."
+                    : "No backup was found there. Copy the .msgbackup file into that location, or choose another location."));
+                return body.Append("<p><a href=\"/manage/backups\">Choose backup location</a></p></section>").ToString();
             }
-            body.Append(Para("Choose a backup from this server's folder, or one a PC made (copy it into the folder first). A server's backup brings back its conversations, settings and devices; a PC's brings its Messenger history and choices, which are added once you sign in to those accounts here."))
+            body.Append(Para("Choose a backup from the selected location, or copy a PC backup there first. A server's backup brings back its conversations, settings and devices; a PC's brings its Messenger history and choices, which are added once you sign in to those accounts here."))
                 .Append("<form method=\"post\" action=\"/restore\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
                 .Append("<label for=\"file\">Backup</label><select id=\"file\" name=\"file\" required>");
             foreach (var file in files.Take(50))
@@ -276,13 +321,20 @@ internal sealed partial class ServerPage
         }
         var name = form["file"].ToString();
         var password = form["backup"].ToString();
-        if (ServerRestore.PathOf(service.Folder, name) is not { } path || password.Length == 0)
+        if (!files.Any(f => f.Name == name) || password.Length == 0)
         {
             await PageAsync(context, StatusCodes.Status400BadRequest, title, Ask("That backup isn't in the folder any more.")).ConfigureAwait(false);
             return;
         }
         RestorePreview preview;
-        try { preview = await Task.Run(() => ServerRestore.Preview(path, password, context.RequestAborted), context.RequestAborted).ConfigureAwait(false); }
+        string? preparedPath = null;
+        var keepPrepared = false;
+        try
+        {
+            preparedPath = await service.PrepareRestoreAsync(name, context.RequestAborted).ConfigureAwait(false);
+            preview = await Task.Run(() => ServerRestore.Preview(preparedPath, password, context.RequestAborted), context.RequestAborted).ConfigureAwait(false);
+            keepPrepared = true;
+        }
         catch (BackupFileException failure)
         {
             log($"server page restore read outcome={failure.Failure.ToString().ToLowerInvariant()}");
@@ -299,8 +351,16 @@ internal sealed partial class ServerPage
             await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("The server couldn't read that file. Try again.")).ConfigureAwait(false);
             return;
         }
+        finally
+        {
+            if (!keepPrepared && preparedPath is not null) try { File.Delete(preparedPath); } catch (IOException) { }
+        }
         var id = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
-        lock (restoreGate) restoreChoice = (id, name, password, preview, time.GetUtcNow());
+        lock (restoreGate)
+        {
+            if (restoreChoice is { } previous) service.DiscardPrepared(previous.PreparedFile);
+            restoreChoice = (id, name, password, preview, time.GetUtcNow(), Path.GetFileName(preparedPath!));
+        }
         log($"server page restore read outcome=ok kind={preview.Kind} devices={preview.Devices.Count}");
         await PageAsync(context, StatusCodes.Status200OK, title, ReviewBody(token, id, preview, null)).ConfigureAwait(false);
     }
@@ -310,6 +370,8 @@ internal sealed partial class ServerPage
     {
         var body = new StringBuilder("<section>");
         if (problem is not null) body.Append(Notice(problem));
+        if (preview.MessengerLeftOut is "not_connected" or "failed")
+            body.Append(Notice("This is a partial backup: Messenger history was left out. Choose a complete backup if you need that history."));
         body.Append(Para(preview.Kind == "pc"
             ? $"A PC backup from {When(preview.Created)}: Messenger history ({preview.MessengerPages} pages) and the PC's choices. This server's devices and settings stay as they are."
             : $"A server backup from {When(preview.Created)}: {preview.Conversations.ToString("N0", CultureInfo.CurrentCulture)} conversations, {preview.Messages.ToString("N0", CultureInfo.CurrentCulture)} messages, "
@@ -329,6 +391,7 @@ internal sealed partial class ServerPage
             }
             body.Append(Para("A device that joined after this backup was made is refused and told to ask to join again. Every device starts its copy of your conversations over and keeps its drafts. The server's certificate comes back too, so your browser may warn about this page once."));
             body.Append(Para("The phone finds the server by its Tailscale name: if this is new hardware, remove the old machine in Tailscale first, or this one becomes messages-server-1."));
+            body.Append(Para("The server page's saved password returns to the one in this backup. Use that password after the restart. A password set in the server's installation settings stays as it is."));
         }
         body.Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
             .Append("<button type=\"submit\" class=\"danger\">Restore and start again</button><a class=\"cancel\" href=\"/\">Cancel</a></form>");
@@ -339,11 +402,12 @@ internal sealed partial class ServerPage
     private async Task RestoreReviewAsync(HttpContext context, IFormCollection form, string token)
     {
         const string title = "Restore from a backup";
-        (string Id, string File, string Password, RestorePreview Preview, DateTimeOffset At) choice;
+        (string Id, string File, string Password, RestorePreview Preview, DateTimeOffset At, string PreparedFile) choice;
         lock (restoreGate)
         {
             if (restoreChoice is not { } held || held.Id != form["choice"].ToString() || time.GetUtcNow() - held.At > RestoreChoiceLifetime)
             {
+                if (restoreChoice is { } expired) backups!.Service.DiscardPrepared(expired.PreparedFile);
                 restoreChoice = null;
                 Redirect(context.Response, "/restore");
                 return;
@@ -359,7 +423,7 @@ internal sealed partial class ServerPage
         var keep = form["keep"].Select(value => value ?? "").ToHashSet(StringComparer.Ordinal);
         var forget = form["forget_all"] == "yes" ? ["*"] : choice.Preview.Devices.Where(device => !keep.Contains(device.Id)).Select(device => device.Id).ToList();
         var service = backups.Service;
-        try { await service.StageRestoreAsync(new RestorePlan(1, choice.File, choice.Password, forget, time.GetUtcNow())).ConfigureAwait(false); }
+        try { await service.StageRestoreAsync(new RestorePlan(1, choice.File, choice.Password, forget, time.GetUtcNow(), choice.PreparedFile)).ConfigureAwait(false); }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
             await PlainAsync(context, StatusCodes.Status500InternalServerError, "The server couldn't keep the restore. Nothing was changed; try again.").ConfigureAwait(false);

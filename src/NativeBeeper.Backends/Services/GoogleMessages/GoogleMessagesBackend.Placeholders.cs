@@ -15,7 +15,7 @@ internal sealed partial class GoogleMessagesBackend
     // How long a new conversation's unsettled first message waits for its download to finish or move (GoogleArrivalHold).
     internal TimeSpan ArrivalHoldLimit { get; set; } = TimeSpan.FromSeconds(3);
 
-    private bool IsPlaceholder(string chatId) => placeholders.ContainsKey(GoogleModels.Native(chatId));
+    private bool IsPlaceholder(string chatId) => placeholders.ContainsKey(Models.Native(chatId));
 
     private const string GoneFromListWords = "This conversation isn't in your list any more. Open the one you want from the list.";
 
@@ -25,7 +25,7 @@ internal sealed partial class GoogleMessagesBackend
     // restart, as the placeholders above do not. New chat, a list or a real message lets a conversation back in.
     private bool GoneFromList(string chatId)
     {
-        var native = GoogleModels.Native(chatId);
+        var native = Models.Native(chatId);
         return placeholders.ContainsKey(native) || (chats.TryGetValue(native, out var known) ? known : archive.Chat(native)) is { Hidden: true };
     }
 
@@ -117,6 +117,6 @@ internal sealed partial class GoogleMessagesBackend
         HoldHelperSends(fromChatId, true);
         if (RemoveChat(fromChatId, out var gone)) ArchiveChats([gone with { Hidden = true }]);
         else if (archive.Chat(fromChatId) is { Hidden: false } saved) ArchiveChats([saved with { Hidden = true }]);
-        if (discarded < 0) Publish(new(RealtimeKind.ChatDeleted, GoogleModels.Qualify(fromChatId)));
+        if (discarded < 0) Publish(new(RealtimeKind.ChatDeleted, Models.Qualify(fromChatId)));
     }
 }

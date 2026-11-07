@@ -41,7 +41,7 @@ public sealed class DraftOwners
     internal void Note(string line) => log?.Invoke(line);
 
     /// <summary>Whether drafts for this conversation are filed by account: its id does not name the account.</summary>
-    public static bool Partitioned(string chatId) => chatId.StartsWith("messenger:", StringComparison.Ordinal);
+    public static bool Partitioned(string chatId) => chatId.StartsWith("messenger:", StringComparison.Ordinal) && NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(chatId) is null;
 
     /// <summary>
     /// The Messenger account as last read (a one-way scope, never an id), or null when none is signed in or the account could

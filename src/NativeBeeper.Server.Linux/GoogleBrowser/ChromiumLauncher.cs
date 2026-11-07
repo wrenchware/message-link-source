@@ -165,7 +165,7 @@ internal sealed class ChromiumLauncher(string executable, bool noSandbox, bool h
             "--password-store=basic",
         });
         // Chromium's own sandbox needs user namespaces or a setuid helper, which a container with every capability dropped and no-new-privileges
-        // does not give it. Off only when the host says so (MESSAGES_CHROMIUM_NO_SANDBOX=1), so that is a choice made where it is visible.
+        // does not give it under Docker's default seccomp profile (chrome-seccomp.json or seccomp=unconfined does). Off only when the host says so (MESSAGES_CHROMIUM_NO_SANDBOX=1), so that is a choice made where it is visible.
         if (noSandbox) arguments.Add("--no-sandbox");
         if (headed)
         {

@@ -8,7 +8,7 @@ public sealed record HostStatePorts(IProviderConnectionState Connections, IMessa
     IAttachmentBatchBackend Batches, IMessageActions Actions, IFirstMessageStarter FirstMessage, IGroupManagement Groups, IMessengerAccount Messenger,
     IInstagramAccount Instagram, IGoogleMessagesAccount Google, IGoogleVoiceAccounts Voice, ITypingService? Typing = null, IHostIdentity? Identity = null,
     bool GoogleAbsent = false, bool VoiceAbsent = false, bool InstagramAbsent = false, bool UnarchivesChats = false, bool FiresScheduled = false,
-    Func<bool>? ChromeOutOfDate = null);
+    Func<bool>? ChromeOutOfDate = null, Func<IReadOnlyList<string>>? AdditionalScopes = null);
 
 /// <summary>
 /// Reads a <see cref="HostState"/> from the real ports. It asks the ports themselves, not a copy of their rules, so the state says
@@ -24,6 +24,7 @@ public sealed class HostStateBuilder(HostStatePorts ports, int batchItemLimit)
         // Google, Messenger and Instagram always; one scope per Voice account the host knows (listed or saved), in a fixed order.
         var keys = ports.Voice.KnownAccountKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var scopes = new List<ScopeState> { Scope(ProviderScopes.Google), Scope(ProviderScopes.Messenger), Scope(ProviderScopes.Instagram) };
+        scopes.AddRange((ports.AdditionalScopes?.Invoke() ?? []).Select(Scope));
         scopes.AddRange(keys.Select(key => Scope(ProviderScopes.Voice(key))));
         return new HostState(scopes, ports.Messenger.State, ports.Instagram.State, ports.Google.State, [.. ports.Voice.Accounts], keys,
             new HostLimits(ports.Actions.HasLocalActionOptions, ports.FirstMessage.MaxFirstMessageLength, ports.Groups.GroupNameMaximum, ports.Groups.AddMaximum, batchItemLimit,
@@ -45,7 +46,7 @@ public sealed class HostStateBuilder(HostStatePorts ports, int batchItemLimit)
         var sampleChat = scope + "probe";
         var sampleAttachment = new MessageAttachment(null, "file", null, null, false, false, false, Id: ProviderScopes.ProbeAttachmentId(scope));
         // Google's archive has crawled some conversations and not others, which one id cannot say; the others answer for every id.
-        var window = scope == ProviderScopes.Google ? WindowReads.PerChat : ports.History.CanReadWindow(sampleChat) ? WindowReads.Always : WindowReads.Never;
+        var window = scope.StartsWith(ProviderScopes.Google, StringComparison.Ordinal) ? WindowReads.PerChat : ports.History.CanReadWindow(sampleChat) ? WindowReads.Always : WindowReads.Never;
         return new ScopeState(scope, ports.Connections.IsScopeConnected(scope), ports.Connections.IsConfigured(scope), ports.Connections.NeedsSignInOnly(scope),
             ports.Peek.HoldsPartialCopies(sampleChat), window, ports.Attachments.CanSave(sampleAttachment),
             ports.Batches.DrawsPhotosAtOnce(sampleChat, [ProbeFile, ProbeFile]));

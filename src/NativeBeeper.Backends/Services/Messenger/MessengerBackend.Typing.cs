@@ -26,7 +26,7 @@ internal sealed partial class MessengerBackend : ITypingService
         var sender = data.TryGetProperty("sender", out var s) ? s.GetString() : null;
         if (string.IsNullOrEmpty(chat) || string.IsNullOrEmpty(sender)) return;
         var typing = data.TryGetProperty("typing", out var t) && t.GetBoolean();
-        var chatId = MessengerModels.Qualify(chat);
+        var chatId = Models.Qualify(chat);
         lock (typingLock)
         {
             if (!typingNow.TryGetValue(chatId, out var people)) typingNow[chatId] = people = [];
@@ -50,7 +50,7 @@ internal sealed partial class MessengerBackend : ITypingService
                 foreach (var (chatId, people) in typingNow.ToArray())
                 {
                     foreach (var expired in people.Where(p => p.Value <= now || helper is null).Select(p => p.Key).ToArray()) people.Remove(expired);
-                    var native = MessengerModels.Native(chatId);
+                    var native = Models.Native(chatId);
                     var detail = chats.FirstOrDefault(chat => chat.Id == native);
                     current.Add(new(chatId, people.Select(p => new TypingParticipant(p.Key,
                         detail?.Participants.FirstOrDefault(person => MessengerModels.Person(person.Id) == p.Key)?.Name ?? "Someone", p.Value)).ToArray()));
@@ -68,7 +68,7 @@ internal sealed partial class MessengerBackend : ITypingService
     // into every burst however long it lasted.
     public async Task SetTypingAsync(string chatId, bool isTyping, CancellationToken cancellationToken = default)
     {
-        if (helper is not { } started || !MessengerModels.Owns(chatId)) return;
+        if (helper is not { } started || !Models.Owns(chatId)) return;
         var timer = false;
         lock (typingLock)
         {
@@ -86,7 +86,7 @@ internal sealed partial class MessengerBackend : ITypingService
     /// <summary>An edit in the composer, which puts off the stop for a conversation typing was sent to.</summary>
     internal void NoteComposerActivity(string? chatId)
     {
-        if (chatId is null || !MessengerModels.Owns(chatId)) return;
+        if (chatId is null || !Models.Owns(chatId)) return;
         lock (typingLock) typingStops.Activity(chatId, DateTimeOffset.UtcNow);
     }
 
@@ -112,12 +112,12 @@ internal sealed partial class MessengerBackend : ITypingService
 
     // A start that finds the pipe busy is skipped: the next edit brings another. A stop is not, because nothing brings
     // another, and a skipped one leaves the other person watching dots until Facebook times them out.
-    private static async Task SendTypingAsync(NativeBeeper.GoogleMessages.Spike.HelperConnection started, string chatId, bool typing)
+    private async Task SendTypingAsync(NativeBeeper.GoogleMessages.Spike.HelperConnection started, string chatId, bool typing)
     {
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await started.CallAsync("ui.typing", new { chatId = MessengerModels.Native(chatId), typing }, timeout.Token, skipIfBusy: typing);
+            await started.CallAsync("ui.typing", new { chatId = Models.Native(chatId), typing }, timeout.Token, skipIfBusy: typing);
         }
         catch (Exception) { /* Typing is best effort and never retried. */ }
     }

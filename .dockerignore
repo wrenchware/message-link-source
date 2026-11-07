@@ -12,6 +12,8 @@
 !third_party/mautrix-meta
 # The Google Messages helper's patched library, for docker/messages-server/Dockerfile.
 !third_party/mautrix-gmessages
+# SMBLibrary's licence texts, replacement notice and exact source (LGPL-3.0), which the server's publish copies to licenses/SMBLibrary.
+!third_party/SMBLibrary
 # Google Chrome's managed policy for the Dockerfile (copied to /etc/opt/chrome/policies/managed).
 !docker/messages-server/chrome-policy.json
 # The GHCR installer extracts these from the image without a source bundle or starting the server.

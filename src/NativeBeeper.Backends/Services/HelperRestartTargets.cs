@@ -59,6 +59,7 @@ internal sealed class HostHelperRestarter(GoogleMessagesBackend? google, GoogleS
 {
     // The scope is a client's string and goes no further than the table and the running set, so its size is all that is checked.
     internal const int MaxScopeLength = 128;
+    internal ProviderAccounts? Accounts { get; set; }
 
     public HostHelperRestarter(GoogleMessagesBackend? google, GoogleSignInKeeper keeper, MessengerBackend messenger,
         InstagramBackend instagram, GoogleVoiceAccounts voice, Action<string> log)
@@ -66,7 +67,15 @@ internal sealed class HostHelperRestarter(GoogleMessagesBackend? google, GoogleS
 
     public async Task<HelperRestartResult> RestartAsync(string scope, bool signingIn, bool force, string? token = null, bool settle = false)
     {
-        var target = scope.Length > MaxScopeLength ? null : HelperRestartTargets.For(scope, google, keeper, messenger, instagram, voice, new ClientGuard(signingIn));
+        IHelperRestartTarget? target;
+        if (scope.Length <= MaxScopeLength && NativeBeeper.Core.Messaging.AccountNamespace.KeyOf(scope) is { } key && Accounts is { } accounts)
+        {
+            var account = accounts.ByKey(key);
+            if (scope != ProviderAccounts.Scope(account)) return new("refused", "unknown_scope", 0);
+            var native = account.Slot.Ids.Native(scope);
+            target = HelperRestartTargets.For(native, account.Google ?? google, account.Keeper ?? keeper, account.Messenger ?? messenger, account.Instagram ?? instagram, voice, new ClientGuard(signingIn));
+        }
+        else target = scope.Length > MaxScopeLength ? null : HelperRestartTargets.For(scope, google, keeper, messenger, instagram, voice, new ClientGuard(signingIn));
         // A scope no helper serves, or Google's backend missing from a host that was composed without it: said as the refusals the window already words.
         if (target is null) return new("refused", HelperRestartScope.Service(scope) is null ? "unknown_scope" : "not_started", 0);
         return await restarts.RunAsync(scope, target, settle, force, token).ConfigureAwait(false);

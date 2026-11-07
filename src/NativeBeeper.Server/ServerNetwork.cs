@@ -106,6 +106,17 @@ internal sealed class ServerNetwork : IAsyncDisposable
     /// Asks Messages, beside this program, to open a service's sign-in (<c>MessageLink.exe --sign-in=&lt;service&gt;</c>): a running Messages takes it through its own
     /// activation, and one that is not running starts and opens it. With this process's environment, so a development copy's data folder is the same one.
     /// </summary>
+    private static bool OpenAuthentication(string id, string root)
+    {
+        var executable = Path.Combine(AppContext.BaseDirectory, "MessageLink.exe");
+        if (!File.Exists(executable)) return false;
+        var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
+        start.ArgumentList.Add("--server-auth=" + id);
+        start.Environment["NATIVEBEEPER_DATA_ROOT"] = root;
+        using var process = System.Diagnostics.Process.Start(start);
+        return process is not null;
+    }
+
     internal static bool AskMessagesToSignIn(string service, Action<string> log)
     {
         var messages = Path.Combine(AppContext.BaseDirectory, "MessageLink.exe");
@@ -144,6 +155,7 @@ internal sealed class ServerNetwork : IAsyncDisposable
     public static async Task<ServerNetwork?> StartAsync(ProtocolHost protocolHost, NativeBeeper.Host.Backup.ServerBackupService? serverBackup, string root, IStateProtector protector,
         Action<string> log, CancellationToken stop)
     {
+        var authentication = new NativeAuthenticationHandoff(root, protector, id => OpenAuthentication(id, root), log, stop);
         var settings = ServerNetworkSettings.Load(root, AppPaths.IsIsolated, Environment.MachineName);
         var keys = KeysFolder(root);
         var push = Path.Combine(keys, "push");
@@ -185,7 +197,9 @@ internal sealed class ServerNetwork : IAsyncDisposable
                 // The certificate's key sealed to the user, like the server's other secrets here (the backup reads it as HostStartup.BackupPaths says).
                 SealTlsKey = true,
                 // Connect on the page opens the native sign-in on this desktop, through Messages (the server draws nothing).
-                DesktopSignIn = service => AskMessagesToSignIn(service, log),
+                DesktopSignIn = _ => false,
+                DesktopAccountSignIn = (service, slot, authorized) => protocolHost.NativeAuthentication is { } select
+                    ? authentication.StartAsync(ct => select(service, slot, ct), authorized) : Task.FromResult(false),
                 RelaySocket = relay, Tailnet = tailnet,
                 Push = FirebaseTransport.TryLoad(push, log), PushFolder = push,
                 Backups = backups, Restored = restored,

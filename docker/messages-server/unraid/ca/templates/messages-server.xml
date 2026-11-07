@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>messages-server</Name>
+  <Repository>ghcr.io/wrenchware/messages-server:latest</Repository>
+  <Registry>https://github.com/users/wrenchware/packages/container/package/messages-server</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/wrenchware/unraid-templates/issues</Support>
+  <Project>https://wrenchware.github.io/messages/</Project>
+  <Overview>Message Link Server keeps your Google Messages, Messenger, Google Voice and Instagram accounts signed in on this server, so the Message Link apps on your PCs and Android phone use them from one place, at home or away through Tailscale.[br][br]
+[b]Setting up:[/b][br]
+1. In Settings, Docker, set Docker Stop Timeout to at least 60 seconds, so messages being sent can finish when the container stops. Then Apply this template.[br]
+2. On the Docker tab, open the container's Logs and find the setup code.[br]
+3. Open the WebUI. The browser warns about the certificate once, because the server made its own. Enter the setup code and choose the page's password.[br]
+4. The page takes you through restoring a backup, your accounts, Tailscale, your phone and PCs, notifications and backups.[br][br]
+[b]Where things live:[/b] the Docker volumes messages-server-data and messages-server-keys, in Docker's own storage and on none of your shares. Daily backups go to a network share you choose on the server's page (a share on this server works). They hold your history, settings and devices, never a sign-in. The volumes use space in Docker's own storage, so leave room there for your history.[br][br]
+[b]Chrome's sandbox:[/b] the server shows each service's sign-in in its own Google Chrome, which runs every page in Chrome's sandbox. For that, the container runs without Docker's default system call filter (seccomp=unconfined). It still runs as its own user, with every capability dropped.</Overview>
+  <Category>Network:Messenger Network:Other</Category>
+  <WebUI>https://[IP]:[PORT:8787]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/wrenchware/unraid-templates/main/templates/messages-server.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/wrenchware/switchboard-messages/main/assets/app-icon.png</Icon>
+  <ExtraParams>--init --user=2787:2787 --stop-timeout=60 --security-opt=no-new-privileges:true --security-opt=seccomp=unconfined --cap-drop=ALL --memory=4g --memory-swap=4g --pids-limit=2048 -v messages-server-data:/data -v messages-server-keys:/keys</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Requires/>
+  <Config Name="Port" Target="8787" Default="8787" Mode="tcp" Description="The one port the Message Link apps and the server's page use (HTTPS)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="Reach from your tailnet" Target="MESSAGES_TAILNET" Default="1" Mode="" Description="1 puts the server on your Tailscale network as a machine of its own, so your phone reaches it from anywhere while the port above stays on your home network. The server's page signs it in. 0 turns it off." Type="Variable" Display="always" Required="false" Mask="false">1</Config>
+  <Config Name="Backups folder" Target="/backups" Default="" Mode="rw" Description="Leave empty and choose a network share on the server's page." Type="Path" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Tailscale auth key" Target="MESSAGES_TAILNET_AUTHKEY" Default="" Mode="" Description="Optional: a Tailscale auth key (tskey-auth-...) that signs the server in by itself the first time, instead of the page's sign-in. A tagged key lets in every device your access rules allow, not only your own. Clear it once the server is signed in." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Tailnet name" Target="MESSAGES_TAILNET_NAME" Default="" Mode="" Description="Optional: the server's name on your Tailscale network: lowercase letters, digits and dashes." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Server names" Target="MESSAGES_HOSTNAMES" Default="" Mode="" Description="Optional: the names and addresses devices reach the server by, comma-separated, written into its certificate when it is first made (devices trust its fingerprint, not these names)." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Server page password" Target="MESSAGES_ADMIN_PASSWORD" Default="" Mode="" Description="Optional: sets the page's password here instead of on its first visit (12 to 128 characters, used nowhere else). Unraid shows it in the docker command it prints." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Resume sign-ins at start" Target="MESSAGES_RESTORE" Default="1" Mode="" Description="1 resumes the accounts signed in on this server when it starts." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
+  <Config Name="Google Messages and Voice" Target="MESSAGES_GOOGLE" Default="1" Mode="" Description="1 runs Google Messages and Google Voice beside the server's own Google Chrome." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Google through Chrome" Target="MESSAGES_GOOGLE_CHROME" Default="1" Mode="" Description="Leave at 1: Google is signed in by hand in the server's own Chrome, which keeps the sign-in fresh." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Chrome on its own display" Target="MESSAGES_CHROMIUM_HEADED" Default="1" Mode="" Description="Leave at 1: Chrome draws on a virtual display inside the container." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Network of its own" Target="MESSAGES_NETWORK_ISOLATED" Default="1" Mode="" Description="1 on the bridge network: the container has a network of its own, so the page may show sign-ins from the server's Chrome. Set 0 with host networking." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Chrome without its sandbox" Target="MESSAGES_CHROMIUM_NO_SANDBOX" Default="0" Mode="" Description="Leave at 0: Chrome runs every page in its sandbox. 1 turns the sandbox off, and a page that broke out of Chrome could then read every sign-in on this server." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="Data folder in the container" Target="MESSAGES_DATA" Default="/data" Mode="" Description="Leave as /data, the volume in Extra Parameters." Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>
+  <Config Name="Keys folder in the container" Target="MESSAGES_KEYS" Default="/keys" Mode="" Description="Leave as /keys, the volume in Extra Parameters." Type="Variable" Display="advanced" Required="true" Mask="false">/keys</Config>
+</Container>

@@ -9,8 +9,13 @@ namespace NativeBeeper.App.Services.Messenger;
 
 // Facebook Messenger: conversations, history, directory lookup and mutations go through the messenger-helper process
 // over a private pipe; MessagingRouter keeps their ids away from the Google helper.
-internal sealed partial class MessengerBackend(IStateProtector protector) : IChatReader, ILinkPreviewLoader, IMessageSender, IMediaReader, IAttachmentBackend, IAttachmentBatchBackend, IMessageActions, IMessageMutations, IRealtimeFeed, IDisposable, IAsyncDisposable
+internal sealed partial class MessengerBackend(IStateProtector protector, ProviderAccountSlot? accountSlot = null) : IChatReader, ILinkPreviewLoader, IMessageSender, IMediaReader, IAttachmentBackend, IAttachmentBatchBackend, IMessageActions, IMessageMutations, IRealtimeFeed, IDisposable, IAsyncDisposable
 {
+    internal ProviderAccountSlot Slot { get; } = accountSlot ?? ProviderAccountSlot.Legacy;
+    internal MessengerAccountModels Models { get; } = new((accountSlot ?? ProviderAccountSlot.Legacy).Ids);
+    public static string SessionPath => ProviderAccountSlot.Legacy.PathFor("Messenger", "session.protected");
+    public static bool HasSavedSession => File.Exists(SessionPath);
+    public static bool EncryptedEnabled => File.Exists(ProviderAccountSlot.Legacy.PathFor("Messenger", "encrypted.on"));
     private const string NotYet = "Sending files to Messenger is not available yet.";
     private const int Chunk = 192 * 1024;
     private const int Limit = 25 * 1024 * 1024;
@@ -26,10 +31,13 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // nobody is reading must never hold up the helper's own event pump. A drop reaches the reader as a resync.
     private readonly RealtimeBuffer realtime = new(512, MessengerLog.Write);
 
-    public static string SessionPath => NativeBeeper.App.Services.AppPaths.Combine("Messenger", "session.protected");
+    internal string SessionFile => Slot.PathFor("Messenger", "session.protected");
     // The last known conversations, so the list keeps them at launch instead of dropping them until Messenger reconnects.
-    private static string ChatsPath => Path.Combine(Path.GetDirectoryName(SessionPath)!, "chats.protected");
-    public static bool HasSavedSession => File.Exists(SessionPath);
+    private string ChatsPath => Path.Combine(Path.GetDirectoryName(SessionFile)!, "chats.protected");
+    internal Func<string?, CancellationToken, Task>? ValidateAccount { get; set; }
+    internal static string? CookieIdentity(IReadOnlyDictionary<string,string> cookies) => cookies.TryGetValue("c_user", out var id) && id.Length > 0 && id.All(char.IsAsciiDigit) ? ProviderAccounts.Identity("messenger", id) : null;
+    internal async Task<string?> SavedIdentityAsync() => await ReadSavedCookiesAsync() is { } cookies ? CookieIdentity(cookies) : null;
+    internal bool SessionSaved => File.Exists(SessionFile);
     private bool restored;
     // Set while the saved list is being read. restored is set before that read, so a second reader arriving during it
     // skips the restore and maps the list as it stands, possibly still empty. Whether two startup readers ever overlap
@@ -75,10 +83,10 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
 
     public async Task<Dictionary<string, string>?> ReadSavedCookiesAsync()
     {
-        if (!HasSavedSession) return null;
+        if (!SessionSaved) return null;
         byte[] sealedSession;
         // Signed out between the look and the read: nothing saved, as if the look had seen it.
-        try { sealedSession = await File.ReadAllBytesAsync(SessionPath); }
+        try { sealedSession = await File.ReadAllBytesAsync(SessionFile); }
         catch (Exception missing) when (missing is FileNotFoundException or DirectoryNotFoundException) { return null; }
         var stored = await protector.UnprotectAsync(sealedSession);
         try
@@ -124,14 +132,15 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         // A saved session's cookies (adoptLegacy) are read again under this lock, whatever the caller read before taking it: a sign-out that held it meanwhile (a server's removal,
         // Settings' Sign out) has deleted the session, or a new sign-in has replaced it, and the caller's cookies would sign the old account back in behind either.
         if (adoptLegacy) cookies = await ReadSavedCookiesAsync() ?? throw new InvalidOperationException("missing_cookies");
+        if (ValidateAccount is { } validate) await validate(CookieIdentity(cookies), cancellationToken);
         var path = HelperExecutables.PathFor("messenger-helper");
         if (!File.Exists(path)) throw new InvalidOperationException("helper_missing");
         try
         {
             await CloseAsync();
             if (closing) throw new OperationCanceledException("Messenger is closing.");
-            var started = await HelperConnection.StartAsync(path, null, cancellationToken);
-            started.Scope = "messenger:";
+            var started = await HelperConnection.StartAsync(path, null, cancellationToken, Slot.HelperEnvironment);
+            started.Scope = Models.Qualify("");
             started.Received += (kind, data) =>
             {
                 if (!ReferenceEquals(helper, started)) return;
@@ -150,7 +159,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             if (MayConnect?.Invoke() == false) throw new InvalidOperationException("account_moved_away");
             StillOpen();
             // A new helper session has handed nothing out yet: what the last one named no longer says a picture is gone.
-            NativeBeeper.Presentation.Services.MediaNews.Forget("messenger:");
+            NativeBeeper.Presentation.Services.MediaNews.Forget(Models.Qualify(""));
             (catchUpUntil, catchUpLeft) = (DateTimeOffset.UtcNow + CatchUpWindow, CatchUpMessages);
             _ = NoteCatchUpAsync(started);
             // Nothing is readable in Messenger until this whole sequence finishes: an unconnected backend answers a
@@ -209,7 +218,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         // first read repairs itself instead of requiring a switch to another conversation and back.
         if (chats.Length > 0)
             realtime.Writer.TryWrite(new(RealtimeKind.ChatChanged, null,
-                chats.Select(chat => MessengerModels.Qualify(chat.Id)).ToArray(), null, DateTimeOffset.UtcNow));
+                chats.Select(chat => Models.Qualify(chat.Id)).ToArray(), null, DateTimeOffset.UtcNow));
     }
 
     // Most Messenger conversations are end-to-end encrypted, and their messages travel on a separate connection that
@@ -217,8 +226,8 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // the same as opening Messenger on a new computer; it stays until the account removes it. A new sign-in turns it on by
     // itself, once (MessengerEncryptedAuto); a saved session never does, and otherwise it is the Settings button. The flag
     // is what makes it happen again on the next launch.
-    private static string EncryptedPath => Path.Combine(Path.GetDirectoryName(SessionPath)!, "encrypted.on");
-    public static bool EncryptedEnabled => File.Exists(EncryptedPath);
+    private string EncryptedPath => Path.Combine(Path.GetDirectoryName(SessionFile)!, "encrypted.on");
+    internal bool EncryptionEnabled => File.Exists(EncryptedPath);
 
     // The Settings button. Null when it is on; otherwise what to tell the person.
     public async Task<string?> EnableEncryptedAsync(CancellationToken cancellationToken = default) =>
@@ -229,7 +238,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // that happened. Null when it is on, or was already; otherwise what to tell the person.
     public async Task<string?> EnableEncryptedAfterSignInAsync()
     {
-        if (MessengerEncryptedAuto.Skip(newSignIn: true, EncryptedEnabled) is { } skip)
+        if (MessengerEncryptedAuto.Skip(newSignIn: true, EncryptionEnabled) is { } skip)
         {
             MessengerLog.Write($"encrypted auto outcome=skipped reason={skip}");
             return null;
@@ -287,7 +296,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // Reconnects the encrypted side when it was turned on before; the device is already registered by then.
     private async Task RestoreEncryptedAsync(HelperConnection started, CancellationToken cancellationToken)
     {
-        if (!EncryptedEnabled) return;
+        if (!EncryptionEnabled) return;
         // restore: true is the helper's promise never to register a device here. This is a reconnect of a device registered earlier; if its keys are not there
         // (the database was lost, or a copy of the data came without it), registering a fresh one would add a device to the account without anyone asking. Only the
         // Settings button and a new sign-in may do that (TurnOnEncryptedAsync).
@@ -319,7 +328,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         // conversations — most of them — are carrying nothing at all. That matters more than how far the list has
         // loaded, so it is said first (MessengerEncryptedStatus).
         var encrypted = NoteEncryptedState(result);
-        if (MessengerEncryptedStatus.Problem(encrypted, EncryptedEnabled) is { } problem)
+        if (MessengerEncryptedStatus.Problem(encrypted, EncryptionEnabled) is { } problem)
             return $"Connected, {counted}. {problem}";
         return paging switch
         {
@@ -398,7 +407,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             await CloseAsync();
             chats = [];
             deviceMissing = false;
-            try { if (File.Exists(SessionPath)) File.Delete(SessionPath); } catch (Exception) { }
+            try { if (File.Exists(SessionFile)) File.Delete(SessionFile); } catch (Exception) { }
             try { if (File.Exists(ChatsPath)) File.Delete(ChatsPath); } catch (Exception) { }
         }
         finally { gate.Release(); }
@@ -494,14 +503,14 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         // Reading the cached summary here would retain a nameless/stale row until some later unrelated event.
         chatsReadAt = default;
         var received = DateTimeOffset.UtcNow;
-        foreach (var change in MessengerModels.MessageEvents(data, received))
+        foreach (var change in MessengerModels.MessageEvents(data, received).Select(Slot.Ids.Map))
         {
             NoteCaughtUp(change);
             realtime.Writer.TryWrite(change);
         }
         if (data.TryGetProperty("chats", out var chats) && chats.ValueKind == JsonValueKind.Array)
         {
-            var ids = chats.EnumerateArray().Select(id => MessengerModels.Qualify(id.GetString() ?? "")).ToArray();
+            var ids = chats.EnumerateArray().Select(id => Models.Qualify(id.GetString() ?? "")).ToArray();
             if (ids.Length > 0) realtime.Writer.TryWrite(new(RealtimeKind.ChatChanged, null, ids, null, received));
         }
         // A whole conversation deleted, here or on another device: it leaves the list and the cached list with it.
@@ -545,7 +554,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         var remaining = chats.Where(chat => chat.Id != native).ToArray();
         chats = remaining;
         _ = SaveChatsAsync(remaining);
-        realtime.Writer.TryWrite(new(RealtimeKind.ChatDeleted, MessengerModels.Qualify(native), null, null, received));
+        realtime.Writer.TryWrite(new(RealtimeKind.ChatDeleted, Models.Qualify(native), null, null, received));
     }
 
     // Deletes the conversation on Facebook and everything kept for it on this PC. Facebook starts a deleted conversation
@@ -555,9 +564,9 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         if (helper is not { } started) throw new SendException(false, "Connect Messenger in Settings to delete conversations.");
         try
         {
-            await started.CallAsync("ui.deleteChat", new { chatId = MessengerModels.Native(chatId) }, cancellationToken);
+            await started.CallAsync("ui.deleteChat", new { chatId = Models.Native(chatId) }, cancellationToken);
             MessengerLog.Write($"delete chat={MessengerLog.Tag(chatId)} accepted");
-            ForgetChat(MessengerModels.Native(chatId), DateTimeOffset.UtcNow);
+            ForgetChat(Models.Native(chatId), DateTimeOffset.UtcNow);
         }
         catch (OperationCanceledException) { throw; }
         catch (InvalidOperationException failure)
@@ -588,10 +597,10 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         try
         {
             var encrypted = await protector.ProtectAsync(plain);
-            Directory.CreateDirectory(Path.GetDirectoryName(SessionPath)!);
-            var temporary = SessionPath + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(SessionFile)!);
+            var temporary = SessionFile + ".tmp";
             await NativeBeeper.Storage.DurableFile.WriteAsync(temporary, encrypted);
-            File.Move(temporary, SessionPath, true);
+            File.Move(temporary, SessionFile, true);
         }
         catch (Exception) { /* Keep working without a saved session; the next connect signs in again. */ }
         finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(plain); }
@@ -602,7 +611,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         if (olderThan is not null) return new([], false, null, null);
         // Until the first connection of a session is ready, the conversations from last time keep the list steady. The
         // startup reconnect may already have a helper starting, so readiness rather than the process decides.
-        if (!restored && !IsConnected && HasSavedSession) await RestoreChatsAsync();
+        if (!restored && !IsConnected && SessionSaved) await RestoreChatsAsync();
         else NoteRestoreOverlap("list");
         if (IsConnected && helper is { } started)
         {
@@ -615,7 +624,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             catch (OperationCanceledException) { throw; }
             catch (Exception) { /* Keep the conversations already known if the helper is momentarily unavailable. */ }
         }
-        return new(chats.Select(MessengerModels.Map).ToArray(), false, null, null);
+        return new(chats.Select(Models.Map).ToArray(), false, null, null);
     }
 
     // When many conversations move at once, the list is read once rather than once per conversation. The helper
@@ -625,7 +634,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
 
     public async Task<ChatSummary> GetChatAsync(string chatId, CancellationToken cancellationToken = default)
     {
-        var native = MessengerModels.Native(chatId);
+        var native = Models.Native(chatId);
         if (IsConnected && helper is { } started)
         {
             try
@@ -640,13 +649,13 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
                 if (!chats.Any(chat => chat.Id == native))
                 {
                     var result = await started.CallAsync("ui.chat", new { chatId = native }, cancellationToken);
-                    if (result.Deserialize<MessengerChat>(Json) is { } fresh) return MessengerModels.Map(fresh);
+                    if (result.Deserialize<MessengerChat>(Json) is { } fresh) return Models.Map(fresh);
                 }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception) { /* Fall back to the conversation already known. */ }
         }
-        if (!IsConnected && !restored && HasSavedSession && !chats.Any(chat => chat.Id == native)) await RestoreChatsAsync();
+        if (!IsConnected && !restored && SessionSaved && !chats.Any(chat => chat.Id == native)) await RestoreChatsAsync();
         else NoteRestoreOverlap("chat");
         const string notLoaded = "That Messenger conversation is not loaded. Reconnect Messenger in Settings.";
         var known = chats.FirstOrDefault(chat => chat.Id == native)
@@ -654,7 +663,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             // send the user to Settings: its readiness event reads the list and the conversation again.
             ?? throw (IsConnected ? new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable, notLoaded)
                 : NotConnected(notLoaded));
-        return MessengerModels.Map(known);
+        return Models.Map(known);
     }
 
     private const int PageSize = 50;
@@ -666,7 +675,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         if (!IsConnected || helper is not { } started)
             throw NotConnected("Connect Messenger in Settings to load this conversation.");
         var result = await started.CallAsync("ui.messagePage",
-            new { chatId = MessengerModels.Native(chatId), count = PageSize, before = olderThan ?? "" }, cancellationToken);
+            new { chatId = Models.Native(chatId), count = PageSize, before = olderThan ?? "" }, cancellationToken);
         var providerPage = result.Deserialize<MessengerMessagePage>(Json)
             ?? throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable,
                 "Messenger sent back something Message Link couldn't read. Refresh and try again.");
@@ -682,7 +691,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         // The cursor is the oldest message in this page, in milliseconds; a full page means Facebook may have more.
         var oldest = messages.Length > 0
             ? messages[0].At.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-        return new(messages.Select(MessengerModels.Map).ToArray(), messages.Length >= PageSize, oldest, null,
+        return new(messages.Select(Models.Map).ToArray(), messages.Length >= PageSize, oldest, null,
             refreshing);
     }
 
@@ -694,7 +703,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             throw NotConnected("Connect Messenger in Settings to load this conversation.");
         var result = await started.CallAsync("ui.messageWindow", new
         {
-            chatId = MessengerModels.Native(chatId),
+            chatId = Models.Native(chatId),
             at = WindowMoment(at),
             older = Math.Clamp(older, 0, 200),
             newer = Math.Clamp(newer, 0, 200),
@@ -705,7 +714,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         var messages = window.Messages ?? [];
         MessengerLog.Write($"history window chat={MessengerLog.Tag(chatId)} older={older} newer={newer} returned={messages.Length} " +
             $"more_older={window.MoreOlder} more_newer={window.MoreNewer}");
-        return new(messages.Select(MessengerModels.Map).ToArray(), window.MoreOlder, window.MoreNewer);
+        return new(messages.Select(Models.Map).ToArray(), window.MoreOlder, window.MoreNewer);
     }
 
     // Messenger's times are whole milliseconds, and a window splits at "before" and "from" a moment that can be finer (just past a message, or a merged
@@ -716,9 +725,9 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     public async Task LoadLinkPreviewsAsync(string chatId, IReadOnlyList<string> messageIds, CancellationToken cancellationToken = default)
     {
         if (helper is not { } started) throw new InvalidOperationException("Messenger is not connected.");
-        var ids = messageIds.Where(MessengerModels.Owns).Distinct(StringComparer.Ordinal).TakeLast(200).Select(MessengerModels.Native).ToArray();
+        var ids = messageIds.Where(Models.Owns).Distinct(StringComparer.Ordinal).TakeLast(200).Select(Models.Native).ToArray();
         if (ids.Length == 0) return;
-        await started.CallAsync("ui.linkPreviews", new { chatId = MessengerModels.Native(chatId), messageIds = ids }, cancellationToken);
+        await started.CallAsync("ui.linkPreviews", new { chatId = Models.Native(chatId), messageIds = ids }, cancellationToken);
     }
 
     // Photos, files and profile pictures: the helper holds the Facebook urls and downloads them with the session's own
@@ -757,7 +766,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // A helper still starting, or a saved session that is about to reconnect, is worth waiting for: its readiness event
     // repairs what failed. Signed out, closing or after recovery has given up, the user has to act instead.
     private NativeBeeper.Core.Backend.BackendException NotConnected(string message) =>
-        helper is not null || HasSavedSession && !closing && restarts <= 3
+        helper is not null || SessionSaved && !closing && restarts <= 3
             ? new(NativeBeeper.Core.Backend.BackendFailure.NotReady, "Messenger is reconnecting.")
             : new(NativeBeeper.Core.Backend.BackendFailure.Unavailable, message);
 
@@ -765,7 +774,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     {
         if (!IsConnected || helper is not { } started)
             throw NotConnected("Connect Messenger in Settings to load this media.");
-        var id = MessengerModels.NativeMedia(attachment);
+        var id = Models.NativeMedia(attachment);
         var offset = 0;
         var size = -1;
         while (true)
@@ -800,9 +809,9 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         {
             result = await started.CallAsync("ui.sendText", new
             {
-                chatId = MessengerModels.Native(chatId),
+                chatId = Models.Native(chatId),
                 text,
-                replyTo = replyTo is null ? "" : MessengerModels.Native(replyTo),
+                replyTo = replyTo is null ? "" : Models.Native(replyTo),
             }, cancellationToken);
         }
         catch (OperationCanceledException) { MessengerLog.Write("send cancelled"); throw; }
@@ -819,7 +828,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             throw new SendException(true, "Messenger did not confirm the message.");
         }
         MessengerLog.Write($"send accepted message={MessengerLog.Tag(id)}");
-        return new(chatId, MessengerModels.Qualify(id));
+        return new(chatId, Models.Qualify(id));
     }
 
     // Replies and reactions. Messenger keeps one reaction per person, so adding one replaces whatever this account had
@@ -828,8 +837,8 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
 
     public async Task<MessageActionOptions> GetOptionsAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
     {
-        if (helper is null || !MessengerModels.Owns(chatId) || !MessengerModels.Owns(messageId)) return new(false, [], []);
-        var native = MessengerModels.Native(chatId);
+        if (helper is null || !Models.Owns(chatId) || !Models.Owns(messageId)) return new(false, [], []);
+        var native = Models.Native(chatId);
         var known = chats.FirstOrDefault(chat => chat.Id == native);
         if (known is null || known.ReadOnly) return new(false, [], []);
         // Which reaction this account already has on the message, so the menu can offer to take it away.
@@ -857,17 +866,17 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     // a missed read marker is not worth interrupting anyone over.
     public Task<bool> CanMarkReadAsync(string chatId, CancellationToken cancellationToken = default)
     {
-        var native = MessengerModels.Native(chatId);
+        var native = Models.Native(chatId);
         return Task.FromResult(helper is not null && chats.Any(chat => chat.Id == native && (!chat.ReadOnly || chat.Encrypted)));
     }
 
     public async Task MarkReadAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
     {
-        if (helper is not { } started || !MessengerModels.Owns(messageId))
+        if (helper is not { } started || !Models.Owns(messageId))
             throw new InvalidOperationException("Messenger can't mark this as read.");
         try
         {
-            var result = await started.CallAsync("ui.markRead", new { chatId = MessengerModels.Native(chatId), messageId = MessengerModels.Native(messageId) }, cancellationToken);
+            var result = await started.CallAsync("ui.markRead", new { chatId = Models.Native(chatId), messageId = Models.Native(messageId) }, cancellationToken);
             if (!result.TryGetProperty("outcome", out var outcome) || outcome.GetString() != "accepted")
                 throw new InvalidOperationException("mark_read_failed");
             var sent = result.TryGetProperty("receiptsSent", out var count) ? count.GetInt32() : -1;
@@ -891,7 +900,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         {
             await started.CallAsync("ui.editMessage", new
             {
-                chatId = MessengerModels.Native(chatId), messageId = MessengerModels.Native(messageId), text,
+                chatId = Models.Native(chatId), messageId = Models.Native(messageId), text,
             }, cancellationToken);
             MessengerLog.Write($"edit chat={MessengerLog.Tag(chatId)} accepted");
         }
@@ -910,7 +919,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         {
             await started.CallAsync("ui.deleteMessage", new
             {
-                chatId = MessengerModels.Native(chatId), messageId = MessengerModels.Native(messageId), everyone = forEveryone,
+                chatId = Models.Native(chatId), messageId = Models.Native(messageId), everyone = forEveryone,
             }, cancellationToken);
             MessengerLog.Write($"delete chat={MessengerLog.Tag(chatId)} everyone={forEveryone} accepted");
         }
@@ -944,8 +953,8 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         {
             result = await started.CallAsync("ui.react", new
             {
-                chatId = MessengerModels.Native(chatId),
-                messageId = MessengerModels.Native(messageId),
+                chatId = Models.Native(chatId),
+                messageId = Models.Native(messageId),
                 key = reaction,
                 remove,
             }, cancellationToken);
@@ -973,11 +982,11 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
         if (helper is not { } started)
             throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable, "Messenger is not connected.");
         var result = await started.CallAsync("ui.message",
-            new { chatId = MessengerModels.Native(chatId), id = MessengerModels.Native(messageId) }, cancellationToken);
+            new { chatId = Models.Native(chatId), id = Models.Native(messageId) }, cancellationToken);
         var message = result.Deserialize<MessengerMessage>(Json)
             ?? throw new NativeBeeper.Core.Backend.BackendException(NativeBeeper.Core.Backend.BackendFailure.Unavailable, "That message is not loaded.");
         MessengerLog.Write($"resolved chat={MessengerLog.Tag(chatId)} message={MessengerLog.Tag(messageId)}");
-        return MessengerModels.Map(message);
+        return Models.Map(message);
     }
 
     // The same "ui.message", which the helper answers from its own store and never from Facebook, for a display-only
@@ -996,10 +1005,10 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             await peeks.WaitAsync(linked.Token);
             entered = true;
             var result = await started.CallAsync("ui.message",
-                new { chatId = MessengerModels.Native(chatId), id = MessengerModels.Native(messageId) }, linked.Token, skipIfBusy: true);
+                new { chatId = Models.Native(chatId), id = Models.Native(messageId) }, linked.Token, skipIfBusy: true);
             // A skipped call now comes back as {"skipped":true} rather than throwing, and is a miss, not an empty message.
             if (NativeBeeper.GoogleMessages.Spike.HelperRequests.IsSkipped(result)) return null;
-            return result.ValueKind == JsonValueKind.Object && result.Deserialize<MessengerMessage>(Json) is { } message ? MessengerModels.Map(message) : null;
+            return result.ValueKind == JsonValueKind.Object && result.Deserialize<MessengerMessage>(Json) is { } message ? Models.Map(message) : null;
         }
         catch (Exception) { return null; }
         finally { if (entered) peeks.Release(); }
@@ -1014,7 +1023,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             return Task.FromResult(NotConnected("").Failure == NativeBeeper.Core.Backend.BackendFailure.NotReady
                 ? new SendPermission(false, "Waiting for Messenger to connect…", Pending: true)
                 : new SendPermission(false, "Connect Messenger in Settings to send messages."));
-        var native = MessengerModels.Native(chatId);
+        var native = Models.Native(chatId);
         var known = chats.FirstOrDefault(chat => chat.Id == native);
         var permission = known switch
         {
@@ -1036,7 +1045,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
     private SendPermission FilePermission(string chatId)
     {
         if (helper is null) return new(false, "Connect Messenger in Settings to send files.");
-        var known = chats.FirstOrDefault(chat => chat.Id == MessengerModels.Native(chatId));
+        var known = chats.FirstOrDefault(chat => chat.Id == Models.Native(chatId));
         // An encrypted conversation this computer is not registered for cannot be replied to at all, in words or files.
         if (known is { Encrypted: true, ReadOnly: true }) return new(false,
             "This conversation is end-to-end encrypted. Turn on encrypted conversations in Settings to send files to it.");
@@ -1052,7 +1061,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             : FilePermission(chatId));
     public Task<AttachmentCaptionSupport> GetCaptionSupportAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default)
         => Task.FromResult(new AttachmentCaptionSupport(FilePermission(chatId).Allowed &&
-            MessengerModels.SupportsAttachmentCaption(chats.FirstOrDefault(chat => chat.Id == MessengerModels.Native(chatId))), null));
+            MessengerModels.SupportsAttachmentCaption(chats.FirstOrDefault(chat => chat.Id == Models.Native(chatId))), null));
 
     public bool CanSendBatch(string chatId, IReadOnlyList<AttachmentFile> files) =>
         files.Count is >= 2 and <= AttachmentBatchRules.ItemLimit &&
@@ -1100,7 +1109,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             MessengerLog.Write($"sendMediaBatch chat={MessengerLog.Tag(chatId)} count={files.Count} bytes={files.Sum(file => file.Length)}");
             var result = await started.CallAsync("ui.sendMediaBatch", new
             {
-                chatId = MessengerModels.Native(chatId),
+                chatId = Models.Native(chatId),
                 files = files.Select(file => new { name = Path.GetFileName(file.Name), mime = file.MimeType }).ToArray(),
             }, cancellationToken).ConfigureAwait(false);
             var outcome = result.TryGetProperty("outcome", out var state) ? state.GetString() : null;
@@ -1110,10 +1119,10 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             MessengerLog.Write($"sendMediaBatch accepted message={MessengerLog.Tag(id)} count={files.Count}");
             var ids = result.TryGetProperty("ids", out var batchIds) && batchIds.ValueKind == JsonValueKind.Array
                 ? batchIds.EnumerateArray().Select(value => value.GetString()).OfType<string>()
-                    .Where(value => !string.IsNullOrWhiteSpace(value)).Select(MessengerModels.Qualify).ToArray() : null;
+                    .Where(value => !string.IsNullOrWhiteSpace(value)).Select(Models.Qualify).ToArray() : null;
             if (ids is not null && (ids.Length != files.Count || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length))
                 throw new SendException(true, "Messenger did not confirm every photo in the set. Check the conversation before sending it again.");
-            return new(chatId, MessengerModels.Qualify(id), ids);
+            return new(chatId, Models.Qualify(id), ids);
         }
         catch (SendException) { throw; }
         catch (OperationCanceledException) { throw; }
@@ -1176,7 +1185,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             MessengerLog.Write($"sendMedia chat={MessengerLog.Tag(chatId)} bytes={offset}");
             var result = await started.CallAsync("ui.sendMedia", new
             {
-                chatId = MessengerModels.Native(chatId),
+                chatId = Models.Native(chatId),
                 name = Path.GetFileName(file.Name),
                 mime = file.MimeType,
                 text = caption ?? "",
@@ -1191,7 +1200,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector) : ICha
             if (string.IsNullOrEmpty(id))
                 throw new SendException(true, "Messenger did not confirm the file. Check the conversation before sending it again.");
             MessengerLog.Write($"sendMedia accepted message={MessengerLog.Tag(id)}");
-            return new(chatId, MessengerModels.Qualify(id));
+            return new(chatId, Models.Qualify(id));
         }
         catch (SendException) { throw; }
         catch (OperationCanceledException) { throw; }

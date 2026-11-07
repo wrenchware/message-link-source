@@ -14,6 +14,10 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
     IVideoFrameExtractor? frames = null)
     : IMediaReader, IAttachmentBackend, IAttachmentBatchBackend, IMediaPreparer
 {
+    internal ProviderAccounts? Accounts { get; set; }
+    private GoogleMediaBackend Google(string id) => Accounts?.GoogleMedia(id) ?? google;
+    private MessengerBackend Messenger(string id) => Accounts?.Messenger(id) ?? messenger;
+    private NativeBeeper.App.Services.Instagram.InstagramBackend InstagramAccount(string id) => Accounts?.Instagram(id) ?? instagram;
     // Null where the host cannot make a frame from a video: a video that came with no still then draws as it did.
     private readonly VideoStills? stills = frames is null ? null : new(frames, disk, tokens);
 
@@ -56,13 +60,13 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
     {
         if (Voice(video)) return await ReadVoiceMediaAsync(video, cancellationToken);
         using var memory = new MemoryStream();
-        await google.CopyToAsync(video, memory, cancellationToken);
+        await Google(video.Id ?? video.SourceUrl ?? "").CopyToAsync(video, memory, cancellationToken);
         return memory.ToArray();
     }
 
     private async Task<byte[]> ReadGoogleImageAsync(MessageAttachment attachment, CancellationToken cancellationToken, bool inline)
     {
-        var bytes = await google.ReadImageAsync(attachment, cancellationToken, inline);
+        var bytes = await Google(attachment.Id ?? attachment.SourceUrl ?? "").ReadImageAsync(attachment, cancellationToken, inline);
         if (inline && stills is not null && attachment.Type == "video" && !attachment.IsGif && ProviderMedia.IsVideoStill(attachment.SourceUrl))
             stills.NoteProvider(attachment);
         return bytes;
@@ -76,14 +80,14 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
     // draws them at once on the next launch, even before Messenger has reconnected, instead of every helper session
     // downloading and decrypting each photo again. Link cards' pictures the helper made are among them (ImageCacheKey).
     private Task<byte[]> ReadMessengerImageAsync(MessageAttachment attachment, CancellationToken cancellationToken, bool inline) =>
-        ReadKeptAsync(MessengerBackend.ImageCacheKey(attachment, inline), token => messenger.ReadImageAsync(attachment, token, inline), cancellationToken);
+        ReadKeptAsync(MessengerBackend.ImageCacheKey(attachment, inline), token => Messenger(attachment.Id ?? attachment.SourceUrl ?? "").ReadImageAsync(attachment, token, inline), cancellationToken);
 
     // Instagram photos and profile pictures persist in the same encrypted media cache as everything else, so a
     // conversation seen before draws them at once on the next launch, even before Instagram has reconnected, instead
     // of each helper session downloading them again. Instagram's own urls expire; the id does not.
     private Task<byte[]> ReadInstagramImageAsync(MessageAttachment attachment, CancellationToken cancellationToken, bool inline) =>
         ReadKeptAsync(NativeBeeper.App.Services.Instagram.InstagramBackend.ImageCacheKey(attachment, inline),
-            token => instagram.ReadImageAsync(attachment, token, inline), cancellationToken);
+            token => InstagramAccount(attachment.Id ?? attachment.SourceUrl ?? "").ReadImageAsync(attachment, token, inline), cancellationToken);
 
     // Google Voice photos and voicemail audio are kept in the same encrypted, profile-scoped cache, keyed by their
     // account-qualified id, so a voicemail played once plays again at once and without asking Google.
@@ -118,8 +122,8 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
         ReadKeptAsync(key, async token =>
         {
             using var memory = new CappedStream(limit);
-            if (Insta(attachment)) await instagram.CopyToAsync(attachment, memory, token);
-            else await messenger.CopyToAsync(attachment, memory, token);
+            if (Insta(attachment)) await InstagramAccount(attachment.Id ?? attachment.SourceUrl ?? "").CopyToAsync(attachment, memory, token);
+            else await Messenger(attachment.Id ?? attachment.SourceUrl ?? "").CopyToAsync(attachment, memory, token);
             return memory.ToArray();
         }, cancellationToken);
 
@@ -152,7 +156,7 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
         // Google by its id (a video's still under ":thumbnail"), as their reads above and GoogleMediaBackend write them.
         var key = Voice(picture) ? picture.Id
             : Mine(picture) ? MessengerBackend.ImageCacheKey(picture, inline: true)
-            : google.CanSave(picture) ? picture.Id + (picture.Type == "video" ? ":thumbnail" : "") : null;
+            : Google(picture.Id ?? picture.SourceUrl ?? "").CanSave(picture) ? picture.Id + (picture.Type == "video" ? ":thumbnail" : "") : null;
         if (string.IsNullOrEmpty(key) ||
             await NativeBeeper.Presentation.Services.NotificationIdentity.ProfileAsync(tokens, cancellationToken) is not { } profile) return null;
         if (await disk.HoldsAsync(profile, key, cancellationToken)) return 0;
@@ -190,37 +194,37 @@ internal sealed class MediaRouter(GoogleMediaBackend google, MessengerBackend me
         if (Voice(attachment)) await destination.WriteAsync(await ReadVoiceMediaAsync(attachment, cancellationToken), cancellationToken);
         else if (ClipKey(attachment) is { } clip)
             await destination.WriteAsync(await ReadClipAsync(attachment, clip, cancellationToken), cancellationToken);
-        else if (Insta(attachment)) await instagram.CopyToAsync(attachment, destination, cancellationToken);
-        else if (Mine(attachment)) await messenger.CopyToAsync(attachment, destination, cancellationToken);
-        else await google.CopyToAsync(attachment, destination, cancellationToken);
+        else if (Insta(attachment)) await InstagramAccount(attachment.Id ?? attachment.SourceUrl ?? "").CopyToAsync(attachment, destination, cancellationToken);
+        else if (Mine(attachment)) await Messenger(attachment.Id ?? attachment.SourceUrl ?? "").CopyToAsync(attachment, destination, cancellationToken);
+        else await Google(attachment.Id ?? attachment.SourceUrl ?? "").CopyToAsync(attachment, destination, cancellationToken);
     }
 
     public bool CanSave(MessageAttachment attachment)
         => DraftMediaStore.TryRead(attachment.SourceUrl, out _) || (Voice(attachment) ? voice.CanSave(attachment)
-            : Insta(attachment) ? instagram.CanSave(attachment)
-            : Mine(attachment) ? messenger.CanSave(attachment) : google.CanSave(attachment));
+            : Insta(attachment) ? InstagramAccount(attachment.Id ?? attachment.SourceUrl ?? "").CanSave(attachment)
+            : Mine(attachment) ? Messenger(attachment.Id ?? attachment.SourceUrl ?? "").CanSave(attachment) : Google(attachment.Id ?? attachment.SourceUrl ?? "").CanSave(attachment));
 
     public Task<SendPermission> GetPermissionAsync(string chatId, CancellationToken cancellationToken = default)
-        => Insta(chatId) ? instagram.GetPermissionAsync(chatId, cancellationToken)
-            : Voice(chatId) ? voice.GetSendPermissionAsync(chatId) : MessengerModels.Owns(chatId) ? messenger.GetPermissionAsync(chatId, cancellationToken) : google.GetPermissionAsync(chatId, cancellationToken);
+        => Insta(chatId) ? InstagramAccount(chatId).GetPermissionAsync(chatId, cancellationToken)
+            : Voice(chatId) ? voice.GetSendPermissionAsync(chatId) : MessengerModels.Owns(chatId) ? Messenger(chatId).GetPermissionAsync(chatId, cancellationToken) : Google(chatId).GetPermissionAsync(chatId, cancellationToken);
 
     public Task<SendPermission> GetFilePermissionAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default)
-        => Insta(chatId) ? instagram.GetFilePermissionAsync(chatId, file, cancellationToken)
-            : Voice(chatId) ? voice.GetPhotoPermissionAsync(chatId, file) : MessengerModels.Owns(chatId) ? messenger.GetFilePermissionAsync(chatId, file, cancellationToken) : google.GetFilePermissionAsync(chatId, file, cancellationToken);
+        => Insta(chatId) ? InstagramAccount(chatId).GetFilePermissionAsync(chatId, file, cancellationToken)
+            : Voice(chatId) ? voice.GetPhotoPermissionAsync(chatId, file) : MessengerModels.Owns(chatId) ? Messenger(chatId).GetFilePermissionAsync(chatId, file, cancellationToken) : Google(chatId).GetFilePermissionAsync(chatId, file, cancellationToken);
 
     public Task<AttachmentCaptionSupport> GetCaptionSupportAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default)
-        => Insta(chatId) ? instagram.GetCaptionSupportAsync(chatId, file, cancellationToken)
-            : Voice(chatId) ? Task.FromResult(new AttachmentCaptionSupport(true, null)) : MessengerModels.Owns(chatId) ? messenger.GetCaptionSupportAsync(chatId, file, cancellationToken) : google.GetCaptionSupportAsync(chatId, file, cancellationToken);
+        => Insta(chatId) ? InstagramAccount(chatId).GetCaptionSupportAsync(chatId, file, cancellationToken)
+            : Voice(chatId) ? Task.FromResult(new AttachmentCaptionSupport(true, null)) : MessengerModels.Owns(chatId) ? Messenger(chatId).GetCaptionSupportAsync(chatId, file, cancellationToken) : Google(chatId).GetCaptionSupportAsync(chatId, file, cancellationToken);
 
     public Task<SendReceipt> SendAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default, string? caption = null)
-        => Insta(chatId) ? instagram.SendAsync(chatId, file, cancellationToken, caption)
-            : Voice(chatId) ? voice.SendPhotoAsync(chatId, file, caption, cancellationToken) : MessengerModels.Owns(chatId) ? messenger.SendAsync(chatId, file, cancellationToken, caption) : google.SendAsync(chatId, file, cancellationToken, caption);
+        => Insta(chatId) ? InstagramAccount(chatId).SendAsync(chatId, file, cancellationToken, caption)
+            : Voice(chatId) ? voice.SendPhotoAsync(chatId, file, caption, cancellationToken) : MessengerModels.Owns(chatId) ? Messenger(chatId).SendAsync(chatId, file, cancellationToken, caption) : Google(chatId).SendAsync(chatId, file, cancellationToken, caption);
 
     public bool CanSendBatch(string chatId, IReadOnlyList<AttachmentFile> files)
-        => MessengerModels.Owns(chatId) && messenger.CanSendBatch(chatId, files);
+        => MessengerModels.Owns(chatId) && Messenger(chatId).CanSendBatch(chatId, files);
 
     public Task<SendReceipt> SendBatchAsync(string chatId, IReadOnlyList<AttachmentFile> files, CancellationToken cancellationToken = default)
-        => MessengerModels.Owns(chatId) ? messenger.SendBatchAsync(chatId, files, cancellationToken)
+        => MessengerModels.Owns(chatId) ? Messenger(chatId).SendBatchAsync(chatId, files, cancellationToken)
             : throw new NotSupportedException("This service can't send photos as one set.");
 
     // Google Messages sends each photo as its own message, and each copy carries its receipt's transaction id, so all of

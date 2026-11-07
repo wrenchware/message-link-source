@@ -25,8 +25,8 @@ internal sealed partial class GoogleMessagesBackend
             {
                 connected = false;
                 LastSignInFailure = null;
-                var saved = GoogleSessionProfile.HasSavedSession;
-                byte[]? replaced = saved ? await File.ReadAllBytesAsync(GoogleSessionProfile.SessionPath) : null;
+                var saved = Files.SessionSaved;
+                byte[]? replaced = saved ? await File.ReadAllBytesAsync(Files.SessionFile) : null;
                 // Detached before it is disposed, so the old helper's end cannot mark the new connection down or write its session over the new one.
                 var previous = helper;
                 helper = null;
@@ -41,9 +41,9 @@ internal sealed partial class GoogleMessagesBackend
                 if (tokens is GoogleSessionProfile profile) profile.Invalidate();
                 // What belonged to the Google-account sign-in: its age (nothing renews or times a QR pairing), the cookies it handed over last, and the browser profile that
                 // renewed it - a full Google sign-in left on the disk of a server that has no use for it.
-                GoogleSignInCookies.Forget();
-                await GoogleSignInClock.ClearAsync();
-                await GoogleMessagesBrowserProfile.ForgetAsync();
+                Files.Cookies.Forget();
+                await Files.Clock.ClearAsync();
+                await Files.BrowserProfile.ForgetAsync();
                 NoteSignedIn();
                 ForgetDefaultSms(); ForgetSims();
                 GoogleMessagesLog.Write($"sign_in saved minted=none mode=qr replaced={(saved ? "yes" : "no")}");

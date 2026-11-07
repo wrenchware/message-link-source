@@ -18,8 +18,16 @@ namespace NativeBeeper.App.Services.Backup;
 internal sealed record BackupSettings(bool Enabled = false, string? Folder = null, DateTimeOffset? LastSuccess = null,
     long LastBytes = 0, DateTimeOffset? LastFailureAt = null, string? LastFailure = null, string? Install = null,
     string? MessengerLeftOut = null, Dictionary<string, string>? MessengerKept = null, string? LastName = null,
-    DateTimeOffset? LastVerifiedAt = null, string? LastVerifyResult = null, DateTimeOffset? PasswordSetAt = null)
+    DateTimeOffset? LastVerifiedAt = null, string? LastVerifyResult = null, DateTimeOffset? PasswordSetAt = null, string? DestinationId = null)
 {
+    // LastName may be a usable partial archive. Keep the last complete file separately so partial retries cannot evict it.
+    public string? LastCompleteName { get; init; }
+    // A usable partial still consumes the day's archive slot; success and stale warnings remain separate.
+    public DateTimeOffset? LastWrittenAt { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal DateTimeOffset? LatestWrite => LastWrittenAt ?? LastSuccess;
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string? CompleteArchive => LastCompleteName ?? (LastSuccess is not null && MessengerLeftOut is not ("not_connected" or "failed") ? LastName : null);
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
     // A failure is tried again sooner than a day, but not so soon that a folder that is gone fills the log.
     public static readonly TimeSpan RetryAfterFailure = TimeSpan.FromHours(1);
@@ -36,7 +44,7 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
     {
         if (!Enabled || !hasPassword || string.IsNullOrWhiteSpace(Folder)) return null;
         // A clock that has moved back must not put the next backup a year away.
-        var due = LastSuccess is { } done && done <= now + Interval ? done + Interval : DateTimeOffset.MinValue;
+        var due = LatestWrite is { } done && done <= now + Interval ? done + Interval : DateTimeOffset.MinValue;
         if (LastFailureAt is { } failed && (LastSuccess is null || failed > LastSuccess) && failed <= now + Interval &&
             failed + RetryAfterFailure > due) due = failed + RetryAfterFailure;
         // The latest backup did not read back: a fresh copy follows within the retry interval rather than tomorrow, until
@@ -54,7 +62,8 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
     /// read back is itself read back a day after it is written.</summary>
     public DateTimeOffset? NextVerifyDue(DateTimeOffset now)
     {
-        if (!Enabled || LastSuccess is not { } done) return null;
+        if (!Enabled || LatestWrite is not { } done) return null;
+        if (LastVerifyResult == "unavailable" && LastVerifiedAt is { } unavailable) return unavailable + VerifyRetry;
         // As NextDue: a clock that has moved back must not put the next check a year away.
         if (LastVerifiedAt is { } verified && !(LastVerifyResult == "unreadable" && done > verified))
             return verified <= now + VerifyInterval ? verified + VerifyInterval : DateTimeOffset.MinValue;
@@ -91,7 +100,7 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
     public bool LastFailed => LastFailure is not null && (LastSuccess is null || LastFailureAt > LastSuccess);
 
     /// <summary>Whether the latest backup was read back and could not be, with no newer backup since.</summary>
-    public bool UnreadableIsLatest => LastVerifyResult == "unreadable" && LastVerifiedAt is { } checkedAt && (LastSuccess is null || checkedAt > LastSuccess);
+    public bool UnreadableIsLatest => LastVerifyResult == "unreadable" && LastVerifiedAt is { } checkedAt && (LatestWrite is null || checkedAt > LatestWrite);
 
     /// <summary>These settings once a check has finished with <paramref name="result"/>. A folder that was busy is not
     /// a finished check: it is tried again at the next poll.</summary>
@@ -105,7 +114,7 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
     /// <summary>These settings once a backup has been written as <paramref name="name"/>.</summary>
     public BackupSettings Succeeded(DateTimeOffset at, long bytes, string name, BackupManifest manifest) => this with
     {
-        LastSuccess = at, LastBytes = bytes, LastFailure = null, LastFailureAt = null, LastName = name,
+        LastSuccess = at, LastWrittenAt = at, LastBytes = bytes, LastFailure = null, LastFailureAt = null, LastName = name,
         // Not signed in to Messenger means there is no history to miss; the other two mean some was left behind.
         MessengerLeftOut = manifest.LeftOut is "not_connected" or "failed" ? manifest.LeftOut : null,
         MessengerKept = KeptAfter(manifest, name),
@@ -116,7 +125,7 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
     {
         if (restoring) return "Restoring…";
         if (running) return "Backing up…";
-        if (LastFailed) return "Last backup failed. " + Failure(LastFailure);
+        if (LastFailed) return "Last backup failed. " + (LastFailure == "messenger" && MessengerLeftOut == "not_connected" ? "Messenger wasn't connected." : Failure(LastFailure));
         if (LastSuccess is { } done)
             return $"Last backup {When(done, now)} · {Size(LastBytes)}" + (MessengerLeftOut is null ? "" : " · without Messenger history") +
                 // Only on failure: a check that found the backup fine says nothing here.

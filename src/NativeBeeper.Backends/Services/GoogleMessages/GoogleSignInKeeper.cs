@@ -58,7 +58,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
     {
         this.host = host;
         // Whether an old sign-in can be refreshed before connecting: only from a kept profile.
-        backend.SilentRefreshAvailable = () => browser.RefreshBeforeConnect && GoogleMessagesBrowserProfile.Id is not null;
+        backend.SilentRefreshAvailable = () => browser.RefreshBeforeConnect && backend.Files.BrowserProfile.Id is not null;
         backend.SignInRefused += Refused;
         // A refusal from before this host listened would otherwise wait for Google to say it again, which it does not.
         if (backend.SignInExpired) Refused(backend, EventArgs.Empty);
@@ -110,7 +110,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
         if (GoogleRecoveryGate.EndsNoticeHold(verdict, reason)) ReleaseGoogleSignInNotice(backend, reason);
         if (verdict == GoogleRecoveryVerdict.Defer) DeferGoogleRecovery(backend, reason, wait);
         if (verdict != GoogleRecoveryVerdict.Run) return;
-        if (GoogleMessagesBrowserProfile.Id is not { } profileId)
+        if (backend.Files.BrowserProfile.Id is not { } profileId)
         {
             GoogleMessagesLog.Write("browser recovery=unavailable reason=no_profile");
             ReleaseGoogleSignInNotice(backend, "no_profile");
@@ -226,7 +226,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
         // A QR pairing has no Google-account sign-in to age, renew or check: nothing here is for it (GoogleMessagesBackend.QrPairing.cs).
         if (backend.QrSession) return;
         if (googleRecovering || UserBusy || host.Closed || !backend.CanReceive || backend.SignInExpired || backend.PairingLost) return;
-        if (GoogleSignInClock.MadeAt is not { } made) return;
+        if (backend.Files.Clock.MadeAt is not { } made) return;
         var now = DateTimeOffset.UtcNow;
         var (check, checkFor, early) = googleSchedule.Tick(now, made);
         if (check) _ = CheckGoogleExpiryAsync(backend, checkFor, (int)(now - checkFor).TotalMinutes);
@@ -250,13 +250,13 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
         {
             if (googleSchedule.EarlyEnded(outcome)) GoogleMessagesLog.Write($"browser early=off reason={outcome}");
         }
-        if (GoogleMessagesBrowserProfile.Id is not { } profileId) { GoogleMessagesLog.Write("browser early=unavailable reason=no_profile"); Ended("no_profile"); return; }
+        if (backend.Files.BrowserProfile.Id is not { } profileId) { GoogleMessagesLog.Write("browser early=unavailable reason=no_profile"); Ended("no_profile"); return; }
         Dictionary<string, string>? cookies = null;
         googleRecovering = true;
         var holding = true;
         try
         {
-            GoogleMessagesLog.Write($"browser early=starting age_min={GoogleSignInClock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
+            GoogleMessagesLog.Write($"browser early=starting age_min={backend.Files.Clock.AgeMinutes(DateTimeOffset.UtcNow)?.ToString() ?? "unknown"}");
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
             var refreshed = await browser.RefreshAsync(GoogleSignInProfile.MessagesService, profileId, timeout.Token);
             cookies = refreshed.Cookies;
@@ -268,7 +268,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
             // The sign-in this look was for may have been replaced while the page loaded (a renewal by hand, say): then these
             // cookies are older than the ones in use, and nothing is handed over.
             var adopted = host.Closed ? "closed" : UserBusy ? "dialog"
-                : GoogleSignInClock.MadeAt != made || GoogleMessagesBrowserProfile.Id != profileId ? "stale" : null;
+                : backend.Files.Clock.MadeAt != made || backend.Files.BrowserProfile.Id != profileId ? "stale" : null;
             if (adopted is null)
             {
                 // Longer than the helper's own 40 s for its check, so the answer always comes and is never unknown.

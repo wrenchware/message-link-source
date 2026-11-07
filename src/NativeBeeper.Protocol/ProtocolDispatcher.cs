@@ -162,7 +162,10 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         {
             await begin.WaitAsync(cancellationToken).ConfigureAwait(false);
             while (await typing.ReadAsync(cancellationToken).ConfigureAwait(false) is { } update)
+            {
+                if (!Compatible()) return;
                 await channel.SendAsync(Frames.Serialize(new EventFrame(0, epoch, EventKinds.Typing, ProtocolJson.ToElement(update))), cancellationToken).ConfigureAwait(false);
+            }
         }
         // A connection that cannot be written to has nobody to tell; its own close ends the dispatcher.
         catch (Exception) { }
@@ -204,6 +207,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
                     : item.CaughtUp is { } caughtUp ? new EventFrame(item.Seq, subscription.Epoch, EventKinds.CaughtUp, ProtocolJson.ToElement(caughtUp))
                     : item.Shared is { } shared ? new EventFrame(item.Seq, subscription.Epoch, EventKinds.Shared, ProtocolJson.ToElement(shared))
                     : new EventFrame(item.Seq, subscription.Epoch, EventKinds.Realtime, ProtocolJson.ToElement(item.Event!));
+                if (!Compatible()) return;
                 await channel.SendAsync(Frames.Serialize(frame), cancellationToken).ConfigureAwait(false);
                 // Only now is the frame in the channel ahead of whatever is written next, which is what an answer that waits for it needs.
                 sent.Advance(item.Seq);
@@ -402,11 +406,11 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
 
     private async Task GreetAsync(HelloFrame hello)
     {
-        if (ProtocolVersion.Negotiate(hello.Protocol, hello.MinProtocol, HighestProtocol) is not { } version)
+        if (ProtocolVersion.Negotiate(hello.Protocol, hello.MinProtocol, HighestProtocol) is not { } version || version < (services.RequiredProtocol?.Invoke() ?? ProtocolVersion.Minimum))
         {
             log?.Invoke("protocol hello refused reason=version");
             await SendAsync(new HelloFrame(Math.Min(HighestProtocol, ProtocolVersion.Current), appVersion, Server: HelloFrame.ServerName, MinProtocol: ProtocolVersion.Minimum,
-                Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "This version of Message Link cannot talk to that server."))).ConfigureAwait(false);
+                Error: new ProtocolError(ProtocolErrorCodes.ProtocolUnsupported, "Update Message Link on this device to connect. This server may have additional accounts that need a newer version."))).ConfigureAwait(false);
             return;
         }
         greeted = true;
@@ -422,6 +426,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
 
     private async Task ServeAsync(RequestFrame request, CancellationTokenSource source)
     {
+        if (!Compatible()) return;
         var started = Stopwatch.GetTimestamp();
         string response;
         Route? route = null;
@@ -457,11 +462,17 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         after.Then?.Invoke();
     }
 
+    private bool Compatible()
+    {
+        if (negotiated >= (services.RequiredProtocol?.Invoke() ?? ProtocolVersion.Minimum)) return true;
+        channel.Close();
+        return false;
+    }
     private Task SendAsync(Frame frame) => SendTextAsync(Frames.Serialize(frame));
 
     private async Task SendTextAsync(string text)
     {
-        try { await channel.SendAsync(text).ConfigureAwait(false); }
+        try { if (greeted && !Compatible()) return; await channel.SendAsync(text).ConfigureAwait(false); }
         catch (Exception ex) when (ex is ChannelClosedException or OperationCanceledException or ObjectDisposedException) { }
     }
 

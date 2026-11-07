@@ -8,7 +8,7 @@ namespace NativeBeeper.App.Services.GoogleMessages;
 // the conversations' saved pages do not, so for Google it answers the whole span by itself.
 internal sealed partial class GoogleMessagesBackend : IRecentMessages
 {
-    public string Scope => "google-direct:";
+    public string Scope => Models.Qualify("");
 
     public async Task<IReadOnlyList<ConsoleHistoryItem>> RecentAsync(DateTimeOffset since, DateTimeOffset until, int limit, CancellationToken cancellationToken)
     {
@@ -27,7 +27,7 @@ internal sealed partial class GoogleMessagesBackend : IRecentMessages
             cancellationToken.ThrowIfCancellationRequested();
             if (!known.TryGetValue(hit.ChatId, out var chat)) continue;
             if (await archive.ReadMessageAsync(account, hit.MessageId, cancellationToken) is not { } message) continue;
-            items.Add(new(Summary(chat), GoogleModels.Map(message, chat)));
+            items.Add(new(Summary(chat), Models.Map(message, chat)));
         }
         return items;
     }

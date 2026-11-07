@@ -58,13 +58,15 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
     // The code Instagram refused the session with, which stopped the poll. Cleared by the next connection.
     private volatile string? refused;
 
+    internal ProviderAccountSlot Slot { get; }
     private static string DefaultRoot => AppPaths.Combine("Instagram");
     private readonly IAppPresence presence;
 
-    public InstagramBackend(IStateProtector protector, IAppPresence appPresence, InstagramSessionStore? sessions = null)
+    public InstagramBackend(IStateProtector protector, IAppPresence appPresence, InstagramSessionStore? sessions = null, ProviderAccountSlot? accountSlot = null)
     {
+        Slot = accountSlot ?? ProviderAccountSlot.Legacy;
         presence = appPresence;
-        store = sessions ?? new InstagramSessionStore(DefaultRoot, protector);
+        store = sessions ?? new InstagramSessionStore(Slot.PathFor("Instagram"), protector);
         // The limits kept from earlier runs first: a session held after an account check is not reconnected by anything but a new sign-in.
         LoadGuard();
         reconnectComing = store.HasSession && refused is null;
@@ -114,10 +116,14 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
     public Task<BackendInfo> DiscoverAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new BackendInfo("Instagram", "instameow", true));
 
-    public Task<IReadOnlyList<ChatAccount>> GetAccountsAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ChatAccount>>(identity is null ? []
-            : [new(identity.Account, InstagramIdentity.Network, "Instagram", IsConnected ? "connected" : "disconnected",
-                identity.Account, "instagram")]);
+    internal Func<string?, CancellationToken, Task>? ValidateAccount { get; set; }
+    internal Task<string?> SavedIdentityAsync() => store.ActiveAccountAsync();
+    public async Task<IReadOnlyList<ChatAccount>> GetAccountsAsync(CancellationToken cancellationToken = default)
+    {
+        var current = identity;
+        if (current is null && await store.ActiveAccountAsync() is { } key) current = new(key, Slot.Ids);
+        return current is null ? [] : [new(current.Account, InstagramIdentity.Network, AccountName ?? "Instagram", IsConnected ? "connected" : "disconnected", current.Account, "instagram")];
+    }
 
     /// <summary>Signs in with cookies just captured, and remembers the session so the next launch does not ask again.</summary>
     public Task<int> ConnectAsync(Dictionary<string, string> cookies, CancellationToken cancellationToken = default) =>
@@ -217,6 +223,15 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
 
     private async Task<int> StartLockedAsync(object login, bool automatic, CancellationToken cancellationToken)
     {
+        if (ValidateAccount is { } validate)
+        {
+            var input = JsonSerializer.SerializeToElement(login);
+            string? key = null;
+            if (input.TryGetProperty("cookies", out var cookies) && cookies.TryGetProperty("ds_user_id", out var id) && id.ValueKind == JsonValueKind.String
+                && id.GetString() is { Length: > 0 } value && value.All(char.IsAsciiDigit)) key = ProviderAccounts.Identity("instagram", value);
+            if (key is null && input.TryGetProperty("session", out var saved) && saved.TryGetProperty("accountKey", out var account)) key = account.GetString();
+            await validate(key, cancellationToken);
+        }
         if (!File.Exists(HelperPath))
         {
             InstagramLog.Write($"instagram connect start_failed reason={HelperStartFailure.Missing} win32=none");
@@ -241,8 +256,8 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
             if (disposed || automatic && closing) throw new OperationCanceledException("Instagram is closing.");
             closing = false;
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            var started = await HelperConnection.StartAsync(HelperPath, "--app", cancellationToken);
-            started.Scope = "instagram:";
+            var started = await HelperConnection.StartAsync(HelperPath, "--app", cancellationToken, Slot.HelperEnvironment);
+            started.Scope = Slot.Ids.Qualify("instagram:");
             started.Disconnected += () => Stopped(started);
             started.Received += (kind, data) => { if (kind == "counts" && ReferenceEquals(helper, started)) ObserveRealtime(data); };
             // Typing has its own event, so the frequent counts frames are not cloned for it.
@@ -254,7 +269,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
             if (MayStart?.Invoke() == false) throw new InvalidOperationException("account_moved_away");
             if (disposed || closing) throw new OperationCanceledException("Instagram is closing.");
             // A new helper session has handed nothing out yet: what the last one named no longer says a picture is gone.
-            NativeBeeper.Presentation.Services.MediaNews.Forget("instagram:");
+            NativeBeeper.Presentation.Services.MediaNews.Forget(Slot.Ids.Qualify("instagram:"));
             var hello = await started.CallAsync("hello", null, cancellationToken);
             if (hello.GetProperty("protocol").GetInt32() != 2) throw new BackendException(BackendFailure.Unsupported, HelperStartFailure.OutOfDateSentence);
             var helloMs = clock.ElapsedMilliseconds;
@@ -267,8 +282,9 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
             // the counts frame pushed on every event — so this answer is the only place it arrives.
             AccountName = InstagramAccount.Named(signedIn);
             var session = await started.CallAsync("session", null, cancellationToken);
+            if (ValidateAccount is { } verified) await verified(session.GetProperty("accountKey").GetString(), cancellationToken);
             identity = new InstagramIdentity(session.GetProperty("accountKey").GetString()
-                ?? throw new BackendException(BackendFailure.InvalidResponse, "Instagram did not say which account this is."));
+                ?? throw new BackendException(BackendFailure.InvalidResponse, "Instagram did not say which account this is."), Slot.Ids);
             if (previousAccount != identity.AccountKey) previous = [];
             await SaveSessionAsync(started, session, "login");
             await started.CallAsync("connect", null, cancellationToken);
@@ -418,7 +434,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         restored = true;
         var key = await store.ActiveAccountAsync();
         if (key is null) return;
-        identity ??= new InstagramIdentity(key);
+        identity ??= new InstagramIdentity(key, Slot.Ids);
         var stored = await store.LoadChatsAsync(key);
         if (stored is null) return;
         try
@@ -901,7 +917,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
     public async Task CopyToAsync(MessageAttachment attachment, Stream destination, CancellationToken cancellationToken = default)
     {
         if (!IsConnected || helper is not { } started) throw NotConnected("media");
-        var id = InstagramIdentity.NativeMedia(attachment);
+        var id = InstagramIdentity.NativeMedia(attachment with { Id = attachment.Id is null ? null : Slot.Ids.Native(attachment.Id), SourceUrl = Slot.Ids.NativeMediaValue(attachment.SourceUrl) });
         var offset = 0;
         var size = -1;
         while (true)

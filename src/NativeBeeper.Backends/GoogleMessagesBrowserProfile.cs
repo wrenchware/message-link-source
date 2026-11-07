@@ -6,15 +6,15 @@ namespace NativeBeeper.App;
 // The browser profile of the last Google Messages sign-in the app accepted, kept so a sign-in Google refuses can be
 // refreshed without asking (MainWindow.GoogleRecovery). Only the profile's opaque id is written here; the profile itself
 // is under GoogleMessages\WebViewProfiles, and the one it replaces is deleted.
-internal static class GoogleMessagesBrowserProfile
+internal sealed class GoogleAccountBrowserProfile(string dataRoot)
 {
-    private static string FilePath => AppPaths.Combine("GoogleMessages", "browser-profile");
+    private string FilePath => Path.Combine(dataRoot, "GoogleMessages", "browser-profile");
 
     // Where the pointer is, for a host that must tell "no pointer" from "a pointer it could not read" (LinuxGoogle's start-time sweep): Id answers
     // null for both.
-    internal static string PointerPath => FilePath;
+    internal string PointerPath => FilePath;
 
-    public static string? Id
+    public string? Id
     {
         get
         {
@@ -32,11 +32,11 @@ internal static class GoogleMessagesBrowserProfile
     // Nothing is left to refer to a profile that is gone, and a failure to delete leaves it for the host's start-time sweep, which removes what no pointer names.
     // A host that runs a browser on the kept profile (the Linux server's Chrome) sets this to close it: awaited before the pointer changes or the profile is deleted, so a browser is
     // never left running on a folder that is about to go.
-    internal static Func<Task>? BeforeChange { get; set; }
+    internal Func<Task>? BeforeChange { get; set; }
 
-    private static Task StopBrowserAsync() => BeforeChange?.Invoke() ?? Task.CompletedTask;
+    private Task StopBrowserAsync() => BeforeChange?.Invoke() ?? Task.CompletedTask;
 
-    public static async Task ForgetAsync()
+    public async Task ForgetAsync()
     {
         var previous = Id;
         if (previous is not null) await StopBrowserAsync();
@@ -51,7 +51,7 @@ internal static class GoogleMessagesBrowserProfile
         GoogleMessagesLog.Write("browser profile=forgotten");
     }
 
-    public static async Task KeepAsync(GoogleSignInResult signIn)
+    public async Task KeepAsync(GoogleSignInResult signIn)
     {
         var previous = Id;
         if (previous is not null && previous != signIn.ProfileId) await StopBrowserAsync();
@@ -74,4 +74,14 @@ internal static class GoogleMessagesBrowserProfile
         if (previous is not null && previous != signIn.ProfileId)
             await GoogleSignInProfile.DeleteAsync(previous, GoogleSignInProfile.MessagesService);
     }
+}
+
+internal static class GoogleMessagesBrowserProfile
+{
+    internal static GoogleAccountBrowserProfile Default { get; } = new(AppPaths.DataRoot);
+    internal static string PointerPath => Default.PointerPath;
+    public static string? Id => Default.Id;
+    internal static Func<Task>? BeforeChange { get => Default.BeforeChange; set => Default.BeforeChange = value; }
+    public static Task ForgetAsync() => Default.ForgetAsync();
+    public static Task KeepAsync(GoogleSignInResult signIn) => Default.KeepAsync(signIn);
 }

@@ -79,5 +79,9 @@ public sealed record ProtocolServices(
     /// The host's sign-ins in its own browser, one at a time across every face that drives them (SWITCHBOARD.md 10.6). Made with the services, so every connection's copy of them (<c>with</c>) and
     /// the server's page share the one.
     /// </summary>
+    public Func<int>? RequiredProtocol { get; init; }
     public RemoteSignInSessions SignIns { get; init; } = new();
+    // Server-page administration only; paired clients cannot select or create account slots.
+    public Func<string, string, CancellationToken, Task<ProtocolServices>>? AccountSignIn { get; init; }
+    public Action? AccountSignInEnded { get; init; }
 }

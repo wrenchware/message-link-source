@@ -14,8 +14,8 @@ internal sealed partial class GoogleMessagesBackend
     /// <summary>The SIM a Google Messages conversation sends from, or null for a single-SIM phone or anything else.</summary>
     internal GoogleSim? SimFor(string? chatId)
     {
-        if (chatId is null || !GoogleModels.Owns(chatId) || sims.Count == 0) return null;
-        var native = GoogleModels.Native(chatId);
+        if (chatId is null || !Models.Owns(chatId) || sims.Count == 0) return null;
+        var native = Models.Native(chatId);
         var chat = chats.TryGetValue(native, out var known) ? known : archive.Chat(native);
         return sims.For(chat?.OutgoingId);
     }

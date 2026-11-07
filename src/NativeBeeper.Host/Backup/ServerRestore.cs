@@ -17,10 +17,10 @@ internal sealed record BackupListing(string Name, long Bytes, DateTimeOffset Wri
 /// only) with when each was last seen, and counts. The devices' names are the owner's own, shown only on the server's page.
 /// </summary>
 internal sealed record RestorePreview(string Kind, DateTimeOffset Created, string App, IReadOnlyList<BackupDevice> Devices, int Conversations, int Messages,
-    int MessengerPages, int Scheduled, int Photos);
+    int MessengerPages, int Scheduled, int Photos, string? MessengerLeftOut = null);
 
 /// <summary>A restore the person has chosen, kept sealed until the server applies it at its next start: which file, its password, and the devices to forget.</summary>
-internal sealed record RestorePlan(int Version, string File, string Password, List<string> Forget, DateTimeOffset At);
+internal sealed record RestorePlan(int Version, string File, string Password, List<string> Forget, DateTimeOffset At, string? PreparedFile = null);
 
 /// <summary>How the last restore ended, for the page to say once (<c>Restore/outcome.json</c>): fixed words and counts only.</summary>
 internal sealed record RestoreOutcome(string Outcome, string? Kind, DateTimeOffset At, int Devices = 0, int Forgotten = 0, int Held = 0, int Rows = 0, int Messages = 0,
@@ -106,7 +106,7 @@ internal static class ServerRestore
                 var scheduled = contents.ReadPart<PlainRow>(ServerBackupArchive.Parts.Shared).Count(row => row.Key.StartsWith(Protocol.SharedCategories.Scheduled + ":", StringComparison.Ordinal));
                 var manifest = contents.Manifest;
                 return new("server", manifest.Created, manifest.App, identity.Devices, manifest.Count(ServerBackupArchive.Parts.HistoryChats),
-                    manifest.Count(ServerBackupArchive.Parts.HistoryMessages), manifest.Messenger?.Pages ?? 0, scheduled, manifest.Count(ServerBackupArchive.Parts.Photos));
+                    manifest.Count(ServerBackupArchive.Parts.HistoryMessages), manifest.MessengerPageCount, scheduled, manifest.Count(ServerBackupArchive.Parts.Photos), manifest.LeftOut);
             }
             case BackupArchive.Format:
             {
@@ -116,7 +116,7 @@ internal static class ServerRestore
                 foreach (var _ in contents.ReadPages()) { pages++; cancellationToken.ThrowIfCancellationRequested(); }
                 if (pages != (contents.Manifest.Messenger?.Pages ?? 0)) throw new BackupFileException(BackupFileFailure.Unreadable);
                 return new("pc", contents.Manifest.Created, contents.Manifest.App, [], contents.Manifest.MessengerConversations, contents.Manifest.MessengerMessages,
-                    pages, 0, 0);
+                    pages, 0, 0, contents.Manifest.LeftOut);
             }
             default:
                 throw new BackupFileException(BackupFileFailure.Unreadable);
@@ -167,7 +167,8 @@ internal static class ServerRestore
         time ??= TimeProvider.System;
         if (File.Exists(Path.Combine(paths.Restore, ResetFile)))
         {
-            if (signedInForReset?.Invoke() == true)
+            // Reset removes Google sessions itself, including added slots; the other services must sign out first.
+            if (signedInForReset?.Invoke() == true || ServerBackupAccounts.HasSessions(paths, includeGoogle: false))
             {
                 File.Delete(Path.Combine(paths.Restore, ResetFile));
                 var refused = new RestoreOutcome(RestoreOutcomes.ResetInUse, null, time.GetUtcNow());
@@ -212,8 +213,9 @@ internal static class ServerRestore
         try { plan = JsonSerializer.Deserialize<RestorePlan>(await protector.UnprotectAsync(await File.ReadAllBytesAsync(planPath, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false)); }
         catch (Exception failure) when (failure is IOException or JsonException or System.Security.Cryptography.CryptographicException or InvalidDataException) { }
         if (plan is not { Version: 1, File.Length: > 0, Password.Length: > 0 }) return Ended(paths, planPath, new(RestoreOutcomes.PlanUnreadable, null, time.GetUtcNow()), log);
-        if (signedIn()) return Ended(paths, planPath, new(RestoreOutcomes.InUse, null, time.GetUtcNow()), log);
-        if (PathOf(folder, plan.File) is not { } file) return Ended(paths, planPath, new(RestoreOutcomes.Missing, null, time.GetUtcNow()), log);
+        if (signedIn() || ServerBackupAccounts.HasSessions(paths)) return Ended(paths, planPath, new(RestoreOutcomes.InUse, null, time.GetUtcNow()), log);
+        var file = plan.PreparedFile is { } prepared ? PathOf(Path.Combine(paths.Restore, "downloads"), prepared) : PathOf(folder, plan.File);
+        if (file is null) return Ended(paths, planPath, new(RestoreOutcomes.Missing, null, time.GetUtcNow()), log);
         Commit built;
         try
         {
@@ -444,6 +446,21 @@ internal static class ServerRestore
         // Messenger's history waits for Messenger to be signed in again.
         var pages = await StageMessengerAsync(paths, protector, contents.Manifest.Messenger, contents.ReadMessengerPages(), (final, store) => Stage(final, store)).ConfigureAwait(false);
 
+        if (contents.Manifest.Accounts is { } addedAccounts)
+        {
+            await WritePrivateAsync(Stage(ServerBackupAccounts.Registry(paths)), Seal(JsonSerializer.SerializeToUtf8Bytes(addedAccounts.Select(a => a.Account).ToArray())));
+            foreach (var added in addedAccounts)
+            {
+                using var archive = MessageArchive.ImportRaw(Stage(Path.Combine(ServerBackupAccounts.Root(paths, added.Account.Key), "archive.db"), store: true));
+                foreach (var profile in added.ArchiveKeys) archive.Profile(profile.Profile, Seal(profile.Key));
+                foreach (var record in contents.ReadPart<ArchiveRawRecord>(ServerBackupArchive.AccountPart(added.Account.Key))) archive.Record(record);
+                archive.Complete();
+                pages += await StageMessengerAsync(paths, protector, added.Messenger, contents.ReadMessengerPages(added), (final, store) => Stage(final, store), added.Account.Key);
+            }
+        }
+
+        else deletes.Add(ServerBackupAccounts.Registry(paths));
+
         // The backup's own settings, and the password just used, so the restored server goes on backing up under the tag it had.
         if (identity.Backup is { } backup)
         {
@@ -486,16 +503,16 @@ internal static class ServerRestore
 
     // Each page sealed into its own file, with the account it belongs to: taken in once Messenger is signed in again (PendingImports).
     private static async Task<int> StageMessengerAsync(ServerBackupPaths paths, IStateProtector protector, BackupMessengerSummary? summary, IEnumerable<JsonElement> pages,
-        Func<string, bool, string> stage)
+        Func<string, bool, string> stage, string? slot = null)
     {
         if (summary is null) return 0;
         var number = 0;
         foreach (var page in pages)
         {
             var plain = Encoding.UTF8.GetBytes(page.GetRawText());
-            await WritePrivateAsync(stage(PendingImports.MessengerPagePath(paths, number++), false), await protector.ProtectAsync(plain).ConfigureAwait(false)).ConfigureAwait(false);
+            await WritePrivateAsync(stage(PendingImports.MessengerPagePath(paths, number++, slot), false), await protector.ProtectAsync(plain).ConfigureAwait(false)).ConfigureAwait(false);
         }
-        await WritePrivateAsync(stage(PendingImports.MessengerAccountPath(paths), false),
+        await WritePrivateAsync(stage(PendingImports.MessengerAccountPath(paths, slot), false),
             JsonSerializer.SerializeToUtf8Bytes(new PendingImports.MessengerPending(summary.Account, number))).ConfigureAwait(false);
         return number;
     }

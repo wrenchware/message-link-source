@@ -8,7 +8,7 @@ internal sealed partial class GoogleMessagesBackend
     // Background indexing yields to foreground helper work and active composer edits for a quiet period.
     private void NoteForeground() => foregroundActivity.NoteForeground();
     internal void NoteComposerActivity(string? chatId) => foregroundActivity.NoteComposerActivity(chatId);
-    private bool RecentlyActive(TimeSpan quiet) => foregroundActivity.RecentlyActive(quiet);
+    internal bool RecentlyActive(TimeSpan quiet) => foregroundActivity.RecentlyActive(quiet);
     private long lastRealtimeMessage;
     // Incoming messages mean a live conversation: keep the phone free for it for a while.
     private void NoteRealtimeMessage() => Interlocked.Exchange(ref lastRealtimeMessage, Environment.TickCount64);

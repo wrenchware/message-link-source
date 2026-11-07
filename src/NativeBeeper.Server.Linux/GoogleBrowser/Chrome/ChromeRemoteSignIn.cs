@@ -40,6 +40,7 @@ namespace NativeBeeper.Server.Linux;
 internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieSource cookies, IFrameEncoder encoder, IGoogleMessagesAccount account, Action<string> log, SignInGuard? guard = null,
     ChromeBuild? build = null, Func<DateTimeOffset>? clock = null) : IRemoteSignInHost
 {
+    internal GoogleAccountBrowserProfile Profile { get; init; } = GoogleMessagesBrowserProfile.Default;
     public TimeSpan IdleLimit { get; init; } = TimeSpan.FromMinutes(10);
     public TimeSpan TotalLimit { get; init; } = TimeSpan.FromMinutes(20);
     public TimeSpan GateWait { get; init; } = TimeSpan.FromSeconds(30);
@@ -274,7 +275,7 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
 
         // The person signs in on a profile of its own: a copy of the kept one (so the sign-in they have is untouched until the phone accepts the new), or a new one when none is kept.
         GoogleSignInProfile? kept = null;
-        if (GoogleMessagesBrowserProfile.Id is { } keptId && GoogleSignInProfile.TryOpen(keptId, out var found, GoogleSignInProfile.MessagesService)) kept = found;
+        if (Profile.Id is { } keptId && GoogleSignInProfile.TryOpen(keptId, out var found, GoogleSignInProfile.MessagesService)) kept = found;
         var working = GoogleSignInProfile.CreateAttempt(GoogleSignInProfile.MessagesService);
         var swapped = false;
 
@@ -298,7 +299,7 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
             // after the pointer is moved); Chrome starts again on it. If the pointer cannot be written, the kept profile stands and Chrome returns to it below.
             await chrome.StopAsync().ConfigureAwait(false);
             await using (var keep = new GoogleSignInResult(new Dictionary<string, string>(run.Cookies!, StringComparer.Ordinal), working))
-                await GoogleMessagesBrowserProfile.KeepAsync(keep).ConfigureAwait(false);
+                await Profile.KeepAsync(keep).ConfigureAwait(false);
             swapped = GoogleMessagesBrowserProfile.Id == working.Id;
             if (swapped) await chrome.EnsureAsync(working.Path, CancellationToken.None).ConfigureAwait(false);
             run.Outcome = "ok";

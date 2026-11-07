@@ -18,8 +18,22 @@ internal sealed class BackendCaughtUp : ICaughtUpFeed, IDisposable
     private readonly GoogleMessagesBackend google;
     private readonly Action<string, IReadOnlyList<string>> fromInstagram, fromMessenger, fromGoogle;
 
-    public BackendCaughtUp(GoogleMessagesBackend google, MessengerBackend messenger, InstagramBackend instagram)
+    private readonly ProviderAccounts? accounts;
+    private readonly List<BackendCaughtUp> added = [];
+    private readonly HashSet<string> subscribed = [];
+    private void Refresh()
     {
+        lock (added) foreach (var account in accounts?.Added ?? [])
+        {
+            if (!subscribed.Add(account.Registration.Key)) continue;
+            if (account.Google is { } g) g.CaughtUp += fromGoogle;
+            if (account.Messenger is { } m) m.CaughtUp += fromMessenger;
+            if (account.Instagram is { } i) i.CaughtUp += fromInstagram;
+        }
+    }
+    public BackendCaughtUp(GoogleMessagesBackend google, MessengerBackend messenger, InstagramBackend instagram, ProviderAccounts? accounts = null)
+    {
+        this.accounts = accounts;
         this.google = google; this.messenger = messenger; this.instagram = instagram;
         fromInstagram = (chat, ids) => Raise(chat, ids, announced: false);
         fromMessenger = (chat, ids) => Raise(chat, ids, announced: true);
@@ -27,6 +41,7 @@ internal sealed class BackendCaughtUp : ICaughtUpFeed, IDisposable
         instagram.CaughtUp += fromInstagram;
         messenger.CaughtUp += fromMessenger;
         google.CaughtUp += fromGoogle;
+        if (accounts is not null) { accounts.Changed += Refresh; Refresh(); }
     }
 
     public event Action<CaughtUpNotice>? CaughtUp;
@@ -39,6 +54,16 @@ internal sealed class BackendCaughtUp : ICaughtUpFeed, IDisposable
 
     public void Dispose()
     {
+        if (accounts is not null)
+        {
+            accounts.Changed -= Refresh;
+            foreach (var account in accounts.Added)
+            {
+                if (account.Google is { } g) g.CaughtUp -= fromGoogle;
+                if (account.Messenger is { } m) m.CaughtUp -= fromMessenger;
+                if (account.Instagram is { } i) i.CaughtUp -= fromInstagram;
+            }
+        }
         instagram.CaughtUp -= fromInstagram;
         messenger.CaughtUp -= fromMessenger;
         google.CaughtUp -= fromGoogle;

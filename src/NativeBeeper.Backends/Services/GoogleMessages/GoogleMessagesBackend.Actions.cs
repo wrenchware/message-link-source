@@ -10,9 +10,9 @@ internal sealed partial class GoogleMessagesBackend
     {
         await ConnectAsync(token);
         if(IsPlaceholder(chatId)) throw new BackendException(BackendFailure.Unavailable,"That conversation isn't available right now. Refresh and try again.");
-        var result=await ReadAsync("ui.chat",new {chatId=GoogleModels.Native(chatId)},token);
+        var result=await ReadAsync("ui.chat",new {chatId=Models.Native(chatId)},token);
         var chat=result.Deserialize<GoogleChat>(Json);
-        if(chat is null || chat.Id!=GoogleModels.Native(chatId)) throw new BackendException(BackendFailure.Unavailable,"Conversation couldn't be refreshed.");
+        if(chat is null || chat.Id!=Models.Native(chatId)) throw new BackendException(BackendFailure.Unavailable,"Conversation couldn't be refreshed.");
         SetChat(chat);
         ArchiveChats([chat]);
         return chat;
@@ -31,7 +31,7 @@ internal sealed partial class GoogleMessagesBackend
             GoogleMessagesLog.Write($"operation=mark_read outcome=deferred reason=pending chat={GoogleMessagesLog.Tag(chatId)}");
             throw new BackendException(BackendFailure.Unavailable,"That message is still sending.");
         }
-        await MediaCallAsync("ui.markRead",new {chatId=GoogleModels.Native(chatId),messageId=GoogleModels.Native(messageId)},cancellationToken);
+        await MediaCallAsync("ui.markRead",new {chatId=Models.Native(chatId),messageId=Models.Native(messageId)},cancellationToken);
         // Do not force an unread count to zero: a newer message may have arrived during the write. Google took the read
         // whether or not this refresh answers, so a failed refresh is not a failed read.
         try
@@ -49,7 +49,7 @@ internal sealed partial class GoogleMessagesBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!connected || !messageId.StartsWith("google-direct:",StringComparison.Ordinal) || messageId.StartsWith(PendingPrefix,StringComparison.Ordinal) ||
-            !chats.TryGetValue(GoogleModels.Native(chatId),out var chat) || !messages.TryGetValue(GoogleModels.Native(messageId),out var message))
+            !chats.TryGetValue(Models.Native(chatId),out var chat) || !messages.TryGetValue(Models.Native(messageId),out var message))
             return Task.FromResult(new MessageActionOptions(false,[],[]));
         return Task.FromResult(GoogleModels.Actions(chat,message));
     }
@@ -67,7 +67,7 @@ internal sealed partial class GoogleMessagesBackend
         await ThrowIfRenumberedAsync();
         try
         {
-            var response=await MediaCallAsync("ui.react",new {chatId=GoogleModels.Native(chatId),messageId=GoogleModels.Native(messageId),key=reaction,remove},cancellationToken);
+            var response=await MediaCallAsync("ui.react",new {chatId=Models.Native(chatId),messageId=Models.Native(messageId),key=reaction,remove},cancellationToken);
             var outcome=response.GetProperty("outcome").GetString();
             if(outcome!="accepted") throw new SendException(outcome!="rejected",outcome=="rejected"?"Google Messages rejected this reaction.":"Reaction outcome is unknown. Check the message before trying again.");
         }
@@ -91,7 +91,7 @@ internal sealed partial class GoogleMessagesBackend
         if(!connected||helper is null) throw new SendException(false,"Reconnect Google Messages to delete this message.");
         try
         {
-            await MediaCallAsync("ui.deleteMessage",new {chatId=GoogleModels.Native(chatId),messageId=GoogleModels.Native(messageId),everyone=false},cancellationToken);
+            await MediaCallAsync("ui.deleteMessage",new {chatId=Models.Native(chatId),messageId=Models.Native(messageId),everyone=false},cancellationToken);
         }
         catch(SendException) {throw;}
         catch(OperationCanceledException) {throw;}
