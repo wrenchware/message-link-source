@@ -220,6 +220,8 @@ func (a *adapter) encryptedEvent(raw any) {
 		a.encryptedTyping(evt)
 	case *events.FBMessage:
 		a.applyEncrypted(evt)
+	case *events.UndecryptableMessage:
+		a.encryptedUnreadable(evt)
 	case *events.Connected:
 		logf("e2ee socket connected")
 		// Signed-in may follow the event by a moment; the word is looked at again once it has.
@@ -258,6 +260,7 @@ func (a *adapter) encryptedEvent(raw any) {
 }
 
 func (a *adapter) applyEncrypted(evt *events.FBMessage) {
+	a.unreadable.readable(evt.Info.ID)
 	a.state.Lock()
 	defer a.state.Unlock()
 	jid, err := strconv.ParseInt(evt.Info.Chat.User, 10, 64)

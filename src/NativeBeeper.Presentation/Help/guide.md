@@ -971,6 +971,7 @@ Everything is in `%LOCALAPPDATA%\Message Link` on your PC. Uninstalling asks whe
 - **An Instagram message request is missing**: requests aren't shown; open Instagram to see and accept them.
 - **A Messenger encrypted chat can't send**: wait for Messenger to reconnect. If Settings → Connections says encrypted conversations aren't on, sign in to Messenger again on the server's page.
 - **Older Messenger encrypted messages are missing**: encrypted messages from before this PC was registered stay in Messenger's own backup and can't come here.
+- **A Messenger message says "Couldn't read this message"**: the message couldn't be decrypted here, and Messenger won't deliver it again. Open Messenger on your phone to read it.
 - **No notifications**: Message Link must be running (keep it in the tray, or start it with Windows). Check Settings → Notifications, the service's switch in Sounds and privacy, the conversation's mute, and whether notifications are paused. Then try **Send test**.
 - **An option is missing from a menu**: that service doesn't offer it; see [What each service can do](#services).
 - **Pins or mutes didn't show in a service's own app**: they stay in Message Link by design. Without a Message Link Server, they're on this PC only and don't reach Message Link on your phone either.

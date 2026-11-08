@@ -60,13 +60,14 @@ func (o *output) write(r response) {
 }
 
 type adapter struct {
+	unreadable unreadableMessages
 	// False until the connection has finished its opening synchronisation, and again from a drop until the next one
 	// finishes; only the arrival-age log reads it.
 	socketLive     atomic.Bool
 	mediaMu        sync.Mutex
 	mediaRefreshes map[string]time.Time
 	// What lookups of sent messages that have no row have spent, by Facebook's id for the message (sentrow.go).
-	sentLooks map[string]*sentLook
+	sentLooks      map[string]*sentLook
 	downloadSlots  [3]chan struct{}
 	historyLocks   sync.Map
 	encryptedStart sync.Mutex
@@ -116,10 +117,10 @@ type adapter struct {
 	// A process that only moves the kept history in or out of an account's messages.db (backup.open, then
 	// backup.export or backup.import) with no Facebook contact at all: it never signs in, so no client is ever created.
 	// Selected by the environment alone, so nothing a caller sends can leave it.
-	offline     bool
-	testReceipt bool
-	receiptProbe    *receiptProbe
-	receiptOrigins  sync.Map // Diagnostic only: message ID -> original device JID.
+	offline        bool
+	testReceipt    bool
+	receiptProbe   *receiptProbe
+	receiptOrigins sync.Map // Diagnostic only: message ID -> original device JID.
 	// Set when Facebook has said this computer is no longer one of the account's devices, so Settings can say so
 	// instead of reporting encrypted conversations as working.
 	encryptedGone atomic.Bool

@@ -318,22 +318,32 @@ internal sealed class HelperConnection : IAsyncDisposable
     }
     private async Task PumpAsync()
     {
+        // Where a failed pump was, for its log line: fixed words and a length, never the line itself.
+        var stage = "read";
+        var length = 0;
         try
         {
             while (await process.StandardOutput.ReadLineAsync(lifetime.Token) is { } line)
             {
+                (stage, length) = ("parse", line.Length);
                 if (line.Length > 8 * 1024 * 1024) throw new IOException("Helper response exceeded limit.");
                 using var document = JsonDocument.Parse(line);
                 var root = document.RootElement;
                 if (root.TryGetProperty("event", out var kind))
                 {
+                    stage = "event";
                     if (root.TryGetProperty("result", out var data))
                     {
                         if (kind.GetString() == "typing") Typing?.Invoke(data.Clone());
                         Received?.Invoke(kind.GetString() ?? "", data.Clone());
                     }
                 }
-                else requests.Accept(root);
+                else
+                {
+                    stage = "reply";
+                    requests.Accept(root);
+                }
+                stage = "read";
             }
             termination ??= "the helper closed its output";
             requests.Close();
@@ -342,6 +352,13 @@ internal sealed class HelperConnection : IAsyncDisposable
         {
             termination ??= $"the connection to the helper failed ({failure.GetType().Name})";
             requests.Close();
+            if (failure is not OperationCanceledException)
+            {
+                Trace?.Invoke($"helper pipe failed name={name} stage={stage} type={failure.GetType().Name} chars={length}");
+                // Nothing reads this helper any more and its owner starts another on the same account. Left running, it
+                // kept its connections to the service for hours (messenger-helper.log.previous still growing, 2026-11-08).
+                try { if (!process.HasExited) process.Kill(); } catch (Exception) { }
+            }
         }
         finally
         {

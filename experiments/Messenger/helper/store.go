@@ -1559,6 +1559,9 @@ func (s *store) addEncrypted(key int64, id string, sender int64, text, replyTo s
 		if text != "" {
 			current.snippet = text
 		}
+	} else if previous := s.messages[key][id]; previous != nil && previous.text == unreadableText && at == current.lastActivity && text != "" {
+		// A resend that decrypted after all, in place of the line that stood for it: same message, same time.
+		current.snippet = text
 	}
 	if at >= s.latestMessageTimestampLocked(key) {
 		current.previewOutgoing = s.self != 0 && sender == s.self
@@ -1571,6 +1574,13 @@ func (s *store) addEncrypted(key int64, id string, sender int64, text, replyTo s
 	thread[id] = next
 	chat := strconv.FormatInt(key, 10)
 	return s.settleWaitingReceipts(key, next, &changes{Chats: []string{chat}, Messages: map[string][]string{chat: {id}}})
+}
+
+// Whether this conversation already holds the message.
+func (s *store) holdsMessage(key int64, id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.messages[key][id] != nil
 }
 
 // Call with the lock held. One person's reaction to one message; an empty one takes theirs away.
