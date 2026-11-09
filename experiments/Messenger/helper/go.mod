@@ -43,7 +43,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
-	go.mau.fi/libsignal v0.2.2 // indirect
+	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8 // indirect
 	go.mau.fi/zeroconfig v0.2.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
