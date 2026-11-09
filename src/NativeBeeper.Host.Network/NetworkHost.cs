@@ -164,6 +164,7 @@ internal sealed class NetworkHost : IAsyncDisposable
         // The Windows server on its own PC (SWITCHBOARD.md 10.7, ServerPage.Desktop.cs).
         if (page is not null)
         {
+            page.DeviceOnline = DeviceOnline;
             page.OnceSignIn = options.OnceSignIn;
             page.UseStorage(options.DataFolder, keys);
             page.DesktopTrust = options.DesktopTrust;
@@ -206,6 +207,7 @@ internal sealed class NetworkHost : IAsyncDisposable
     internal JoinRequests Joins => joins;
     internal bool HasPage => page is not null;
     internal ServerPage? Page => page;
+    private bool DeviceOnline(string device) => connections.Keys.Any(connection => connection.DeviceId == device && !connection.Ending);
 
     /// <summary>Opens a new pairing code in place of any other and logs it (<c>server pairing code=</c>): what an integrator's <c>--pair</c> does on a host that is running.</summary>
     public string IssuePairingCode() => pairing.Issue();

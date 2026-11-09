@@ -53,6 +53,8 @@ internal sealed class JoinRequests(TimeProvider time, Action<string> log, string
         public byte[]? CertificateHash { get; set; }
         /// <summary>Made on approval for a device of <see cref="ProtocolVersion.JoinFinish"/>; shown only to the owner, never logged.</summary>
         public string? FinishCode { get; set; }
+        /// <summary>Old entries of this device the owner chose to remove, once it has joined.</summary>
+        public IReadOnlyList<string> Replaces { get; set; } = [];
         public TaskCompletionSource<Outcome> Decided { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         /// <summary>
         /// The device id once the device said it kept its token; null when it could not be handed over, or when the approval stopped waiting first (whichever is set
@@ -174,7 +176,7 @@ internal sealed class JoinRequests(TimeProvider time, Action<string> log, string
     /// Lets the device in. A device of protocol <see cref="ProtocolVersion.JoinFinish"/> is answered at once with the finish code its person types (it is paired once they
     /// have); an older one is paired on its own connection, and the answer says as what (or that it could not be, the device having gone).
     /// </summary>
-    public async Task<JoinApproved> ApproveAsync(string? id, string via)
+    public async Task<JoinApproved> ApproveAsync(string? id, string via, IReadOnlyList<string>? replaces = null)
     {
         var request = Answerable(id);
         if (request is null) return new(false);
@@ -186,6 +188,7 @@ internal sealed class JoinRequests(TimeProvider time, Action<string> log, string
             if (request.Decided.Task.IsCompleted) return new(false);
             finish = request.Protocol >= ProtocolVersion.JoinFinish ? JoinMatch.FinishCode() : null;
             request.FinishCode = finish;
+            request.Replaces = replaces ?? [];
             if (!request.Decided.TrySetResult(Outcome.Approved)) return new(false);
         }
         log($"server join approved via={via}");

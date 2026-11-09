@@ -269,7 +269,7 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/details" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
+    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/details" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
         or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
@@ -316,7 +316,7 @@ internal sealed partial class ServerPage
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -425,6 +425,12 @@ internal sealed partial class ServerPage
                 return;
             case "/accounts/remove":
                 await RemoveAccountAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
+                return;
+            case JoinWatchPath:
+                await JoinWatchAsync(context).ConfigureAwait(false);
+                return;
+            case JoinReviewPath:
+                Redirect(response, JoinReviewTarget());
                 return;
             case "/joins/approve":
                 await ApproveJoinAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
@@ -792,6 +798,7 @@ internal sealed partial class ServerPage
             Redirect(context.Response, "/?done=join_gone");
             return;
         }
+        var old = OldEntries(waiting.DeviceName);
         string Ask(string? problem)
         {
             var body = new StringBuilder("<section>");
@@ -799,7 +806,7 @@ internal sealed partial class ServerPage
             body.Append(Para($"Let {waiting.DeviceName} join? It will be able to read every conversation on the server. Approve it only if {waiting.DeviceName} shows this code:"));
             body.Append("<p class=\"code\">").Append(Html(waiting.Code)).Append("</p>");
             body.Append("<p class=\"quiet\">Asked from ").Append(Html(waiting.Source)).Append(", ").Append(Html(Ago(waiting.Asked))).Append(".</p>");
-            body.Append(PasswordForm("/joins/approve", token, "Approve", id: waiting.Id));
+            body.Append(PasswordForm("/joins/approve", token, "Approve", id: waiting.Id, before: ReplaceBoxes(old, form?["replace"])));
             // Turning a device away gives nothing to anyone, so it needs no password.
             body.Append("<form method=\"post\" action=\"/joins/deny\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"id\" value=\"").Append(Html(waiting.Id)).Append("\"><button type=\"submit\" class=\"quiet\">Deny</button></form>");
             return body.Append("</section>").ToString();
@@ -810,13 +817,16 @@ internal sealed partial class ServerPage
             return;
         }
         if (!await PasswordAgainAsync(context, form, "join", "Approve a device", Ask).ConfigureAwait(false)) return;
-        var approved = await joins.ApproveAsync(id, "page").ConfigureAwait(false);
+        // Only what this page offered: the same name, and not connected.
+        var replaces = old.Select(device => device.Id).Where(device => form["replace"].Contains(device)).ToArray();
+        var approved = await joins.ApproveAsync(id, "page", replaces).ConfigureAwait(false);
         // The finish code is shown on this answer itself, never put in an address (where history and logs keep it), and only here: the device's person types it.
         if (approved.FinishCode is { } finish)
         {
             var told = new StringBuilder("<section>");
-            told.Append(Para($"Approved. On {waiting.DeviceName}, type this finish code within 5 minutes. It joins once the code is typed."));
+            told.Append(Para($"Approved. On {waiting.DeviceName}, paste or type this finish code within 5 minutes. It joins once the code is entered."));
             told.Append("<p class=\"code\">").Append(Html(finish)).Append("</p>");
+            told.Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(finish)).Append("\">Copy</button></p>");
             told.Append("<p><a href=\"/\">Back to the server</a></p>");
             await PageAsync(context, StatusCodes.Status200OK, "Approved", told.Append("</section>").ToString()).ConfigureAwait(false);
             return;
@@ -886,11 +896,11 @@ internal sealed partial class ServerPage
     }
 
     // The password asked again, and the button that then does it.
-    private static string PasswordForm(string action, string token, string button, string? id = null, bool danger = false)
+    private static string PasswordForm(string action, string token, string button, string? id = null, bool danger = false, string before = "")
     {
         var form = new StringBuilder("<form method=\"post\" action=\"").Append(action).Append("\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">");
         if (id is not null) form.Append("<input type=\"hidden\" name=\"id\" value=\"").Append(Html(id)).Append("\">");
-        return form.Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>")
+        return form.Append(before).Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>")
             .Append("<button type=\"submit\"").Append(danger ? " class=\"danger\"" : "").Append('>').Append(Html(button)).Append("</button><a class=\"cancel\" href=\"/\">Cancel</a></form>").ToString();
     }
 
@@ -1021,7 +1031,7 @@ internal sealed partial class ServerPage
         + "h2{font-size:15px;font-weight:600;margin:0 0 10px}.manage>section:has(.sh)>h2:first-child{display:none}.manage>section:has(>.box){background:none;border:0;padding:0}section>.sh{margin-top:18px}section.sec>.sh,section>.notice+.sh,section>h2+.sh{margin-top:0}"
         + ".row>.v.copy{font:inherit;font-size:13px;white-space:normal;overflow-wrap:anywhere;text-align:right;min-width:0;user-select:all}.row form{margin:0}.row details summary{font-size:13px}.row a.button.small{margin:0}p{margin:0 0 10px}form{margin:12px 0 10px}section>form:first-child{margin-top:0}"
         + "dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:0 0 10px;align-items:baseline}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}"
-        + ".copy{font-family:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--muted)}"
+        + ".copy{font-family:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;user-select:all}.large{font-size:26px;letter-spacing:2px}.quiet{color:var(--muted)}#join-ask{margin:0 0 16px}#join-ask[hidden]{display:none}"
         + "ul.rows{list-style:none;margin:0 0 10px;padding:0}ul.rows li{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--hair)}ul.rows li:first-child{border-top:0}"
         + ".grow{flex:1;min-width:0;display:flex;flex-direction:column}.grow strong{font-weight:600}.grow .quiet{font-size:13px}ul.rows form{margin:0}.manage>section>form:not(.btns){display:inline-block;margin:6px 8px 6px 0}"
         + ".state{font-size:13px;white-space:nowrap;color:var(--muted)}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--muted)}.dot.wait{background:var(--warn)}"
@@ -1070,10 +1080,12 @@ internal sealed partial class ServerPage
             : inner ? "<a href=\"/\">" + SiteName + "</a><span class=\"sep\" aria-hidden=\"true\">/</span><span class=\"here\">" + page + "</span>" : "<span class=\"here\">" + SiteName + "</span>";
         // Signed out there is no list, so the bar carries the logo.
         var logo = nav is null ? "<a href=\"/\" aria-label=\"The server's page\"><span class=\"ic logo\" aria-hidden=\"true\"></span></a>" : "";
+        // Signed in, unless this page's own policy leaves the script out (the sign-in view's).
+        var watch = nav is not null && response.Headers.ContentSecurityPolicy.ToString().Contains(JoinScriptHash, StringComparison.Ordinal) ? JoinAsk : "";
         var html = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
             + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
-            + $"<header class=\"top\">{logo}<h1>{crumbs}</h1></header><main>{WithoutPasswordAgain(context, body)}</main></div></body></html>";
+            + $"<header class=\"top\">{logo}<h1>{crumbs}</h1></header><main>{watch}{WithoutPasswordAgain(context, body)}</main></div></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }
 
@@ -1081,7 +1093,7 @@ internal sealed partial class ServerPage
         PageAsync(context, status, status >= 500 ? "Something went wrong" : "That didn't work", Para(text) + "<p><a href=\"/\">Back to the server's page</a></p>");
 
     // The places on the page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
-    private static readonly string[] Sections = ["accounts", "storage", "backups", ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram];
+    private static readonly string[] Sections = ["accounts", "storage", "backups", JoinSection, ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram];
 
     internal static string? Section(string? name) => Sections.FirstOrDefault(known => known == name);
 
@@ -1090,6 +1102,7 @@ internal sealed partial class ServerPage
         null => "/",
         "storage" => "/manage/storage",
         "backups" => "/manage/backups",
+        JoinSection => JoinReviewPath,
         "accounts" => "/#accounts",
         // A service: its line, open (ServerPage.Home.cs).
         _ => "/?open=" + section + "#row-" + section,
@@ -1108,7 +1121,7 @@ internal sealed partial class ServerPage
     {
         var headers = response.Headers;
         headers.CacheControl = "no-store";
-        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}' '{PageScriptHash}'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}' '{PageScriptHash}' '{JoinScriptHash}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
         headers.XFrameOptions = "DENY";
         headers.XContentTypeOptions = "nosniff";
         // same-origin, not no-referrer: under no-referrer a browser sends a form post with Origin: null, which the origin check above refuses (checked in Chromium,

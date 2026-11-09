@@ -198,6 +198,16 @@ internal static class JoinSession
             log($"server join outcome=approved id={device.Id}");
             try { await channel.SendAsync(Frames.Serialize(ResponseFrame.Success(ack.Id, new Done())), cancellationToken).ConfigureAwait(false); }
             catch (Exception) { }
+            // Only now: an approval that never finished leaves the old entry as it was.
+            if (request.Replaces.Count > 0)
+            {
+                var removed = 0;
+                var failed = 0;
+                foreach (var old in request.Replaces)
+                    try { if (await devices.RevokeAsync(old).ConfigureAwait(false)) removed++; }
+                    catch (Exception) { failed++; }
+                log($"server join replaced removed={removed} failed={failed}");
+            }
         }
         finally { devices.DropJoin(device.Id); }
 
