@@ -211,7 +211,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var late = (now ?? DateTimeOffset.UtcNow) - remindAt > TimeSpan.FromMinutes(2);
         var photo = await PhotoAsync(id, chat, null, token);
         var content = new NotificationContent(record, Clip(title, 100), Clip(preview, 240), chat.Network, Silent: away is not null,
-            Attribution: late ? $"Reminder for {remindAt.ToLocalTime():t}" : "Reminder", Sound: options.SoundFor(serviceKey), Photo: photo);
+            Attribution: late ? $"Reminder for {remindAt.ToLocalTime():t}" : "Reminder", Sound: options.SoundFor(serviceKey), Photo: photo, CustomSound: options.CustomSoundFor(serviceKey));
         // Windows refusing it (notifications unavailable in this process) is the same as notifications being off: the
         // identity is claimed, and raising it again later would be a second reminder rather than a late first one.
         try { await presenter.ShowMessageAsync(content); }
@@ -244,7 +244,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var title = options.Detail == NotificationDetail.None ? "Message Link" : chat.Title;
         const string Words = "Your scheduled message wasn't sent. Open it to send or drop it.";
         var content = new NotificationContent(record, Clip(title, 100), Words, chat.Network, Silent: preferences.AwayReason() is not null,
-            Attribution: "Send later", Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)));
+            Attribution: "Send later", Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)), CustomSound: options.CustomSoundFor(NotificationOptions.ServiceKey(chat)));
         try { await presenter.ShowMessageAsync(content); }
         catch (Exception) { RecordDelivery("held scheduled message not shown (Windows notifications unavailable)"); return true; }
         RecordDelivery("held scheduled message shown");
@@ -283,7 +283,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var options = preferences.Options;
         var (title, preview) = options.Detail == NotificationDetail.None ? ("Message Link", "Reminder") : ("Reminder · " + chat.Title, "A message you saved");
         return new NotificationContent(record, Clip(title, 100), preview, chat.Network, Silent: PausedAt(remindAt), Attribution: "Reminder",
-            Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)));
+            Sound: options.SoundFor(NotificationOptions.ServiceKey(chat)), CustomSound: options.CustomSoundFor(NotificationOptions.ServiceKey(chat)));
     }
 
     /// <summary>A snoozed conversation's reminder as Windows holds it for its moment, to show if Messages is closed then.</summary>
@@ -316,7 +316,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var options = preferences.Options;
         var title = options.Detail == NotificationDetail.None ? "Message Link" : chat.Title;
         return (new NotificationContent(record, Clip(title, 100), "Snoozed reminder", chat.Network, Silent: PausedAt(until), Attribution: "Snoozed reminder",
-            Sound: options.SoundFor(serviceKey)), false);
+            Sound: options.SoundFor(serviceKey), CustomSound: options.CustomSoundFor(serviceKey)), false);
     }
 
     /// <summary>
@@ -341,7 +341,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var options = preferences.Options;
         var title = options.Detail == NotificationDetail.None || known is null ? "Message Link" : known.Title;
         return new NotificationContent(record, Clip(title, 100), "Snoozed reminder", known?.Network ?? network, Silent: PausedAt(until),
-            Attribution: "Snoozed reminder", Sound: options.SoundFor(serviceKey));
+            Attribution: "Snoozed reminder", Sound: options.SoundFor(serviceKey), CustomSound: options.CustomSoundFor(serviceKey));
     }
 
     private bool PausedAt(DateTimeOffset moment) => preferences.PausedUntil() is { } until && until > moment;
@@ -416,7 +416,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var photo = await PhotoAsync(id, chat, chat.Type == "group" ? message.SenderId : null, token);
         if (attribution is null && (AlreadyRead(chat, message) || await ReadSinceAsync(message, token))) { photos?.Release(id); return false; }
         var content = new NotificationContent(record, Clip(title, 100), Clip(preview, 240), chat.Network, Silent: away is not null, Attribution: attribution,
-            Sound: options.SoundFor(serviceKey), Code: code, Photo: photo);
+            Sound: options.SoundFor(serviceKey), Code: code, Photo: photo, CustomSound: options.CustomSoundFor(serviceKey));
         Remember(record.Id, serviceKey);
         try { await presenter.ShowMessageAsync(content); }
         catch (Exception failure) when (refusals is not null) { photos?.Release(id); refusals.Add(failure); return false; }
@@ -485,7 +485,8 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         {
             Title = title, Preview = preview, Code = null,
             Photo = options.SenderPhoto && options.Detail != NotificationDetail.None ? content.Photo : null,
-            Sound = serviceKey is null ? NotificationSound.TextMessage : options.SoundFor(serviceKey),
+            Sound = serviceKey is null ? NotificationOptions.DefaultSound : options.SoundFor(serviceKey),
+            CustomSound = serviceKey is null ? null : options.CustomSoundFor(serviceKey),
         };
     }
 

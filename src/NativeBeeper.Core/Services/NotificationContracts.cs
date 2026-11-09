@@ -12,7 +12,8 @@ public sealed record NotificationRecord(string Id, string Profile, string ChatId
     // the moment, or the reminder was cancelled) and raises it itself, once.
     DateTimeOffset? ScheduledFor = null, bool TakenBack = false);
 // The sound a notification plays, chosen per service in Notification options. None plays nothing.
-public enum NotificationSound { TextMessage, InstantMessage, Mail, Reminder, WindowsDefault, None }
+public enum NotificationSound { TextMessage, Mail, Reminder, WindowsDefault, None, Balloon, Chimes, Chord, Ding, Notify, Nudge, Proximity, Ring, Tada, Custom, Wake, Acknowledge, Signal, Dock, Transmission, Swell, Descent, Resonance, Pulse, Blip, Beacon, Glow, Hum }
+// CustomSound: with NotificationSound.Custom, the name of the person's own sound file kept in the data folder.
 // Silent: add to Notification Center without showing a banner.
 // Attribution: a small line under the message naming what this notification is, when it is not simply a new message.
 // Code: a one-time sign-in code found in the message, offered as a Copy code button. It lives only in this content and in
@@ -20,7 +21,7 @@ public enum NotificationSound { TextMessage, InstantMessage, Mail, Reminder, Win
 // Photo: the sender's picture as a file on this PC (NotificationPhotos), shown as the notification's round logo. Only when
 // "Show the sender's photo" is on, and the file goes when the notification does.
 public sealed record NotificationContent(NotificationRecord Record, string Title, string Preview, string Network, bool Silent = false, string? Attribution = null, bool IsRepeat = false,
-    NotificationSound Sound = NotificationSound.TextMessage, string? Code = null, string? Photo = null);
+    NotificationSound Sound = NotificationSound.TextMessage, string? Code = null, string? Photo = null, string? CustomSound = null);
 // Presentation hints from already-loaded state, never permission to bypass mutation checks.
 public interface INotificationActionHints
 {

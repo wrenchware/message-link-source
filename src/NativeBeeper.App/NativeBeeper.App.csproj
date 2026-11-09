@@ -71,6 +71,7 @@
     <Content Include="Assets\EmptyConversation.png" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\ServiceMessenger.png;Assets\ServiceGoogleMessages.png;Assets\ServiceGoogleVoice.png;Assets\ServiceInstagram.png" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\AvatarBadge*.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\Sounds\*.wav" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\AppIconUnread.ico;Assets\Badge*.ico" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>

@@ -15,8 +15,12 @@ public enum NotificationDetail { SenderAndMessage, SenderOnly, None }
 // file, so while it is on a small copy of the picture this PC already has sits on disk as long as the notification does
 // (NotificationPhotos). Never with No details.
 public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDictionary<string, NotificationSound> Sounds,
-    NotificationDetail Detail, bool SenderPhoto = false)
+    NotificationDetail Detail, bool SenderPhoto = false, IReadOnlyDictionary<string, string>? CustomSounds = null)
 {
+    private static readonly IReadOnlyDictionary<string, string> NoCustomSounds = new Dictionary<string, string>(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, string> Customs => CustomSounds ?? NoCustomSounds;
+    public IEnumerable<string> CustomSoundFiles => Customs.Values;
+
     public const string VoicePrefix = "Google Voice/";
     public static NotificationOptions Default { get; } = new(new HashSet<string>(StringComparer.Ordinal),
         new Dictionary<string, NotificationSound>(StringComparer.Ordinal), NotificationDetail.SenderAndMessage);
@@ -34,15 +38,55 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
 
     public bool IsOn(string serviceKey) => !Off.Contains(serviceKey);
 
-    public NotificationSound SoundFor(string serviceKey) => Sounds.TryGetValue(serviceKey, out var sound) ? sound : NotificationSound.TextMessage;
+    public const NotificationSound DefaultSound = NotificationSound.Pulse;
+
+    public NotificationSound SoundFor(string serviceKey) => Sounds.TryGetValue(serviceKey, out var sound) ? sound : DefaultSound;
+
+    public string? CustomSoundFor(string serviceKey) => SoundFor(serviceKey) == NotificationSound.Custom && Customs.TryGetValue(serviceKey, out var file) ? file : null;
+
+    // A file name alone, so a saved value can never reach outside the folder the app keeps these in.
+    public static bool IsValidCustomSound(string? file) => file is { Length: > 4 and <= 100 } && file.EndsWith(".wav", StringComparison.Ordinal) && file.IndexOfAny(['/', '\\', ':', (char)0]) < 0;
 
     public static string? SoundUri(NotificationSound sound) => sound switch
     {
         NotificationSound.TextMessage => "ms-winsoundevent:Notification.SMS",
-        NotificationSound.InstantMessage => "ms-winsoundevent:Notification.IM",
         NotificationSound.Mail => "ms-winsoundevent:Notification.Mail",
         NotificationSound.Reminder => "ms-winsoundevent:Notification.Reminder",
         NotificationSound.WindowsDefault => "ms-winsoundevent:Notification.Default",
+        _ => null,
+    };
+
+    // A sound with no Windows event: its file in Windows' Media folder, which a notification can't name, so the app plays it.
+    public static string? SoundFile(NotificationSound sound) => sound switch
+    {
+        NotificationSound.Balloon => "Windows Balloon.wav",
+        NotificationSound.Chimes => "chimes.wav",
+        NotificationSound.Chord => "chord.wav",
+        NotificationSound.Ding => "ding.wav",
+        NotificationSound.Notify => "Windows Notify.wav",
+        NotificationSound.Nudge => "Windows Message Nudge.wav",
+        NotificationSound.Proximity => "Windows Proximity Notification.wav",
+        NotificationSound.Ring => "Windows Ringin.wav",
+        NotificationSound.Tada => "tada.wav",
+        _ => null,
+    };
+
+    // One of Message Link's own sounds: its file in the app's Assets\Sounds (tools\Make-NotificationSounds.ps1).
+    public static string? AppSoundFile(NotificationSound sound) => sound switch
+    {
+        NotificationSound.Wake => "wake.wav",
+        NotificationSound.Acknowledge => "acknowledge.wav",
+        NotificationSound.Signal => "signal.wav",
+        NotificationSound.Dock => "dock.wav",
+        NotificationSound.Transmission => "transmission.wav",
+        NotificationSound.Swell => "swell.wav",
+        NotificationSound.Descent => "descent.wav",
+        NotificationSound.Resonance => "resonance.wav",
+        NotificationSound.Pulse => "pulse.wav",
+        NotificationSound.Blip => "blip.wav",
+        NotificationSound.Beacon => "beacon.wav",
+        NotificationSound.Glow => "glow.wav",
+        NotificationSound.Hum => "hum.wav",
         _ => null,
     };
 
@@ -56,8 +100,17 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
     public NotificationOptions WithSound(string serviceKey, NotificationSound sound)
     {
         var sounds = new Dictionary<string, NotificationSound>(Sounds, StringComparer.Ordinal);
-        if (sound == NotificationSound.TextMessage) sounds.Remove(serviceKey); else sounds[serviceKey] = sound;
-        return this with { Sounds = sounds };
+        if (sound == DefaultSound) sounds.Remove(serviceKey); else sounds[serviceKey] = sound;
+        var custom = new Dictionary<string, string>(Customs, StringComparer.Ordinal);
+        custom.Remove(serviceKey);
+        return this with { Sounds = sounds, CustomSounds = custom };
+    }
+
+    public NotificationOptions WithCustomSound(string serviceKey, string file)
+    {
+        var sounds = new Dictionary<string, NotificationSound>(Sounds, StringComparer.Ordinal) { [serviceKey] = NotificationSound.Custom };
+        var custom = new Dictionary<string, string>(Customs, StringComparer.Ordinal) { [serviceKey] = file };
+        return this with { Sounds = sounds, CustomSounds = custom };
     }
 
     // What a notification says, by the choice made here. Sender only keeps the conversation's name; No details keeps
@@ -78,11 +131,18 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
 
     private static readonly (NotificationSound Sound, string Word)[] SoundWords =
     [
-        (NotificationSound.TextMessage, "text_message"), (NotificationSound.InstantMessage, "instant_message"), (NotificationSound.Mail, "mail"),
+        (NotificationSound.TextMessage, "text_message"), (NotificationSound.Mail, "mail"),
         (NotificationSound.Reminder, "reminder"), (NotificationSound.WindowsDefault, "windows_default"), (NotificationSound.None, "none"),
+        (NotificationSound.Balloon, "balloon"), (NotificationSound.Chimes, "chimes"), (NotificationSound.Chord, "chord"), (NotificationSound.Ding, "ding"),
+        (NotificationSound.Notify, "notify"), (NotificationSound.Nudge, "nudge"), (NotificationSound.Proximity, "proximity"), (NotificationSound.Ring, "ring"), (NotificationSound.Tada, "tada"),
+        (NotificationSound.Custom, "custom"),
+        (NotificationSound.Wake, "wake"), (NotificationSound.Acknowledge, "acknowledge"), (NotificationSound.Signal, "signal"), (NotificationSound.Dock, "dock"),
+        (NotificationSound.Transmission, "transmission"), (NotificationSound.Swell, "swell"), (NotificationSound.Descent, "descent"), (NotificationSound.Resonance, "resonance"),
+        (NotificationSound.Pulse, "pulse"), (NotificationSound.Blip, "blip"), (NotificationSound.Beacon, "beacon"), (NotificationSound.Glow, "glow"), (NotificationSound.Hum, "hum"),
     ];
 
-    // {"off":[...],"sounds":{key:word},"detail":word,"sender_photo":bool}. Keys, words and a switch; nothing else is written.
+    // {"off":[...],"sounds":{key:word},"custom_sounds":{key:file},"detail":word,"sender_photo":bool}. Keys, words, a switch and the
+    // names of sound files the person chose; nothing else is written.
     public string ToJson()
     {
         using var buffer = new MemoryStream();
@@ -95,6 +155,10 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
             writer.WriteStartObject("sounds");
             foreach (var (key, sound) in Sounds.Where(pair => IsValidKey(pair.Key)).OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 writer.WriteString(key, SoundWords.First(entry => entry.Sound == sound).Word);
+            writer.WriteEndObject();
+            writer.WriteStartObject("custom_sounds");
+            foreach (var (key, file) in Customs.Where(pair => IsValidKey(pair.Key) && IsValidCustomSound(pair.Value)).OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                writer.WriteString(key, file);
             writer.WriteEndObject();
             writer.WriteString("detail", DetailWord(Detail));
             writer.WriteBoolean("sender_photo", SenderPhoto);
@@ -119,14 +183,23 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
             foreach (var entry in soundMap.EnumerateObject())
                 if (IsValidKey(entry.Name) && entry.Value.ValueKind == JsonValueKind.String &&
                     SoundWords.FirstOrDefault(word => word.Word == entry.Value.GetString()) is { Word: not null } match &&
-                    match.Sound != NotificationSound.TextMessage)
+                    match.Sound != DefaultSound)
                     sounds[entry.Name] = match.Sound;
+        var custom = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (root.TryGetProperty("custom_sounds", out var customMap) && customMap.ValueKind == JsonValueKind.Object)
+            foreach (var chosen in customMap.EnumerateObject())
+                if (sounds.GetValueOrDefault(chosen.Name) == NotificationSound.Custom && chosen.Value.ValueKind == JsonValueKind.String &&
+                    chosen.Value.GetString() is { } file && IsValidCustomSound(file))
+                    custom[chosen.Name] = file;
+        // A custom sound with no usable file is no choice at all.
+        foreach (var unfiled in sounds.Where(pair => pair.Value == NotificationSound.Custom && !custom.ContainsKey(pair.Key)).Select(pair => pair.Key).ToList())
+            sounds.Remove(unfiled);
         var detail = NotificationDetail.SenderAndMessage;
         if (root.TryGetProperty("detail", out var word) && word.ValueKind == JsonValueKind.String)
             detail = word.GetString() switch { "sender_only" => NotificationDetail.SenderOnly, "none" => NotificationDetail.None, _ => detail };
         // Only an explicit true turns it on; anything else, or nothing (every file written before it), leaves it off.
         var photo = root.TryGetProperty("sender_photo", out var switched) && switched.ValueKind == JsonValueKind.True;
-        return new(off, sounds, detail, photo);
+        return new(off, sounds, detail, photo, custom);
     }
 }
 
