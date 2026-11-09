@@ -121,9 +121,9 @@ func archivedNow(t *testing.T, a *adapter, key int64) bool {
 	return archived
 }
 
-// A move back to the inbox shows only once Messenger says the conversation is there, in the reply or on the socket
-// around it. Anything less is unconfirmed: this copy stays as Messenger last described it, and nothing is sent again.
-func TestAFolderMoveIsShownOnlyWhenMessengerStatesIt(t *testing.T) {
+// A move back to the inbox shows once Messenger states it or acknowledges the request: it states nothing for an encrypted
+// conversation, which would otherwise stay under Archived with its new message. A refusal or a failed request moves nothing.
+func TestAFolderMoveBackIsShownWhenMessengerStatesOrAcknowledgesIt(t *testing.T) {
 	inboxRow := func(key int64) *table.LSTable {
 		return &table.LSTable{LSMoveThreadToInboxAndUpdateParent: []*table.LSMoveThreadToInboxAndUpdateParent{{ThreadKey: key}}}
 	}
@@ -139,11 +139,11 @@ func TestAFolderMoveIsShownOnlyWhenMessengerStatesIt(t *testing.T) {
 		{name: "stated as a whole row", reply: &table.LSTable{LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{
 			{ThreadKey: 40, ThreadType: table.GROUP_THREAD, LastActivityTimestampMs: 100, FolderName: "inbox"}}}, code: "", archived: false},
 		{name: "stated on the socket", reply: &table.LSTable{}, socket: inboxRow(40), code: "", archived: false},
-		{name: "bare acknowledgement", reply: &table.LSTable{}, code: "update_unconfirmed", archived: true},
-		{name: "no reply table", reply: nil, code: "update_unconfirmed", archived: true},
+		{name: "bare acknowledgement", reply: &table.LSTable{}, code: "", archived: false},
+		{name: "no reply table", reply: nil, code: "", archived: false},
 		{name: "the old folder restated", reply: &table.LSTable{LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{
-			{ThreadKey: 40, ThreadType: table.GROUP_THREAD, LastActivityTimestampMs: 100, FolderName: "archived"}}}, code: "update_unconfirmed", archived: true},
-		{name: "another conversation moved", reply: inboxRow(41), code: "update_unconfirmed", archived: true},
+			{ThreadKey: 40, ThreadType: table.GROUP_THREAD, LastActivityTimestampMs: 100, FolderName: "archived"}}}, code: "", archived: false},
+		{name: "another conversation moved", reply: inboxRow(41), code: "", archived: false},
 		{name: "refused", reply: &table.LSTable{LSHandleFailedTask: []*table.LSHandleFailedTask{{}}}, code: "update_rejected", archived: true},
 		{name: "request failed", err: errors.New("socket closed"), code: "update_failed", archived: true},
 	} {
@@ -258,17 +258,17 @@ func TestAnAcknowledgedArchiveIsApplied(t *testing.T) {
 // way of the next move.
 func TestALateStatementStillMovesTheConversation(t *testing.T) {
 	a, sent := folderAdapter(t, func(socket.Task) (*table.LSTable, error) { return &table.LSTable{}, nil })
-	if _, code := call(a, "ui.updateChat", `{"chatId":"40","archived":false}`); code != "update_unconfirmed" {
+	if _, code := call(a, "ui.updateChat", `{"chatId":"40","archived":false}`); code != "" {
 		t.Fatalf("answered %q", code)
 	}
-	a.applyTable(context.Background(), &table.LSTable{LSMoveThreadToInboxAndUpdateParent: []*table.LSMoveThreadToInboxAndUpdateParent{{ThreadKey: 40}}})
-	if archivedNow(t, a, 40) {
+	a.applyTable(context.Background(), &table.LSTable{LSMoveThreadToArchivedFolder: []*table.LSMoveThreadToArchivedFolder{{ThreadKey: 40}}})
+	if !archivedNow(t, a, 40) {
 		t.Fatal("Messenger's late statement was not applied")
 	}
 	if len(a.folders.pending) != 0 {
 		t.Fatal("a finished move left its watch behind")
 	}
 	if len(*sent) != 1 {
-		t.Fatalf("an unconfirmed move was sent %d times", len(*sent))
+		t.Fatalf("an acknowledged move was sent %d times", len(*sent))
 	}
 }

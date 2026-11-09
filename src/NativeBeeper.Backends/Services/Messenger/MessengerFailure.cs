@@ -33,9 +33,9 @@ internal static class MessengerFailure
         _ => "The delete outcome is unknown. Check Messenger before trying again.",
     };
 
-    // Archiving or bringing back a conversation. The helper moves its copy only when Messenger states the new folder, so
-    // update_unconfirmed means Messenger took the request without saying it moved anything: like an errored request, it
-    // may yet have happened, and is never repeated by itself. A refusal, an unloaded conversation and a helper not
+    // Archiving or bringing back a conversation. The helper moves its copy when Messenger states the new folder or
+    // acknowledges the request, so update_unconfirmed means the wait was given up: like an errored request, it may yet
+    // have happened, and is never repeated by itself. A refusal, an unloaded conversation and a helper not
     // connected are definite; nothing was moved.
     public static bool IsUpdateUnknown(string code) => code is not ("update_rejected" or "chat_unavailable" or "not_connected"
         or "login_required" or "invalid_input");

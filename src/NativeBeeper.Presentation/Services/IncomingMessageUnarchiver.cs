@@ -74,6 +74,9 @@ public sealed class IncomingMessageUnarchiver(IChatSettingsBackend settings, IMe
 
     public async Task<UnarchiveOutcome> DecideAsync(RealtimeEvent change, CancellationToken token)
     {
+        // A client's own link to its host dropped, not a provider's connection (as NotificationObserver reads it). A feed that resumes brings no new
+        // Connected, so taking this for one would leave every arrival after it unasked, and unnotified while archived, until the next provider connect.
+        if (change.Kind == RealtimeKind.Disconnected && change.Scope is null && change.ClientLink == true) return default;
         if (change.Kind is RealtimeKind.Connected or RealtimeKind.Disconnected or RealtimeKind.AuthenticationRequired or RealtimeKind.ResyncRequired)
         {
             var scope = change.Scope ?? "";

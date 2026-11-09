@@ -33,9 +33,8 @@ type unarchiveThreadTask struct {
 func (t *unarchiveThreadTask) GetLabel() string      { return unarchiveThreadLabel }
 func (t *unarchiveThreadTask) Create() (any, string) { return t, "unarchive_thread" }
 
-// How long a move waits for Messenger to say the conversation is in its new folder. Messenger answers this task family
-// with a bare acknowledgement whether or not it did anything (PROVIDERS.md), so for a move to the inbox only its own
-// statement of the folder counts. A statement arriving after this is still applied, as any other folder change is.
+// How long a move waits for Messenger to say the conversation is in its new folder, before its acknowledgement is taken
+// instead (PROVIDERS.md). A statement arriving after this is still applied, as any other folder change is.
 var folderEchoWait = 3 * time.Second
 
 // An encrypted conversation's mailbox tasks go to its own sync group, as marking read and deleting do.
@@ -111,17 +110,20 @@ func (a *adapter) updateChat(ctx context.Context, r request) (any, string) {
 	if tbl != nil {
 		logRows("folder move reply", tbl, a.applyTable(ctx, tbl))
 	}
-	// Until 2026-10-17 the acknowledgement alone moved this copy, and saved it, so the phone and this PC showed a
-	// conversation back in the inbox that Messenger still had archived. A move back to the inbox still waits for
-	// Messenger to say so; without that the copy stays as Messenger last described it and the move is reported
-	// unconfirmed, never sent again. An archive Messenger acknowledged is applied as its own statement would be: it
-	// archives and never says so to the device that asked (2026-10-30), so waiting bounced every archive back.
+	// A move Messenger acknowledged is applied as its own statement would be. It archives and never says so to the
+	// device that asked (2026-10-30), and an encrypted conversation's arrival states no folder either, so waiting for a
+	// statement left a conversation with a new message under Archived until the next full read (2026-11-08). A later
+	// statement from Messenger still replaces this. A move given up on (ctx) is unconfirmed, and never sent again.
 	if !waitForFolderMove(ctx, confirmed, folderEchoWait) {
-		if !*p.Archived || ctx.Err() != nil {
+		if ctx.Err() != nil {
 			logf("folder move chat=%s to=%s outcome=unconfirmed after=%dms", tag(key), to, time.Since(started).Milliseconds())
 			return nil, "update_unconfirmed"
 		}
-		a.applyTable(ctx, &table.LSTable{LSMoveThreadToArchivedFolder: []*table.LSMoveThreadToArchivedFolder{{ThreadKey: key}}})
+		if *p.Archived {
+			a.applyTable(ctx, &table.LSTable{LSMoveThreadToArchivedFolder: []*table.LSMoveThreadToArchivedFolder{{ThreadKey: key}}})
+		} else {
+			a.applyTable(ctx, &table.LSTable{LSMoveThreadToInboxAndUpdateParent: []*table.LSMoveThreadToInboxAndUpdateParent{{ThreadKey: key}}})
+		}
 		logf("folder move chat=%s to=%s outcome=acknowledged after=%dms", tag(key), to, time.Since(started).Milliseconds())
 	} else {
 		logf("folder move chat=%s to=%s outcome=confirmed after=%dms", tag(key), to, time.Since(started).Milliseconds())

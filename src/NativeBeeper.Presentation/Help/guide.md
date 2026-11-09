@@ -568,7 +568,7 @@ Message Link shows Windows notifications while it's running, including from the 
 
 **Settings → Notifications → Sounds and privacy**:
 
-- **Services**: each service, and each Google Voice number, on or off, with its sound: Text message, Instant message, Mail, Reminder, Windows default or No sound. These follow your Windows sound scheme. Turning a service off here mutes nothing on the service.
+- **Services**: each service, and each Google Voice number, on or off, with its sound: Text message, Instant message, Mail, Reminder, Windows default or No sound. These follow your Windows sound scheme. Choosing a sound plays it, and the play button beside it plays it again. Turning a service off here mutes nothing on the service.
 - **Show in notifications**: **Sender and message**, **Sender only** ("New message") or **No details**. **Show the sender's photo** is off by default.
 - **Pause**, as above.
 
