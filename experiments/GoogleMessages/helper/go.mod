@@ -9,7 +9,7 @@ require (
 	go.mau.fi/mautrix-gmessages v0.2609.1-0.20261010212621-186284eea622
 	go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	google.golang.org/protobuf v1.36.12
 )
 
