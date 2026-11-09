@@ -3,7 +3,7 @@ using NativeBeeper.Core.Messaging;
 namespace NativeBeeper.Presentation.Services;
 
 /// <summary>One of the header's service dots: the colour family it is drawn in and the name it is read out as.</summary>
-public sealed record HeaderDot(BubbleFamily Family, string Name);
+public sealed record HeaderDot(BubbleFamily Family, string Name, bool Next = false);
 
 public static class ConversationHeaderText
 {
@@ -76,7 +76,7 @@ public static class ConversationHeaderText
     /// </summary>
     public static IReadOnlyList<HeaderDot> Dots(IEnumerable<ChatSummary> sources, string? sendChatId) => sources
         .OrderBy(c => c.Id == sendChatId ? 0 : 1)
-        .Select(c => new HeaderDot(BubbleColours.TagFamily(c.Network, c.ExpectedTransport), ServiceName(c.Network, c.ExpectedTransport)))
+        .Select(c => new HeaderDot(BubbleColours.TagFamily(c.Network, c.ExpectedTransport), ServiceName(c.Network, c.ExpectedTransport), c.Id == sendChatId))
         .DistinctBy(d => d.Family).ToArray();
 
     // Google by its route where one is expected ("RCS", "SMS"), every other service by its name.
