@@ -196,6 +196,7 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 				if err := client.SendPresence(a.lifetime, waTypes.PresenceAvailable); err != nil {
 					logf("e2ee presence could not be sent")
 				}
+				a.checkOwnKeys(client, device)
 				return
 			}
 		}
