@@ -40,8 +40,8 @@ func (u *unreadableMessages) readable(id string) {
 	}
 }
 
-// One more failure to decrypt id. Calls settle at once on the last failure, or after the wait from the latest one.
-func (u *unreadableMessages) failed(id string, settle func()) {
+// One more failure to decrypt id. Calls settle at once on the last failure (exhausted), or after the wait from the latest one.
+func (u *unreadableMessages) failed(id string, settle func(exhausted bool)) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.waiting == nil {
@@ -57,7 +57,7 @@ func (u *unreadableMessages) failed(id string, settle func()) {
 	held.attempts++
 	if held.attempts >= unreadableAttempts {
 		delete(u.waiting, id)
-		go settle()
+		go settle(true)
 		return
 	}
 	var timer *time.Timer
@@ -70,7 +70,7 @@ func (u *unreadableMessages) failed(id string, settle func()) {
 		}
 		delete(u.waiting, id)
 		u.mu.Unlock()
-		settle()
+		settle(false)
 	})
 	held.timer = timer
 }
@@ -91,7 +91,41 @@ func (a *adapter) encryptedUnreadable(evt *events.UndecryptableMessage) {
 	if hidden {
 		return
 	}
-	a.unreadable.failed(info.ID, func() { a.placeUnreadable(jid, info) })
+	unavailable := evt.IsUnavailable
+	a.unreadable.failed(info.ID, func(exhausted bool) {
+		if exhausted && !unavailable {
+			a.forgetSession(key, info)
+		}
+		a.placeUnreadable(jid, info)
+	})
+}
+
+// The sender's device and this one no longer agree on their session: every resend failed, and each later message from
+// that device will fail the same way, because nothing here ever starts over. One sender's device was stuck like that
+// from 2026-11-06 while a device new to the account read fine. Signal's own clients drop the session at this point, and
+// so does this: with none held, the next message sent to that person fetches the device's keys and opens a new session
+// from this side, which its replies then come back on. Nothing is sent here. Only the one device's session goes; its
+// identity key and every other session stay. Groups are left alone: their messages fail for other reasons too.
+func (a *adapter) forgetSession(key int64, info waTypes.MessageInfo) {
+	defer func() { _ = recover() }()
+	if info.IsGroup || info.Chat.Server != waTypes.MessengerServer || info.Sender.User == "" {
+		return
+	}
+	a.mu.Lock()
+	kept := a.crypto
+	a.mu.Unlock()
+	if kept == nil || kept.device == nil || kept.device.Sessions == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	address := info.Sender.SignalAddress().String()
+	held, _ := kept.device.Sessions.HasSession(ctx, address)
+	outcome := "ok"
+	if err := kept.device.Sessions.DeleteSession(ctx, address); err != nil {
+		outcome = "failed"
+	}
+	logf("e2ee session forgotten chat=%s id=%s own=%v held=%v outcome=%s", tag(key), tagOf(info.ID), info.IsFromMe, held, outcome)
 }
 
 func (a *adapter) placeUnreadable(jid int64, info waTypes.MessageInfo) {
