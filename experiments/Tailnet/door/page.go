@@ -41,17 +41,20 @@ type pageView struct {
 	Everyone bool   `json:"everyone,omitempty"`
 	// Whether Tailscale signed this node out after it had been signed in (its key expired, or it was logged out), so the page says "Sign in again".
 	SignedOut bool `json:"signedOut,omitempty"`
-	// The owner's Messages phones on the tailnet (nodes named messages-…, other than a server), each with its key expiry, for the page's checklist.
+	// The owner's Message Link devices on the tailnet (nodes named messagelink-… or messages-…, other than a server), each with its key expiry and
+	// operating system, for the page's checklist: a phone, or a PC running Message Link's own Tailscale. The field keeps its first name.
 	Phones []phoneView `json:"phones,omitempty"`
 	// How many people's devices the tailnet holds (tagged devices belong to nobody): 1 when only the owner's, where Tailscale's default rule reaches only theirs.
 	Users int `json:"users,omitempty"`
 }
 
-// phoneView is one Messages phone as the page lists it.
+// phoneView is one Message Link device as the page lists it. OS is Tailscale's own word for the device's system ("android", "windows", ...), which is how
+// the page tells a PC from a phone: both name their nodes the same way.
 type phoneView struct {
 	Name    string `json:"name"`
 	Address string `json:"address,omitempty"`
 	Expiry  string `json:"expiry,omitempty"`
+	OS      string `json:"os,omitempty"`
 }
 
 // view reads what the page shows. A part that cannot be read now is left as it is unknown, never guessed. signedIn says the node was signed in earlier
@@ -128,11 +131,11 @@ func firstV4(ips []netip.Addr) string {
 	return ""
 }
 
-// phonePrefix is how a Messages phone names its node on the tailnet (the app's Tailscale node, 7.4); a server is messages-server, or another name the
-// owner gave it, and is never listed as a phone.
+// phonePrefix is how Message Link names its own node on the tailnet, on a phone (7.4) and on a Windows PC alike; a server is messages-server, or another
+// name the owner gave it, and is never listed.
 const phonePrefix = "messagelink-"
 
-// phones lists the owner's Messages phones among the peers, by name, and counts the people whose devices the tailnet holds.
+// phones lists the owner's Message Link phones and PCs among the peers, by name, and counts the people whose devices the tailnet holds.
 func phones(status *ipnstate.Status) ([]phoneView, int) {
 	self := status.Self
 	users := map[tailcfg.UserID]bool{}
@@ -155,7 +158,7 @@ func phones(status *ipnstate.Status) ([]phoneView, int) {
 		if tagged || peer.UserID != self.UserID || !(strings.HasPrefix(name, phonePrefix) || strings.HasPrefix(name, "messages-")) || strings.HasPrefix(name, "messages-server") || strings.HasPrefix(name, "messagelink-server") {
 			continue
 		}
-		phone := phoneView{Name: name, Address: firstV4(peer.TailscaleIPs), Expiry: "off"}
+		phone := phoneView{Name: name, Address: firstV4(peer.TailscaleIPs), Expiry: "off", OS: strings.ToLower(peer.OS)}
 		if peer.KeyExpiry != nil {
 			phone.Expiry = peer.KeyExpiry.UTC().Format(time.RFC3339)
 		}

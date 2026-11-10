@@ -54,6 +54,12 @@ public sealed class WebSocketFrameChannel : IFrameChannel
     public ChannelReader<string> Incoming => incoming.Reader;
 
     /// <summary>
+    /// The route that carried this connection when a <see cref="ServerDialer"/> opened it (<c>home</c> or <c>tailnet</c>), so a client can say how it is
+    /// connected; null for any other socket.
+    /// </summary>
+    public string? Route { get; init; }
+
+    /// <summary>
     /// Completes once nothing more will be read from the socket: the peer closed it or answered a close, or the connection was lost or dropped. A host whose
     /// connection ends when its request handler returns (Kestrel) waits for this after <see cref="Close"/>, so the close handshake is not cut short.
     /// </summary>

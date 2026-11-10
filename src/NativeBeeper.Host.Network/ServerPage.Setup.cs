@@ -324,14 +324,13 @@ internal sealed partial class ServerPage
         {
             case "start":
                 // The owner's review of setup (docs/onboarding-review.md, 2026-11-10): what the server is, why Tailscale and Firebase are the person's own, what it takes, who can do what.
-                // "Phone" only, until the Windows app reaches a server through Tailscale too (ROADMAP.md, A laptop away from home).
                 body.Append("<section><h2>Before you start</h2>")
                     .Append(Para("This server connects to your messaging accounts and keeps your history in one place. Message Link on your phone and PCs connects to it, so every device shows the same conversations."))
                     .Append("<p><strong>Why you set up Tailscale and Firebase yourself</strong></p>")
                     .Append(Para("Message Link has no servers of its own, so your conversations and sign-ins never pass through us. Two free services fill that gap. You create your own copy of each, so they answer only to you:"))
-                    .Append("<ul><li><strong>Tailscale:</strong> lets your phone reach this server when you're away from home, without opening it to the internet.</li>")
+                    .Append("<ul><li><strong>Tailscale:</strong> lets your phone and laptop reach this server when you're away from home, without opening it to the internet.</li>")
                     .Append("<li><strong>Firebase:</strong> wakes your phone when a message arrives. Each notification is locked so only your phone can read it.</li></ul>")
-                    .Append(Para("Only using it on a PC? You can skip both."))
+                    .Append(Para("Only using it at home on a PC? You can skip both."))
                     .Append(Para("Setup takes some time, most of it on those two services. Each step says what to click, and any step can be skipped and finished later from this page."))
                     .Append(Para("The password for this page manages the server. Phones and PCs you add can read and send messages but can't change the server's settings."));
                 if (backups is not null)
@@ -349,7 +348,7 @@ internal sealed partial class ServerPage
                     // Looks again while a step is left, so turning key expiry off in Tailscale ticks here by itself.
                     waiting = TailnetWaiting || tailnet.Latest is { AllDone: false };
                 }
-                else body.Append(Para("This server has no Tailscale door, so phones reach it at home only."));
+                else body.Append(Para("This server has no Tailscale door, so phones and laptops reach it at home only."));
                 break;
             case "accounts":
                 done = await AccountsStepAsync(body, request.HttpContext, token, cancellationToken).ConfigureAwait(false);
@@ -373,14 +372,14 @@ internal sealed partial class ServerPage
                 if (pushes is null) body.Append(Para("This server doesn't send notifications."));
                 else if (pushes.Switch.Current is null)
                     body.Append(Para("Get new messages on your phone even when Message Link is closed. A phone needs this before it can join."))
-                        .Append(Para("It uses a free Firebase project of your own, made with your Google account. Each step is shown."));
+                        .Append(Para("It uses a free Firebase project of your own, made with your Google account. Each step is shown."))
+                        .Append("<p><a class=\"button\" href=\"/push?from=welcome\">Set up notifications…</a></p>");
                 else if (PushesReady()) { body.Append(Para("Notifications are on, and a phone gets them.")); done = true; }
-                else if (pushes.Switch.Current is not null)
+                else
                 {
                     body.Append(Para("Notifications are on. A phone signs up for them by itself when it joins."));
                     done = true;
                 }
-                else body.Append("<p><a class=\"button\" href=\"/push?from=welcome\">Set up notifications…</a></p>");
                 body.Append("</section>");
                 break;
             case "pc":
@@ -423,11 +422,12 @@ internal sealed partial class ServerPage
         return accounts is { Count: > 0 };
     }
 
-    // How many paired devices are phones: those signed up for notifications, or the Messages phones on the tailnet, whichever says more.
+    // How many paired devices are phones: those signed up for notifications, or the Message Link phones on the tailnet, whichever says more. A PC running
+    // Message Link's own Tailscale is listed beside them by the door but is no phone, so it counts toward Add a PC instead.
     private int PhonesPaired()
     {
         var signedUp = pushes?.Registry.All().Count(registration => pushes.Registry.Paired(registration.DeviceId)) ?? 0;
-        return Math.Min(devices.Count, Math.Max(signedUp, tailnet?.Latest?.Phones?.Count ?? 0));
+        return Math.Min(devices.Count, Math.Max(signedUp, tailnet?.Latest?.PhoneCount ?? 0));
     }
 
     // Notifications are set up once pushes are on and a phone has signed up for them.
@@ -439,7 +439,7 @@ internal sealed partial class ServerPage
 
     // The Windows server listens on loopback only. A code containing that address sends another device to itself.
     private bool DesktopJoinUnavailable => DesktopTrust && tailnet is not { Enabled: true, Latest: { Running: true, Name.Length: > 0 } };
-    private static string DesktopJoinHelp => Para("Set up Tailscale before adding another device. This PC's server accepts other devices through Tailscale, including at home.")
+    private static string DesktopJoinHelp => Para("Set up Tailscale before adding another device. This PC's server accepts other devices through Tailscale, including at home. Message Link on the other device signs in to Tailscale itself, with the same Tailscale account as this server.")
         + "<p><a class=\"button\" href=\"/welcome?step=tailscale\">Set up Tailscale</a></p>";
     private string PairAddress(HttpRequest request) => DesktopTrust && tailnet?.Latest is { Running: true } view
         ? $"{(view.DnsName ?? view.Name)!.TrimEnd('.')}:{tailnet.Port}" : Address(request);

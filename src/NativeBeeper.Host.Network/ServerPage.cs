@@ -888,7 +888,8 @@ internal sealed partial class ServerPage
         // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
         body.Append(Para($"In Message Link on the PC, open Settings → Connections → Message Link Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
         body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(PairAddress(request), fingerprint(), code))).Append("</p>");
-        if (DesktopTrust) body.Append(Para("Install Tailscale on the other PC and sign in to the same Tailscale account as this server before connecting."));
+        // The address is this server's Tailscale name: the other PC reaches it through Message Link's own Tailscale, with no Tailscale app of its own.
+        if (DesktopTrust) body.Append(Para("Message Link on the other PC signs in to Tailscale itself. Before you paste the line, choose Sign in to Tailscale on the same screen, with the same Tailscale account as this server."));
         body.Append(Para("Or choose to use a pairing code there, and enter these three:"));
         body.Append("<dl>");
         Row(body, "Pairing code", code, copy: true, large: true);

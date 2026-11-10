@@ -8,7 +8,8 @@ namespace NativeBeeper.App.Services;
 // copy running on another data folder, so launch only counts them.
 internal static class HelperProcesses
 {
-    public static readonly string[] Names = ["gmessages-helper", "messenger-helper", "gvoice-helper", "instagram-helper"];
+    // The four providers, then this PC's own Tailscale node (Services/Tailnet), which holds files in the data folder too.
+    public static readonly string[] Names = ["gmessages-helper", "messenger-helper", "gvoice-helper", "instagram-helper", "tailnet-helper"];
 
     // Each helper found: the index of its name, whether it started before the cutoff, its process id and start time.
     // One whose path or start time cannot be read (it exited meanwhile, or access was refused) is counted, not guessed.

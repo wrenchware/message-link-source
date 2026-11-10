@@ -14,7 +14,8 @@ namespace NativeBeeper.Host.Network;
 /// <param name="Rules"><c>yours</c> (only the owner's own devices may reach the server's port), <c>open</c> (every device may, <paramref name="Everyone"/>, or
 /// <paramref name="Others"/> devices that are not the owner's), <c>none</c>, or <c>unknown</c>.</param>
 /// <param name="SignedOut">Tailscale signed the node out after it had been signed in (its key expired, or it was logged out): the sign-in is a sign-in again.</param>
-/// <param name="Phones">The owner's Messages phones on the tailnet (nodes named <c>messages-…</c> other than a server), each with its key expiry.</param>
+/// <param name="Phones">The owner's Message Link devices on the tailnet (nodes named <c>messagelink-…</c> or <c>messages-…</c> other than a server), each with its
+/// key expiry: phones, and PCs running Message Link's own Tailscale (<see cref="TailnetPhone.Pc"/>). The door's field keeps its first name.</param>
 /// <param name="Users">How many people's devices the tailnet holds; 1 when only the owner's.</param>
 internal sealed record TailnetView(string State, string? Login = null, string? Name = null, string? DnsName = null, string? Address = null, string? Owner = null,
     bool Tagged = false, string? Expiry = null, string Lock = "unknown", string? NodeKey = null, string Rules = "unknown", int Others = 0, bool Everyone = false,
@@ -40,11 +41,14 @@ internal sealed record TailnetView(string State, string? Login = null, string? N
     /// </summary>
     [JsonIgnore] public bool OnlyYours => Rules == "yours" || Rules == "open" && Everyone && Others == 0 && Users == 1;
 
-    /// <summary>The phones whose keys still expire.</summary>
+    /// <summary>How many of the listed devices are phones rather than PCs.</summary>
+    [JsonIgnore] public int PhoneCount => (Phones ?? []).Count(phone => !phone.Pc);
+
+    /// <summary>The phones and PCs whose keys still expire.</summary>
     [JsonIgnore] public IEnumerable<TailnetPhone> PhonesExpiring => (Phones ?? []).Where(phone => !phone.ExpiryOff);
 
     /// <summary>
-    /// Whether the owner has something to do: sign it in (or again), have it approved, sign it for Tailnet Lock, turn key expiry off for it or a phone, or let their
+    /// Whether the owner has something to do: sign it in (or again), have it approved, sign it for Tailnet Lock, turn key expiry off for it, a phone or a PC, or let their
     /// devices reach it at all.
     /// </summary>
     [JsonIgnore] public bool NeedsAttention => NeedsLogin || State == "NeedsLogin" || NeedsApproval
@@ -54,10 +58,16 @@ internal sealed record TailnetView(string State, string? Login = null, string? N
     [JsonIgnore] public bool AllDone => Running && !NeedsAttention;
 }
 
-/// <summary>One of the owner's Messages phones on the tailnet, as the door names it: its node name, its address, and <c>off</c> or when its key expires.</summary>
-internal sealed record TailnetPhone(string Name, string? Address = null, string? Expiry = null)
+/// <summary>
+/// One of the owner's Message Link devices on the tailnet, as the door names it: its node name, its address, <c>off</c> or when its key expires, and Tailscale's
+/// word for its system (<c>android</c>, <c>windows</c>, …; absent from a door older than the field).
+/// </summary>
+internal sealed record TailnetPhone(string Name, string? Address = null, string? Expiry = null, string? Os = null)
 {
     [JsonIgnore] public bool ExpiryOff => Expiry == "off";
+
+    /// <summary>A Windows PC running Message Link's own Tailscale: it names its node like a phone, so only its system tells them apart.</summary>
+    [JsonIgnore] public bool Pc => string.Equals(Os, "windows", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

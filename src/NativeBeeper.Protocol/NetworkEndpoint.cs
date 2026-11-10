@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net;
+using System.Net.Security;
 using System.Net.WebSockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
@@ -248,10 +250,12 @@ public static class NetworkEndpoint
     /// certificate, and presents the token <paramref name="token"/> answers with the upgrade. It throws <see cref="CertificateMismatchException"/> for a
     /// certificate that is not the pinned one, <see cref="UnauthorizedAccessException"/> for a token the host refused, and <see cref="DeviceNotPairedException"/> (an <see cref="IOException"/>) when there
     /// is no token to present; <see cref="ProtocolClient"/> treats each as a connection that is not there. Refusals are logged as
-    /// <c>protocol remote refused reason=fingerprint|token|unpaired</c>, the first and then one in a hundred.
+    /// <c>protocol remote refused reason=fingerprint|token|unpaired</c>, the first and then one in a hundred. With <paramref name="dialer"/>, the connection is
+    /// opened over whichever of its routes answers first (the socket's host is still the name TLS and the upgrade use), and the channel's
+    /// <see cref="WebSocketFrameChannel.Route"/> says which.
     /// </summary>
     public static Func<CancellationToken, Task<IFrameChannel>> Connector(Uri socket, byte[] fingerprint, Func<CancellationToken, Task<byte[]?>> token,
-        Action<string>? log = null, TimeSpan? connectTimeout = null)
+        Action<string>? log = null, TimeSpan? connectTimeout = null, ServerDialer? dialer = null)
     {
         var refusals = 0;
         void Refused(string reason)
@@ -269,8 +273,8 @@ public static class NetworkEndpoint
             }
             try
             {
-                var opened = await OpenAsync(socket, fingerprint, "Authorization", ClientToken.HeaderValue(bearer), connectTimeout ?? ConnectTimeout, cancellationToken).ConfigureAwait(false);
-                return new WebSocketFrameChannel(opened, log);
+                var opened = await OpenAsync(socket, fingerprint, "Authorization", ClientToken.HeaderValue(bearer), connectTimeout ?? ConnectTimeout, cancellationToken, dialer).ConfigureAwait(false);
+                return new WebSocketFrameChannel(opened.Socket, log) { Route = opened.Route };
             }
             catch (CertificateMismatchException) { Refused("fingerprint"); throw; }
             catch (ServerRestoredException) { Refused("restored"); throw; }
@@ -285,12 +289,12 @@ public static class NetworkEndpoint
     /// connection that failed (which may be tried again).
     /// </summary>
     public static async Task<(string DeviceId, byte[] Token)> ClaimAsync(Uri socket, byte[] fingerprint, string code, string deviceName, string appVersion,
-        CancellationToken cancellationToken = default, TimeSpan? connectTimeout = null)
+        CancellationToken cancellationToken = default, TimeSpan? connectTimeout = null, ServerDialer? dialer = null)
     {
-        WebSocket opened;
-        try { opened = await OpenAsync(socket, fingerprint, NetworkPairing.Header, code.Trim(), connectTimeout ?? ConnectTimeout, cancellationToken).ConfigureAwait(false); }
+        Opened opened;
+        try { opened = await OpenAsync(socket, fingerprint, NetworkPairing.Header, code.Trim(), connectTimeout ?? ConnectTimeout, cancellationToken, dialer).ConfigureAwait(false); }
         catch (UnauthorizedAccessException) { throw new PairingRefusedException(); }
-        var channel = new WebSocketFrameChannel(opened);
+        var channel = new WebSocketFrameChannel(opened.Socket) { Route = opened.Route };
         using var client = new ProtocolClient(channel, appVersion);
         try
         {
@@ -317,26 +321,29 @@ public static class NetworkEndpoint
     /// <see cref="JoinNotOfferedException"/> (a server older than <see cref="ProtocolVersion.JoinFinish"/>, which cannot prove an approval, or one with nobody to approve),
     /// <see cref="PairingPacedException"/> (the server holds as many requests as it
     /// takes, or this address asked too recently), <see cref="JoinUntrustedException"/>, <see cref="InvalidOperationException"/> with <see cref="JoinWords.Failed"/>, and
-    /// anything else for a connection that failed. Cancelling withdraws the request: its connection closes.
+    /// anything else for a connection that failed. Cancelling withdraws the request: its connection closes. With <paramref name="dialer"/>, the request goes over
+    /// whichever of its routes answers first, and the certificate recorded is the one on the connection that won.
     /// </summary>
     public static async Task<JoinedDevice> JoinAsync(Uri socket, string deviceName, string appVersion, Action<string> showCode, CancellationToken cancellationToken = default,
-        TimeSpan? connectTimeout = null, Func<JoinedDevice, Task>? keep = null, Func<bool, CancellationToken, Task<string?>>? finishCode = null)
+        TimeSpan? connectTimeout = null, Func<JoinedDevice, Task>? keep = null, Func<bool, CancellationToken, Task<string?>>? finishCode = null, ServerDialer? dialer = null)
     {
         byte[]? seen = null;
-        WebSocket opened;
+        Opened opened;
         try
         {
             // Nothing is pinned yet: whatever certificate answers is let through and recorded, and the code the owner matches is what tells the right one from another.
+            // Through a dialer routes race, and a loser's handshake may end after the winner's, so the certificate is taken from the winning connection instead.
             opened = await OpenAsync(socket, certificate =>
             {
                 if (certificate is null) return false;
-                seen = certificate.GetCertHash(HashAlgorithmName.SHA256);
+                if (dialer is null) seen = certificate.GetCertHash(HashAlgorithmName.SHA256);
                 return true;
-            }, NetworkPairing.JoinHeader, "1", connectTimeout ?? ConnectTimeout, cancellationToken).ConfigureAwait(false);
+            }, NetworkPairing.JoinHeader, "1", connectTimeout ?? ConnectTimeout, cancellationToken, dialer).ConfigureAwait(false);
         }
         // An older server reads a connection with no token and no code as one without a token.
         catch (UnauthorizedAccessException) { throw new JoinNotOfferedException(); }
-        var channel = new WebSocketFrameChannel(opened);
+        if (dialer is not null) seen = opened.Certificate;
+        var channel = new WebSocketFrameChannel(opened.Socket) { Route = opened.Route };
         using var client = new ProtocolClient(channel, appVersion);
         try
         {
@@ -412,23 +419,23 @@ public static class NetworkEndpoint
     }
 
     // One socket, open and upgraded, with `header: value` on the upgrade. The certificate is checked before the request that carries the header is written.
-    private static Task<WebSocket> OpenAsync(Uri socket, byte[] fingerprint, string header, string value, TimeSpan timeout, CancellationToken cancellationToken) =>
-        OpenAsync(socket, certificate => IsPinned(certificate, fingerprint), header, value, timeout, cancellationToken);
+    private static Task<Opened> OpenAsync(Uri socket, byte[] fingerprint, string header, string value, TimeSpan timeout, CancellationToken cancellationToken, ServerDialer? dialer) =>
+        OpenAsync(socket, certificate => IsPinned(certificate, fingerprint), header, value, timeout, cancellationToken, dialer);
 
-    private static async Task<WebSocket> OpenAsync(Uri socket, Func<X509Certificate?, bool> trust, string header, string value, TimeSpan timeout, CancellationToken cancellationToken)
+    // The open socket, the route a dialer carried it on, and (through a dialer) the SHA-256 of the certificate on the connection that won.
+    private sealed record Opened(WebSocket Socket, string? Route, byte[]? Certificate);
+
+    private static async Task<Opened> OpenAsync(Uri socket, Func<X509Certificate?, bool> trust, string header, string value, TimeSpan timeout, CancellationToken cancellationToken,
+        ServerDialer? dialer)
     {
+        if (dialer is not null) return await OpenDialedAsync(socket, dialer, trust, header, value, timeout, cancellationToken).ConfigureAwait(false);
         var client = new ClientWebSocket();
         var mismatch = 0;
         try
         {
-            var options = client.Options;
-            options.HttpVersion = HttpVersion.Version11;
-            options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+            var options = Configure(client, header, value);
             // Straight to the host: a proxy in between would be a party to the connection that nobody chose.
             options.Proxy = null;
-            options.KeepAliveInterval = KeepAlive;
-            options.KeepAliveTimeout = KeepAlive;
-            options.CollectHttpResponseDetails = true;
             // The pin is the whole of the trust: chain and name errors are expected for a self-signed certificate and are ignored only when the
             // fingerprint matches; nothing else is accepted, a certificate a public authority vouches for included.
             options.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
@@ -437,26 +444,96 @@ public static class NetworkEndpoint
                 Volatile.Write(ref mismatch, 1);
                 return false;
             };
-            options.SetRequestHeader(header, value);
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limit.CancelAfter(timeout);
             await client.ConnectAsync(socket, limit.Token).ConfigureAwait(false);
-            return client;
+            return new Opened(client, null, null);
         }
         catch (Exception ex)
         {
-            var status = client.HttpStatusCode;
-            var restored = client.HttpResponseHeaders?.TryGetValue(NetworkPairing.RefusalHeader, out var words) == true && words.Contains(NetworkPairing.RefusalRestored);
+            var refusal = Refusal(client, ex, Volatile.Read(ref mismatch) == 1, cancellationToken);
             client.Dispose();
-            if (Volatile.Read(ref mismatch) == 1) throw new CertificateMismatchException();
-            if (status == HttpStatusCode.Unauthorized && restored) throw new ServerRestoredException();
-            if (status == HttpStatusCode.Unauthorized) throw new UnauthorizedAccessException("The server refused the token.");
-            if (status == HttpStatusCode.TooManyRequests) throw new PairingPacedException();
-            // Only a join connection is answered 409 (the server has nobody, no paired device and no page, who could approve it) or 403 (it asked from outside the home network).
-            if (status == HttpStatusCode.Conflict) throw new JoinNotOfferedException(noApprover: true);
-            if (status == HttpStatusCode.Forbidden) throw new JoinNotOfferedException(notHome: true);
-            if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested) throw new IOException("The server did not answer in time.");
+            if (refusal is not null) throw refusal;
             throw;
         }
+    }
+
+    // The same socket over a connection a dialer opened, its TLS already done and its certificate already trusted: the WebSocket speaks plain HTTP/1.1 over
+    // that TLS stream, so the request with the header is still written only to a server that passed the check.
+    private static async Task<Opened> OpenDialedAsync(Uri socket, ServerDialer dialer, Func<X509Certificate?, bool> trust, string header, string value, TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var clock = Stopwatch.StartNew();
+        // The dialer's own deadline rather than a cancelled token, so a route that failed telling (a signed-out node) is not lost to another route's timeout.
+        var (stream, route) = await dialer.OpenAsync(socket.IdnHost, trust, cancellationToken, timeout).ConfigureAwait(false);
+        var certificate = (stream as SslStream)?.RemoteCertificate?.GetCertHash(HashAlgorithmName.SHA256);
+        var handed = 0;
+        // The handler's only connection is the dialed one. .NET leaves an upgraded HTTP/1.1 connection to the WebSocket, which disposes it with itself, and
+        // never disposes an invoker it was given; disposing the handler once the upgrade is done leaves the socket working (both measured on .NET 10 and held
+        // by ServerRouteChecks). A refused upgrade puts the connection back in the handler's pool, where only disposing the handler would close it.
+        var invoker = new HttpMessageInvoker(new SocketsHttpHandler
+        {
+            UseProxy = false,
+            AllowAutoRedirect = false,
+            ConnectCallback = (_, _) => Interlocked.Exchange(ref handed, 1) == 0
+                ? ValueTask.FromResult(stream)
+                : ValueTask.FromException<Stream>(new IOException("The dialed connection was already used.")),
+        }, disposeHandler: true);
+        var client = new ClientWebSocket();
+        try
+        {
+            // Not the proxy, the certificate callback, credentials or cookies: .NET refuses those beside an invoker (ArgumentException), and none applies to a
+            // connection that is already open and trusted.
+            Configure(client, header, value);
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var left = timeout - clock.Elapsed;
+            limit.CancelAfter(left > TimeSpan.Zero ? left : TimeSpan.Zero);
+            await client.ConnectAsync(new UriBuilder("ws", socket.Host, socket.Port, socket.AbsolutePath).Uri, invoker, limit.Token).ConfigureAwait(false);
+            return new Opened(client, route, certificate);
+        }
+        catch (Exception ex)
+        {
+            var refusal = Refusal(client, ex, Mismatch(ex), cancellationToken);
+            client.Dispose();
+            await stream.DisposeAsync().ConfigureAwait(false);
+            if (refusal is not null) throw refusal;
+            throw;
+        }
+        finally { invoker.Dispose(); }
+    }
+
+    private static ClientWebSocketOptions Configure(ClientWebSocket client, string header, string value)
+    {
+        var options = client.Options;
+        options.HttpVersion = HttpVersion.Version11;
+        options.HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        options.KeepAliveInterval = KeepAlive;
+        options.KeepAliveTimeout = KeepAlive;
+        options.CollectHttpResponseDetails = true;
+        options.SetRequestHeader(header, value);
+        return options;
+    }
+
+    private static bool Mismatch(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+            if (ex is CertificateMismatchException) return true;
+        return false;
+    }
+
+    // What an upgrade that failed means, from the answer it got; null to let the failure go as it is.
+    private static Exception? Refusal(ClientWebSocket client, Exception ex, bool mismatch, CancellationToken cancellationToken)
+    {
+        var status = client.HttpStatusCode;
+        var restored = client.HttpResponseHeaders?.TryGetValue(NetworkPairing.RefusalHeader, out var words) == true && words.Contains(NetworkPairing.RefusalRestored);
+        if (mismatch) return new CertificateMismatchException();
+        if (status == HttpStatusCode.Unauthorized && restored) return new ServerRestoredException();
+        if (status == HttpStatusCode.Unauthorized) return new UnauthorizedAccessException("The server refused the token.");
+        if (status == HttpStatusCode.TooManyRequests) return new PairingPacedException();
+        // Only a join connection is answered 409 (the server has nobody, no paired device and no page, who could approve it) or 403 (it asked from outside the home network).
+        if (status == HttpStatusCode.Conflict) return new JoinNotOfferedException(noApprover: true);
+        if (status == HttpStatusCode.Forbidden) return new JoinNotOfferedException(notHome: true);
+        if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested) return new IOException("The server did not answer in time.");
+        return null;
     }
 }

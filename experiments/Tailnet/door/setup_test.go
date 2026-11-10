@@ -82,7 +82,7 @@ func TestPhones(t *testing.T) {
 	status := &ipnstate.Status{
 		Self: &ipnstate.PeerStatus{DNSName: "messages-server.tail1234.ts.net.", UserID: 7, TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.10")}},
 		Peer: map[key.NodePublic]*ipnstate.PeerStatus{
-			key.NewNode().Public(): {DNSName: "messages-pixel.tail1234.ts.net.", UserID: 7, TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.20")}, KeyExpiry: &expires},
+			key.NewNode().Public(): {DNSName: "messages-pixel.tail1234.ts.net.", UserID: 7, TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.20")}, KeyExpiry: &expires, OS: "android"},
 			key.NewNode().Public(): {DNSName: "messages-galaxy.tail1234.ts.net.", UserID: 7, TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.21")}},
 			key.NewNode().Public(): {DNSName: "messages-server-1.tail1234.ts.net.", UserID: 7},
 			key.NewNode().Public(): {DNSName: "laptop.tail1234.ts.net.", UserID: 7},
@@ -92,7 +92,7 @@ func TestPhones(t *testing.T) {
 	}
 	found, users := phones(status)
 	if len(found) != 2 || found[0] != (phoneView{Name: "messages-galaxy", Address: "100.64.0.21", Expiry: "off"}) ||
-		found[1] != (phoneView{Name: "messages-pixel", Address: "100.64.0.20", Expiry: "2027-04-01T00:00:00Z"}) {
+		found[1] != (phoneView{Name: "messages-pixel", Address: "100.64.0.20", Expiry: "2027-04-01T00:00:00Z", OS: "android"}) {
 		t.Errorf("phones = %+v", found)
 	}
 	if users != 2 {
@@ -103,6 +103,16 @@ func TestPhones(t *testing.T) {
 	status.Peer[key.NewNode().Public()] = &ipnstate.PeerStatus{DNSName: "messagelink-server-1.tail1234.ts.net.", UserID: 7}
 	if found, _ := phones(status); len(found) != 3 {
 		t.Errorf("mixed prefixes: %+v", found)
+	}
+	// A Windows PC running Message Link's own Tailscale is listed beside the phones with its system, which the page uses to call it a PC.
+	status.Peer[key.NewNode().Public()] = &ipnstate.PeerStatus{DNSName: "messagelink-desk.tail1234.ts.net.", UserID: 7, OS: "windows",
+		TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.30")}}
+	found, _ = phones(status)
+	if len(found) != 4 || found[0] != (phoneView{Name: "messagelink-desk", Address: "100.64.0.30", Expiry: "off", OS: "windows"}) {
+		t.Errorf("with a PC: %+v", found)
+	}
+	if line := (pageView{State: "Running", Phones: found[:1]}).line(); !strings.Contains(line, `"os":"windows"`) {
+		t.Errorf("page line = %s", line)
 	}
 	status.Peer = nil
 	if found, users := phones(status); len(found) != 0 || users != 1 {

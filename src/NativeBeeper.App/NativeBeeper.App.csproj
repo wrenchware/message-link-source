@@ -58,6 +58,8 @@
     <Content Include="../../experiments/Messenger/helper/bin/messenger-helper.exe" Link="messenger-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../experiments/Messenger/helper/bin/messenger-helper.exe')" />
     <Content Include="../../experiments/GoogleVoice/helper/bin/gvoice-helper.exe" Link="gvoice-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../experiments/GoogleVoice/helper/bin/gvoice-helper.exe')" />
     <Content Include="../../experiments/Instagram/helper/bin/instagram-helper.exe" Link="instagram-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../experiments/Instagram/helper/bin/instagram-helper.exe')" />
+    <!-- This PC's own Tailscale node (Services/Tailnet), built by experimentsTailnetBuild.ps1; its modules' licences are in THIRD_PARTY_NOTICES.md. -->
+    <Content Include="../../experiments/Tailnet/pc/bin/windows-amd64/tailnet-helper.exe" Link="tailnet-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../experiments/Tailnet/pc/bin/windows-amd64/tailnet-helper.exe')" />
     <Content Include="../../experiments/Messenger/helper/UPSTREAM_LICENSE.txt" Link="MESSENGER_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../experiments/Messenger/helper/UPSTREAM_LICENSE.txt')" />
     <!-- The Messenger and Instagram helpers both link the modified mautrix-meta; Voice links mautrix-gvoice. Each is AGPL
          with its own exceptions file, and the installer requires all of them (THIRD_PARTY_NOTICES.md). -->

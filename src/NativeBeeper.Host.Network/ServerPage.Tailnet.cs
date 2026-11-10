@@ -7,8 +7,8 @@ namespace NativeBeeper.Host.Network;
 
 // Tailscale on the server's page (SWITCHBOARD.md 4.7 and 10.8, D9): the door set up from here rather than from the container's log. Signing the server in (a button
 // and the same link as a QR code, for signing in on a phone), signing in again when Tailscale signed it out, approving it, and a checklist of what is left, each line
-// in plain words with a link to the exact page of Tailscale's admin console and a tick once the server sees it done: key expiry off for the server and each Messages
-// phone, only the owner's devices reaching it, and Tailnet Lock when the tailnet uses it. "Fix it for me" does what the API can with an OAuth client the owner gives
+// in plain words with a link to the exact page of Tailscale's admin console and a tick once the server sees it done: key expiry off for the server and each Message Link
+// phone and PC, only the owner's devices reaching it, and Tailnet Lock when the tailnet uses it. "Fix it for me" does what the API can with an OAuth client the owner gives
 // once (TailscaleAdmin); "Use another Tailscale account" signs the door out and forgets it. Only the signed-in owner sees this, from home, so the sign-in link and the
 // owner's login are shown here and nowhere else.
 internal sealed partial class ServerPage
@@ -49,14 +49,14 @@ internal sealed partial class ServerPage
     }
 
     // For someone who has never heard of Tailscale: what it is, what it can and can't see, and who gets in. Plain facts; the setup steps are the card's.
-    // Words like tailnet and WireGuard are left to Learn more (owner, 2026-11-10). "On your phone" until the Windows app has Tailscale too (ROADMAP.md, A laptop away from home).
+    // Words like tailnet and WireGuard are left to Learn more (owner, 2026-11-10). Built into Message Link on the phone and on Windows alike.
     private static void TailnetAbout(StringBuilder body, bool walkthrough)
     {
         body.Append("<section>")
             .Append(Para("Tailscale joins your own devices into a private network, so your phone reaches this server from anywhere as if it were at home. Nothing on your home network is opened to the internet."))
             .Append(Para("Your devices encrypt everything they send each other, with keys that never leave them. Tailscale's servers only help them find each other and can't read what passes between them."))
             .Append(Para("Only devices signed in to your Tailscale account can reach the server, and each one still has to be added to the server before it sees your conversations."))
-            .Append(Para("Tailscale is built into Message Link on your phone, so there's nothing else to install."))
+            .Append(Para("Tailscale is built into Message Link, so there's nothing else to install."))
             .Append("<p><a href=\"https://tailscale.com/kb/1151/what-is-tailscale\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a></p>")
             .Append(walkthrough ? "<p><a href=\"/welcome?step=tailscale\">Back to setup</a></p></section>" : "<p><a href=\"/manage/tailscale\">Back to Remote access</a></p></section>");
     }
@@ -71,7 +71,7 @@ internal sealed partial class ServerPage
         {
             // The Windows server (SWITCHBOARD.md 10.7): a switch, here and now; Tailscale runs inside Messages Server, with nothing else to install.
             body.Append("<section id=\"tailnet\"><h2>Away from home</h2>")
-                .Append(Para("Message Link on a phone reaches this PC's Message Link Server through Tailscale, so it works anywhere without opening this PC to the internet. "
+                .Append(Para("Message Link on a phone or laptop reaches this PC's Message Link Server through Tailscale, so it works anywhere without opening this PC to the internet. "
                     + "Tailscale runs inside Message Link Server: there is nothing else to install. Once it is on, this page walks you through signing it in."))
                 .Append(TailnetTurnForm(token, on: true))
                 .Append("</section>");
@@ -80,7 +80,7 @@ internal sealed partial class ServerPage
         if (!board.Enabled)
         {
             body.Append("<section id=\"tailnet\"><h2>Away from home</h2>")
-                .Append(Para("Message Link on a phone reaches this server through Tailscale, so it works anywhere without opening the server to the internet."))
+                .Append(Para("Message Link on a phone or laptop reaches this server through Tailscale, so it works anywhere without opening the server to the internet."))
                 .Append(Para("To use it, turn it on where this server was installed, then start the server again: on Unraid, set Reach from your tailnet to 1 in the container's settings; "
                     + "with Docker Compose, MESSAGES_TAILNET=1 in the .env file; on Linux or Proxmox, MESSAGES_TAILNET=1 in /etc/messages-server/environment. This page then walks you through the rest."))
                 .Append("</section>");
@@ -144,7 +144,7 @@ internal sealed partial class ServerPage
         {
             if (phone.ExpiryOff) Done($"{phone.Name} stays signed in");
             else
-                lines.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale signs this phone out{Until(phone.Expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry.",
+                lines.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale signs this {(phone.Pc ? "PC" : "phone")} out{Until(phone.Expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry.",
                     Link(MachinePage(phone.Address), "Turn off key expiry")));
         }
 
@@ -214,9 +214,9 @@ internal sealed partial class ServerPage
         }
         body.Append("<div class=\"qr-card\"><div class=\"qr small\">").Append(QrCode.Encode(view.Login!).ToSvg(label: "The sign-in link as a QR code")).Append("</div><div class=\"grow\">");
         body.Append(view.SignedOut
-            ? Para("Tailscale signed the server out, so your phone can't reach it away from home. Sign it in again with your Tailscale account.")
-            // The phone signs in with "the Tailscale account your server uses" (android JoinScreen), so a second account here is the likeliest way to get it wrong.
-            : Para("Sign the server in to Tailscale. Use the same Tailscale account you'll use on your phone. If you don't have one, signing in makes a free one."));
+            ? Para("Tailscale signed the server out, so your phone and laptop can't reach it away from home. Sign it in again with your Tailscale account.")
+            // The phone and the PC sign in with "the Tailscale account your server uses" (android JoinScreen, the Windows app's Server screen), so a second account here is the likeliest way to get it wrong.
+            : Para("Sign the server in to Tailscale. Use the same Tailscale account you'll use on your phone and laptop. If you don't have one, signing in makes a free one."));
         body.Append("<p><a class=\"button\" href=\"").Append(Html(view.Login)).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
             .Append(view.SignedOut ? "Sign in again" : "Sign in to Tailscale").Append("</a></p>")
             .Append("<p class=\"quiet\">Or scan the code to sign in on your phone. This page moves on by itself once you're signed in. If Tailscale says your session expired, open Sign in to Tailscale in a private window.</p></div></div>");
@@ -228,7 +228,7 @@ internal sealed partial class ServerPage
         if (tailscale is null) return;
         body.Append("<div class=\"sh\"><h2>Fix it for me</h2></div><div class=\"box\">");
         if (!tailscale.Has)
-            body.Append(Row("OAuth client", "Give the server one and it does the steps above for you: it keeps itself and your phones signed in, approves them if your network asks, and adds the access rule. Signing for Tailnet Lock stays with you.", "Not added", null))
+            body.Append(Row("OAuth client", "Give the server one and it does the steps above for you: it keeps itself, your phones and your PCs signed in, approves them if your network asks, and adds the access rule. Signing for Tailnet Lock stays with you.", "Not added", null))
                 .Append("</div><div class=\"btns\"><form method=\"get\" action=\"/tailnet/oauth\"><button type=\"submit\" class=\"quiet\">Add an OAuth client…</button></form></div>");
         else
             body.Append(Row("OAuth client", null, "Saved", null))
@@ -255,7 +255,7 @@ internal sealed partial class ServerPage
             case "/tailnet/signout":
             {
                 string Ask(string? problem) => AskBody("/tailnet/signout", token,
-                    "Sign the server out of Tailscale and forget its machine? Your phones can't reach it away from home until it's signed in again, with this account or another. "
+                    "Sign the server out of Tailscale and forget its machine? Your phones and laptops can't reach it away from home until it's signed in again, with this account or another. "
                     + "Nothing else on the server changes.", "Sign out of Tailscale", problem, danger: true);
                 if (!post)
                 {
