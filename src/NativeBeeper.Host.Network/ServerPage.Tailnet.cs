@@ -36,36 +36,36 @@ internal sealed partial class ServerPage
     private static string MachinePage(string? address) => TailscaleMachines + (address is { Length: > 0 } ip ? "/" + Uri.EscapeDataString(ip) : "");
 
     // The card: how to turn the door on, its sign-in while it needs one, then what is done and what is left.
-    private void TailnetCard(StringBuilder body, TailnetBoard board, string token)
+    // walkthrough: the setup's own screen, which shows only the account and what is left, and keeps its links inside setup.
+    private void TailnetCard(StringBuilder body, TailnetBoard board, string token, bool walkthrough = false)
     {
-        TailnetCardBody(body, board, token);
+        TailnetCardBody(body, board, token, walkthrough);
         // Where the page is the switch (the Windows server), turning it off is offered under the card once it is on.
-        if (board.Enabled && board.Turn is not null)
+        if (board.Enabled && board.Turn is not null && !walkthrough)
             body.Append("<p class=\"quiet\">").Append(Html("Tailscale runs inside Message Link Server on this PC.")).Append("</p>").Append(TailnetTurnForm(token, on: false));
         // What Tailscale is and what it can see, on a screen of its own: this page reloads while it waits, which would fold a <details> shut mid-read.
-        body.Append("<section><div class=\"box\">").Append(Go("How remote access works", "What Tailscale is, and who can reach the server.", null, "/manage/tailscale/about", "How remote access works")).Append("</div></section>");
+        body.Append("<section><div class=\"box\">").Append(Go("How remote access works", "What Tailscale is, and who can reach the server.", null,
+            walkthrough ? "/manage/tailscale/about?from=welcome" : "/manage/tailscale/about", "How remote access works")).Append("</div></section>");
     }
 
     // For someone who has never heard of Tailscale: what it is, what it can and can't see, and who gets in. Plain facts; the setup steps are the card's.
-    private static void TailnetAbout(StringBuilder body)
+    // Words like tailnet and WireGuard are left to Learn more (owner, 2026-11-10). "On your phone" until the Windows app has Tailscale too (ROADMAP.md, A laptop away from home).
+    private static void TailnetAbout(StringBuilder body, bool walkthrough)
     {
         body.Append("<section>")
-            .Append(Para("Remote access lets Message Link on your phone reach this server when you're away from home, without opening your home network to the internet."))
-            .Append(Para("It uses Tailscale, a service that joins your own devices into a private network called a tailnet. The server and your phones each sign in with your Tailscale account, "
-                + "and from then on they reach each other wherever they are, as if they were on the same home network."))
-            .Append(Para("Everything they send each other is encrypted with WireGuard, using keys that never leave your devices. Tailscale's servers only help your devices find each other. "
-                + "When two of them can't connect directly, Tailscale passes the encrypted traffic along without being able to read it."))
-            .Append(Para("Only devices signed in with your Tailscale account can reach the server, and each one still has to be added to the server before it can see your conversations."))
-            .Append(Para("Tailscale is built into Message Link Server and the phone app, so there's nothing else to install. It's free for personal use."))
-            .Append("<p>").Append(Link("https://tailscale.com/kb/1151/what-is-tailscale", "Learn more")).Append("</p>")
-            .Append("<p><a href=\"/manage/tailscale\">Back to Remote access</a></p></section>");
+            .Append(Para("Tailscale joins your own devices into a private network, so your phone reaches this server from anywhere as if it were at home. Nothing on your home network is opened to the internet."))
+            .Append(Para("Your devices encrypt everything they send each other, with keys that never leave them. Tailscale's servers only help them find each other and can't read what passes between them."))
+            .Append(Para("Only devices signed in to your Tailscale account can reach the server, and each one still has to be added to the server before it sees your conversations."))
+            .Append(Para("Tailscale is built into Message Link on your phone, so there's nothing else to install."))
+            .Append("<p><a href=\"https://tailscale.com/kb/1151/what-is-tailscale\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a></p>")
+            .Append(walkthrough ? "<p><a href=\"/welcome?step=tailscale\">Back to setup</a></p></section>" : "<p><a href=\"/manage/tailscale\">Back to Remote access</a></p></section>");
     }
 
     private static string TailnetTurnForm(string token, bool on) =>
         "<form method=\"post\" action=\"/tailnet/turn\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><button type=\"submit\" name=\"do\" value=\""
         + (on ? "on\">Turn on Tailscale" : "off\" class=\"quiet\">Turn off Tailscale") + "</button></form>";
 
-    private void TailnetCardBody(StringBuilder body, TailnetBoard board, string token)
+    private void TailnetCardBody(StringBuilder body, TailnetBoard board, string token, bool walkthrough)
     {
         if (!board.Enabled && board.Turn is not null)
         {
@@ -112,29 +112,40 @@ internal sealed partial class ServerPage
             body.Append(Para(view.State == "Starting" ? "Connecting to Tailscale…" : "Tailscale isn't connected just now. The server keeps trying.")).Append("</section>");
             return;
         }
-        var name = view.Name is { Length: > 0 } n ? n : "messages-server";
-        body.Append("<div class=\"sh\"><h2>This server</h2></div><div class=\"box\">").Append(CopyRow("Tailscale name", board.Port == NetworkEndpoint.DefaultPort ? name : $"{name}:{board.Port}"));
-        // Labelled as Tailscale's console labels it, so a 100.x address isn't taken for one on the home network.
-        if (view.Address is { Length: > 0 } address) body.Append(CopyRow("Tailscale IP", address));
+        var owned = !view.Tagged && view.Owner is { Length: > 0 } owner ? owner : null;
         // Signing in as someone else sits in the account's own line.
-        body.Append(Row("Tailscale account", !view.Tagged && view.Owner is { Length: > 0 } owner ? owner : null, null,
-            "<a class=\"button quiet\" href=\"/tailnet/signout\" aria-label=\"Use another Tailscale account\">Change…</a>"));
-        body.Append("</div>");
+        var change = "<a class=\"button quiet\" href=\"/tailnet/signout\" aria-label=\"Use another Tailscale account\">Change…</a>";
+        if (walkthrough)
+            // Setup shows only who it's signed in as; the name and address are for troubleshooting, on Remote access.
+            body.Append("<div class=\"box\">").Append(Row(owned is null ? "Signed in" : "Signed in as " + owned, null, null, change)).Append("</div>");
+        else
+        {
+            var name = view.Name is { Length: > 0 } n ? n : "messages-server";
+            body.Append("<div class=\"sh\"><h2>This server</h2></div><div class=\"box\">").Append(CopyRow("Tailscale name", board.Port == NetworkEndpoint.DefaultPort ? name : $"{name}:{board.Port}"));
+            // Labelled as Tailscale's console labels it, so a 100.x address isn't taken for one on the home network.
+            if (view.Address is { Length: > 0 } address) body.Append(CopyRow("Tailscale IP", address));
+            body.Append(Row("Tailscale account", owned, null, change));
+            body.Append("</div>");
+        }
+        // Setup lists only what is left: a check that needs nothing is noise there.
+        if (walkthrough && view.AllDone) { body.Append("</section>"); return; }
 
-        body.Append("<div class=\"sh\"><h2>Checks</h2></div><div class=\"box\">");
-        if (view.Tagged) body.Append(Line(false, "Tagged", "The server has a tag in Tailscale, so it can't tell which devices are yours. Your Tailscale access rules alone decide who can reach it.", null));
+        var lines = new StringBuilder();
+        void Done(string title) { if (!walkthrough) lines.Append(Line(true, title, null, null)); }
+        if (view.Tagged) lines.Append(Line(false, "Tagged", "The server has a tag in Tailscale, so it can't tell which devices are yours. Your Tailscale access rules alone decide who can reach it.", null));
 
-        if (view.ExpiryOff) body.Append(Line(true, "Server stays signed in", null, null));
+        // Tailscale's own advice for a server is key expiry off, so the button names that, and the page ticks it by itself once Tailscale says so.
+        if (view.ExpiryOff) Done("Server stays signed in");
         else if (view.Expiry is { } expiry)
-            body.Append(Line(false, "Keep the server signed in", $"Tailscale will sign the server out{Until(expiry)}. To stop that, open it in Tailscale and choose Disable key expiry from its ⋯ menu.",
-                Link(MachinePage(view.Address), "Open in Tailscale")));
+            lines.Append(Line(false, "Keep the server signed in", $"Tailscale signs the server out{Until(expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry. This page notices by itself.",
+                Link(MachinePage(view.Address), "Turn off key expiry")));
 
         foreach (var phone in view.Phones ?? [])
         {
-            if (phone.ExpiryOff) body.Append(Line(true, $"{phone.Name} stays signed in", null, null));
+            if (phone.ExpiryOff) Done($"{phone.Name} stays signed in");
             else
-                body.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale will sign this phone out{Until(phone.Expiry)}. To stop that, open it in Tailscale and choose Disable key expiry from its ⋯ menu.",
-                    Link(MachinePage(phone.Address), "Open in Tailscale")));
+                lines.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale signs this phone out{Until(phone.Expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry.",
+                    Link(MachinePage(phone.Address), "Turn off key expiry")));
         }
 
         var rule = Html($"\"grants\": [\n  {{ \"src\": [\"{view.Owner ?? "you@example.com"}\"], \"dst\": [\"{view.Address ?? "100.x.y.z"}\"], \"ip\": [\"tcp:{board.Port}\"] }}\n]");
@@ -142,35 +153,42 @@ internal sealed partial class ServerPage
         var shown = "<details><summary>Show the rule</summary>" + pre + "</details>" + Link(TailscaleAccessControls, "Open access controls");
         switch (view.Rules)
         {
-            case "yours": body.Append(Line(true, "Only your devices reach it", null, null)); break;
+            case "yours": Done("Only your devices reach it"); break;
+            case "open" when view.OnlyYours && walkthrough: break;
             case "open" when view.OnlyYours:
                 // Nothing to do unless the network is ever shared, so the words wait behind the rule that would be needed then.
-                body.Append(Line(true, "Only your devices reach it", null, "<details><summary>If you ever share your network</summary><p>Only your own devices are on your Tailscale network, so they're the only ones that can reach the server. "
+                lines.Append(Line(true, "Only your devices reach it", null, "<details><summary>If you ever share your network</summary><p>Only your own devices are on your Tailscale network, so they're the only ones that can reach the server. "
                     + "If you ever share your network with someone, swap Tailscale's allow-everyone rule for this one.</p>" + pre + Link(TailscaleAccessControls, "Open access controls") + "</details>"));
                 break;
             case "open":
                 // The server's own check is the fence that matters; the rule is a second one.
                 var who = view.Everyone ? "every device on your Tailscale network" : view.Others == 1 ? "1 device that isn't yours" : $"{view.Others} devices that aren't yours";
-                body.Append(Line(false, "Keep other devices out", $"The server already turns away devices that aren't yours, but your Tailscale access rules still let {who} reach it. For a second lock, swap the allow-everyone rule for the one below.", shown));
+                lines.Append(Line(false, "Keep other devices out", $"The server already turns away devices that aren't yours, but your Tailscale access rules still let {who} reach it. For a second lock, swap the allow-everyone rule for the one below.", shown));
                 break;
             case "none":
-                body.Append(Line(false, "Let your devices reach it", "Your access rules let no device reach the server, your phone included. Add this rule to your access controls.", shown));
+                lines.Append(Line(false, "Let your devices reach it", "Your access rules let no device reach the server, your phone included. Add this rule to your access controls.", shown));
                 break;
-            default: body.Append(Line(true, "Only your devices reach it", null, null)); break;
+            default: Done("Only your devices reach it"); break;
         }
 
         switch (view.Lock)
         {
-            case "signed": body.Append(Line(true, "Trusted by Tailnet Lock", null, null)); break;
+            case "signed": Done("Trusted by Tailnet Lock"); break;
             case "unsigned":
-                body.Append(Line(false, "Sign it for Tailnet Lock", "Your network uses Tailnet Lock, so your devices can't reach the server until one of your signing devices signs it.",
+                lines.Append(Line(false, "Sign it for Tailnet Lock", "Your network uses Tailnet Lock, so your devices can't reach the server until one of your signing devices signs it.",
                     view.NodeKey is { Length: > 0 } key
                         ? "<details><summary>Show the command</summary><span class=\"copy block\">tailscale lock sign " + Html(key) + "</span></details>" + Link(TailscaleLock, "Open Tailnet Lock")
                         : Link(TailscaleLock, "Open Tailnet Lock")));
                 break;
         }
-        body.Append("</div>");
-        if (!view.AllDone) FixPart(body, token, view);
+        if (lines.Length > 0) body.Append(walkthrough ? "<div class=\"box\">" : "<div class=\"sh\"><h2>Checks</h2></div><div class=\"box\">").Append(lines).Append("</div>");
+        if (walkthrough)
+        {
+            // Going on without it is fine; where it waits is said, so it isn't lost.
+            if (!view.ExpiryOff && view.Expiry is not null) body.Append("<p class=\"quiet\">You can turn it off later from the server's page. It's on your list there.</p>");
+        }
+        // "Fix it for me" is offered on Remote access and with a phone's code, where it saves a step per device; not in setup's first look at Tailscale (owner, 2026-11-10).
+        else if (!view.AllDone) FixPart(body, token, view);
         body.Append("</section>");
     }
 
@@ -197,10 +215,11 @@ internal sealed partial class ServerPage
         body.Append("<div class=\"qr-card\"><div class=\"qr small\">").Append(QrCode.Encode(view.Login!).ToSvg(label: "The sign-in link as a QR code")).Append("</div><div class=\"grow\">");
         body.Append(view.SignedOut
             ? Para("Tailscale signed the server out, so your phone can't reach it away from home. Sign it in again with your Tailscale account.")
-            : Para("Sign the server in to Tailscale with your own account. It joins your Tailscale network as a machine of its own, and only your devices can reach it."));
+            // The phone signs in with "the Tailscale account your server uses" (android JoinScreen), so a second account here is the likeliest way to get it wrong.
+            : Para("Sign the server in to Tailscale. Use the same Tailscale account you'll use on your phone. If you don't have one, signing in makes a free one."));
         body.Append("<p><a class=\"button\" href=\"").Append(Html(view.Login)).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
             .Append(view.SignedOut ? "Sign in again" : "Sign in to Tailscale").Append("</a></p>")
-            .Append("<p class=\"quiet\">Or scan the code to sign in on your phone. This page moves on by itself once you have.</p></div></div>");
+            .Append("<p class=\"quiet\">Or scan the code to sign in on your phone. This page moves on by itself once you're signed in.</p></div></div>");
     }
 
     // "Fix it for me": the OAuth client asked for once, then a button that does every step the API can.

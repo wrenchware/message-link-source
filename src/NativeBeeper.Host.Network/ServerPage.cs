@@ -78,6 +78,9 @@ internal sealed partial class ServerPage
     private readonly object gate = new();
     private readonly Dictionary<string, (int Wrong, DateTimeOffset Next)> sources = new(StringComparer.Ordinal);
     private DateTimeOffset nextAnywhere;
+    // Sessions that typed the password, and until when it stands for them (PasswordGrace). Under the gate; in memory only, so a restart asks again.
+    private readonly Dictionary<string, DateTimeOffset> typed = new(StringComparer.Ordinal);
+    internal TimeSpan PasswordGrace { get; set; } = TimeSpan.FromMinutes(10);
     private readonly string keysFolder;
     private long generation;
     private readonly object signingOut = new();
@@ -325,8 +328,9 @@ internal sealed partial class ServerPage
         // Read from the cookie alone, before any body: the upload's larger limit is for a signed-in browser only, so nobody else can hold one of the door's
         // places for minutes dripping 64 KiB (review, 2026-10-17).
         var session = Session(request);
-        // A signed-in browser on the Windows server's own PC is not asked for the password again, so its forms leave the field out (ServerPage.Desktop.cs).
-        if (session is not null && DesktopTrust && OnThisPc(context)) context.Items[DesktopItem] = true;
+        // A signed-in browser on the Windows server's own PC, or one that typed the password a moment ago, is not asked for it again, so its forms leave the field out
+        // (ServerPage.Desktop.cs).
+        if (session is not null && (DesktopTrust && OnThisPc(context) || RecentlyTyped(session))) context.Items[PasswordGivenItem] = true;
         IFormCollection? form = null;
         if (post)
         {
@@ -410,9 +414,10 @@ internal sealed partial class ServerPage
                     await PageAsync(context, StatusCodes.Status200OK, "Add a PC", AskBody("/pair", token, PairAsk, "Show the line", null)).ConfigureAwait(false);
                     return;
                 }
-                if (!await PasswordAgainAsync(context, form!, "pair", "Add a PC", problem => AskBody("/pair", token, PairAsk, "Show the line", problem)).ConfigureAwait(false)) return;
+                var pairFromSetup = FromSetup(request, form);
+                if (!await PasswordAgainAsync(context, form!, "pair", "Add a PC", problem => AskBody("/pair", token, PairAsk, "Show the line", problem, before: pairFromSetup ? FromSetupField : "")).ConfigureAwait(false)) return;
                 var code = pairing.Issue();
-                await PageAsync(context, StatusCodes.Status200OK, "Add a PC", PairBody(request, code)).ConfigureAwait(false);
+                await PageAsync(context, StatusCodes.Status200OK, "Add a PC", PairBody(request, code, pairFromSetup)).ConfigureAwait(false);
                 return;
             case "/devices/details":
                 await DeviceDetailsAsync(context, request.Query["id"].ToString()).ConfigureAwait(false);
@@ -587,7 +592,9 @@ internal sealed partial class ServerPage
                 return;
         }
         var expires = time.GetUtcNow() + SessionLifetime;
-        context.Response.Cookies.Append(CookieName, NewSession(expires), Cookie(expires));
+        var signedIn = NewSession(expires);
+        Typed(signedIn);
+        context.Response.Cookies.Append(CookieName, signedIn, Cookie(expires));
         log("server page sign_in outcome=signed_in");
         Redirect(context.Response, SectionPath(section));
     }
@@ -595,7 +602,14 @@ internal sealed partial class ServerPage
     // The password asked again (a code, a removal): true to go on; otherwise the page is answered with `body` saying why.
     private async Task<bool> PasswordAgainAsync(HttpContext context, IFormCollection form, string purpose, string title, Func<string, string> body)
     {
-        switch (CheckPassword(context, form["password"].ToString(), purpose))
+        var presented = form["password"].ToString();
+        // A form drawn without the field (the password typed a moment ago) and sent once that moment ran out: asked for, not counted as a wrong try.
+        if (presented.Length == 0 && !TrustedHere(context, purpose))
+        {
+            await PageAsync(context, StatusCodes.Status401Unauthorized, title, body("Enter the server password.")).ConfigureAwait(false);
+            return false;
+        }
+        switch (CheckPassword(context, presented, purpose))
         {
             case Try.Paced:
                 context.Response.Headers.RetryAfter = "60";
@@ -605,8 +619,31 @@ internal sealed partial class ServerPage
                 await PageAsync(context, StatusCodes.Status401Unauthorized, title, body("That isn't the server password.")).ConfigureAwait(false);
                 return false;
             default:
+                if (Session(context.Request) is { } session) Typed(session);
                 return true;
         }
+    }
+
+    // The password typed by `session` now: the steps that ask for it again take it as given for PasswordGrace from here, or for `longer` (the password just chosen at setup,
+    // so a first setup, which takes longer than the grace, never asks twice: owner, 2026-11-10).
+    private void Typed(string session, TimeSpan? longer = null)
+    {
+        if (PasswordGrace <= TimeSpan.Zero) return;
+        var now = time.GetUtcNow();
+        var grace = longer is { } span && span > PasswordGrace ? span : PasswordGrace;
+        lock (gate)
+        {
+            foreach (var ended in typed.Where(pair => pair.Value <= now).Select(pair => pair.Key).ToList()) typed.Remove(ended);
+            if (typed.Count >= MaxSources) typed.Remove(typed.MinBy(pair => pair.Value).Key);
+            // Never shortened: a step taken inside the longer window counts as typing it again.
+            typed[session] = typed.TryGetValue(session, out var until) && until > now + grace ? until : now + grace;
+        }
+    }
+
+    private bool RecentlyTyped(string session)
+    {
+        var now = time.GetUtcNow();
+        lock (gate) return typed.TryGetValue(session, out var until) && now < until;
     }
 
     // Signing out ends every sign-in, in this browser or any other (a copied cookie with them): the next number is part of the key from now on, kept with the keys across
@@ -827,7 +864,7 @@ internal sealed partial class ServerPage
             told.Append(Para($"Approved. On {waiting.DeviceName}, paste or type this finish code within 5 minutes. It joins once the code is entered."));
             told.Append("<p class=\"code\">").Append(Html(finish)).Append("</p>");
             told.Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(finish)).Append("\">Copy</button></p>");
-            told.Append("<p><a href=\"/\">Back to the server</a></p>");
+            told.Append("<p><a href=\"/\">Back to Overview</a></p>");
             await PageAsync(context, StatusCodes.Status200OK, "Approved", told.Append("</section>").ToString()).ConfigureAwait(false);
             return;
         }
@@ -845,7 +882,7 @@ internal sealed partial class ServerPage
         "<a class=\"button small\" href=\"" + Html(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + Html(text) + "</a>";
 
 
-    private string PairBody(HttpRequest request, string code)
+    private string PairBody(HttpRequest request, string code, bool fromSetup = false)
     {
         var body = new StringBuilder("<section>");
         // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
@@ -859,7 +896,7 @@ internal sealed partial class ServerPage
         Row(body, "Fingerprint", fingerprint(), copy: true);
         body.Append("</dl>");
         body.Append(Para("Check that the fingerprint Message Link shows is this one before you accept it."));
-        body.Append("</section><p><a href=\"/\">Back</a></p>");
+        body.Append(fromSetup ? "</section><nav class=\"steps\"><a href=\"/welcome?step=pc\">Back</a><a class=\"button\" href=\"/welcome?step=backups\">Next</a></nav>" : "</section><p><a href=\"/\">Back</a></p>");
         return body.ToString();
     }
 
@@ -886,12 +923,12 @@ internal sealed partial class ServerPage
     private const string UnpairGoogle = "To remove Google Messages, unpair the server on your phone: Google Messages → Device pairing.";
 
     // A form that asks for the password before it does `button`: what it does, why it fails (when it did), and the device it is about.
-    private static string AskBody(string action, string token, string intro, string button, string? problem, string? id = null, bool danger = false)
+    private static string AskBody(string action, string token, string intro, string button, string? problem, string? id = null, bool danger = false, string before = "")
     {
         var body = new StringBuilder("<section>");
         if (problem is not null) body.Append(Notice(problem));
         body.Append(Para(intro));
-        body.Append(PasswordForm(action, token, button, id, danger));
+        body.Append(PasswordForm(action, token, button, id, danger, before));
         return body.Append("</section>").ToString();
     }
 

@@ -122,7 +122,7 @@ internal sealed partial class ServerPage
                 break;
             case "/manage/tailscale/about" when tailnet is not null:
                 title = "How remote access works";
-                TailnetAbout(card);
+                TailnetAbout(card, context.Request.Query["from"] == "welcome");
                 refresh = null;
                 break;
             case "/manage/backups" when backups is not null:
@@ -259,7 +259,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         AccountsSection(body, accounts, ordered, open, request.HttpContext, token);
         DevicesSection(body, open, token);
         await ServerSectionAsync(body, cancellationToken).ConfigureAwait(false);
-        AboutSection(body, request, status, open);
+        AboutSection(body, request, status, open, token);
         body.Append("<script>").Append(PageScript).Append("</script>");
 
         // Every 5 seconds while the server waits to be signed in to Tailscale, every 10 while a device waits to join (so its going is seen), every 30 otherwise (so a new one shows up without a click).
@@ -281,7 +281,14 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
             rows.Append(Row($"{Provider(account.Provider)} isn't connected", Who(account), null, offered ? "<a class=\"button\" href=\"" + SignInHref(service, AccountSignInKey(service, account)) + "\">Sign in</a>" : null, Icon(account.Provider)));
         }
         if (tailnet?.Latest is { NeedsAttention: true } view)
-            rows.Append(Row(view.State == "NeedsLogin" ? "Tailscale needs signing in" : view.NeedsApproval ? "Tailscale needs the server approved" : "Tailscale has a step left", null, null, "<a class=\"button\" href=\"/manage/tailscale\">Review</a>"));
+        {
+            // Key expiry left on goes silent until the phone can't reach the server, so its last month names the day (owner, 2026-11-10).
+            var soon = view is { Running: true, ExpiryOff: false } && DateTimeOffset.TryParse(view.Expiry, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
+                && at - time.GetUtcNow() < TimeSpan.FromDays(30) ? at : (DateTimeOffset?)null;
+            rows.Append(Row(view.State == "NeedsLogin" ? "Tailscale needs signing in" : view.NeedsApproval ? "Tailscale needs the server approved"
+                : soon is { } day ? $"Tailscale signs the server out on {day.ToString("d MMM yyyy", CultureInfo.InvariantCulture)}" : "Tailscale has a step left",
+                soon is null ? null : "Turn off key expiry to keep it signed in.", null, "<a class=\"button\" href=\"/manage/tailscale\">Review</a>"));
+        }
         if (pushes is { Switch.Current: not null } card)
             foreach (var phone in card.Health.Status(true, card.Registry, devices.List(null)).Phones ?? [])
                 if (phone.State is PushPhoneStates.Failing or PushPhoneStates.MissingApp or PushPhoneStates.NotSignedUp)
@@ -476,7 +483,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
     }
 
     // What the server is, where its source is, and starting it again empty.
-    private void AboutSection(StringBuilder body, HttpRequest request, HostStatus? status, string open)
+    private void AboutSection(StringBuilder body, HttpRequest request, HostStatus? status, string open, string token)
     {
         body.Append("<section class=\"sec\" id=\"about\"><div class=\"sh\"><h2>About</h2></div><div class=\"box\">");
         // The version alone: how the server is updated is its host's schedule, which it cannot know, and its protocol and build are in its log.
@@ -492,6 +499,10 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         // The AGPL offer to everyone who uses the server over the network: the source of the commit this image was built from (Core SourceCode).
         body.Append("<a class=\"row go\" href=\"").Append(Html(SourceCode.For(status?.App, status?.Revision))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\"><div class=\"g\">Source code<small>On GitHub.</small></div>")
             .Append("<span class=\"act\"><i class=\"chev\"></i></span></a>");
+        // The walkthrough from its first screen, always; and the front page's list back, once it was hidden (owner, 2026-11-10: hiding it had no way back).
+        var hidden = File.Exists(Path.Combine(keysFolder, ChecklistFile));
+        body.Append(Row("Setup", hidden ? "The list of setup steps is hidden." : "Go through setting up from the first step.", null,
+            "<span class=\"acts\">" + (hidden ? Form("/checklist/show", token, "Show setup steps", quiet: true) : "") + "<a class=\"button quiet\" href=\"/welcome\">Open setup</a></span>", id: "row-setup"));
         if (backups is not null)
             body.Append(Row("Reset server", "Erase everything and start again. Backups are kept.", null, "<a class=\"button quiet danger\" href=\"/reset\">Reset…</a>"));
         body.Append("</div></section>");

@@ -76,12 +76,14 @@ internal sealed partial class ServerPage
         body.Append("<ul class=\"rows connect\">");
         foreach (var (service, name, provider, many) in SignInServiceList)
         {
-            var has = accounts?.Any(account => account.Provider == provider) == true;
+            var mine = accounts?.Where(account => account.Provider == provider).ToArray() ?? [];
+            var has = mine.Length > 0;
             var offered = services is not null && RemoteSignInSessions.Offers(services, service);
             any |= offered;
-            var button = SignInMany(service) ? has ? "Add another account" : "Add an account" : has ? "Sign in again" : "Connect";
-            body.Append("<li><span class=\"grow\"><strong>").Append(Html(name)).Append("</strong><span class=\"quiet\">")
-                .Append(Html(offered ? ConnectHint(service) : Elsewhere(service, services))).Append("</span></span>");
+            var button = has ? SignInMany(service) ? "Add another" : "Sign in again" : "Connect";
+            // A connected service names its accounts and their state; one with none says how it signs in.
+            var under = has ? string.Join(", ", mine.Select(account => Who(account) + " · " + Word(account.State))) : offered ? ConnectHint(service) : Elsewhere(service, services);
+            body.Append("<li><span class=\"grow\"><strong>").Append(Html(name)).Append("</strong><span class=\"quiet\">").Append(Html(under)).Append("</span></span>");
             if (offered)
                 body.Append("<a class=\"button").Append(has ? " quiet" : "").Append("\" href=\"").Append(SignInPath).Append("?service=").Append(service)
                     .Append(has && SignInMany(service) && service != RemoteSignInServices.Voice ? "&amp;account=new" : "").Append(walkthrough ? "&amp;from=welcome" : "").Append("\" aria-label=\"").Append(Html($"{button}: {name}")).Append("\">").Append(Html(button)).Append("…</a>");
@@ -90,15 +92,15 @@ internal sealed partial class ServerPage
         body.Append("</ul>");
         if (!any) return;
         if (services!.SignIns.OpenOn is { } open) body.Append(Notice(BusyWords(open)));
-        body.Append("<p class=\"quiet\">Each opens the service's own sign-in page in the server's browser, shown here. Only someone signed in to this page can connect an account, one at a time.</p>");
     }
 
+    // "Done" is said on the sign-in screen itself, where its button is.
     private static string ConnectHint(string service) => service switch
     {
-        RemoteSignInServices.Google => "Sign in with your Google account, then tap an emoji on your phone.",
-        RemoteSignInServices.Voice => "Each Google Voice number signs in on its own.",
-        RemoteSignInServices.Messenger => "Sign in to Facebook, then choose Done.",
-        _ => "Sign in to Instagram, then choose Done.",
+        RemoteSignInServices.Google => "Sign in to Google, then tap an emoji on your phone.",
+        RemoteSignInServices.Voice => "Sign in to Google. Add each Voice number separately.",
+        RemoteSignInServices.Messenger => "Sign in to Facebook.",
+        _ => "Sign in to Instagram.",
     };
 
     // The page is the only place a server's accounts connect (owner, 2026-11-03), so a server that can't show a sign-in here says what it needs. Its one image has Chrome: this is a server
@@ -133,7 +135,7 @@ internal sealed partial class ServerPage
         }
         var walkthrough = request.Query["from"] == "welcome";
         var back = walkthrough ? "/welcome?step=accounts" : "/#accounts";
-        var backWords = walkthrough ? "Back to setting up" : "Back to the server";
+        var backWords = walkthrough ? "Continue setup" : "Back to Overview";
         var name = SignInName(service);
         var title = (accountKey == "new" || service == RemoteSignInServices.Voice) ? $"Add a {name} account" : "Connect " + name;
         var services = signInServices;
@@ -144,7 +146,8 @@ internal sealed partial class ServerPage
             return;
         }
         var action = SignInPath + "?service=" + service + (accountKey.Length > 0 ? "&amp;account=" + accountKey : "") + (walkthrough ? "&amp;from=welcome" : "");
-        string Ask(string? problem) => AskBody(action, token, "This opens the server's own browser, which can hold your signed-in accounts, so it asks for the server password again.", "Continue", problem);
+        // A browser that typed the password a moment ago is shown no field (WithoutPasswordAgain), so it isn't asked for one either.
+        string Ask(string? problem) => AskBody(action, token, context.Items.ContainsKey(PasswordGivenItem) ? $"Sign in to {name} on the next screen." : "Enter the server password to sign in to an account.", "Continue", problem);
         if (form is null)
         {
             await PageAsync(context, StatusCodes.Status200OK, title, Ask(null)).ConfigureAwait(false);
@@ -154,7 +157,7 @@ internal sealed partial class ServerPage
         var grant = SignInGrant(Session(request)!, service + "|" + accountKey);
         var meta = RemoteSignInServices.EndsWithDone(service);
         var body = new StringBuilder("<style>").Append(SignInStyle).Append("</style>");
-        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-account=\"").Append(accountKey).Append("\" data-form=\"").Append(Html(token)).Append("\" data-grant=\"").Append(grant).Append("\" data-ready=\"")
+        body.Append("<section class=\"signin\" id=\"view\" data-service=\"").Append(service).Append("\" data-account=\"").Append(accountKey).Append("\" data-form=\"").Append(Html(token)).Append("\" data-grant=\"").Append(grant).Append("\" data-name=\"").Append(Html(name)).Append("\" data-ready=\"")
             .Append(Html(ReadyWords(service))).Append("\">")
             .Append("<p id=\"status\" role=\"status\" aria-live=\"polite\">Starting the server's browser…</p>")
             .Append("<div id=\"emoji\" class=\"emoji\" hidden><p id=\"emoji-text\" class=\"emoji-big\" aria-live=\"assertive\"></p><p>In Google Messages on your phone, tap this emoji.</p></div>")
@@ -392,18 +395,17 @@ internal sealed partial class ServerPage
 
     private static string DoneWords(string service, RemoteSignInResult result)
     {
-        var joined = result.Conversations == 1 ? "1 conversation joined." : $"{result.Conversations} conversations joined.";
+        // The title (the service "is connected") is the view's; this is the line under it. No count: the first page joined reads as all there is.
+        const string arriving = "Your conversations arrive on your devices in a moment.";
         return service switch
         {
-            RemoteSignInServices.Google => "Google Messages is connected. Your conversations arrive on your devices in a moment.",
-            RemoteSignInServices.Voice => "The Google Voice account is added.",
-            RemoteSignInServices.Instagram => "Instagram is connected. " + joined,
-            _ => "Messenger is connected. " + joined + result.Encrypted switch
+            RemoteSignInServices.Messenger => arriving + result.Encrypted switch
             {
-                null or RemoteSignInEncryption.AlreadyOn => "",
-                RemoteSignInEncryption.On => " Encrypted conversations are on too.",
-                _ => " Encrypted conversations didn't turn on, so most conversations can't be read yet. In Message Link on your PC, choose Turn on encrypted conversations on the Messenger card.",
+                null or RemoteSignInEncryption.AlreadyOn or RemoteSignInEncryption.On => " In encrypted chats, new messages arrive from now on; earlier messages stay in Messenger.",
+                // Signing in again tries again (RemoteSignInFinish): the page has no switch of its own for it.
+                _ => " Encrypted chats didn't turn on, so most conversations can't be read yet. Connect Messenger again to try once more.",
             },
+            _ => arriving,
         };
     }
 
@@ -433,13 +435,15 @@ internal sealed partial class ServerPage
     /// <summary>
     /// The view's one script: the server's browser drawn on the canvas, and what the person does sent back in the page's own pixels. Pointer and wheel on the canvas; a tap is a click and a
     /// drag scrolls on a touch screen; keys and text through a hidden field that keeps an input method's composition whole and sends what it makes as text; paste as text; Done and Cancel.
+    /// A right-click isn't passed on: the server's browser would open its own menu, whose Paste is grey (its clipboard is the server's, and empty). Instead the hidden field moves
+    /// under the pointer, so this browser's own menu opens for it, and its Paste arrives as any paste does.
     /// Nothing is sent anywhere but this page's own socket. Allowed by its hash (<see cref="SignInScriptHash"/>), so no other script can run.
     /// </summary>
     internal const string SignInScript = """
 (function(){
 var v=document.getElementById('view');if(!v||!window.WebSocket)return;
 function $(i){return document.getElementById(i)}
-var svc=v.getAttribute('data-service'),tok=v.getAttribute('data-form'),ready=v.getAttribute('data-ready');
+var svc=v.getAttribute('data-service'),tok=v.getAttribute('data-form'),ready=v.getAttribute('data-ready'),nm=v.getAttribute('data-name');
 var cv=$('screen'),cx=cv.getContext('2d'),keys=$('keys'),st=$('status'),stage=$('stage'),frame=$('frame'),em=$('emoji'),emt=$('emoji-text'),out=$('outcome'),
 outh=$('outcome-title'),outt=$('outcome-text'),bar=$('bar'),done=$('done'),cancel=$('cancel'),kb=$('keyboard'),zoom=$('zoom'),hint=$('hint');
 var W=cv.width,H=cv.height,ended=false,shown=false,q=[],pend=null,timer=0,held=0,clicks=0,lastDown=0,lastAt=null,touch=null,downs={},composing=false,justComposed=false;
@@ -455,7 +459,7 @@ if(d.t==='size'){if(d.w>0&&d.h>0){W=d.w;H=d.h;if(cv.width!==W)cv.width=W;if(cv.h
 else if(d.t==='signedIn'){frame.hidden=true;hint.hidden=true;bar.hidden=true;say(svc==='google'?'Signed in. Now your phone…':'Signed in. Connecting the account…')}
 else if(d.t==='emoji'){emt.textContent=d.text;em.hidden=false;say('Waiting for your phone…')}
 else if(d.t==='stage'){em.hidden=true;say(d.word==='encrypting'?'Connected. Turning on encrypted conversations…':'Connecting the account…')}
-else if(d.t==='end'){finish(d.ok?'Connected':'Not connected',d.say||'',d.ok)}};
+else if(d.t==='end'){finish(d.ok?nm+' is connected':'Not connected',d.say||'',d.ok)}};
 ws.onclose=function(){finish('Not connected','The connection to the server ended before the sign-in finished. Start it again.')};
 var painting=false,next=null;
 function paint(b){if(painting){next=b;return}painting=true;
@@ -475,7 +479,8 @@ function focusKeys(){try{keys.focus({preventScroll:true})}catch(e){keys.focus()}
 function mouse(type,p,b,count,m){return{kind:'mouse',type:type,x:p.x,y:p.y,button:b,buttons:held,clickCount:count,modifiers:m}}
 cv.addEventListener('pointerdown',function(e){
 if(e.pointerType==='touch'){touch={id:e.pointerId,x:e.clientX,y:e.clientY,lx:e.clientX,ly:e.clientY,t:Date.now(),moved:false,typing:document.activeElement===keys};return}
-e.preventDefault();focusKeys();
+if(e.button===2){under(e);return}
+e.preventDefault();park();focusKeys();
 var p=at(e),now=Date.now();
 clicks=(now-lastDown<400&&lastAt&&Math.abs(p.x-lastAt.x)<5&&Math.abs(p.y-lastAt.y)<5)?Math.min(3,clicks+1):1;lastDown=now;lastAt=p;
 try{cv.setPointerCapture(e.pointerId)}catch(x){}
@@ -488,6 +493,7 @@ later({kind:'mouse',type:'mouseWheel',x:p.x,y:p.y,deltaX:(touch.lx-e.clientX)*s,
 touch.lx=e.clientX;touch.ly=e.clientY;return}
 later(mouse('mouseMoved',at(e),'none',0,mods(e)))});
 cv.addEventListener('pointerup',function(e){
+if(e.button===2)return;
 if(e.pointerType==='touch'){var t=touch;touch=null;if(!t||t.id!==e.pointerId||t.moved||Date.now()-t.t>800)return;
 var p=at(e);held=1;send(mouse('mouseMoved',p,'none',0,0));send(mouse('mousePressed',p,'left',1,0));held=0;send(mouse('mouseReleased',p,'left',1,0));flush();
 if(t.typing)focusKeys();return}
@@ -517,7 +523,10 @@ keys.addEventListener('compositionstart',function(){composing=true});
 keys.addEventListener('compositionend',function(e){composing=false;if(e.data)text(e.data);justComposed=true;setTimeout(function(){justComposed=false;reset()},0)});
 keys.addEventListener('input',function(){if(composing)return;if(justComposed){return}var s=keys.value;if(s===' ')return;
 if(s.length>1&&s.charAt(0)===' ')text(s.slice(1));else if(s.length===0)tap('Backspace');reset()});
-keys.addEventListener('paste',function(e){e.preventDefault();var d=e.clipboardData||window.clipboardData;var t=d?d.getData('text'):'';if(t)text(t)});
+keys.addEventListener('paste',function(e){e.preventDefault();var d=e.clipboardData||window.clipboardData;var t=d?d.getData('text'):'';if(t)text(t);park()});
+function under(e){var r=frame.getBoundingClientRect();keys.style.cssText='left:'+(e.clientX-r.left-10)+'px;top:'+(e.clientY-r.top-10)+'px;width:20px;height:20px;z-index:2';focusKeys()}
+function park(){keys.style.cssText=''}
+keys.addEventListener('pointerdown',function(e){if(e.button!==2)park()});
 kb.addEventListener('click',focusKeys);
 function fit(){if(stage.classList.contains('zoomed'))cv.style.width=W+'px';else cv.style.width=''}
 zoom.addEventListener('click',function(){var z=stage.classList.toggle('zoomed');zoom.setAttribute('aria-pressed',z?'true':'false');zoom.textContent=z?'Fit':'Zoom in';fit();

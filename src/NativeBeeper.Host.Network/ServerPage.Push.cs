@@ -98,7 +98,8 @@ internal sealed partial class ServerPage
     private async Task PushAsync(HttpContext context, IFormCollection? form, string token, Pushes card)
     {
         var replacing = card.Switch.Current is not null;
-        string Ask(PushProblemWords? problem, string? project) => PushWizard(token, replacing, problem, project ?? ProjectOf(card.Switch.Current?.Offer.ProjectId));
+        var fromSetup = FromSetup(context.Request, form);
+        string Ask(PushProblemWords? problem, string? project) => PushWizard(token, replacing, problem, project ?? ProjectOf(card.Switch.Current?.Offer.ProjectId), fromSetup);
         const string title = "Notifications";
         if (form is null)
         {
@@ -169,12 +170,13 @@ internal sealed partial class ServerPage
             await PageAsync(context, outcome == PushInstall.NotSaved ? StatusCodes.Status500InternalServerError : StatusCodes.Status400BadRequest, title, Ask(said, project)).ConfigureAwait(false);
             return;
         }
-        Redirect(context.Response, outcome == PushInstall.On ? "/manage/notifications?done=push_on" : "/manage/notifications?done=push_on_unchecked");
+        // From setup, back to its notifications screen, which then says they are on and goes on to the phone.
+        Redirect(context.Response, fromSetup ? "/welcome?step=notifications" : outcome == PushInstall.On ? "/manage/notifications?done=push_on" : "/manage/notifications?done=push_on_unchecked");
     }
 
     // The wizard: the package names to copy, Firebase's pages (the project's own once a file or the server names it), the hard cases in plain words, and one drop
     // area for both files, whose few lines of script say which file is which and what is still missing before anything is sent.
-    private static string PushWizard(string token, bool replacing, PushProblemWords? problem, string? project)
+    private static string PushWizard(string token, bool replacing, PushProblemWords? problem, string? project, bool fromSetup = false)
     {
         var body = new StringBuilder("<section id=\"wizard\">");
         if (problem is not null)
@@ -183,30 +185,31 @@ internal sealed partial class ServerPage
             if (problem.Href is { } href) body.Append(' ').Append(Link(href, problem.LinkText ?? "Open"));
             body.Append("</p>");
         }
+        // What the person does comes first; once notifications are on, the next screen says so (owner's review, 2026-11-10).
         body.Append(Para(replacing
             ? "These replace the files the server has now, at once. With another project's files every phone signs up again by itself: phones with Message Link open at once, the others when Message Link next connects."
-            : "Notifications start as soon as the two files are in; nothing needs restarting."));
-        body.Append("<p>").Append(Link(JoinLink.FirebaseGuide, "See these steps with pictures")).Append("</p>");
+            : "Make a Firebase project and give the server two files from it."));
+        body.Append("<p><a href=\"").Append(Html(JoinLink.FirebaseGuide)).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">See these steps with pictures</a></p>");
+        // "Personal" with its reason: a work or school account is what blocks key creation (the details below).
         body.Append("<ol class=\"steps\">")
             .Append("<li><strong>Make a Firebase project.</strong> ").Append(Link(FirebaseConsole, "Open Firebase"))
-            .Append("<span class=\"quiet block\">Sign in with a personal Google account, add a project named <strong>").Append(ProjectName).Append("</strong>, and accept Firebase's terms when it asks (only the first time). It's free, and Google Analytics isn't needed.</span></li>")
-            .Append("<li><strong>Add the Android app.</strong><span class=\"quiet block\">In the project, add an Android app with this package name. You can skip the steps after it's registered.</span><ul class=\"packages\">")
+            .Append("<span class=\"quiet block\">Sign in with a personal Google account, not a work or school one. Add a project named <strong>").Append(ProjectName).Append("</strong> and accept Firebase's terms if asked. Turn off Google Analytics; it isn't needed.</span></li>")
+            .Append("<li><strong>Add the Android app.</strong><span class=\"quiet block\">In the project, add an Android app with this package name, then skip the rest of Firebase's steps.</span><ul class=\"packages\">")
             .Append("<li><span class=\"copy\">").Append(MessagesApp).Append("</span><button type=\"button\" class=\"quiet small\" data-copy=\"").Append(MessagesApp).Append("\">Copy</button></li>");
         body.Append("</ul></li>")
             .Append("<li><strong>Download google-services.json</strong> from ")
-            .Append("<a data-firebase=\"").Append(GeneralPage).Append("\" href=\"").Append(Html(FirebasePage(project, GeneralPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings, General</a>")
-            .Append(", after adding the app, so it names it.</li>")
-            .Append("<li><strong>Make a private key</strong> in ")
-            .Append("<a data-firebase=\"").Append(KeysPage).Append("\" href=\"").Append(Html(FirebasePage(project, KeysPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings, Service accounts</a>")
-            .Append(" with <strong>Generate new private key</strong>. That file is a secret: give it only to this server.</li>")
-            .Append("<li><strong>Drop both files below</strong>, in either order.</li></ol>");
-        body.Append("<form method=\"post\" action=\"/push\" enctype=\"multipart/form-data\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
-            .Append("<label class=\"drop\" id=\"drop\" for=\"files\"><strong>Drop google-services.json and the private key here</strong><span class=\"quiet\">or click to choose them</span>")
+            .Append("<a data-firebase=\"").Append(GeneralPage).Append("\" href=\"").Append(Html(FirebasePage(project, GeneralPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings › General</a>.</li>")
+            .Append("<li><strong>Download a private key</strong> from ")
+            .Append("<a data-firebase=\"").Append(KeysPage).Append("\" href=\"").Append(Html(FirebasePage(project, KeysPage))).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Project settings › Service accounts</a>")
+            .Append(", with <strong>Generate new private key</strong>. Keep this file private: it controls your Firebase project.</li></ol>");
+        // The browser's own file control is hidden behind the page's button; the list under it ticks each file as it's recognised, and the script holds the button until both are in.
+        body.Append("<form method=\"post\" action=\"/push\" enctype=\"multipart/form-data\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">").Append(fromSetup ? FromSetupField : "")
+            .Append("<label class=\"drop\" id=\"drop\" for=\"files\"><span>Drop both files here, or <span class=\"button quiet small\">Choose files</span></span>")
             .Append("<input id=\"files\" name=\"files\" type=\"file\" accept=\".json,application/json\" multiple></label>")
-            .Append("<ul id=\"found\" class=\"found\" aria-live=\"polite\"></ul>")
+            .Append("<ul id=\"found\" class=\"found\" aria-live=\"polite\"><li>google-services.json</li><li>Private key</li></ul>")
             .Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
-            .Append("<button type=\"submit\">").Append(replacing ? "Replace the files" : "Turn on notifications").Append("</button><a class=\"cancel\" href=\"/\">Cancel</a></form>");
-        body.Append("<details><summary>Google says key creation is blocked</summary>")
+            .Append("<button type=\"submit\" id=\"turn-on\">").Append(replacing ? "Replace the files" : "Turn on notifications").Append("</button><a class=\"cancel\" href=\"").Append(fromSetup ? "/welcome?step=notifications" : "/").Append("\">Cancel</a></form>");
+        body.Append("<details><summary>Can't create a private key?</summary>")
             .Append(Para("Your Google account belongs to an organisation (Google Workspace, at work or school) whose policy forbids private key files. Make the Firebase project with a personal Google account instead, such as a gmail.com address, and start again from the first step."))
             .Append("</details>");
         body.Append("<script>").Append(PushScript).Append("</script>");
@@ -216,7 +219,8 @@ internal sealed partial class ServerPage
     private const string PushStyle =
         ".quiet.block{display:block}ul.packages{list-style:none;margin:6px 0 0;padding:0}ul.packages li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 6px}"
         + "button.small{font-size:13px;padding:2px 10px}label.drop{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;border:2px dashed var(--line);border-radius:8px;"
-        + "padding:20px 12px;margin:0 0 12px;cursor:pointer}label.drop.over{border-color:var(--accent);background:var(--attention)}label.drop input{max-width:100%;margin:6px 0 0}"
+        + "padding:20px 12px;margin:0 0 12px;cursor:pointer}label.drop.over{border-color:var(--accent);background:var(--attention)}"
+        + "label.drop{position:relative}label.drop input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}label.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}label.drop .button{display:inline-block;margin:0 0 0 6px;padding:4px 12px;border:1px solid var(--line);border-radius:var(--rb,7px);color:var(--fg);font-weight:600}"
         + "ul.found{list-style:none;margin:0 0 12px;padding:0}ul.found li{padding:2px 0 2px 16px;position:relative}ul.found li:before{content:'';position:absolute;left:0;top:.6em;width:8px;height:8px;border-radius:50%;background:var(--wait)}"
         + "ul.found li.ok:before{background:var(--ok)}details{margin:12px 0 0}summary{cursor:pointer;color:var(--accent)}form.test{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
         + "form.test label{margin:0}form.test select{width:auto;margin:0}";
@@ -232,6 +236,7 @@ document.querySelectorAll('button[data-copy]').forEach(function(b){b.addEventLis
 if(navigator.clipboard)navigator.clipboard.writeText(t).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent=w},1500)},function(){});});});
 var input=document.getElementById('files'),drop=document.getElementById('drop'),found=document.getElementById('found');
 if(!input||!drop||!found)return;
+var go=document.getElementById('turn-on');if(go)go.disabled=true;
 ['dragenter','dragover'].forEach(function(e){drop.addEventListener(e,function(v){v.preventDefault();drop.classList.add('over')})});
 ['dragleave','drop'].forEach(function(e){drop.addEventListener(e,function(){drop.classList.remove('over')})});
 drop.addEventListener('drop',function(v){v.preventDefault();if(v.dataTransfer&&v.dataTransfer.files.length){input.files=v.dataTransfer.files;show()}});
@@ -249,7 +254,8 @@ point((s||a||{}).p);
 if(s){var none=P.every(function(p){return s.apps.indexOf(p)<0});
 if(none)say('This project has no app for Message Link. Add '+P[0]+', then download google-services.json again.')}
 if(!s)say('Still needed: google-services.json, from Project settings, General.');if(!a)say('Still needed: the private key, from Project settings, Service accounts.');
-if(s&&a)say(s.p===a.p?'Both files are here. Type the password and turn it on.':'The two files are from different projects. Use both from the same one.',s.p===a.p);});}
+if(s&&a)say(s.p===a.p?'Both files are here.':'The two files are from different projects. Use both from the same one.',s.p===a.p);
+if(go)go.disabled=!(s&&a&&s.p===a.p);});}
 })();
 """;
 

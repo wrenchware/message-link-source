@@ -102,7 +102,10 @@ internal sealed partial class ServerPage
 
     private static string StoredCheck(byte[] secret, StoredPassword stored) => Convert.ToHexStringLower(Mac(secret, "check|stored|" + stored.Line))[..16];
 
-    private static bool IsSetupPath(string? path) => path is "/setup" or "/setup/password" or "/welcome" or "/phone" or "/checklist/hide";
+    private static bool IsSetupPath(string? path) => path is "/setup" or "/setup/password" or "/welcome" or "/phone" or "/checklist/hide" or "/checklist/show";
+
+    // The walkthrough's screen last opened, so the front page's Continue setup goes back to it (step 1 included). In memory: after a restart it goes to the first left.
+    private volatile string? lastStep;
 
     // Opens the setup code at the start, when the page waits for its password.
     private void OpenSetup()
@@ -254,7 +257,9 @@ internal sealed partial class ServerPage
         log("server page password set via=setup");
         context.Response.Cookies.Delete(SetupCookie, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Path = "/setup" });
         var expires = time.GetUtcNow() + SessionLifetime;
-        context.Response.Cookies.Append(CookieName, NewSession(expires), Cookie(expires));
+        var signedIn = NewSession(expires);
+        Typed(signedIn, SetupWindow);
+        context.Response.Cookies.Append(CookieName, signedIn, Cookie(expires));
         log("server page sign_in outcome=signed_in");
         Redirect(context.Response, "/welcome");
     }
@@ -279,9 +284,15 @@ internal sealed partial class ServerPage
                 catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { log($"server page checklist kept=false type={failure.GetType().Name}"); }
                 Redirect(context.Response, "/");
                 return;
+            case "/checklist/show" when form is not null:
+                try { File.Delete(Path.Combine(keysFolder, ChecklistFile)); }
+                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { log($"server page checklist shown=false type={failure.GetType().Name}"); }
+                Redirect(context.Response, "/#checklist");
+                return;
             case "/welcome":
                 var step = Array.IndexOf(Steps, context.Request.Query["step"].ToString());
                 if (step < 0) step = 0;
+                lastStep = Steps[step];
                 var (body, waiting) = await StepBodyAsync(Steps[step], step, token, context.Request, context.RequestAborted).ConfigureAwait(false);
                 await PageAsync(context, StatusCodes.Status200OK, StepTitle(Steps[step]), body, refresh: waiting ? 5 : null, refreshTo: "/welcome?step=" + Steps[step]).ConfigureAwait(false);
                 return;
@@ -306,33 +317,37 @@ internal sealed partial class ServerPage
     private async Task<(string Body, bool Waiting)> StepBodyAsync(string step, int index, string token, HttpRequest request, CancellationToken cancellationToken)
     {
         var body = new StringBuilder();
-        body.Append("<p class=\"quiet\">Step ").Append(index + 1).Append(" of ").Append(Steps.Length).Append(" · every step can be skipped and done later from the server's page.</p>");
+        body.Append("<p class=\"quiet\">Step ").Append(index + 1).Append(" of ").Append(Steps.Length).Append("</p>");
         var done = false;
         var waiting = false;
         switch (step)
         {
             case "start":
-                // The owner's introduction (2026-11-02) stays ahead of the first setup choice.
-                body.Append("<section><h2>A small nerd alert</h2>")
-                    .Append(Para("This takes about 20 minutes and a couple of free accounts, but you won't write any code. Each step says exactly what to click, and you can skip anything and come back later."))
-                    .Append(Para("It's do-it-yourself on purpose. Message Link has no servers of its own, so your conversations and sign-ins stay on hardware you control, with no account with us in between."))
-                    .Append(Para("This server connects to your messaging accounts and keeps your history. Your phone and PCs connect to it."))
-                    .Append(Para("Anyone with this page's password can manage the server. A phone or PC that joins can read and send messages; it doesn't become the server's administrator."));
-                if (DesktopTrust)
-                    body.Append(Para("Using just this Windows PC? Connect your accounts next. Tailscale and phone notifications can wait until you add a phone."));
+                // The owner's review of setup (docs/onboarding-review.md, 2026-11-10): what the server is, why Tailscale and Firebase are the person's own, what it takes, who can do what.
+                // "Phone" only, until the Windows app reaches a server through Tailscale too (ROADMAP.md, A laptop away from home).
+                body.Append("<section><h2>Before you start</h2>")
+                    .Append(Para("This server connects to your messaging accounts and keeps your history in one place. Message Link on your phone and PCs connects to it, so every device shows the same conversations."))
+                    .Append("<p><strong>Why you set up Tailscale and Firebase yourself</strong></p>")
+                    .Append(Para("Message Link has no servers of its own, so your conversations and sign-ins never pass through us. Two free services fill that gap. You create your own copy of each, so they answer only to you:"))
+                    .Append("<ul><li><strong>Tailscale:</strong> lets your phone reach this server when you're away from home, without opening it to the internet.</li>")
+                    .Append("<li><strong>Firebase:</strong> wakes your phone when a message arrives. Each notification is locked so only your phone can read it.</li></ul>")
+                    .Append(Para("Only using it on a PC? You can skip both."))
+                    .Append(Para("Setup takes some time, most of it on those two services. Each step says what to click, and any step can be skipped and finished later from this page."))
+                    .Append(Para("The password for this page manages the server. Phones and PCs you add can read and send messages but can't change the server's settings."));
                 if (backups is not null)
-                    body.Append("<p><a class=\"button quiet\" href=\"/restore\">Restore from a backup</a></p>")
-                        .Append(Para("Have a backup from another server or PC? Restore it before connecting accounts. Stop the old server first."));
+                    body.Append("<p><strong>Moving from another server or PC?</strong> Restore your backup before you connect accounts, and stop the old server first.</p>")
+                        .Append("<p><a class=\"button quiet\" href=\"/restore\">Restore from a backup</a></p>");
                 body.Append("<p><a href=\"").Append(JoinLink.SetupGuide).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">Learn more</a></p></section>");
                 done = true;
                 break;
             case "tailscale":
-                body.Append(Para("Tailscale lets Message Link on your phone reach this server from anywhere, without opening it to the internet. It's free for personal use."));
                 if (tailnet is not null)
                 {
-                    TailnetCard(body, tailnet, token);
-                    done = tailnet.Latest is { AllDone: true };
-                    waiting = TailnetWaiting;
+                    TailnetCard(body, tailnet, token, walkthrough: true);
+                    // Signed in is enough to go on: what is left (key expiry, a rule) stays on the front page's list until it's done.
+                    done = tailnet.Latest is { Running: true };
+                    // Looks again while a step is left, so turning key expiry off in Tailscale ticks here by itself.
+                    waiting = TailnetWaiting || tailnet.Latest is { AllDone: false };
                 }
                 else body.Append(Para("This server has no Tailscale door, so phones reach it at home only."));
                 break;
@@ -347,27 +362,31 @@ internal sealed partial class ServerPage
                 {
                     body.Append(Para("Message Link on your phone joins by scanning a code from this page: no codes to type or match. Install Message Link on the phone first."))
                         .Append(Para("The code holds a one-time pairing code, so the server's password is asked for before it's shown."))
-                        .Append(PasswordForm("/phone", token, "Show the code"));
+                        .Append(PasswordForm("/phone", token, "Show the code", before: FromSetupField));
                 }
                 body.Append("</section>");
                 done = PhonesPaired() > 0;
                 break;
             case "notifications":
-                body.Append("<section>").Append(Para("Message Link on a phone needs this. Without it, the phone only gets new messages while the app is open. Notifications go through a Firebase project of your own; the server walks you through making one."));
+                // A phone can't join until notifications are on (PhoneWaitsForNotifications; owner, 2026-11-10), so this says so rather than calling them optional.
+                body.Append("<section><h2>Phone notifications</h2>");
                 if (pushes is null) body.Append(Para("This server doesn't send notifications."));
+                else if (pushes.Switch.Current is null)
+                    body.Append(Para("Get new messages on your phone even when Message Link is closed. A phone needs this before it can join."))
+                        .Append(Para("It uses a free Firebase project of your own, made with your Google account. Each step is shown."));
                 else if (PushesReady()) { body.Append(Para("Notifications are on, and a phone gets them.")); done = true; }
                 else if (pushes.Switch.Current is not null)
                 {
                     body.Append(Para("Notifications are on. A phone signs up for them by itself when it joins."));
                     done = true;
                 }
-                else body.Append("<p><a class=\"button\" href=\"/push\">Set up notifications…</a></p>");
+                else body.Append("<p><a class=\"button\" href=\"/push?from=welcome\">Set up notifications…</a></p>");
                 body.Append("</section>");
                 break;
             case "pc":
                 if (DesktopJoinUnavailable) { body.Append("<section>").Append(DesktopJoinHelp).Append("</section>"); break; }
                 body.Append("<section>").Append(Para("Message Link on a Windows PC joins with one line copied from here and pasted into Settings → Connections → Message Link Server. The line holds a one-time pairing code, so the server's password is asked for first."))
-                    .Append(PasswordForm("/pair", token, "Show the line")).Append("</section>");
+                    .Append(PasswordForm("/pair", token, "Show the line", before: FromSetupField)).Append("</section>");
                 done = devices.Count - PhonesPaired() > 0;
                 break;
             default:
@@ -387,7 +406,7 @@ internal sealed partial class ServerPage
         var next = noPhone ? "/welcome?step=pc" : index + 1 < Steps.Length ? "/welcome?step=" + Steps[index + 1] : "/";
         body.Append("<a class=\"button").Append(done ? "" : " quiet").Append("\" href=\"").Append(next).Append("\">")
             .Append(noPhone ? "I don't use a phone" : index + 1 < Steps.Length ? done ? "Next" : "Skip for now" : "Finish").Append("</a></nav>");
-        return (body.ToString(), waiting && !done);
+        return (body.ToString(), waiting && (!done || step == "tailscale"));
     }
 
     // The accounts' screen: what the server holds now, and a Connect for each service the server's own browser signs in (ServerPage.SignIn.cs), or where to connect it instead.
@@ -397,13 +416,8 @@ internal sealed partial class ServerPage
         if (admin is not null)
             try { accounts = await admin.AccountsAsync(cancellationToken).ConfigureAwait(false); }
             catch (Exception failure) when (failure is not OperationCanceledException) { }
-        body.Append("<section id=\"connect\">").Append(Para("The server signs in to Google Messages, Messenger, Google Voice and Instagram for you, and keeps every conversation."));
-        if (accounts is { Count: > 0 })
-        {
-            body.Append("<ul class=\"rows\">");
-            foreach (var account in accounts) Step(body, Tone(account.State) == "ok", Provider(account.Provider), State(account.State), word: Word(account.State));
-            body.Append("</ul>");
-        }
+        // Each connected account sits under its own service, by name (ConnectList), rather than in a list of its own above.
+        body.Append("<section id=\"connect\">").Append(Para("Connect the accounts you use. The server keeps every conversation from them."));
         ConnectList(body, accounts, walkthrough: true, context, token);
         body.Append("</section>");
         return accounts is { Count: > 0 };
@@ -461,15 +475,28 @@ internal sealed partial class ServerPage
         if (items.All(item => item.Done)) return;
         body.Append("<section class=\"sec checklist\" id=\"checklist\"><div class=\"sh\"><h2>Finish setting up</h2><span class=\"r\"><form class=\"plain\" method=\"post\" action=\"/checklist/hide\"><input type=\"hidden\" name=\"form\" value=\"")
             .Append(Html(token)).Append("\"><button type=\"submit\" class=\"link\">Hide this list</button></form></span></div><div class=\"box\">");
+        // Back into the walkthrough where it was left, so a click that wandered off isn't the end of it (owner, 2026-11-10).
+        // A step finished since goes on to the next one left; step 1 is always where it was left.
+        var left = items.Where(item => !item.Done).Select(item => item.Step).OrderBy(step => Array.IndexOf(Steps, step)).ToArray();
+        var resume = lastStep is "start" ? "start"
+            : lastStep is { } last && left.FirstOrDefault(step => Array.IndexOf(Steps, step) >= Array.IndexOf(Steps, last)) is { } next ? next : left[0];
+        body.Append(Go("Continue setup", $"Step {Array.IndexOf(Steps, resume) + 1} of {Steps.Length}", null, "/welcome?step=" + resume, "Continue setup"));
         foreach (var (step, title, _, detail) in items.Where(item => !item.Done))
             body.Append(Go(title, detail, null, "/welcome?step=" + step, title));
         body.Append("</div></section>");
     }
+    // A page the walkthrough opens (a phone's code, a PC's line, the Firebase files) says so, in its address or its form, so it leads back into setup rather than to the
+    // Overview when it's done (owner, 2026-11-10: turning notifications on left setup).
+    private const string FromSetupField = "<input type=\"hidden\" name=\"from\" value=\"welcome\">";
+
+    private static bool FromSetup(HttpRequest request, IFormCollection? form) => (form is not null ? form["from"].ToString() : request.Query["from"].ToString()) == "welcome";
+
     // A phone's code: the password first (a GET shows the form), then the code as a QR, with a button for a new one that needs no password again for half an hour.
     private async Task PhoneAsync(HttpContext context, IFormCollection? form, string token)
     {
         const string title = "Add a phone";
-        string Ask(string? problem) => AskBody("/phone", token, "The code lets a phone read every conversation on the server, so the server's password is asked for again.", "Show the code", problem);
+        var fromSetup = FromSetup(context.Request, form);
+        string Ask(string? problem) => AskBody("/phone", token, "The code lets a phone read every conversation on the server, so the server's password is asked for again.", "Show the code", problem, before: fromSetup ? FromSetupField : "");
         if (DesktopJoinUnavailable)
         {
             await PageAsync(context, StatusCodes.Status200OK, title, "<section>" + DesktopJoinHelp + "</section>").ConfigureAwait(false);
@@ -508,7 +535,7 @@ internal sealed partial class ServerPage
             .Append("<p class=\"quiet\">It works once, for the next ").Append((int)PairingCodes.Lifetime.TotalMinutes).Append(" minutes. The phone pins this server's fingerprint and joins with it: there's nothing to type or match.</p>")
             .Append("<p><a href=\"").Append(Html(link)).Append("\">On this phone? Open the link instead.</a></p>")
             .Append("<form method=\"post\" action=\"/phone\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\"><input type=\"hidden\" name=\"grant\" value=\"")
-            .Append(Html(grant)).Append("\"><button type=\"submit\" class=\"quiet\">New code</button></form></div></div>");
+            .Append(Html(grant)).Append("\">").Append(fromSetup ? FromSetupField : "").Append("<button type=\"submit\" class=\"quiet\">New code</button></form></div></div>");
         if (tailnet is { Enabled: true } && view is null)
             body.Append(Notice("Away from home the phone reaches the server through Tailscale, which isn't finished yet. At home it can join now."))
                 .Append("<p><a href=\"/welcome?step=tailscale\">Set up Tailscale</a></p>");
@@ -516,7 +543,12 @@ internal sealed partial class ServerPage
             body.Append(Notice("This server has no Tailscale, so the phone can only reach it on your home network."));
         else if (view is not null && view.Owner is { Length: > 0 } owner)
             body.Append("<p class=\"quiet\">The phone signs in to Tailscale as ").Append(Html(owner)).Append(", the account this server uses.</p>");
-        body.Append("</section><nav class=\"steps\"><a href=\"/\">Back to the server</a><a class=\"button quiet\" href=\"/welcome?step=pc\">Next: add a PC</a></nav>");
+        // Each phone on Tailscale gets the server's key-expiry step too, so "Fix it for me" is offered where it saves one per device (owner, 2026-11-10).
+        if (view is not null && tailscale is not null && !tailscale.Has)
+            body.Append("<p><a href=\"/tailnet/oauth\">Let the server keep your devices signed in</a></p>");
+        body.Append(fromSetup
+            ? "</section><nav class=\"steps\"><a href=\"/welcome?step=phone\">Back</a><a class=\"button\" href=\"/welcome?step=pc\">Next</a></nav>"
+            : "</section><p><a href=\"/\">Back to Overview</a></p>");
         log("server page phone_code shown");
         await PageAsync(context, StatusCodes.Status200OK, title, body.ToString()).ConfigureAwait(false);
     }

@@ -8,8 +8,14 @@ screen (10.8). With a package from before them, set the page password at the scr
 in with the link the script prints, and add the phone with the pairing code.
 
 Have ready: the package `messages-server-<version>-linux-x64.tar.gz` and its `.sha256` (from
-`tools\Build-ServerTarball.ps1`, in `artifacts\server-tarball`), the phone with the Play internal-testing build of
-Message Link, and a PC browser.
+`tools\Build-ServerTarball.ps1`, in `artifacts\server-tarball`), the phone with the regular Message Link app
+(`com.wrenchware.messages`, sideloaded with `android\Build.ps1 -Release -Install -Device <serial>`, never the `.dev`
+build), a Google account that has never used Tailscale or Firebase, a PC browser signed in as that account only (a
+fresh browser profile, so no other account's sign-in is offered), and a folder for screenshots.
+
+**Screenshots** (for the website's guides): on every Tailscale and Firebase page, and every server-page step, press
+Win+Shift+S, take the window, and save it into the folder numbered in order (`01-...png`). Don't hide the email or
+project id while taking them; they are blurred afterwards, before anything is published.
 
 ## 1. Make the container
 
@@ -80,6 +86,26 @@ ls -l /mnt/messages-backups-test
 Wanted: "no release address", and with Google on a line about Chrome. Report the lines, and whether a backup file
 appears in the test folder after the page's backups step has been run.
 
+## 5b. Notifications (Firebase)
+
+After part 3 (a phone joined). Follow only what the page says, and its "See these steps with pictures" link, as a new
+user would. Take a screenshot of each page on the way. Start a stopwatch.
+
+1. On the page, open the notifications step (the checklist, or Manage → Notifications).
+2. **Open Firebase**, signed in as the second account. Add a project named as the page says. Wanted: Firebase shows its
+   terms once (first time on this account); Google Analytics can be turned off.
+3. Add an Android app with the one package name the page shows (`com.wrenchware.messages`, its Copy button). Skip the
+   steps after it's registered.
+4. **Project settings, General**: download `google-services.json`. **Service accounts**: **Generate new private key**.
+5. Drop both files on the page, in either order, and turn notifications on.
+6. Wanted: the test push says "Arrived on <phone>", and the phone shows a notification. Nothing on the page or the
+   phone mentions a second app or `.dev`.
+7. Close Message Link on the phone (swipe it away), then have something arrive in the test thread (the test account,
+   from another device). Wanted: a notification with the app closed.
+
+Report: the time from Open Firebase to "Arrived", every moment of doubt (a button not where the page said, a word the
+page didn't explain, a Firebase screen the page didn't mention), and what the page and the phone showed.
+
 ## 6. Messenger and Instagram signed in from the Windows app (10.5)
 
 The server's own Chrome signs Messenger and Instagram in, shown in the Windows app's window, on a throwaway profile
@@ -141,5 +167,7 @@ the window that looked wrong (a frozen picture, keys that did not type, the Done
 1. On the page, remove the Facebook test account (so Facebook forgets the server's device).
 2. Remove the `messages-server` machine in Tailscale's admin console.
 3. `pct stop <id> && pct destroy <id>`, then `rm -rf /mnt/messages-backups-test`.
+4. The phone's node in the second account's Tailscale, the Firebase project (unless kept for the next run), and the
+   sideloaded app if not wanted.
 
 Report anything that was left behind.
