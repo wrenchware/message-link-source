@@ -24,6 +24,28 @@ public static class AttachmentBatchRules
         return null;
     }
 
+    // The type a picked or dropped file is staged and sent as. Windows names it from the registry's Content Type for the
+    // extension, and a PC whose .heic/.heif carry only PerceivedType=image (seen 2026-11-10) gave iPhone photos no type at
+    // all, so they went as files and a set of them was refused for multiple selection. A type Windows did name wins.
+    public static string FileType(string name, string? reported)
+    {
+        if (!string.IsNullOrWhiteSpace(reported) && !reported.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)) return reported;
+        return Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" or ".jpe" or ".jfif" => "image/jpeg",
+            ".png" => "image/png", ".gif" => "image/gif", ".webp" => "image/webp", ".bmp" => "image/bmp",
+            ".heic" => "image/heic", ".heif" => "image/heif", ".avif" => "image/avif",
+            ".mp4" or ".m4v" => "video/mp4", ".mov" => "video/quicktime", ".3gp" => "video/3gpp", ".webm" => "video/webm",
+            ".mp3" => "audio/mpeg", ".m4a" => "audio/mp4", ".aac" => "audio/aac", ".wav" => "audio/wav", ".ogg" or ".opus" => "audio/ogg",
+            _ => "application/octet-stream",
+        };
+    }
+
+    // Staged as a JPEG instead. Google Messages for Web sent a HEIC as an unreadable .bin (owner, 2026-11-10), and a JPEG
+    // is the one photo format every service and phone takes.
+    public static bool ConvertsToJpeg(string mimeType) =>
+        mimeType.Equals("image/heic", StringComparison.OrdinalIgnoreCase) || mimeType.Equals("image/heif", StringComparison.OrdinalIgnoreCase);
+
     public static AttachmentTextPlan Text(int attachmentCount, bool hasText, bool captionSupported) =>
         !hasText ? new(false, false) : attachmentCount == 1 && captionSupported ? new(true, false) : new(false, true);
 

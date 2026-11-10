@@ -133,7 +133,7 @@ internal sealed partial class ServerPage
         }
         var walkthrough = request.Query["from"] == "welcome";
         var back = walkthrough ? "/welcome?step=accounts" : "/#accounts";
-        var backWords = walkthrough ? "Back to setting up" : "Back to the server";
+        var backWords = walkthrough ? "Back to setting up" : "Back to Overview";
         var name = SignInName(service);
         var title = (accountKey == "new" || service == RemoteSignInServices.Voice) ? $"Add a {name} account" : "Connect " + name;
         var services = signInServices;
