@@ -101,9 +101,8 @@ func (a *adapter) encryptedUnreadable(evt *events.UndecryptableMessage) {
 }
 
 // The sender's device and this one no longer agree on their session: every resend failed, and each later message from
-// that device will fail the same way, because nothing here ever starts over. One sender's device was stuck like that
-// from 2026-11-06 while a device new to the account read fine. Signal's own clients drop the session at this point, and
-// so does this: with none held, the next message sent to that person fetches the device's keys and opens a new session
+// that device will fail the same way, because nothing here ever starts over. Signal's own clients drop the session at
+// this point, and so does this: with none held, the next message sent to that person fetches the device's keys and opens a new session
 // from this side, which its replies then come back on. Nothing is sent here. Only the one device's session goes; its
 // identity key and every other session stay. Groups are left alone: their messages fail for other reasons too.
 func (a *adapter) forgetSession(key int64, info waTypes.MessageInfo) {
