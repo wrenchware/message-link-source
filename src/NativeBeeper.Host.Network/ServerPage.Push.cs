@@ -193,7 +193,7 @@ internal sealed partial class ServerPage
         // "Personal" with its reason: a work or school account is what blocks key creation (the details below).
         body.Append("<ol class=\"steps\">")
             .Append("<li><strong>Make a Firebase project.</strong> ").Append(Link(FirebaseConsole, "Open Firebase"))
-            .Append("<span class=\"quiet block\">Sign in with a personal Google account, not a work or school one. Add a project named <strong>").Append(ProjectName).Append("</strong> and accept Firebase's terms if asked. Turn off Google Analytics; it isn't needed.</span></li>")
+            .Append("<span class=\"quiet block\">Sign in with a personal Google account, not a work or school one. Add a project named <strong>").Append(ProjectName).Append("</strong> and accept Firebase's terms if asked. Turn off Join the Google Developer Program, Gemini and Google Analytics; none are needed.</span></li>")
             .Append("<li><strong>Add the Android app.</strong><span class=\"quiet block\">In the project, add an Android app with this package name, then skip the rest of Firebase's steps.</span><ul class=\"packages\">")
             .Append("<li><span class=\"copy\">").Append(MessagesApp).Append("</span><button type=\"button\" class=\"quiet small\" data-copy=\"").Append(MessagesApp).Append("\">Copy</button></li>");
         body.Append("</ul></li>")

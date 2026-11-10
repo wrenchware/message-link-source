@@ -219,7 +219,7 @@ internal sealed partial class ServerPage
             : Para("Sign the server in to Tailscale. Use the same Tailscale account you'll use on your phone. If you don't have one, signing in makes a free one."));
         body.Append("<p><a class=\"button\" href=\"").Append(Html(view.Login)).Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
             .Append(view.SignedOut ? "Sign in again" : "Sign in to Tailscale").Append("</a></p>")
-            .Append("<p class=\"quiet\">Or scan the code to sign in on your phone. This page moves on by itself once you're signed in.</p></div></div>");
+            .Append("<p class=\"quiet\">Or scan the code to sign in on your phone. This page moves on by itself once you're signed in. If Tailscale says your session expired, open Sign in to Tailscale in a private window.</p></div></div>");
     }
 
     // "Fix it for me": the OAuth client asked for once, then a button that does every step the API can.
