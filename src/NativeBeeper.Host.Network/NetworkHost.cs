@@ -168,7 +168,6 @@ internal sealed class NetworkHost : IAsyncDisposable
             page.OnceSignIn = options.OnceSignIn;
             page.UseStorage(options.DataFolder, keys);
             page.DesktopTrust = options.DesktopTrust;
-            page.PasswordGrace = options.PasswordGrace;
             page.DesktopSignIn = options.DesktopSignIn;
             page.DesktopAccountSignIn = options.DesktopAccountSignIn;
         }

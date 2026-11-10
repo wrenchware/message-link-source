@@ -36,9 +36,7 @@ internal sealed partial class ServerPage
 
     // A step that asks for the password again (a code, a removal, the backup's password), from a signed-in browser on this PC: the PC's own user, whose session only
     // the code from Messages or the password could have made.
-    // Or any browser whose session typed the password a moment ago (PasswordGrace).
-    private bool TrustedHere(HttpContext context, string purpose) =>
-        purpose != "sign_in" && (DesktopTrust && OnThisPc(context) || Session(context.Request) is { } session && RecentlyTyped(session));
+    private bool TrustedHere(HttpContext context, string purpose) => DesktopTrust && purpose != "sign_in" && OnThisPc(context);
 
     /// <summary>
     /// Opens a service's sign-in on this PC's desktop (<see cref="NetworkHostOptions.DesktopSignIn"/>): the Windows server asks Messages, which owns the native sign-in
@@ -97,15 +95,12 @@ internal sealed partial class ServerPage
         Redirect(context.Response, opened ? "/?done=desktop_sign_in#accounts" : "/?done=desktop_sign_in_failed#accounts");
     }
 
-    private const string PasswordGivenItem = "messages-password-given";
+    private const string DesktopItem = "messages-desktop";
     private static readonly System.Text.RegularExpressions.Regex PasswordAgain = new(
         "<label for=\"password\">(?:Server password|Password)</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required(?: autofocus)?>",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    private static readonly System.Text.RegularExpressions.Regex AskedAgain = new(
-        ", so the server(?:&#39;|')s password is asked for again\\.", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-    // The forms a browser the step trusts (TrustedHere) is shown carry no password field, and the page says nothing it would need.
+    // The forms a signed-in browser on this PC is shown carry no password field: the step takes it as given (TrustedHere), and the page says nothing it would need.
     private static string WithoutPasswordAgain(HttpContext context, string body) =>
-        context.Items.ContainsKey(PasswordGivenItem) ? AskedAgain.Replace(PasswordAgain.Replace(body, "<input type=\"hidden\" name=\"password\" value=\"\">"), ".") : body;
+        context.Items.ContainsKey(DesktopItem) ? PasswordAgain.Replace(body, "<input type=\"hidden\" name=\"password\" value=\"\">") : body;
 }

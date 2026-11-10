@@ -120,12 +120,6 @@ internal sealed record NetworkHostOptions(string DataFolder, IStateProtector Pro
     public bool DesktopTrust { get; init; }
 
     /// <summary>
-    /// How long the page's password, once typed in a browser (to sign in or on a step), stands for the steps that ask for it again (a code, an approval, a removal),
-    /// so adding a device asks for it once (owner, 2026-11-10). Zero asks every time.
-    /// </summary>
-    public TimeSpan PasswordGrace { get; init; } = TimeSpan.FromMinutes(10);
-
-    /// <summary>
     /// The certificate's private key is kept sealed with <see cref="Protector"/> (the Windows server's DPAPI, SWITCHBOARD.md 10.7), as its other secrets are; false keeps
     /// it plain PEM in the keys folder (the Linux host's keys volume).
     /// </summary>

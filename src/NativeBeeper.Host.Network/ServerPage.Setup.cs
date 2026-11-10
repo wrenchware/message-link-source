@@ -254,9 +254,7 @@ internal sealed partial class ServerPage
         log("server page password set via=setup");
         context.Response.Cookies.Delete(SetupCookie, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Path = "/setup" });
         var expires = time.GetUtcNow() + SessionLifetime;
-        var signedIn = NewSession(expires);
-        Typed(signedIn);
-        context.Response.Cookies.Append(CookieName, signedIn, Cookie(expires));
+        context.Response.Cookies.Append(CookieName, NewSession(expires), Cookie(expires));
         log("server page sign_in outcome=signed_in");
         Redirect(context.Response, "/welcome");
     }
@@ -518,7 +516,7 @@ internal sealed partial class ServerPage
             body.Append(Notice("This server has no Tailscale, so the phone can only reach it on your home network."));
         else if (view is not null && view.Owner is { Length: > 0 } owner)
             body.Append("<p class=\"quiet\">The phone signs in to Tailscale as ").Append(Html(owner)).Append(", the account this server uses.</p>");
-        body.Append("</section><nav class=\"steps\"><a href=\"/\">Back to Overview</a><a class=\"button quiet\" href=\"/welcome?step=pc\">Next: add a PC</a></nav>");
+        body.Append("</section><nav class=\"steps\"><a href=\"/\">Back to the server</a><a class=\"button quiet\" href=\"/welcome?step=pc\">Next: add a PC</a></nav>");
         log("server page phone_code shown");
         await PageAsync(context, StatusCodes.Status200OK, title, body.ToString()).ConfigureAwait(false);
     }
