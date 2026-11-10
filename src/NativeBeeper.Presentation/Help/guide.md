@@ -20,7 +20,7 @@ It is a real Windows app, not a web page wrapped in a window. A browser window a
 - **The conversation list** is on the left. Each row shows the person or group, a preview of the newest message and when it arrived. A small badge on the photo says which service it is from when you have more than one account connected.
 - **The filters** sit above the list: a view (Messages, Unread, Archive, Spam, Drafts), the services, and your labels. See [Narrowing the list](#filters-and-views).
 - **The conversation** is on the right, with the message box at the bottom.
-- **The search box** is in the title bar (<kbd>Ctrl+E</kbd>), with **Back** and **Forward** buttons beside it.
+- **The search box** is in the title bar (<kbd>Ctrl+E</kbd>), with **Back** and **Forward** buttons beside it. In a very narrow window it becomes a magnifier button that opens the box.
 - **More options** (⋯) above the list has Search messages, Commands, Refresh conversations, the Help guide, the tour, the keyboard shortcuts and Settings. **New chat** is next to it.
 
 In a narrow window (under 800 pixels wide) Message Link shows one pane at a time, the list or the conversation, with a **Back to conversations** button. You can also collapse the list to a strip of photos: see [Compact list](#compact-list).
