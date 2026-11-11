@@ -359,6 +359,7 @@ Saved files are marked as coming from the internet, as a browser marks a downloa
 ### Cards {#cards}
 
 - **Contact cards** show the name, number and email, with **Message** and **Copy number**.
+- On Android, **+** → **Contact** sends one of your phone's contacts as a card: its name, numbers, email, company, address, website and photo, never its notes. Android 17 shares only the contact you pick; earlier versions ask once for access to your contacts. Google Voice sends photos only.
 - **Files** show their type and a **Download** button. A program or shortcut always shows as one, whatever type the sender gave it.
 - **Links** become a preview with a picture and description, unless you turn off *Link previews*.
   Previews of recent links are ready when you open a conversation, including links you send from your phone. None are fetched for a conversation in Spam.
