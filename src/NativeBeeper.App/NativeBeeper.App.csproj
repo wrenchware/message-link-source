@@ -32,7 +32,7 @@
     <Product>Message Link</Product>
     <AssemblyTitle>Message Link</AssemblyTitle>
     <Company>wrenchware</Company>
-    <Version>0.1.448</Version>
+    <Version>0.1.449</Version>
     <!-- Program.cs provides Main so a second launch can redirect to the running app. -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Only explicitly requested development bundles default to isolated data. Normal releases reuse saved accounts. -->
