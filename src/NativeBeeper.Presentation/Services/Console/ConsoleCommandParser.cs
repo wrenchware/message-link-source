@@ -13,8 +13,6 @@ public abstract record ConsoleCommand
     /// <see cref="ConversationTargets.Lead"/> decides where the name ends.
     /// </summary>
     public sealed record Whisper(string Name, string? Service, string? Text, bool Exact = true) : ConsoleCommand;
-    /// <summary>/open, /open name (which may end in @service) or /open N for search result N.</summary>
-    public sealed record Open(string? Name, int? HitIndex) : ConsoleCommand;
     public sealed record Read(string? Name) : ConsoleCommand;
     public sealed record Mute(string Name) : ConsoleCommand;
     public sealed record Unmute(string Name) : ConsoleCommand;
@@ -22,12 +20,9 @@ public abstract record ConsoleCommand
     public sealed record Filter(IReadOnlyList<string> Args) : ConsoleCommand;
     public sealed record Events(ConsoleVerbosity Level) : ConsoleCommand;
     public sealed record Search(string Words) : ConsoleCommand;
-    /// <summary>A pause for a while; a null duration pauses until the morning.</summary>
-    public sealed record Pause(TimeSpan? Duration) : ConsoleCommand;
-    public sealed record Resume : ConsoleCommand;
     public sealed record Help(string? Topic) : ConsoleCommand;
     public sealed record Clear : ConsoleCommand;
-    /// <summary>/history or /history N: redraw with the last N hours kept on this PC (null: the default day).</summary>
+    /// <summary>/history or /history N: redraw with the last N hours the server has sent (null: the default day).</summary>
     public sealed record History(int? Hours) : ConsoleCommand;
     public sealed record Chats(string Selector) : ConsoleCommand;
     public sealed record To(string? Name) : ConsoleCommand;
@@ -35,7 +30,7 @@ public abstract record ConsoleCommand
     public sealed record Status : ConsoleCommand;
     public sealed record Commands(string Query) : ConsoleCommand;
     public sealed record Fortune : ConsoleCommand;
-    /// <summary>A full-screen console app (top, chats, logs, matrix) or a window action (latest), with its argument.</summary>
+    /// <summary>A full-screen console app (top, chats, logs, matrix), with its argument.</summary>
     public sealed record View(string App, string Argument = "") : ConsoleCommand;
     /// <summary>A console tool that prints into the scroll: thread, diag, whoami, uptime, theme, alias and the rest. Rest is
     /// the line after the command word, trimmed; Name is the catalogue's canonical word.</summary>
@@ -50,6 +45,8 @@ public abstract record ConsoleCommand
     public sealed record Act(string Verb, string? Ref, string Rest = "", bool Confirmed = false) : ConsoleCommand;
     /// <summary>/reply mN text: a quoted reply to a message. Ref is the message reference, Text what to send.</summary>
     public sealed record QuotedReply(string Ref, string Text) : ConsoleCommand;
+    /// <summary>/exit or /quit. The terminal ends the console before the line reaches the session; there it does nothing.</summary>
+    public sealed record Exit : ConsoleCommand;
     /// <summary>A command word the console does not have, without its slash.</summary>
     public sealed record Unknown(string Word) : ConsoleCommand;
     /// <summary>A known command used wrongly. Command is its canonical word, for the log.</summary>
@@ -59,8 +56,6 @@ public abstract record ConsoleCommand
 /// <summary>Reads a console line into a command. Pure: no lookups, no state.</summary>
 public static class ConsoleCommandParser
 {
-    public static readonly TimeSpan DefaultPause = TimeSpan.FromHours(1);
-
     public static ConsoleCommand Parse(string? input)
     {
         var line = (input ?? "").Trim();
@@ -148,10 +143,6 @@ public static class ConsoleCommandParser
                 return rest.Length == 0 ? new ConsoleCommand.Invalid("Type what to look for in the scroll: /grep words", "grep") : new ConsoleCommand.Tool("grep", rest);
             case "w" or "msg" or "query":
                 return Whisper(rest);
-            case "open":
-                if (rest.Length == 0) return new ConsoleCommand.Open(null, null);
-                if (rest.Length <= 4 && rest.All(char.IsAsciiDigit)) return new ConsoleCommand.Open(null, int.Parse(rest, System.Globalization.CultureInfo.InvariantCulture));
-                return new ConsoleCommand.Open(rest, null);
             case "read":
                 return new ConsoleCommand.Read(rest.Length == 0 ? null : rest);
             case "mute":
@@ -173,15 +164,6 @@ public static class ConsoleCommandParser
                 };
             case "search":
                 return rest.Length == 0 ? new ConsoleCommand.Invalid("Type what to search for: /search words", "search") : new ConsoleCommand.Search(rest);
-            case "pause":
-                return rest.ToLowerInvariant() switch
-                {
-                    "" or "1h" => new ConsoleCommand.Pause(DefaultPause),
-                    "morning" => new ConsoleCommand.Pause(null),
-                    _ => new ConsoleCommand.Invalid("Use /pause, /pause 1h or /pause morning.", "pause")
-                };
-            case "resume":
-                return new ConsoleCommand.Resume();
             case "help" or "man" or "?":
                 return new ConsoleCommand.Help(rest.Length == 0 ? null : rest);
             case "history":
@@ -214,14 +196,14 @@ public static class ConsoleCommandParser
                 return new ConsoleCommand.View("logs", rest);
             case "matrix":
                 return new ConsoleCommand.View("matrix");
-            case "latest":
-                return rest.Length == 0 ? new ConsoleCommand.View("latest") : new ConsoleCommand.Invalid("Use /latest without arguments.", "latest");
+            case "exit" or "quit":
+                return new ConsoleCommand.Exit();
             case "banner":
                 return rest.Length == 0 ? new ConsoleCommand.Tool("banner", "") : new ConsoleCommand.Invalid("Use /banner without arguments.", "banner");
             case "clear" or "cls":
                 return new ConsoleCommand.Clear();
-            case "thread" or "diag" or "doctor" or "whoami" or "uptime" or "neofetch" or "fetch" or "cowsay" or "date" or "echo" or "theme" or "guide" or "manual" or "tour"
-                or "alias" or "unalias" or "watch" or "next" or "mirror":
+            case "thread" or "diag" or "doctor" or "whoami" or "uptime" or "neofetch" or "fetch" or "cowsay" or "date" or "echo" or "theme" or "guide" or "manual"
+                or "alias" or "unalias" or "watch" or "mirror":
                 return new ConsoleCommand.Tool(ConsoleCatalog.Find(word)?.Name ?? word.ToLowerInvariant(), rest);
             default:
                 return new ConsoleCommand.Unknown(word);

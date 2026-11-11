@@ -8,8 +8,8 @@ namespace NativeBeeper.Presentation.ViewModels;
 // Acting on a conversation or a message from the console: /msgs and the message references it numbers, then the
 // conversation menu's actions (archive, pin, unread, delete, labels, snooze) and the message menu's (react, reply, edit,
 // unsend, delete, copy, save, remind). Every one goes through the host, which calls the same action the menu does, with
-// the same checks; nothing is retried, and an uncertain outcome is said to be unknown. /msgs reads only what this PC
-// already holds and marks nothing read. The log gets the command, the provider and the outcome; never words or names.
+// the same checks; nothing is retried, and an uncertain outcome is said to be unknown. /msgs reads the server's copy of a
+// conversation it names (over every conversation, only what is already held) and marks nothing read. The log gets the command, the provider and the outcome; never words or names.
 public sealed partial class ConsoleSessionViewModel
 {
     public const int MsgsDefault = 10, MsgsMax = 50, MsgsAllDefault = 20, MsgsAllMax = 200;
@@ -63,13 +63,13 @@ public sealed partial class ConsoleSessionViewModel
             target ??= Implied().Target ?? OpenTarget();
             if (target is null) { Fail("Which conversation? /msgs name, /msgs N, /msgs . or /msgs * for every one."); return; }
         }
-        var kept = await KeptAsync(target);
+        var kept = await KeptAsync(target, named: true);
         var shown = kept.TakeLast(count).ToArray();
         lock (gate) messageRefs = [.. shown];
         log($"console msgs conversations=1 held={kept.Count.ToString(CultureInfo.InvariantCulture)} shown={shown.Length.ToString(CultureInfo.InvariantCulture)}");
-        if (shown.Length == 0) { Out($"Nothing from {target.Title} is kept on this PC yet. Opening it in Message Link keeps its history; /search looks deeper.", ConsoleTone.Dim); return; }
+        if (shown.Length == 0) { Out($"Nothing from {target.Title} on the server yet. /search looks deeper.", ConsoleTone.Dim); return; }
         var services = string.Join(", ", target.Networks.Where(n => n.Length > 0).Distinct());
-        Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {services} · the last {shown.Length.ToString(CultureInfo.CurrentCulture)} kept here, newest last", ConsoleTone.Dim));
+        Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {services} · the last {shown.Length.ToString(CultureInfo.CurrentCulture)}, newest last", ConsoleTone.Dim));
         for (var i = 0; i < shown.Length; i++) Emit(MessageLine(i + 1, shown[i], withConversation: false));
         Out("/react m1 👍, /reply m1 text, /copy m1 … act on one. Nothing was marked read.", ConsoleTone.Dim);
     }
@@ -91,7 +91,7 @@ public sealed partial class ConsoleSessionViewModel
         lock (gate) messageRefs = [.. shown];
         log($"console msgs conversations={chats.Length.ToString(CultureInfo.InvariantCulture)} held={shown.Length.ToString(CultureInfo.InvariantCulture)} empty={empty.ToString(CultureInfo.InvariantCulture)}");
         for (var i = 0; i < shown.Length; i++) Emit(MessageLine(i + 1, shown[i], withConversation: true));
-        var note = empty == 0 ? "" : $"{empty.ToString(CultureInfo.CurrentCulture)} conversation{(empty == 1 ? " has" : "s have")} nothing kept on this PC. ";
+        var note = empty == 0 ? "" : $"{empty.ToString(CultureInfo.CurrentCulture)} conversation{(empty == 1 ? " has" : "s have")} nothing held here yet: /msgs name reads one from the server. ";
         Out(note + "/search words looks deeper: Messenger's full store and Google's archive.", ConsoleTone.Dim);
     }
 
@@ -115,15 +115,16 @@ public sealed partial class ConsoleSessionViewModel
         return new ConsoleOutLine(spans);
     }
 
-    // A conversation's messages as this PC holds them, every member's, oldest first, without repeats: the saved copy
-    // (memory first, then disk) and whatever newer the console itself has seen. Never a provider read.
-    private async Task<IReadOnlyList<MessageRef>> KeptAsync(ChatTarget target)
+    // A conversation's messages, every member's, oldest first, without repeats: what the server keeps and whatever newer the console itself has seen.
+    // named: a command named this conversation, so the server's whole history is read for it (IConsoleHost.ConversationHistoryAsync); otherwise only what is
+    // already held, so a command over every conversation never makes the server read a service.
+    private async Task<IReadOnlyList<MessageRef>> KeptAsync(ChatTarget target, bool named = false)
     {
         var all = new Dictionary<(string, string), MessageRef>();
         foreach (var member in target.Members)
         {
             HistorySnapshot? snapshot;
-            try { snapshot = await host.SavedHistoryAsync(member.Id); }
+            try { snapshot = named ? await host.ConversationHistoryAsync(member.Id) : await host.SavedHistoryAsync(member.Id); }
             catch (Exception) { snapshot = null; }
             foreach (var message in snapshot?.Messages ?? []) all.TryAdd((message.ChatId, message.Id), new(member, message, target));
             if (NewestByChat(member.Id) is { } seen) all.TryAdd((seen.ChatId, seen.Id), new(member, seen, target));
@@ -153,10 +154,10 @@ public sealed partial class ConsoleSessionViewModel
             var to = Target;
             var target = to is null ? null : to.Target ?? TargetOf(to.SourceChatId);
             if (target is null) { Fail("^ is the newest message from the person the prompt shows, and no one is selected. /to name, or /msgs name for numbers."); return null; }
-            var theirs = (await KeptAsync(target)).Where(m => !m.Message.IsOutgoing && !m.Message.IsDeleted).Reverse().ToArray();
+            var theirs = (await KeptAsync(target, named: true)).Where(m => !m.Message.IsOutgoing && !m.Message.IsDeleted).Reverse().ToArray();
             if (n < 1 || n > theirs.Length)
             {
-                Fail(theirs.Length == 0 ? $"Nothing from {target.Title} is kept on this PC yet." : $"There's no {word}: {theirs.Length.ToString(CultureInfo.CurrentCulture)} message{(theirs.Length == 1 ? "" : "s")} from {target.Title} kept here.");
+                Fail(theirs.Length == 0 ? $"Nothing from {target.Title} on the server yet." : $"There's no {word}: {theirs.Length.ToString(CultureInfo.CurrentCulture)} message{(theirs.Length == 1 ? "" : "s")} from {target.Title} on the server.");
                 return null;
             }
             return theirs[n - 1];
@@ -473,7 +474,7 @@ public sealed partial class ConsoleSessionViewModel
             case ConsoleActionOutcome.Done: Out(done, ConsoleTone.Ok); return;
             case ConsoleActionOutcome.Unavailable: Fail(result.Message ?? $"/{verb} isn't available here."); return;
             case ConsoleActionOutcome.Refused: Fail(result.Message is { Length: > 0 } why ? why : refused); return;
-            default: Fail((result.Message is { Length: > 0 } said ? said + " " : "") + "The outcome is unknown. Check the conversation (/open) before trying again; nothing was retried."); return;
+            default: Fail((result.Message is { Length: > 0 } said ? said + " " : "") + "The outcome is unknown. Check the conversation (/msgs) before trying again; nothing was retried."); return;
         }
     }
 

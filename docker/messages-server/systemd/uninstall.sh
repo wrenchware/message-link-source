@@ -35,6 +35,8 @@ rm -f "$units/messages-server.service" "$units/messages-server-update.service" "
 rm -rf "$units/messages-server.service.d"
 systemctl daemon-reload
 rm -f /etc/opt/chrome/policies/managed/messages-server.json
+# mlink's link, only when it is the one install.sh made.
+if [ "$(readlink /usr/local/bin/mlink 2>/dev/null)" = /opt/messages-server/mlink ]; then rm -f /usr/local/bin/mlink; fi
 rm -rf /opt/messages-server /opt/messages-server.new /opt/messages-server.old
 echo "Removed the service, the nightly update and /opt/messages-server."
 

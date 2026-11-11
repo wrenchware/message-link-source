@@ -10,8 +10,9 @@ namespace NativeBeeper.Presentation.ViewModels;
 /// <summary>
 /// The chat console: one scroll of everything the activity stream records across every service, and a command line.
 /// It is fed only by <see cref="ActivityStream"/>, which costs no provider request; seeing a line never marks anything
-/// read (only /read and /open do), and it sends only when the user presses Enter on a line for the target the prompt
-/// shows. Lines and input history live in memory only; the log gets fixed words and counts.
+/// read (only /read does), and it sends only when the user presses Enter on a line for the target the prompt shows.
+/// Lines live in memory only; input history is the host's to keep (<see cref="IConsoleHost.KeptInputs"/>); the log gets
+/// fixed words and counts.
 /// </summary>
 /// <remarks>
 /// Made and used on the interface thread. Events from elsewhere (the stream's worker in the checks, a timer) are brought
@@ -30,7 +31,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
     public const string ResetText = "Your account changed, so the console started again.";
     public const string NoPrompt = "messages>";
 
-    private static readonly string[] CompletionPrefixes = ["/w ", "/msg ", "/query ", "/open ", "/read ", "/mute ", "/unmute ", "/filter person ", "/to ", "/route ", "/watch ", "/thread info ", "/thread members ", "/thread media ", "/thread stats ", "/thread raw ", "/thread route ", "/thread ",
+    private static readonly string[] CompletionPrefixes = ["/w ", "/msg ", "/query ", "/read ", "/mute ", "/unmute ", "/filter person ", "/to ", "/route ", "/watch ", "/thread info ", "/thread members ", "/thread media ", "/thread stats ", "/thread raw ", "/thread route ", "/thread ",
         "/archive ", "/unarchive ", "/pin ", "/unpin ", "/unread ", "/delete ", "/msgs ", "/messages ", "/snooze ", "/label ", "/unlabel "];
 
     private readonly ActivityStream stream;
@@ -89,7 +90,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
     private Completion? completion;
     private sealed record Completion(string Output, int Caret, string Head, string Tail, IReadOnlyList<string> Choices, int Index);
 
-    // The last numbered list (/ls, /search): what /open N, /to N and /thread N mean.
+    // The last numbered list (/ls, /search): what /to N, /msgs N and /thread N mean.
     private IReadOnlyList<ConsoleRef> refs = [];
     private sealed record ConsoleRef(ChatTarget? Target, SearchHit? Hit);
 
@@ -138,7 +139,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
 
     /// <summary>
     /// Opens as a login shell does: the last login, /neofetch run as if typed, the banner, then what the stream already
-    /// holds, then follows it. Once. Nothing earlier is read from this PC; /history does that when asked.
+    /// holds, then follows it. Once. Nothing earlier is read; /history does that when asked.
     /// </summary>
     public void Attach()
     {
@@ -794,7 +795,6 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
             case ConsoleCommand.Fortune: Command("fortune"); Say(ConsoleLineKind.Info, Fortunes[Random.Shared.Next(Fortunes.Length)]); return;
             case ConsoleCommand.View view:
                 Command(view.App);
-                if (view.App == "latest") { ViewRequested?.Invoke("latest"); return; }
                 LaunchApp(view.App, view.Argument);
                 return;
             case ConsoleCommand.Tool tool:
@@ -827,10 +827,6 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
                 return;
             case ConsoleCommand.Whisper whisper:
                 await WhisperAsync(whisper);
-                return;
-            case ConsoleCommand.Open open:
-                Command("open");
-                await OpenAsync(open);
                 return;
             case ConsoleCommand.Read read:
                 Command("read");
@@ -867,21 +863,13 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
                 Command("search");
                 await SearchAsync(words);
                 return;
-            case ConsoleCommand.Pause { Duration: var duration }:
-                Command("pause");
-                if (!host.NotificationsOn) { Say(ConsoleLineKind.Info, "Notifications are off in Settings."); return; }
-                if (duration is { } span) host.PauseFor(span); else host.PauseUntilMorning();
-                Say(ConsoleLineKind.Info, host.PauseText ?? "Notifications are paused.");
-                return;
-            case ConsoleCommand.Resume:
-                Command("resume");
-                if (!host.NotificationsOn) { Say(ConsoleLineKind.Info, "Notifications are off in Settings."); return; }
-                host.Resume();
-                Say(ConsoleLineKind.Info, "Notifications are on again.");
-                return;
             case ConsoleCommand.Help { Topic: var topic }:
                 Command("help");
                 PrintHelp(topic);
+                return;
+            case ConsoleCommand.Exit:
+                // The terminal leaves before the line gets here; if it ever does, there is nothing to do.
+                Command("exit");
                 return;
             case ConsoleCommand.Clear:
                 Command("clear");
@@ -901,8 +889,8 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
                     var printed = PrintEarlier(items, held);
                     Notice(timedOut ? ConsoleLineKind.Error : ConsoleLineKind.Info,
                         timedOut ? $"Reading the last {Hours(wantedSpan)} took too long. Try a shorter span, such as /history 24."
-                        : printed > 0 ? $"Above: the last {Hours(wantedSpan)} kept on this PC."
-                        : $"No earlier messages from the last {Hours(wantedSpan)} are kept on this PC.");
+                        : printed > 0 ? $"Above: the last {Hours(wantedSpan)} the server has sent this terminal."
+                        : $"No earlier messages from the last {Hours(wantedSpan)} here.");
                     TakeHeld(held);
                 }
                 return;
@@ -917,9 +905,9 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
         }
     }
 
-    private static readonly HashSet<string> CommandNames = ["r", "w", "open", "read", "mute", "unmute", "filter", "events", "search", "history", "pause", "resume", "help", "clear", "unknown", "chats", "to", "route", "status", "commands", "fortune", "apps", "top", "latest", "banner", "logs", "matrix", "thread", "diag", "mirror", "whoami", "uptime", "neofetch", "cowsay", "date", "echo", "theme", "alias", "unalias", "watch", "next", "shell", "history_event", "app",
+    private static readonly HashSet<string> CommandNames = ["r", "w", "read", "mute", "unmute", "filter", "events", "search", "history", "help", "clear", "exit", "unknown", "chats", "to", "route", "status", "commands", "fortune", "apps", "top", "banner", "logs", "matrix", "thread", "diag", "mirror", "whoami", "uptime", "neofetch", "cowsay", "date", "echo", "theme", "alias", "unalias", "watch", "shell", "history_event", "app",
         "reply", "react", "unreact", "like", "edit", "unsend", "archive", "unarchive", "pin", "unpin", "unread", "delete", "label", "unlabel",
-        "snooze", "copy", "save", "remind", "msgs", "grep", "guide", "tour", "manual"];
+        "snooze", "copy", "save", "remind", "msgs", "grep", "guide", "manual"];
     private void Command(string name) => log("console command name=" + (CommandNames.Contains(name) ? name : "unknown"));
 
     // Inside a command line its output is the command's (wide, or into a pipe); otherwise a notice with its time.
@@ -1043,7 +1031,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
     }
 
     private static string NobodyText(string typed) =>
-        $"Nobody called “{typed}” here. Press Tab after /w to see names, or start a new chat with Ctrl+N.";
+        $"Nobody called “{typed}” here. Press Tab after /w to see names.";
 
     private static string AmbiguousText(string typed, IReadOnlyList<ChatTarget> choices) =>
         $"“{typed}” could be {string.Join(", ", choices.Select(Choice))}. Type more of the name, or add @service.";
@@ -1064,11 +1052,12 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
     private ChatTarget? Named(string text)
     {
         var typed = text.Trim();
-        // "." is the conversation open in Messages; a number is a row of the last /ls or /search list.
+        // "." is the conversation the host has open, and where it has none (a terminal) the one the prompt shows; a number is
+        // a row of the last /ls or /search list.
         if (typed == ".")
         {
-            if (OpenTarget() is { } open) return open;
-            Say(ConsoleLineKind.Error, "No conversation is open in Message Link.");
+            if ((OpenTarget() ?? PromptTarget()) is { } open) return open;
+            Say(ConsoleLineKind.Error, "No one is selected. /to name chooses who . means.");
             return null;
         }
         if (typed.Length is > 0 and <= 4 && typed.All(char.IsAsciiDigit))
@@ -1105,34 +1094,11 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
         }
     }
 
-    private async Task OpenAsync(ConsoleCommand.Open open)
+    // The conversation the prompt shows, as a name typed after a command would find it; null while no one is selected.
+    private ChatTarget? PromptTarget()
     {
-        if (open.HitIndex is { } number)
-        {
-            IReadOnlyList<ConsoleRef> list;
-            lock (gate) list = refs;
-            if (number < 1 || number > list.Count) { Say(ConsoleLineKind.Error, $"There's no result {number.ToString(CultureInfo.CurrentCulture)}. Use /search words or /ls first."); return; }
-            var item = list[number - 1];
-            var opened = item.Hit is { } hit ? await Safely(() => host.OpenSearchHitAsync(hit))
-                : item.Target is { } chat && await Safely(() => host.OpenAsync(chat.DisplayId));
-            if (!opened) Say(ConsoleLineKind.Error, item.Hit is not null ? "Couldn't open that result." : "Couldn't open that conversation.");
-            return;
-        }
-        string? display;
-        if (open.Name is { } name) display = Named(name)?.DisplayId;
-        else
-        {
-            display = Implied().DisplayId;
-            if (display is null) { Say(ConsoleLineKind.Error, "Nothing to open yet. Use /open name."); return; }
-        }
-        if (display is null) return;
-        if (!await Safely(() => host.OpenAsync(display))) Say(ConsoleLineKind.Error, "Couldn't open that conversation.");
-    }
-
-    private static async Task<bool> Safely(Func<Task<bool>> action)
-    {
-        try { return await action(); }
-        catch (Exception) { return false; }
+        lock (gate)
+            return (replyLock ?? query) is { } target ? target.Target ?? targets.Entries().FirstOrDefault(e => e.DisplayId == target.DisplayChatId) : null;
     }
 
     private async Task ReadAsync(string? name)
@@ -1278,7 +1244,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
         if (hits.Length == 0) { Say(ConsoleLineKind.Info, $"No messages found for “{query}”."); return; }
         for (var index = 0; index < hits.Length; index++) Emit(Hit(index + 1, hits[index], query));
         if (page.HasMore || page.Items.Count > hits.Length)
-            Out($"First {hits.Length.ToString(CultureInfo.CurrentCulture)} shown. /open N opens one, /thread N inspects its conversation.", ConsoleTone.Dim);
+            Out($"First {hits.Length.ToString(CultureInfo.CurrentCulture)} shown. /thread N inspects its conversation; /reply #N answers one.", ConsoleTone.Dim);
     }
 
     private ChatTarget? TargetOf(string chatId)

@@ -99,6 +99,30 @@ RUN dotnet publish src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.cspro
       licenses/SMBLibrary/source-1.5.8.1.zip; do \
       if [ ! -s "/out/$file" ]; then echo "Message Link Server build: the publish has no $file." >&2; exit 1; fi; \
     done
+# mlink (SWITCHBOARD.md stage 13), Message Link in a terminal, for "docker exec -it messages-server mlink". Restored and published as the server is, from
+# its plain net10.0 build (its project also targets Windows' framework, for the PC installer, which is why it may restore Windows targeting here), and
+# laid into /out beside the server: a file both publishes make must be byte-identical or the build stops naming it, and only mlink's own files are
+# copied. One exception, as the PC installer has it: the server's ASP.NET Core runtime pack carries Microsoft's own build of
+# Microsoft.Extensions.DependencyInjection.Abstractions.dll, which mlink takes from NuGet. Both deps.json files must give it the same assembly and file
+# version, and the server's copy is kept.
+RUN set -eu; \
+    dotnet restore src/NativeBeeper.Terminal/NativeBeeper.Terminal.csproj --locked-mode -p:SelfContained=true; \
+    dotnet publish src/NativeBeeper.Terminal/NativeBeeper.Terminal.csproj -c Release -f net10.0 --no-restore -r linux-x64 -p:SelfContained=true -o /out-mlink; \
+    if [ ! -x /out-mlink/mlink ]; then echo "mlink build: the publish has no mlink executable (expected AssemblyName mlink, linux-x64)." >&2; exit 1; fi; \
+    versions() { grep -A2 'Microsoft.Extensions.DependencyInjection.Abstractions.dll": {' "$1" | grep -o '"[a-zA-Z]*Version": "[^"]*"' | tr '\n' ' '; }; \
+    server_di=$(versions /out/messages-server.deps.json); mlink_di=$(versions /out-mlink/mlink.deps.json); \
+    cd /out-mlink; \
+    find . -type f | sort | while read -r file; do \
+      file=${file#./}; \
+      if [ ! -e "/out/$file" ]; then \
+        case "$file" in mlink|mlink.*) cp -p "$file" "/out/$file" ;; *) echo "mlink build: $file is in mlink's publish but not the server's." >&2; exit 1 ;; esac; \
+      elif ! cmp -s "$file" "/out/$file"; then \
+        if [ "$file" = Microsoft.Extensions.DependencyInjection.Abstractions.dll ] && [ -n "$server_di" ] && [ "$server_di" = "$mlink_di" ]; then continue; fi; \
+        echo "mlink build: $file differs from the server's copy." >&2; exit 1; \
+      fi; \
+    done; \
+    cd /; rm -rf /out-mlink; \
+    [ -x /out/mlink ] || { echo "mlink build: mlink was not copied beside the server." >&2; exit 1; }
 
 # ---- Runtime --------------------------------------------------------------------------------------------------------------------------------------
 FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS runtime
@@ -158,6 +182,8 @@ RUN set -e; \
 
 WORKDIR /app
 COPY --from=server /out/ /app/
+# mlink on every shell's PATH in the container, for the container's own user: docker exec -it messages-server mlink.
+RUN ln -s /app/mlink /usr/local/bin/mlink
 # The registry installer copies these from a stopped container, without a source archive or starting the server.
 COPY assets/app-icon.png /app/install/assets/app-icon.png
 COPY docker/messages-server/chrome-seccomp.json /app/install/docker/messages-server/chrome-seccomp.json

@@ -71,15 +71,10 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
             case "alias": await AliasAsync(rest); return;
             case "unalias": await UnaliasAsync(rest); return;
             case "watch": Watch(rest); return;
-            case "next": await NextAsync(); return;
             case "grep": GrepScroll(rest); return;
             case "guide":
                 try { host.OpenGuide(rest.Length == 0 ? null : rest); } catch (Exception) { Fail("The guide couldn't be opened."); return; }
-                Out(rest.Length == 0 ? "Opened the Message Link guide. F1 opens it from here too." : $"Opened the Message Link guide at “{rest}”.", ConsoleTone.Dim);
-                return;
-            case "tour":
-                try { host.StartTour(); } catch (Exception) { Fail("The tour couldn't start."); return; }
-                Out("The tour is running in the main window.", ConsoleTone.Dim);
+                Out(rest.Length == 0 ? "Opened the Message Link guide. F1 shows its console chapter." : $"Opened the Message Link guide at “{rest}”.", ConsoleTone.Dim);
                 return;
             default: Fail($"/{name} isn't available here."); return;
         }
@@ -103,7 +98,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
                 new ConsoleSpan(check.Detail, ConsoleTone.Dim)], check.Level == ConsoleCheckLevel.Fail));
         }
         var problems = checks.Count(c => c.Level is ConsoleCheckLevel.Warn or ConsoleCheckLevel.Fail);
-        Out(problems == 0 ? "No problems found." : $"{problems.ToString(CultureInfo.CurrentCulture)} to look at. Settings → Troubleshooting has Connection health and the logs (/logs).",
+        Out(problems == 0 ? "No problems found." : $"{problems.ToString(CultureInfo.CurrentCulture)} to look at. /logs shows the server's logs.",
             problems == 0 ? ConsoleTone.Ok : ConsoleTone.Warn);
     }
 
@@ -115,7 +110,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         ConsoleMirror? mirror;
         try { mirror = await host.MirrorAsync(start.Length > 0); }
         catch (Exception) { Fail("The server couldn't say just now."); return; }
-        if (mirror is null) { Out("No server keeps copies for this PC: /mirror is for a PC that uses a Message Link Server.", ConsoleTone.Dim); return; }
+        if (mirror is null) { Out("The server did not answer. It may be an older Message Link Server.", ConsoleTone.Dim); return; }
         if (start.Length > 0) Out("Checking now: each service takes about a second per conversation. /mirror again shows what it found.", ConsoleTone.Dim);
         if (mirror.Services.Count == 0) { Out(mirror.Running ? "The first check is under way." : "Not checked yet: the server checks every half hour.", ConsoleTone.Dim); return; }
         foreach (var service in mirror.Services)
@@ -171,9 +166,10 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         };
         if (env is not null)
         {
-            info.Add(("OS", new ConsoleSpan(env.Os + " " + env.Architecture)));
-            info.Add(("Runtime", new ConsoleSpan(env.Runtime)));
-            info.Add(("UI", new ConsoleSpan("WinUI 3 · " + env.AppSdk)));
+            // A host that cannot say (a terminal's server elsewhere) leaves the line out rather than print it empty.
+            if (env.Os.Length > 0) info.Add(("OS", new ConsoleSpan((env.Os + " " + env.Architecture).TrimEnd())));
+            if (env.Runtime.Length > 0) info.Add(("Runtime", new ConsoleSpan(env.Runtime)));
+            info.Add(("UI", new ConsoleSpan(host.InterfaceName + (env.AppSdk.Length > 0 ? " · " + env.AppSdk : ""))));
         }
         if (perf is not null)
         {
@@ -184,7 +180,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         info.Add(("Chats", new ConsoleSpan($"{chats.Count} · {chats.Count(c => c.Members.Any(m => m.UnreadCount > 0 || m.IsMarkedUnread))} unread")));
         info.Add(("Shell", new ConsoleSpan("messages console · " + Aliases.Count + " aliases")));
         info.Add(("Theme", new ConsoleSpan(Theme)));
-        info.Add(("Font", new ConsoleSpan("Cascadia Mono")));
+        if (host.FontName is { } font) info.Add(("Font", new ConsoleSpan(font)));
         // The picture only where it fits beside the facts; a narrow window gets the facts alone.
         var art = Columns < 70 ? [] : new[]
         {
@@ -266,17 +262,8 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         var found = ConsoleShell.Apply(lines, [new ConsoleFilter("grep", ConsoleCommandParser.Words(rest))], _ => { }, _ => { }, out var problem);
         if (problem is not null) { Fail(problem); return; }
         log("console grep lines=" + lines.Count.ToString(CultureInfo.InvariantCulture) + " found=" + (found?.Count ?? 0).ToString(CultureInfo.InvariantCulture));
-        if (found is not { Count: > 0 }) { Out("No lines in the scroll match. /search looks in messages kept on this PC; /msgs * | grep in recent ones.", ConsoleTone.Dim); return; }
+        if (found is not { Count: > 0 }) { Out("No lines in the scroll match. /search looks through your messages; /msgs * | grep through recent ones.", ConsoleTone.Dim); return; }
         foreach (var line in found) Emit(line);
-    }
-
-    private async Task NextAsync()
-    {
-        var next = targets.Entries().Where(c => !c.Members.All(m => m.IsArchived) && c.Members.Any(m => m.UnreadCount > 0 || m.IsMarkedUnread))
-            .OrderByDescending(c => c.LastActivity ?? DateTimeOffset.MinValue).FirstOrDefault();
-        if (next is null) { Out("Nothing unread. Inbox zero.", ConsoleTone.Ok); return; }
-        if (await Safely(() => host.OpenAsync(next.DisplayId))) Out(new ConsoleSpan("Opened ", ConsoleTone.Dim), new ConsoleSpan(next.Title, ConsoleTone.Strong), new ConsoleSpan(" in Message Link.", ConsoleTone.Dim));
-        else Fail("Couldn't open that conversation.");
     }
 
     // ---- Named conversations ----
@@ -323,7 +310,10 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
     // "| less": the pipe's output in the pager.
     private void OpenPager(IReadOnlyList<ConsoleOutLine> lines) => Show(new PagerApp(this, lines));
 
-    /// <summary>F1 in the console: the guide at its console chapter.</summary>
+    /// <summary>Lines in the pager, as "| less" shows them: for a host with no window of its own to show them in (the guide in a terminal).</summary>
+    public void ShowPager(IReadOnlyList<ConsoleOutLine> lines) => OpenPager(lines);
+
+    /// <summary>F1 in the console: the guide's console chapter.</summary>
     public void OpenGuide(string? topic)
     {
         try { host.OpenGuide(topic); } catch (Exception) { }
@@ -362,18 +352,6 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
     {
         CloseApp();
         await RunCommandLineAsync(line, Prompt);
-    }
-
-    async Task<bool> IConsoleAppHost.OpenAsync(ChatTarget target)
-    {
-        var opened = false;
-        await RunEchoed(Prompt, "/open " + ConsoleLineFormatter.Typed(target.Title), async () =>
-        {
-            Command("open");
-            opened = await Safely(() => host.OpenAsync(target.DisplayId));
-            if (!opened) Fail("Couldn't open that conversation.");
-        });
-        return opened;
     }
 
     void IConsoleAppHost.SetTarget(ChatTarget target)

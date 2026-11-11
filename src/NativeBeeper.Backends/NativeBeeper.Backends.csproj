@@ -8,6 +8,8 @@
     <InternalsVisibleTo Include="MessageLinkServer" />
     <InternalsVisibleTo Include="messages-server" />
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />
+    <!-- mlink, the terminal client (SWITCHBOARD.md stage 13): the app's data root and pipe suffix, the key-file protector and the replica's fallback files. -->
+    <InternalsVisibleTo Include="mlink" />
     <InternalsVisibleTo Include="NativeBeeper.Host" />
     <!-- The server page's Backups card words a backup's size and failures as the PC backup does (stage 10). -->
     <InternalsVisibleTo Include="NativeBeeper.Host.Network" />

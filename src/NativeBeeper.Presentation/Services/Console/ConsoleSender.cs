@@ -297,7 +297,7 @@ public sealed class ConsoleSender : IDisposable
                 if (why.Length > 0 && !why.EndsWith('.')) why += ".";
                 notice = "Not sent: " + (why.Length > 0 ? why + " " : "") + "Press Up to get the text back.";
             }
-            else if (next == ConsoleSendState.Unknown) notice = "Outcome unknown. Check the conversation (/open) before sending again.";
+            else if (next == ConsoleSendState.Unknown) notice = "Outcome unknown. Check the conversation (/msgs) before sending again.";
             else if (next == ConsoleSendState.Unconfirmed) { notice = "Not confirmed yet. It may still arrive."; noticeKind = ConsoleLineKind.Info; }
         }
         else
@@ -309,7 +309,7 @@ public sealed class ConsoleSender : IDisposable
             // that vanished before any answer (the account changed under it) has no known outcome.
             next = accepted ? ConsoleSendState.Sent : item.State == ConsoleSendState.NotSent ? ConsoleSendState.NotSent : ConsoleSendState.Unknown;
             if (next == ConsoleSendState.Unknown && item.State != ConsoleSendState.Unknown)
-                notice = "Outcome unknown. Check the conversation (/open) before sending again.";
+                notice = "Outcome unknown. Check the conversation (/msgs) before sending again.";
         }
         bool changed;
         lock (gate)

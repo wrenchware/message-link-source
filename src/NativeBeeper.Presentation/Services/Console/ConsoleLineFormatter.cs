@@ -122,7 +122,7 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
     private static string Name(string? first, string? second) =>
         !string.IsNullOrWhiteSpace(first) ? first.Trim() : !string.IsNullOrWhiteSpace(second) ? second.Trim() : "Someone";
 
-    // How the name is typed back: quoted when it has a space, so /open reads it whole.
+    // How the name is typed back: quoted when it has a space, so /msgs reads it whole.
     public static string Typed(string name) => name.Contains(' ') ? "\"" + name + "\"" : name;
 
     /// <summary>The line for an entry, or null for one the console has no line for.</summary>
@@ -148,7 +148,7 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
                 kind = ConsoleLineKind.Incoming;
                 var from = entry.IsGroup ? Conversation(entry) + Chevron + Name(entry.SenderName, null) : Conversation(entry);
                 return entry.Message is { } message ? from + ": " + Words(message)
-                    : from + ": new message · /open " + Typed(Name(entry.ConversationTitle, entry.SenderName)) + " to read";
+                    : from + ": new message · /msgs " + Typed(Name(entry.ConversationTitle, entry.SenderName)) + " to read";
             case ActivityKind.Edited:
                 return "· " + Actor(entry) + " edited" + (entry.Message is { } edited ? ": " + Words(edited) : "");
             case ActivityKind.Unsent:
@@ -179,8 +179,8 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
             case ActivityKind.SignInNeeded:
                 kind = ConsoleLineKind.Connection;
                 if (entry.Network == "Google Messages")
-                    return entry.Detail == ActivityEntry.SignInOnly ? "Google Messages needs its sign-in renewed (Settings)" : "Google Messages needs pairing again (Settings)";
-                return Service(entry.Network) + " needs you to sign in again (Settings)";
+                    return entry.Detail == ActivityEntry.SignInOnly ? "Google Messages needs its sign-in renewed in Message Link" : "Google Messages needs pairing again in Message Link";
+                return Service(entry.Network) + " needs you to sign in again in Message Link";
             default:
                 return null;
         }

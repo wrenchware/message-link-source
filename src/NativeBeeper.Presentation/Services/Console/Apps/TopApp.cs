@@ -145,8 +145,7 @@ public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : Co
         var queue = Shell.Host.Queue;
         rows.Add(new ConsoleRow([new("queue ", ConsoleTone.Dim),
             new($"{queue.Count(q => q.State is "sending" or "pending" or "unknown" or "held")} in flight", queue.Any(q => q.State is "unknown") ? ConsoleTone.Warn : ConsoleTone.Default),
-            new(" · ", ConsoleTone.Dim), new($"{queue.Count(q => q.State == "scheduled")} scheduled"),
-            new(" · notifications ", ConsoleTone.Dim), new(Shell.Host.PauseText is not null ? "paused" : Shell.Host.NotificationsOn ? "on" : "off")]));
+            new(" · ", ConsoleTone.Dim), new($"{queue.Count(q => q.State == "scheduled")} scheduled")]));
         rows.Add(ConsoleRow.Blank);
         rows.Add(ConsoleRow.Of("RECENT", ConsoleTone.Dim));
         var room = Math.Max(0, height - rows.Count);
@@ -216,7 +215,7 @@ public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : Co
                 new(ConsoleCells.Age(process.LastEvent, now)), new(ConsoleCells.Age(process.LastSend, now), ConsoleTone.Dim),
                 new(unread.ToString(CultureInfo.InvariantCulture), unread > 0 ? ConsoleTone.Strong : ConsoleTone.Dim));
         }
-        if (status.Processes.Count == 0) return [ConsoleRow.Of("No services are set up yet. Settings → Connections adds one.", ConsoleTone.Dim)];
+        if (status.Processes.Count == 0) return [ConsoleRow.Of("No services are set up yet. Message Link's Settings → Connections adds one.", ConsoleTone.Dim)];
         return table.Render(width).Select(row => new ConsoleRow(row.Spans));
     }
 

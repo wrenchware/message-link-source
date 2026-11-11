@@ -10,7 +10,7 @@
 # What it does, and nothing else:
 #   - makes the system account messages-server (no login, no home of its own) if there is none;
 #   - puts the server, its helpers and its tailnet door in /opt/messages-server, owned by root so the account cannot
-#     change them;
+#     change them, and links mlink (Message Link in a terminal) into /usr/local/bin;
 #   - makes /etc/messages-server/environment (root only) for the settings, unless it is already there, and
 #     /etc/messages-server/update for the nightly update's release address (empty: off);
 #   - with --google: installs Google Chrome from Google's own repository (its signing key checked against a pinned
@@ -187,7 +187,7 @@ mkdir -p "$app.new"
 chown -R root:root "$app.new"
 chmod -R u=rwX,go=rX "$app.new"
 chmod 0755 "$app.new/messages-server" "$app.new/messenger-helper" "$app.new/instagram-helper" "$app.new/messages-tailnet" "$app.new/update.sh"
-for helper in gmessages-helper gvoice-helper; do
+for helper in gmessages-helper gvoice-helper mlink; do
     if [ -e "$app.new/$helper" ]; then chmod 0755 "$app.new/$helper"; fi
 done
 # What the nightly update last installed, kept across an install by hand.
@@ -268,6 +268,11 @@ else
 fi
 cp "$here/uninstall.sh" "$app/uninstall.sh"
 chmod 0755 "$app/uninstall.sh"
+# mlink, Message Link in a terminal, on every user's PATH. A file there that is not this link is someone else's and stays.
+if [ -x "$app/mlink" ] && { [ -L /usr/local/bin/mlink ] || [ ! -e /usr/local/bin/mlink ]; }; then
+    mkdir -p /usr/local/bin
+    ln -sfn "$app/mlink" /usr/local/bin/mlink
+fi
 systemctl daemon-reload
 systemctl enable --quiet messages-server
 systemctl enable --quiet --now messages-server-update.timer

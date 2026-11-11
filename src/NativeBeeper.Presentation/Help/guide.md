@@ -205,7 +205,7 @@ The button at the left of the title bar collapses the list to a slim strip of ph
 
 ### When Message Link opens {#on-launch}
 
-A normal launch opens your first conversation once. A start with Windows, which runs in the tray, waits until you first open the window yourself. Opening from a notification or the console opens what you asked for instead.
+A normal launch opens your first conversation once. A start with Windows, which runs in the tray, waits until you first open the window yourself. Opening from a notification opens what you asked for instead.
 
 ## 5. Organizing conversations {#organizing}
 
@@ -561,7 +561,7 @@ Message Link shows Windows notifications while it's running, including from the 
 
 ### Pausing {#pausing-notifications}
 
-- **Pause notifications** for 1 hour or until 8:00 AM tomorrow from the tray menu, Commands, Settings → Notifications → Sounds and privacy, or the console's `/pause`. Paused notifications still arrive silently in Notification Center, and a pause lasts through a restart.
+- **Pause notifications** for 1 hour or until 8:00 AM tomorrow from the tray menu, Commands, or Settings → Notifications → Sounds and privacy. Paused notifications still arrive silently in Notification Center, and a pause lasts through a restart.
 - **Resume** wherever you paused. The tray tooltip says "notifications paused".
 
 ### Sounds and privacy {#notification-options}
@@ -635,18 +635,24 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
 
 ## 16. The chat console {#the-chat-console}
 
-For keyboard people: <kbd>Ctrl+`</kbd> opens the chat console, a terminal of its own showing every service's messages as one live scroll, with a prompt. Open it from the main window, a conversation window, Commands or the tray (**Open console**); pressing <kbd>Ctrl+`</kbd> in it returns you to the prompt.
+The chat console is Message Link in a terminal: every service's messages as one live scroll in your terminal, with a prompt, connected to your Message Link Server. The program is called `mlink`.
 
-> **Safe:** Only four things send: plain text you type, `/r`, `/reply` and `/w`. They go through the same careful path as the message box. A send is never chained, piped, aliased or repeated by `!!`, and the console never shows you as typing.
+- **From Message Link**: <kbd>Ctrl+`</kbd>, **Chat console** in Commands, or **Open console** in the tray menu opens it in Windows Terminal.
+- **From any terminal**: type `mlink`. On a PC that runs its own server, nothing else is needed.
+- **For a server elsewhere**: on the server's page choose **Add a device**, then **PC**, and run `mlink join` with the link it shows. Or run `mlink join` with the server's address and approve the new device on the server's page. `mlink leave` forgets the server.
+- **On Unraid**: open the container's console and type `mlink`.
+
+Opening a conversation, the tour and pausing notifications are in the Message Link app.
+
+> **Safe:** Only four things send: plain text you type, `/r`, `/reply` and `/w`. They go through the same careful path as the message box. A send is never chained, piped, aliased or repeated by `!!`, and the console never shows you as typing. Once its line has scrolled, a send's outcome is printed on a line of its own: "sent", or a note when it was not sent or its outcome is unknown. Nothing is sent again by itself.
 
 > **Real people see these:** `/react`, `/like`, `/unreact`, `/reply`, `/edit`, `/unsend` and `/delete` act on real conversations: a reaction, a reply or an edit is seen by everyone in the conversation, and a delete changes your account and can't be undone. Each runs only when you type it on a line of its own, never from a chain, a pipe, an alias or `!!`, and never twice by itself.
 
 ### The screen {#console-screen}
 
-- **The scroll** opens like a fresh terminal: the last login, `/neofetch`, then new messages as they arrive, each with its time, its service (in its color) and the message. It holds 2,000 lines.
-- **The prompt** sits after the last line: `messages>`, or `messages:Lauren>` once you've chosen someone, their name in their service's color. Commands you type stay in the scroll with what they printed, as in any terminal.
-- **The status line** at the bottom shows each service as a colored letter with a dot (● connected, ○ offline), unread conversations, sends in flight, who's typing, your target and the clock. The title bar shows the size in characters, like `120×38`.
-- **Themes**: `/theme campbell`, `phosphor` (green screen), `amber`, `ice` or `mono`. The console stays dark whatever your Windows theme; high contrast uses your system colors. Service colors stay their own in every theme.
+- **The scroll** opens like a fresh terminal: the last login, `/neofetch`, then new messages as they arrive, each with its time, its service (in its color) and the message. The lines go into your terminal's own scrollback.
+- **The prompt** sits under the last line: `messages>`, or `messages:Lauren>` once you've chosen someone. Above it, a status line shows who's typing and hints; under it, Tab's choices or the syntax of the command you're typing.
+- **Themes**: `/theme campbell`, `phosphor` (green screen), `amber`, `ice` or `mono`. Service colors stay their own in every theme.
 
 ### Talking {#console-talking}
 
@@ -655,10 +661,8 @@ For keyboard people: <kbd>Ctrl+`</kbd> opens the chat console, a terminal of its
 | plain text | Sends to the person the prompt shows |
 | `/r text` | Replies to whoever wrote last. The recipient is fixed the moment you type "/r ", so a new arrival can't steal your reply. `/r` alone makes them the target |
 | `/w name text` | Messages someone (also `/msg`, `/query`). `/w name` alone makes them the target. Add `@google`, `@messenger`, `@instagram`, `@voice` or `@voice:label` to choose a service; quote names with spaces |
-| `/to name` | Chooses who plain text goes to, without sending or opening; `/to off` clears it |
-| `/open name` | Opens the conversation in Message Link (where reading it marks it read, as usual) |
-| `/next` | Opens the newest conversation with unread messages |
-| `/read name` | Marks a conversation read on the service without opening it |
+| `/to name` | Chooses who plain text goes to, without sending; `/to off` clears it |
+| `/read name` | Marks a conversation read on the service |
 | `/mute name`, `/unmute name` | Mutes in Message Link |
 | `/reply m3 text` | Replies quoting a message, in that message's conversation; `/reply text` alone is `/r` |
 | `/react m3 👍`, `/like m3`, `/unreact m3` | Reacts to a message (or by name: `/react m3 heart`), likes it with the service's own like (👍, or ❤️ on Instagram), or takes your reaction back |
@@ -680,13 +684,15 @@ To send a line that starts with a slash, start it with `//`; one that starts wit
 | `/delete name` | Deletes a conversation where its menu offers **Delete…** (in two steps, below) |
 | `/label name Family`, `/unlabel name Family` | Puts one of your labels on it, or takes it off |
 | `/snooze name 1h` | **Remind me later**: `30m`, `1h`, `tonight`, `tomorrow`, a time like `17:30`, or `off` |
-| `/copy m3`, `/save m3`, `/remind m3 tonight` | Copies a message's words, keeps it in Saved Messages, or reminds you about it later, all in Message Link |
+| `/copy m3`, `/save m3`, `/remind m3 tonight` | Copies a message's words, keeps it in Saved Messages, or reminds you about it later |
+
+Mutes, pins, labels, snoozes and saved messages are kept by the server, so every device that uses it shows them.
 
 ### Acting on a conversation or message {#console-acting}
 
 A conversation is named as everywhere else: a name, a number from the last `/ls` or `/search`, or `.`. A message is named by:
 
-- `m3`: message 3 of the last `/msgs`. `/msgs` lists a conversation's recent messages, numbered with the newest last, from what this PC already keeps; nothing is asked of the service and nothing is marked read.
+- `m3`: message 3 of the last `/msgs`. `/msgs` lists a conversation's recent messages, numbered with the newest last, from the server's copy; nothing is marked read.
 - a `/search` result number, or `#4`.
 - `^`: the newest message from the person the prompt shows; `^2` the one before it.
 
@@ -699,24 +705,24 @@ Add `--help` (or `-h`) to any command, such as `/delete 3 --help`, to see its ma
 | Command | What it does |
 |---|---|
 | `/ls [view]` | Numbered list of conversations: all (or `*`), unread, pinned, muted, archived, a service or a name |
-| `/msgs [name] [count]` | A conversation's recent messages, numbered `m1`, `m2` …, from what this PC keeps. `/msgs *` lists every conversation's, one line each: `/msgs * \| grep "dinner"` finds a word in any of them |
-| `/search words` | Numbered search results with the words highlighted; add `@messenger` and so on to narrow it. It looks deeper than `/msgs`, through Messenger's full store and Google's archive |
+| `/msgs [name] [count]` | A conversation's recent messages, numbered `m1`, `m2` …, from the server's copy. `/msgs *` lists every conversation's, one line each: `/msgs * \| grep "dinner"` finds a word in any of them |
+| `/search words` | Numbered search results with the words highlighted; add `@messenger` and so on to narrow it. It looks deeper than `/msgs` |
 | `/grep words` | Finds lines already in the scroll, with the same rules as `\| grep` |
-| `/thread [view] [name]` | Inspects a conversation from what this PC holds: `info` (flags, what it can do, merged members), `members`, `media`, `stats` (who writes, at what hours, how quickly each side answers), `raw` (ids and fields) and `route` |
+| `/thread [view] [name]` | Inspects a conversation from what this terminal holds: `info` (flags, what it can do, merged members), `members`, `media`, `stats` (who writes, at what hours, how quickly each side answers), `raw` (ids and fields) and `route` |
 | `/route name` | Traces, hop by hop, how a message would be sent and why that service, without sending |
-| `/history [hours]` | Shows earlier messages kept on this PC: the last day, or up to 168 hours |
+| `/history [hours]` | Shows earlier messages the server has sent this terminal: the last day, or up to 168 hours |
 | `/filter what`, `/watch name` | Shows only some services, or one person; `/filter all` or `/watch off` resets |
 | `/events quiet\|normal\|all` | How much shows: messages only, plus edits, reactions and connections, plus read receipts and typing |
 
-**Names everywhere** can be typed in part, quoted, given `@service`, a number from the last `/ls` or `/search`, or `.` for the conversation open in Message Link: `/to 3`, `/thread stats .`.
+**Names everywhere** can be typed in part, quoted, given `@service`, a number from the last `/ls` or `/search`, or `.` for the conversation the prompt shows: `/to 3`, `/thread stats .`.
 
 ### Console apps {#console-apps}
 
-These take over the console's screen until you press <kbd>q</kbd> or <kbd>Esc</kbd>; the scroll is waiting exactly as you left it.
+These take over the terminal's screen until you press <kbd>q</kbd> or <kbd>Esc</kbd>; the scroll is waiting exactly as you left it.
 
-- `/top`: a live monitor with five pages (<kbd>Tab</kbd> or <kbd>1</kbd>–<kbd>5</kbd>): **overview** (services, their connections' memory and processor use, messages per minute, sends in flight, recent activity), **workers**, **queues** (sends in flight and scheduled), **cache** (what Message Link holds in memory and on disk) and **perf**. `/workers`, `/queues`, `/cache` and `/perf` open it on that page; <kbd>p</kbd> pauses it.
-- `/chats`: a full-screen conversation browser. <kbd>Up</kbd>/<kbd>Down</kbd> move, <kbd>Enter</kbd> opens, <kbd>t</kbd> makes it your target, <kbd>i</kbd> and <kbd>s</kbd> inspect it, <kbd>m</kbd> mutes, <kbd>/</kbd> filters as you type, <kbd>Tab</kbd> changes view, <kbd>1</kbd>–<kbd>4</kbd> choose a service. <kbd>r</kbd> marks read only after you answer <kbd>y</kbd>.
-- `/logs [source]`: the diagnostic logs, live. <kbd>Tab</kbd> changes log, <kbd>f</kbd> follows, <kbd>/</kbd> greps, <kbd>g</kbd>/<kbd>G</kbd> jump to the top or end, <kbd>c</kbd> copies what's shown.
+- `/top`: a live monitor with five pages (<kbd>Tab</kbd> or <kbd>1</kbd>–<kbd>5</kbd>): **overview** (services, their helpers' memory and processor use on the server, messages per minute, sends in flight, recent activity), **workers**, **queues** (sends in flight and scheduled), **cache** and **perf**. `/workers`, `/queues`, `/cache` and `/perf` open it on that page; <kbd>p</kbd> pauses it.
+- `/chats`: a full-screen conversation browser. <kbd>Up</kbd>/<kbd>Down</kbd> move, <kbd>Enter</kbd> or <kbd>t</kbd> makes it your target, <kbd>i</kbd> and <kbd>s</kbd> inspect it, <kbd>m</kbd> mutes, <kbd>/</kbd> filters as you type, <kbd>Tab</kbd> changes view, <kbd>1</kbd>–<kbd>4</kbd> choose a service. <kbd>r</kbd> marks read only after you answer <kbd>y</kbd>.
+- `/logs [source]`: the server's diagnostic logs, live. <kbd>Tab</kbd> changes log, <kbd>f</kbd> follows, <kbd>/</kbd> greps, <kbd>g</kbd>/<kbd>G</kbd> jump to the top or end, <kbd>c</kbd> copies what's shown.
 - `/matrix`: you'll see.
 
 ### The shell {#console-shell}
@@ -724,16 +730,16 @@ These take over the console's screen until you press <kbd>q</kbd> or <kbd>Esc</k
 - `a ; b` runs both commands; `a && b` runs b only if a worked.
 - `|` sends a command's output through filters: `grep` (capitals make it exact), `head`, `tail`, `sort`, `uniq`, `wc`, `nl`, `cowsay`, `copy` (to the clipboard) and `less` (a full-screen pager). For example `/ls unread | head 5` or `/thread stats . | copy`.
 - `!!` runs your last command again, `!3` the third in `/commands`, `!word` the last one starting with that word. A message is never re-sent this way: it comes back to the prompt for you to send or not.
-- `/alias u=/ls unread` makes `/u` a command; `/alias` lists them and `/unalias u` removes one. Aliases run commands, never sends or changes to a conversation or message, and are saved protected on this PC.
-- `/commands [words]` lists what you've typed, 500 lines kept while Message Link runs and never written to disk.
+- `/alias u=/ls unread` makes `/u` a command; `/alias` lists them and `/unalias u` removes one. Aliases run commands, never sends or changes to a conversation or message, and are saved protected for this terminal.
+- `/commands [words]` lists what you've typed: the last 500 lines, saved sealed on this computer for this terminal.
 
 ### Everything else {#console-other}
 
-- `/status`: service health, unread, sends and notifications. `/diag`: a checklist of this copy of Message Link and its services. `/whoami`, `/uptime`.
-- `/mirror`: with a Message Link Server, how its copies of your conversations compared with each service at its last check (it checks every half hour and reads again whatever differs). `/mirror now` starts a check. It only reads: nothing is sent or marked read.
-- `/pause [1h|morning]`, `/resume`: notifications.
-- `/clear` (or <kbd>Ctrl+L</kbd>) clears the scroll; nothing is deleted. `/latest` jumps to the newest line and follows again.
-- `/help` lists commands, `/help talk` (or manage, look, apps, system, fun) lists one group with what each does, `/help command` (or `command --help`) shows its manual page, and `/help word` searches them. `/guide [topic]` opens this guide and `/tour` starts the tour.
+- `/status`: service health, unread and sends. `/diag`: a checklist of the server and its services. `/whoami`, `/uptime`.
+- `/mirror`: how the server's copies of your conversations compared with each service at its last check (it checks every half hour and reads again whatever differs). `/mirror now` starts a check. It only reads: nothing is sent or marked read.
+- `/clear` (or <kbd>Ctrl+L</kbd>) clears the scroll; nothing is deleted.
+- `/help` lists commands, `/help talk` (or manage, look, apps, system, fun) lists one group with what each does, `/help command` (or `command --help`) shows its manual page, and `/help word` searches them. `/guide [topic]` shows this guide.
+- `/exit` (or `/quit`) leaves the console.
 - `/theme`, `/banner`, `/neofetch`, `/fortune`, `/cowsay text`, `/date`, `/echo text`, and `/matrix`, for fun.
 
 ### Console keys {#console-keys}
@@ -744,19 +750,18 @@ These take over the console's screen until you press <kbd>q</kbd> or <kbd>Esc</k
 | <kbd>Right</kbd> or <kbd>End</kbd> | Take the gray suggestion of an earlier command |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Earlier and later lines you typed |
 | <kbd>Ctrl+R</kbd> | Search what you typed (reverse-i-search); <kbd>Enter</kbd> takes the match without running it |
-| <kbd>Ctrl+C</kbd> | Copy the selected lines; with none selected, drop the line you're typing |
-| <kbd>Ctrl+U</kbd> | Clear the line up to the cursor |
+| <kbd>Ctrl+A</kbd> / <kbd>Ctrl+E</kbd> | Start or end of the line |
+| <kbd>Ctrl+K</kbd> / <kbd>Ctrl+U</kbd> | Clear the line after or before the cursor |
+| <kbd>Ctrl+W</kbd> | Delete the word before the cursor |
 | <kbd>Esc</kbd> | Clear the line, then the target |
 | <kbd>Ctrl+L</kbd> | Clear the scroll |
-| <kbd>PgUp</kbd> / <kbd>PgDn</kbd>, <kbd>Ctrl+Home</kbd> / <kbd>Ctrl+End</kbd> | Scroll, or jump to the top or the newest line |
-| <kbd>Ctrl+Shift+C</kbd> | Copy the selected lines, or the whole scroll |
-| <kbd>Ctrl+Plus</kbd> / <kbd>Ctrl+Minus</kbd>, <kbd>Ctrl+0</kbd> | Text size, and back to normal |
+| <kbd>Ctrl+C</kbd> | Drop the line you're typing |
+| <kbd>Ctrl+D</kbd> | On an empty line, quit, as `/exit` does |
 | <kbd>F1</kbd> | This chapter |
-| <kbd>Ctrl+W</kbd> | Close the console |
 
-To copy from the scroll, drag across it: inside one line a drag picks words, and once it reaches another line it picks whole lines, scrolling when you drag past the top or bottom. Shift+click and Ctrl+click add lines too. Right-click for **Copy selected lines**, **Copy shown transcript** and **Select all lines**.
+Your terminal's own selection, copy and find work on the scroll; `/copy` and `| copy` put text on the clipboard.
 
-While you type a command, its syntax shows at the right of the prompt.
+While you type a command, its syntax shows under the prompt.
 
 ## 17. Settings {#settings}
 

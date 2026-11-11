@@ -41,7 +41,6 @@ public interface IConsoleAppHost
     void Close();
     /// <summary>Closes the app, then runs a console command line as if it had been typed.</summary>
     Task RunAsync(string line);
-    Task<bool> OpenAsync(ChatTarget target);
     void SetTarget(ChatTarget target);
     Task<string> ReadAsync(ChatTarget target);
     Task<string> MuteAsync(ChatTarget target, bool muted);

@@ -65,8 +65,8 @@ public static class TourSteps
             "**Private reading**, in **Settings → Messaging**, turns off read receipts and typing, per service. A conversation " +
             "you read stays unread for the other person until you choose to tell them.", null, "private-reading"),
         new("console", "For keyboard people",
-            "<kbd>Ctrl+`</kbd> opens the chat console: every service's messages as one live terminal, with a prompt. " +
-            "Try `/help` and `/chats`. Only what you type as a message is ever sent.", null, "the-chat-console"),
+            "<kbd>Ctrl+`</kbd> opens the chat console in Windows Terminal: every service's messages as one live scroll, " +
+            "with a prompt. Try `/help` and `/chats`. Only what you type as a message is ever sent.", null, "the-chat-console"),
         new("done", "That's the tour",
             "<kbd>F1</kbd> opens the full guide, searchable, from anywhere in Message Link. You can take this tour again from " +
             "**More options → Take the tour**.", null, "getting-help"),

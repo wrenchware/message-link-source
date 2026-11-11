@@ -4,8 +4,8 @@ using NativeBeeper.Presentation.Services;
 
 namespace NativeBeeper.Presentation.ViewModels;
 
-// /thread: a conversation inspected from what this PC holds — the list's summary and the history kept in memory or on
-// disk. Nothing is read from a service, and nothing is marked read.
+// /thread: a conversation inspected from what this terminal holds from the server — the list's summary and the history it
+// has been sent. Nothing is read from a service, and nothing is marked read.
 public sealed partial class ConsoleSessionViewModel
 {
     public const int MediaShown = 30;
@@ -24,7 +24,7 @@ public sealed partial class ConsoleSessionViewModel
         {
             target = Target is { } to ? to.Target ?? TargetOf(to.SourceChatId) : null;
             target ??= OpenTarget() ?? Implied().Target;
-            if (target is null) { Fail("Which conversation? /thread name, /thread N, or /thread . for the one open in Message Link."); return; }
+            if (target is null) { Fail("Which conversation? /thread name, /thread N, or /thread . for the one the prompt shows."); return; }
         }
         if (view == "route") { Trace(target, null); return; }
         if (view == "members") { Members(target); return; }
@@ -83,7 +83,7 @@ public sealed partial class ConsoleSessionViewModel
         var readUpTo = target.Members.Select(m => m.ReadUpTo).Where(r => r is not null).Max();
         Out(InfoKey("activity"), new ConsoleSpan("last " + ConsoleCells.Age(target.LastActivity, now) + (target.LastActivity is null ? "" : " ago")),
             new ConsoleSpan(readUpTo is { } r ? " · read up to " + formatter.Time(r, formatter.LocalDate(r) != formatter.LocalDate(now)) : "", ConsoleTone.Dim));
-        Out(InfoKey("held here"), new ConsoleSpan(held.Count == 0 ? "nothing kept on this PC yet" :
+        Out(InfoKey("held here"), new ConsoleSpan(held.Count == 0 ? "nothing here yet · /msgs reads it from the server" :
             $"{held.Count.ToString("N0", CultureInfo.CurrentCulture)} messages since {formatter.ShortDate(held[0].Timestamp)}" +
             $" · {held.Count(m => m.Attachments.Count > 0).ToString("N0", CultureInfo.CurrentCulture)} with media"), new ConsoleSpan(held.Count == 0 ? "" : " · /thread stats", ConsoleTone.Dim));
         ConsoleRoute route;
@@ -111,7 +111,7 @@ public sealed partial class ConsoleSessionViewModel
     {
         var people = target.Members.SelectMany(m => m.Participants.Select(p => (Member: m, Person: p)))
             .GroupBy(x => x.Person.DisplayName + "\n" + x.Member.Network).Select(g => g.First()).ToArray();
-        if (people.Length == 0) { Out("This PC doesn't know who is in it.", ConsoleTone.Dim); return; }
+        if (people.Length == 0) { Out("The server hasn't said who is in it.", ConsoleTone.Dim); return; }
         Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {people.Length.ToString(CultureInfo.CurrentCulture)} people", ConsoleTone.Dim));
         foreach (var (member, person) in people.OrderByDescending(x => x.Person.IsSelf == true).ThenBy(x => x.Person.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             Out(new ConsoleSpan("  "), ConsoleSpan.For(ConsoleCells.Pad(ConsoleLineFormatter.Tag(member.Network), 10), BubbleColours.TagFamily(member.Network, null)),
@@ -126,7 +126,7 @@ public sealed partial class ConsoleSessionViewModel
     private void Media(ChatTarget target, IReadOnlyList<ChatMessage> held)
     {
         var items = held.SelectMany(m => m.Attachments.Select(a => (Message: m, Attachment: a))).Reverse().ToArray();
-        if (items.Length == 0) { Out($"No photos, files or voice notes kept here for {target.Title}.", ConsoleTone.Dim); return; }
+        if (items.Length == 0) { Out($"No photos, files or voice notes here for {target.Title}.", ConsoleTone.Dim); return; }
         var shown = Capturing ? items : items.Take(MediaShown).ToArray();
         var table = new ConsoleTable(new("#", 3, Right: true), new("DATE", 0), new("FROM", 0), new("KIND", 7), new("SIZE", 6, Right: true), new("NAME", 0, Flex: true));
         for (var i = 0; i < shown.Length; i++)
@@ -139,13 +139,13 @@ public sealed partial class ConsoleSessionViewModel
         }
         Rows(table.Render(Columns));
         var kinds = items.GroupBy(x => KindOf(x.Attachment)).OrderByDescending(g => g.Count()).Select(g => $"{g.Count().ToString(CultureInfo.CurrentCulture)} {g.Key}");
-        Out($"{items.Length.ToString(CultureInfo.CurrentCulture)} kept here: {string.Join(", ", kinds)}" +
+        Out($"{items.Length.ToString(CultureInfo.CurrentCulture)} here: {string.Join(", ", kinds)}" +
             (shown.Length < items.Length ? $" · newest {shown.Length.ToString(CultureInfo.CurrentCulture)} shown (| less shows all)" : ""), ConsoleTone.Dim);
     }
 
     private void Stats(ChatTarget target, IReadOnlyList<ChatMessage> held)
     {
-        if (held.Count == 0) { Out($"Nothing kept here for {target.Title} yet. Opening it in Message Link keeps its history.", ConsoleTone.Dim); return; }
+        if (held.Count == 0) { Out($"Nothing here for {target.Title} yet. /msgs reads its history from the server.", ConsoleTone.Dim); return; }
         var span = held[^1].Timestamp - held[0].Timestamp;
         Out(new ConsoleSpan(target.Title, ConsoleTone.Strong), new ConsoleSpan($" · {held.Count.ToString("N0", CultureInfo.CurrentCulture)} messages over {ConsoleCells.Duration(span)} " +
             $"({formatter.ShortDate(held[0].Timestamp)} – {formatter.ShortDate(held[^1].Timestamp)})", ConsoleTone.Dim));

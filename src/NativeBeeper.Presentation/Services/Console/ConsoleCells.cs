@@ -22,12 +22,26 @@ public static class ConsoleCells
     private static int ElementWidth(string element)
     {
         if (element.Length == 0) return 0;
+        // VS16 asks for the emoji picture, which a terminal that draws one draws two cells wide (❤️, ☀️, 1️⃣).
+        if (element.Length > 1 && element.Contains('️')) return 2;
         var rune = Rune.GetRuneAt(element, 0).Value;
-        if (rune < 0x1100) return element.Length > 1 && element.Contains('️') ? 2 : 1;
+        if (rune < 0x1100) return 1;
+        // A flag is two regional indicators in one element; one alone is a letter in a box, one cell.
+        if (rune is >= 0x1F1E6 and <= 0x1F1FF)
+            return element.Length >= 4 && Rune.GetRuneAt(element, 2).Value is >= 0x1F1E6 and <= 0x1F1FF ? 2 : 1;
         return rune is >= 0x1100 and <= 0x115F or >= 0x2E80 and <= 0xA4CF or >= 0xAC00 and <= 0xD7A3 or >= 0xF900 and <= 0xFAFF
             or >= 0xFE30 and <= 0xFE4F or >= 0xFF00 and <= 0xFF60 or >= 0xFFE0 and <= 0xFFE6 or >= 0x1F300 and <= 0x1FAFF
-            or >= 0x20000 and <= 0x3FFFD ? 2 : 1;
+            or >= 0x20000 and <= 0x3FFFD || WideSymbol(rune) ? 2 : 1;
     }
+
+    // East Asian Width W outside the CJK blocks: the symbols that are emoji by default (⌛ ✅ ❌ ⭐ ⚡ ☕ 🀄 🆎), which terminals draw two cells wide.
+    private static bool WideSymbol(int rune) => rune is
+        0x231A or 0x231B or 0x2329 or 0x232A or >= 0x23E9 and <= 0x23EC or 0x23F0 or 0x23F3 or 0x25FD or 0x25FE or 0x2614 or 0x2615
+        or >= 0x2648 and <= 0x2653 or 0x267F or 0x2693 or 0x26A1 or 0x26AA or 0x26AB or 0x26BD or 0x26BE or 0x26C4 or 0x26C5 or 0x26CE
+        or 0x26D4 or 0x26EA or 0x26F2 or 0x26F3 or 0x26F5 or 0x26FA or 0x26FD or 0x2705 or 0x270A or 0x270B or 0x2728 or 0x274C or 0x274E
+        or >= 0x2753 and <= 0x2755 or 0x2757 or >= 0x2795 and <= 0x2797 or 0x27B0 or 0x27BF or 0x2B1B or 0x2B1C or 0x2B50 or 0x2B55
+        or 0x1F004 or 0x1F0CF or 0x1F18E or >= 0x1F191 and <= 0x1F19A or >= 0x1F200 and <= 0x1F202 or >= 0x1F210 and <= 0x1F23B
+        or >= 0x1F240 and <= 0x1F248 or 0x1F250 or 0x1F251 or >= 0x1F260 and <= 0x1F265;
 
     /// <summary>The text cut to <paramref name="width"/> cells with … when it did not fit.</summary>
     public static string Fit(string text, int width)

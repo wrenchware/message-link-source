@@ -13,19 +13,17 @@ public sealed partial class ConsoleSessionViewModel
     private static readonly string[] Fortunes =
     [
         "There is no place like 127.0.0.1.", "Your social daemon is running. Your chores daemon is not.",
-        "The most productive command is sometimes /pause.", "A watched inbox never pings. An unwatched one has 47 messages.",
+        "The most productive command is sometimes /exit.", "A watched inbox never pings. An unwatched one has 47 messages.",
         "No carrier pigeons were harmed in the delivery of this message.", "Life is too short for an uncompleted command.",
-        "It works on my machine. Your machine is not my machine.", "Read receipts are a social contract. /pause is a loophole.",
+        "It works on my machine. Your machine is not my machine.", "Read receipts are a social contract. /msgs is a loophole.",
         "Any sufficiently advanced group chat is indistinguishable from a meeting.", "rm -rf /regrets: permission denied.",
         "Have you tried turning it off and on again? (Don't. The helpers resume themselves.)", "Inbox zero is a state of mind, not a number.",
         "The quickest reply is a well-chosen silence.", "In the beginning there was the command line. Then someone added emoji.",
-        "You are not behind on messages. The messages are ahead of you.", "Today's lucky alias: /alias calm=/pause morning",
+        "You are not behind on messages. The messages are ahead of you.", "Today's lucky alias: /alias calm=/events quiet",
         "640K ought to be enough for anybody. Your Messenger cache disagrees.", "There are 10 kinds of people: those who read receipts, and those who don't.",
         "A clean scroll is a happy scroll. Ctrl+L.", "SELECT * FROM friends WHERE replied = false; -- 0 rows. Liar.",
     ];
 
-    /// <summary>Window actions with no app of their own: "latest" scrolls to the end and follows.</summary>
-    public event Action<string>? ViewRequested;
     public ConsoleSystemStatus SystemStatus => host.SystemStatus;
     public string WelcomeStatus
     {
@@ -148,13 +146,11 @@ public sealed partial class ConsoleSessionViewModel
         var label = new Func<string, ConsoleSpan>(text => new ConsoleSpan(text.PadRight(9), ConsoleTone.Dim));
         Out(label("target"), Target is { } to ? ConsoleSpan.For(to.Title, BubbleColours.TagFamily(to.Network, null)) : new ConsoleSpan("none", ConsoleTone.Dim),
             new ConsoleSpan(Target is { } t ? " · " + t.Service : " · /to name chooses one", ConsoleTone.Dim));
-        Out(label("notify"), new ConsoleSpan(host.PauseText ?? (host.NotificationsOn ? "Notifications: on" : "Notifications: off"),
-            host.PauseText is not null ? ConsoleTone.Warn : ConsoleTone.Default));
         Out(label("outbox"), new ConsoleSpan($"{status.PendingSends.ToString(CultureInfo.CurrentCulture)} in flight · {status.Scheduled.ToString(CultureInfo.CurrentCulture)} scheduled",
             status.PendingSends > 0 ? ConsoleTone.Warn : ConsoleTone.Default));
         int kept;
         lock (gate) kept = history.Count;
-        Out(label("console"), new ConsoleSpan("Events: " + Verbosity.ToString().ToLowerInvariant() + $" · filter {(Hint ?? "none")} · {kept.ToString(CultureInfo.CurrentCulture)} inputs kept in memory", ConsoleTone.Dim));
+        Out(label("console"), new ConsoleSpan("Events: " + Verbosity.ToString().ToLowerInvariant() + $" · filter {(Hint ?? "none")} · {kept.ToString(CultureInfo.CurrentCulture)} inputs saved", ConsoleTone.Dim));
     }
 
     // ---- /ls ----
@@ -176,7 +172,7 @@ public sealed partial class ConsoleSessionViewModel
         }).OrderByDescending(c => c.Members.Any(m => m.IsPinned)).ThenByDescending(c => c.LastActivity ?? DateTimeOffset.MinValue).ToArray();
         var shown = Capturing ? rows : rows.Take(50).ToArray();
         lock (gate) refs = [.. shown.Select(chat => new ConsoleRef(chat, null))];
-        if (rows.Length == 0) { Out("No matching chats on this PC.", ConsoleTone.Dim); return; }
+        if (rows.Length == 0) { Out("No matching chats.", ConsoleTone.Dim); return; }
         var now = clock.GetUtcNow();
         var table = new ConsoleTable(new("#", 3, Right: true), new("FLAGS", 4), new("SERVICE", 0), new("NAME", 0, Flex: true),
             new("NEW", 3, Right: true), new("LAST", 4, Right: true));
@@ -196,7 +192,7 @@ public sealed partial class ConsoleSessionViewModel
         }
         Rows(table.Render(Columns, header: false));
         Out($"{rows.Length.ToString(CultureInfo.CurrentCulture)} chats" + (shown.Length < rows.Length ? $", first {shown.Length.ToString(CultureInfo.CurrentCulture)} shown" : "") +
-            " · * pinned · u unread · m muted · a archived · /to N, /open N, /thread N", ConsoleTone.Dim);
+            " · * pinned · u unread · m muted · a archived · /to N, /msgs N, /thread N", ConsoleTone.Dim);
     }
 
     // ---- /to and /route ----
@@ -318,10 +314,13 @@ public sealed partial class ConsoleSessionViewModel
         if (inputs.Length == 0) { Out("No matching input history.", ConsoleTone.Dim); return; }
         foreach (var (number, text) in inputs)
             Out(new ConsoleSpan($"{number,5}  ", ConsoleTone.Dim), new ConsoleSpan(text.Replace("\n", " ↵ ")));
-        Out("Kept in memory while Message Link runs · !n runs one again · Ctrl+R searches", ConsoleTone.Dim);
+        Out("Saved on this computer for this terminal · !n runs one again · Ctrl+R searches", ConsoleTone.Dim);
     }
 
     // ---- /help ----
+
+    /// <summary>What /help says the console leaves to the Message Link app.</summary>
+    public const string ElsewhereText = "Opening a conversation, the tour and pausing notifications are in the Message Link app.";
 
     private void PrintHelp(string? topic)
     {
@@ -365,14 +364,15 @@ public sealed partial class ConsoleSessionViewModel
                 Out([new ConsoleSpan(i == 0 ? ConsoleCells.Pad(ConsoleCatalog.CategoryTitle(category), 9) : new string(' ', 9), ConsoleTone.Accent),
                     .. lines[i].Split("  ").SelectMany((name, j) => new[] { new ConsoleSpan(j == 0 ? "" : "  "), new ConsoleSpan(name, ConsoleTone.Strong) })]);
         }
+        Out(ElsewhereText, ConsoleTone.Dim);
         Blank();
         (string Key, string Text)[] keys =
         [
             ("KEYS", "Tab complete · → take the gray suggestion · ↑↓ history · Ctrl+R search history · Ctrl+C drop the line"),
-            ("", "Ctrl+L clear · PgUp/PgDn scroll · Esc clear the line, then the target · Ctrl+Plus/Minus zoom"),
+            ("", "Ctrl+L clear · Esc clear the line, then the target · Ctrl+D or /exit quit · F1 the guide"),
             ("SHELL", "a ; b  both · a && b  b if a worked · cmd | grep x | head 5 | copy | less"),
             ("", "!! last command · !n command n · !word the last starting with word · /alias name=command"),
-            ("NAMES", "a name, \"a name\", name@service, N from the last list, or . for what Message Link has open"),
+            ("NAMES", "a name, \"a name\", name@service, N from the last list, or . for the conversation the prompt shows"),
             ("MESSAGES", "m3 from the last /msgs, N from /search, ^ the newest from the person the prompt shows (^2 before it)"),
             ("", "cmd --help shows a command's manual without running it · no one selected: commands work without /"),
         ];

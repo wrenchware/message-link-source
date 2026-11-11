@@ -31,6 +31,8 @@ internal sealed record HostKeys(string Folder, string StateKey, string HelperKey
     /// <summary>The keys' id in the keys folder, and the copy of it in the data folder that says which keys sealed it.</summary>
     public const string IdFile = "key.id", MarkerFile = "key.id";
     public const string TlsFolder = "tls", MessengerFolder = "Messenger";
+    /// <summary>mlink's folder when it runs in the server's container (its key, its device token and its copy of the shared rows): never read here.</summary>
+    public const string TerminalFolder = "mlink";
     private const int Length = 32;
 
     /// <summary>Where the Messenger helper keeps everything it writes (<c>MESSAGES_HELPER_PRIVATE_ROOT</c>, storage.go).</summary>
@@ -122,10 +124,11 @@ internal sealed record HostKeys(string Folder, string StateKey, string HelperKey
         return Directory.EnumerateFileSystemEntries(root).All(entry => allowed.Contains(Path.GetFileName(entry)));
     }
 
-    // A keys folder with no key in it: empty, or holding only what a first start that stopped part-way leaves (one key, or temporaries).
+    // A keys folder with no key in it: empty, or holding only what a first start that stopped part-way leaves (one key, or temporaries), and mlink's own
+    // folder (MlinkPaths, docker exec ... mlink in the container), whose key seals only mlink's files and was never one of the server's.
     private static bool NoKeys(string keysRoot)
     {
-        var known = new HashSet<string>(StringComparer.Ordinal) { StateFile, HelperFile, StateFile + ".new", HelperFile + ".new", IdFile + ".new" };
+        var known = new HashSet<string>(StringComparer.Ordinal) { StateFile, HelperFile, StateFile + ".new", HelperFile + ".new", IdFile + ".new", TerminalFolder };
         return Directory.EnumerateFileSystemEntries(keysRoot).All(entry => known.Contains(Path.GetFileName(entry)));
     }
 

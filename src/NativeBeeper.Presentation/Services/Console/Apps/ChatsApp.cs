@@ -4,7 +4,7 @@ using NativeBeeper.Core.Messaging;
 namespace NativeBeeper.Presentation.Services;
 
 /// <summary>
-/// /chats: the conversation list as a terminal browser. Reads the list this PC already holds; opening, choosing a target,
+/// /chats: the conversation list as a terminal browser. Reads the list the console already holds; choosing a target,
 /// muting and marking read are the same explicit actions as their commands, and marking read asks first, since one stray
 /// key would otherwise tell a real person you had read them.
 /// </summary>
@@ -75,7 +75,7 @@ public sealed class ChatsApp : ConsoleApp
         {
             case ConsoleKeyKind.Tab: view = (view + 1) % Views.Count; selected = 0; Reload(); return true;
             case ConsoleKeyKind.BackTab: view = (view + Views.Count - 1) % Views.Count; selected = 0; Reload(); return true;
-            case ConsoleKeyKind.Enter when Selected is { } chat: _ = OpenAsync(chat); return true;
+            case ConsoleKeyKind.Enter when Selected is { } chat: Shell.SetTarget(chat); return true;
         }
         if (key.Kind != ConsoleKeyKind.Char) return false;
         switch (key.Char)
@@ -105,19 +105,13 @@ public sealed class ChatsApp : ConsoleApp
         var index = top + row - 1;
         if (index < 0 || index >= rows.Count) return;
         selected = index;
-        if (twice) _ = OpenAsync(rows[index]);
+        if (twice) Shell.SetTarget(rows[index]);
     }
 
     // The command a row stands for, typed back by number so a name two conversations share still means this one.
     private string Reference(ChatTarget chat) => ConsoleLineFormatter.Typed(chat.Title) +
         (Shell.Targets.Entries().Count(t => t.Title.Equals(chat.Title, StringComparison.CurrentCultureIgnoreCase)) > 1 && chat.Networks.Count == 1
             ? "@" + ConsoleSender.ServiceWord(chat.Networks[0]) : "");
-
-    private async Task OpenAsync(ChatTarget chat)
-    {
-        Message = await Shell.OpenAsync(chat) ? $"Opened {chat.Title} in Message Link." : $"Couldn't open {chat.Title}.";
-        Invalidate();
-    }
 
     private async Task ReadAsync(ChatTarget chat)
     {
@@ -178,7 +172,7 @@ public sealed class ChatsApp : ConsoleApp
         }
         var body = table.Render(width).Select(row => new ConsoleRow(row.Spans, row.Selected)).ToList();
         if (rows.Count == 0) body.Add(ConsoleRow.Of(Filter.Length > 0 ? $"No conversation matches “{Filter}”." : "Nothing here.", ConsoleTone.Dim));
-        return Screen(title, Fill(body, height), ("↑↓", "move"), ("⏎", "open"), ("t", "target"), ("i", "info"), ("s", "stats"), ("r", "read"),
+        return Screen(title, Fill(body, height), ("↑↓", "move"), ("⏎", "target"), ("i", "info"), ("s", "stats"), ("r", "read"),
             ("m", "mute"), ("/", "filter"), ("Tab", "view"), ("1-4", "service"), ("q", "quit"));
     }
 }

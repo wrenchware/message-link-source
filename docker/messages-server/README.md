@@ -124,7 +124,9 @@ the plugin's stop timeout: [updateDocker.php](https://github.com/Squidly271/ca.u
 - **Keys** (`/keys` in the container): the Docker named volume `messages-server-keys`. It holds the sealing keys, the
   TLS certificate's private key and everything the Messenger helper keeps: the encrypted device and **the Messenger
   history this server has kept** (its own records say who talks to whom, so they stay off the shares), and, with the
-  tailnet door on, the server's Tailscale identity (`Tailnet/`, see Your tailnet). A named volume
+  tailnet door on, the server's Tailscale identity (`Tailnet/`, see Your tailnet). Once you run
+  `docker exec -it messages-server mlink`, it also holds mlink's own folder (`mlink/`: its key, its device token and its
+  copy of your settings); the server's backups leave it out. A named volume
   lives inside Docker's own storage (`docker.img` on Unraid), outside every user share, so no share setting, export or
   permission tool can reach it.
 - **Data** (`/data`, `/mnt/user/appdata/messages-server`): the signed-in sessions, paired devices, the server's own

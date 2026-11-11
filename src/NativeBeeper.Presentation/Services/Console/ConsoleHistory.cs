@@ -19,8 +19,8 @@ public interface IRecentMessages
 }
 
 /// <summary>
-/// The console's history: the messages of a recent span as this PC already holds them, so opening the console shows the
-/// last day rather than only what arrived since Messages started. Read only from what is kept here — a service's own
+/// The console's history (/history): the messages of a recent span as the host already holds them (in mlink, what the
+/// server has sent this terminal), rather than only what arrived since the console started. Read only from what is held — a service's own
 /// archive where it has one, each conversation's saved history, and failing both its newest message from the list — so
 /// no service is asked for anything and nothing is marked read.
 /// </summary>
