@@ -3,7 +3,7 @@ using System.Globalization;
 namespace NativeBeeper.Presentation.Services;
 
 // A one-time sign-in code in an incoming text ("Your code is 482913", "G-482913 is your Google verification code"),
-// offered as Copy code in the message menu and on its notification. Found here, locally, from the text alone. What it
+// offered as Copy code in the message menu (Windows itself offers one on the notification). Found here, locally, from the text alone. What it
 // finds is shown to the person the message was sent to and copied only when they ask; it is never logged or saved.
 //
 // Deliberately cautious: a number is a code only beside a word that says so, and anything that reads as a phone
@@ -18,31 +18,6 @@ public static class OneTimeCode
     private static readonly string[] Acronyms = ["OTP", "PIN", "Pin", "2FA"];
     // What may join digit groups into one number: "123-456", "12:30", "1,234", "2026/09/24", "555 123 4567".
     private const string Joiners = " -.,:/";
-
-    // The notification's Copy code button: its action word, and the one argument form it produces.
-    public const string CopyAction = "copycode";
-
-    /// <summary>The notification id a Copy code button names, or null for anything else.</summary>
-    /// <remarks>
-    /// Exactly <c>action=copycode;id=&lt;id&gt;</c> in either order, as the notification builder writes it, and held to
-    /// the same rules as the other notification actions: two fields, no repeats, a valid id. The code is never in it.
-    /// </remarks>
-    public static string? CopyActionId(string? argument)
-    {
-        if (argument is null || argument.Length > 1024) return null;
-        var fields = argument.Split(';');
-        if (fields.Length != 2) return null;
-        string? action = null, id = null;
-        foreach (var field in fields)
-        {
-            var pair = field.Split('=', 2);
-            if (pair.Length != 2) return null;
-            if (pair[0] == "action" && action is null) action = pair[1];
-            else if (pair[0] == "id" && id is null) id = pair[1];
-            else return null;
-        }
-        return action == CopyAction && NotificationIdentity.IsValidId(id) ? id : null;
-    }
 
     public static string? Find(string? text)
     {

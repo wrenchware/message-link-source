@@ -408,15 +408,13 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         if (preferences.WindowFocused) { RecordDelivery($"{kind}not shown (app window focused)"); return false; }
         // Away from the PC, the notification lands in Notification Center without a banner, so nothing floods in on return.
         var away = preferences.AwayReason();
-        // What the notification shows, by Notification options. A code is offered only where the message itself is: a
-        // notification that hides the text must not show the one part of it that matters most.
+        // What the notification shows, by Notification options.
         var options = preferences.Options;
         (title, preview) = NotificationOptions.Shape(title, preview, options.Detail);
-        var code = options.Detail == NotificationDetail.SenderAndMessage ? OneTimeCode.Find(message.Text) : null;
         var photo = await PhotoAsync(id, chat, chat.Type == "group" ? message.SenderId : null, token);
         if (attribution is null && (AlreadyRead(chat, message) || await ReadSinceAsync(message, token))) { photos?.Release(id); return false; }
         var content = new NotificationContent(record, Clip(title, 100), Clip(preview, 240), chat.Network, Silent: away is not null, Attribution: attribution,
-            Sound: options.SoundFor(serviceKey), Code: code, Photo: photo, CustomSound: options.CustomSoundFor(serviceKey));
+            Sound: options.SoundFor(serviceKey), Photo: photo, CustomSound: options.CustomSoundFor(serviceKey));
         Remember(record.Id, serviceKey);
         try { await presenter.ShowMessageAsync(content); }
         catch (Exception failure) when (refusals is not null) { photos?.Release(id); refusals.Add(failure); return false; }
@@ -483,7 +481,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var (title, preview) = NotificationOptions.Shape(content.Title, content.Preview, options.Detail);
         return content with
         {
-            Title = title, Preview = preview, Code = null,
+            Title = title, Preview = preview,
             Photo = options.SenderPhoto && options.Detail != NotificationDetail.None ? content.Photo : null,
             Sound = serviceKey is null ? NotificationOptions.DefaultSound : options.SoundFor(serviceKey),
             CustomSound = serviceKey is null ? null : options.CustomSoundFor(serviceKey),

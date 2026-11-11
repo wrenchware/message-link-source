@@ -546,7 +546,6 @@ Message Link shows Windows notifications while it's running, including from the 
 ### What a notification offers {#notification-actions}
 
 - The conversation's name (or "Sender · Group"), the message and the service.
-- **Copy code**, when the message holds a one-time code and notifications show messages. The code is held in memory only, for ten minutes, and can be copied once. It opens nothing and marks nothing read.
 - **Reply** with a text box, and **Mark read**, where the service allows them.
 - **Remind me in 1 hour** and **Mute** (until you unmute).
 - Click it to open the conversation, in its own window if it's popped out.
