@@ -124,7 +124,7 @@ page, or skip part 3's Facebook step).
 3. **Cancel.** In the dev copy's **Settings → Connections**, Messenger, **Connect**. Wanted: a window titled
    "Sign in to Facebook" saying "This is Message Link Server's own browser. Sign in to Facebook here, then choose Done.",
    showing facebook.com's login page with an address bar, and buttons **Done** and **Cancel**. Choose **Cancel** (and
-   once more, closing the window with its X instead). Wanted: "Facebook sign-in was cancelled.",
+   once more, closing the window with its X instead). Wanted: "Facebook sign-in was canceled.",
    `remote sign-in service=messenger outcome=cancelled reason=client`, `keys/SignIn` empty (below), and the server's
    Google sign-in (if any) still working.
 4. **Done too early.** Connect again and choose **Done** on the login page without signing in. Wanted: the window

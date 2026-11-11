@@ -87,7 +87,7 @@ public static class ProtocolErrors
             OutcomeUnknown: send.OutcomeUnknown, Done: send.Done),
         FirstMessageRequiredException first => new(ProtocolErrorCodes.FirstMessageRequired, first.Message),
         NotSupportedException => new(ProtocolErrorCodes.NotSupported, "This is not supported."),
-        OperationCanceledException => new(ProtocolErrorCodes.Cancelled, "The request was cancelled."),
+        OperationCanceledException => new(ProtocolErrorCodes.Cancelled, "The request was canceled."),
         _ => new(ProtocolErrorCodes.Internal, "Something went wrong on the server."),
     };
 

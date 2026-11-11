@@ -98,7 +98,7 @@ internal static class GoogleVoiceModels
         "auth_required" => "Google Voice needs you to sign in again in Settings. The conversation wasn't deleted.",
         "login_required" or "not_connected" => "Google Voice isn't connected. The conversation wasn't deleted.",
         "invalid_input" => "This conversation can't be deleted with Google Voice.",
-        "request_cancelled" => "The delete was cancelled before it reached Google Voice. Nothing was deleted.",
+        "request_cancelled" => "The delete was canceled before it reached Google Voice. Nothing was deleted.",
         "unknown_method" => "This Google Voice connection can't delete conversations. Nothing was deleted.",
         _ => "Google Voice didn't confirm the delete. Check Google Voice before trying again.",
     };

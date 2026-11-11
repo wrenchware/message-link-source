@@ -136,7 +136,7 @@ public sealed partial class OperationJournal : IDisposable
             {
                 // Cancelled before anything was asked of the provider: certain that nothing happened.
                 log?.Invoke("protocol journal outcome=cancelled-before-start");
-                error = new ProtocolError(ProtocolErrorCodes.Cancelled, "The request was cancelled.");
+                error = new ProtocolError(ProtocolErrorCodes.Cancelled, "The request was canceled.");
             }
             else result = await call(cancellationToken).ConfigureAwait(false);
         }

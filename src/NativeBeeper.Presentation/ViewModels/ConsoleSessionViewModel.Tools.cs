@@ -219,7 +219,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
             foreach (var scheme in ConsoleThemes.All)
                 Out(new ConsoleSpan(scheme.Name == Theme ? "● " : "  ", ConsoleTone.Accent), new ConsoleSpan(ConsoleCells.Pad(scheme.Name, 10), scheme.Name == Theme ? ConsoleTone.Strong : ConsoleTone.Default),
                     new ConsoleSpan(scheme.Description, ConsoleTone.Dim));
-            Out("/theme name switches. Service colours stay their own in every theme.", ConsoleTone.Dim);
+            Out("/theme name switches. Service colors stay their own in every theme.", ConsoleTone.Dim);
             return;
         }
         if (!ConsoleThemes.Exists(wanted)) { Fail($"There's no theme called “{wanted}”. Try {string.Join(", ", ConsoleThemes.All.Select(t => t.Name))}."); return; }

@@ -243,7 +243,7 @@ internal sealed class HelperRestarts(TimeProvider time, Action<string> log)
     public static string Describe(HelperRestartResult result) => result.Outcome switch
     {
         "reconnected" => "Restarted and reconnected.",
-        "cancelled" => "Restart cancelled.",
+        "cancelled" => "Restart canceled.",
         "asking" => Describe(HelperRestartStep.Asking),
         "settled" => Describe(HelperRestartStep.Restarting),
         "waiting" => Describe(HelperRestartStep.Waiting),

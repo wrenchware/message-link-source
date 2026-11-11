@@ -324,7 +324,7 @@ internal sealed partial class ServerPage
             {
                 "signed_out" => "This page was signed out, so the sign-in was stopped. Sign in to the page again to connect an account.",
                 "stopping" => "The server is stopping, so the sign-in was stopped. Nothing was changed.",
-                _ => "Cancelled. Nothing was changed.",
+                _ => "Canceled. Nothing was changed.",
             };
         }
         catch (RemoteSignInBusyException busy) { outcome = "busy"; words = BusyWords(busy.Face); }
@@ -533,7 +533,7 @@ zoom.addEventListener('click',function(){var z=stage.classList.toggle('zoomed');
 if(z)stage.scrollLeft=Math.max(0,(stage.scrollWidth-stage.clientWidth)/2)});
 if(stage.clientWidth&&stage.clientWidth<600)zoom.click();
 if(done)done.addEventListener('click',function(){send({kind:'done'});flush();done.disabled=true;say('Closing the browser and reading the sign-in…')});
-cancel.addEventListener('click',function(){finish('Cancelled','Nothing was changed. The server closed its browser.')});
+cancel.addEventListener('click',function(){finish('Canceled','Nothing was changed. The server closed its browser.')});
 })();
 """;
 

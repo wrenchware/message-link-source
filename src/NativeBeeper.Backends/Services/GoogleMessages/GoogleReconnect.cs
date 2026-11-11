@@ -46,7 +46,7 @@ internal static class GooglePairingFailure
         "pair_multiple_devices" => "More than one phone uses this Google account in Google Messages. Open Google Messages on the one you want, keep it open, and try again.",
         "pair_no_permission" => "Google didn't allow pairing for this account. Check that Google Messages on your phone uses it.",
         "pair_wrong_emoji" => "The emoji tapped on your phone didn't match. Try again and tap the one shown here.",
-        "pair_cancelled" => "Pairing was cancelled on your phone.",
+        "pair_cancelled" => "Pairing was canceled on your phone.",
         "pair_timeout" => "Your phone didn't confirm in time. Try again, and tap the emoji when Google Messages asks.",
         // Client attestation (codes 32, 33, 35): the phone's Google Messages checks the pairing app in a way this app cannot
         // pass yet (mautrix/gmessages#91). Retrying cannot help, and nothing here is the user's doing. The library reports

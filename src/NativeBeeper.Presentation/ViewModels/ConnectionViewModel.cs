@@ -35,7 +35,7 @@ public sealed partial class ConnectionViewModel(IBeeperBackend backend) : Observ
             };
         }
         catch (BackendException ex) { Status = ex.Message; }
-        catch (OperationCanceledException) { Status = "Connection cancelled."; }
+        catch (OperationCanceledException) { Status = "Connection canceled."; }
         catch (Exception) { Status = "Message Link couldn't read the saved pairing. Pair again in Settings → Connections."; }
         finally { IsBusy = false; }
     }

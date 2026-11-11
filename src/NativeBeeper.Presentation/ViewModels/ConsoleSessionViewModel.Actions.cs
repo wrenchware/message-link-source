@@ -349,7 +349,7 @@ public sealed partial class ConsoleSessionViewModel
                 { Fail($"There's no label called “{rest}”. Yours: {string.Join(", ", names)}."); return; }
                 var on = verb == "label";
                 Report(verb, provider, await Safely(() => host.SetLabelAsync(row, label, on)),
-                    on ? $"Labelled {target.Title} {label}, in Message Link." : $"Took {label} off {target.Title}.", "Not changed.");
+                    on ? $"Labeled {target.Title} {label}, in Message Link." : $"Took {label} off {target.Title}.", "Not changed.");
                 return;
             }
             case "snooze":

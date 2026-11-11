@@ -203,7 +203,7 @@ public static class ConsoleCatalog
              "Saved protected on this PC."],
             ["/alias u=/ls unread", "/alias mon=/top workers", "/alias"], SeeAlso: ["unalias"]),
         new("unalias", "system", "/unalias name", "remove an alias", [], ["/unalias u"]),
-        new("theme", "system", "/theme [name]", "the terminal's colours", ["campbell, phosphor, amber, ice or mono. Service colours stay their own."],
+        new("theme", "system", "/theme [name]", "the terminal's colors", ["campbell, phosphor, amber, ice or mono. Service colors stay their own."],
             ["/theme amber", "/theme"], Options: [.. ConsoleThemes.All.Select(theme => theme.Name)]),
         new("pause", "system", "/pause [1h|morning]", "pause notifications; /resume turns them back on", [], ["/pause", "/pause morning"],
             Options: ["1h", "morning"]),

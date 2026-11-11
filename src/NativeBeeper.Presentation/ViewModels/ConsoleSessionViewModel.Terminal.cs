@@ -368,7 +368,7 @@ public sealed partial class ConsoleSessionViewModel
         Blank();
         (string Key, string Text)[] keys =
         [
-            ("KEYS", "Tab complete · → take the grey suggestion · ↑↓ history · Ctrl+R search history · Ctrl+C drop the line"),
+            ("KEYS", "Tab complete · → take the gray suggestion · ↑↓ history · Ctrl+R search history · Ctrl+C drop the line"),
             ("", "Ctrl+L clear · PgUp/PgDn scroll · Esc clear the line, then the target · Ctrl+Plus/Minus zoom"),
             ("SHELL", "a ; b  both · a && b  b if a worked · cmd | grep x | head 5 | copy | less"),
             ("", "!! last command · !n command n · !word the last starting with word · /alias name=command"),

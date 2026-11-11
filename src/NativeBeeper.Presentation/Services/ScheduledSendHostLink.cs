@@ -430,8 +430,8 @@ public sealed class HostedScheduledSends(IScheduledSendHostLink link, TimeProvid
         }
     }
 
-    public const string GoneSentence = "That message has already gone from the server: it was sent, or cancelled from another device. Check the conversation.";
-    public const string GoneCopySentence = "This message has already gone from the server (it was sent, or cancelled from another device), so what you see here is a copy of your words: check the conversation before scheduling it again.";
+    public const string GoneSentence = "That message has already gone from the server: it was sent, or canceled from another device. Check the conversation.";
+    public const string GoneCopySentence = "This message has already gone from the server (it was sent, or canceled from another device), so what you see here is a copy of your words: check the conversation before scheduling it again.";
 
     private async Task<bool> CancelStandInAsync(string id, ScheduledSend item)
     {

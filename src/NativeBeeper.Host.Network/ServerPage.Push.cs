@@ -210,7 +210,7 @@ internal sealed partial class ServerPage
             .Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
             .Append("<button type=\"submit\" id=\"turn-on\">").Append(replacing ? "Replace the files" : "Turn on notifications").Append("</button><a class=\"cancel\" href=\"").Append(fromSetup ? "/welcome?step=notifications" : "/").Append("\">Cancel</a></form>");
         body.Append("<details><summary>Can't create a private key?</summary>")
-            .Append(Para("Your Google account belongs to an organisation (Google Workspace, at work or school) whose policy forbids private key files. Make the Firebase project with a personal Google account instead, such as a gmail.com address, and start again from the first step."))
+            .Append(Para("Your Google account belongs to an organization (Google Workspace, at work or school) whose policy forbids private key files. Make the Firebase project with a personal Google account instead, such as a gmail.com address, and start again from the first step."))
             .Append("</details>");
         body.Append("<script>").Append(PushScript).Append("</script>");
         return body.Append("</section>").ToString();

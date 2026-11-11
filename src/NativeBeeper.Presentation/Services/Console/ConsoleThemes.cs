@@ -29,7 +29,7 @@ public static class ConsoleThemes
             0xFFFFD27A, 0xFFFFE9B3, 0xFFFF7A59, 0xFFFFE2A8, 0xFFFFE9B3, 0xFF3A2808),
         new("ice", "cool blue-black", 0xFF0A0E14, 0xFF151B24, 0xFFB3C3D6, 0xFF6F8399, 0xFF7FC8FF,
             0xFF7FD962, 0xFFFFD580, 0xFFFF7A85, 0xFFE6EEF7, 0xFFFFD580, 0xFF1F3347),
-        new("mono", "black and white, no colour but the services'", 0xFF000000, 0xFF161616, 0xFFD9D9D9, 0xFF8C8C8C, 0xFFFFFFFF,
+        new("mono", "black and white, no color but the services'", 0xFF000000, 0xFF161616, 0xFFD9D9D9, 0xFF8C8C8C, 0xFFFFFFFF,
             0xFFD9D9D9, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF333333),
     ];
 

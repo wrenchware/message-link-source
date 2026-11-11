@@ -13,7 +13,7 @@ Everything Message Link does, from the first sign-in to the last keyboard shortc
 - **Google Voice**: texts, call history and voicemail, for as many Voice numbers as you add.
 - **Instagram**: your direct messages.
 
-It is a real Windows app, not a web page wrapped in a window. A browser window appears only when a service asks you to sign in. It follows Windows' own settings: animations switch off with Windows' *Animation effects*, high contrast uses your system colours, and every button has a name for screen readers.
+It is a real Windows app, not a web page wrapped in a window. A browser window appears only when a service asks you to sign in. It follows Windows' own settings: animations switch off with Windows' *Animation effects*, high contrast uses your system colors, and every button has a name for screen readers.
 
 ### The window at a glance {#window}
 
@@ -168,7 +168,7 @@ Press <kbd>Ctrl+/</kbd> any time for the list inside the app. Shortcuts don't ru
 - The **name** is bold while there's something unread. The **time** reads "Just now", "5 min ago", "2 hr ago", "Yesterday", then a date, and keeps itself fresh.
 - The **preview** shows the newest message: "You: …" for yours, the sender's name in groups. It becomes **typing…** while someone types (not on Google Voice) and **Draft: …** while you have unsent text there.
 - **Pills** beside the time: **Pinned** first, then your labels. At most two show; with more, the second becomes "+2" and its tooltip names the rest.
-- **Small icons**: a red phone for a missed call, a grey phone for other calls, a voicemail icon, a muted bell (its tooltip says until when), and a bell for **Remind me later** ("Snoozed until …").
+- **Small icons**: a red phone for a missed call, a gray phone for other calls, a voicemail icon, a muted bell (its tooltip says until when), and a bell for **Remind me later** ("Snoozed until …").
 - A small spinner replaces the time while a row updates; a thin bar shows while the list loads.
 - A merged conversation says **Merged** under its name instead of a service badge.
 
@@ -176,10 +176,10 @@ Press <kbd>Ctrl+/</kbd> any time for the list inside the app. Shortcuts don't ru
 
 Two dropdowns sit above the list.
 
-- **View**: **Messages**, **Unread** (<kbd>Ctrl+U</kbd>), **Archive**, **Spam** and **Drafts**; then your labels, once you have one: **All labels**, a tick for each label (choose several and a chat with any of them shows) and **Manage labels…**; then **Saved**, which opens your [saved messages](#saved-messages). With more than eight labels they fold into a **Labels** submenu. While a label is chosen the dropdown names it after its colour dot, for example "Work", "Unread · Work" or "2 labels".
+- **View**: **Messages**, **Unread** (<kbd>Ctrl+U</kbd>), **Archive**, **Spam** and **Drafts**; then your labels, once you have one: **All labels**, a tick for each label (choose several and a chat with any of them shows) and **Manage labels…**; then **Saved**, which opens your [saved messages](#saved-messages). With more than eight labels they fold into a **Labels** submenu. While a label is chosen the dropdown names it after its color dot, for example "Work", "Unread · Work" or "2 labels".
 - **Services**: **All services**, then each service, or each account when you have several of one (Voice numbers are listed separately). Tick several at once. Unread counts sit on the right; they leave out muted, archived and spam conversations. With Google Voice connected there's also **Type**: All types, Messages, Calls or Voicemails (only **Calls** lists calls you answered or made). **Clear filters** appears while a filter is on, and **Show service badges** (<kbd>Ctrl+Shift+I</kbd>) is here too.
 
-A dropdown that's filtering says so, for example "Services (2)", in your accent colour. Filters look only at conversations already loaded: **Load more conversations** at the bottom of the list fetches older ones. When a filter hides everything, the list offers **Clear filters** and **Load more conversations**.
+A dropdown that's filtering says so, for example "Services (2)", in your accent color. Filters look only at conversations already loaded: **Load more conversations** at the bottom of the list fetches older ones. When a filter hides everything, the list offers **Clear filters** and **Load more conversations**.
 
 ### The conversation menu {#conversation-menu}
 
@@ -201,7 +201,7 @@ Right-click a conversation, or use the **⋯** button in its header. You'll see,
 
 ### Compact list {#compact-list}
 
-The button at the left of the title bar collapses the list to a slim strip of photos with service badges and unread dots; hover for the name. The **Conversation list options** button keeps New chat, the View (with your labels) and Services menus and the ⋯ items within reach; a coloured dot on it means a label filter is on. Drag the divider between the list and the conversation to set its width (240 to 640 pixels); Message Link remembers it, along with the window's size and whether it was maximized.
+The button at the left of the title bar collapses the list to a slim strip of photos with service badges and unread dots; hover for the name. The **Conversation list options** button keeps New chat, the View (with your labels) and Services menus and the ⋯ items within reach; a colored dot on it means a label filter is on. Drag the divider between the list and the conversation to set its width (240 to 640 pixels); Message Link remembers it, along with the window's size and whether it was maximized.
 
 ### When Message Link opens {#on-launch}
 
@@ -219,8 +219,8 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 
 ### Labels {#labels}
 
-- **New label…** (from a conversation's menu, or Commands) asks for a name of up to 32 characters and one of eight colours: Red, Orange, Yellow, Green, Teal, Blue, Purple or Pink. A label made from a conversation's menu goes on that conversation at once.
-- **Manage labels…** renames (type and press Enter), recolours and deletes labels. Deleting says how many conversations will lose it.
+- **New label…** (from a conversation's menu, or Commands) asks for a name of up to 32 characters and one of eight colors: Red, Orange, Yellow, Green, Teal, Blue, Purple or Pink. A label made from a conversation's menu goes on that conversation at once.
+- **Manage labels…** renames (type and press Enter), recolors and deletes labels. Deleting says how many conversations will lose it.
 - Filter the list by labels from the view dropdown above the list (it reads **Messages** until you pick one), or **Show label: *name*** in Commands.
 
 ### Muting {#muting}
@@ -266,11 +266,11 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 ### The message box {#composer}
 
 - <kbd>Enter</kbd> sends and <kbd>Shift+Enter</kbd> starts a new line. The box grows to about eight lines, then scrolls, and eases back to one line after you send.
-- The **Send** button appears once there's something to send, filled with the colour your message will have. With an empty box it becomes a **microphone** where voice messages are supported.
+- The **Send** button appears once there's something to send, filled with the color your message will have. With an empty box it becomes a **microphone** where voice messages are supported.
 - **Emoticons become emoji** as you type: `:)` `:(` `;)` `:D` `:P` `<3`, with or without a nose (`:-)`). `:D` and `:P` change after the next space. Nothing changes inside a word, a link or a time, or while you hold Ctrl.
 - The placeholder says how a Google Messages text will go: "RCS message", "Text message · SMS", "Add a message · MMS". While you type, a small label beside the box shows the route. Your phone has the last word: it may switch route, or turn a long text into MMS.
-- Your bubble's colour follows the route too: RCS and SMS have different shades. You can change the colours in [Appearance](#settings-appearance).
-- Each service's length limit applies. A message that's too long greys the Send button.
+- Your bubble's color follows the route too: RCS and SMS have different shades. You can change the colors in [Appearance](#settings-appearance).
+- Each service's length limit applies. A message that's too long grays the Send button.
 - Press <kbd>Enter</kbd> before a conversation has finished connecting and Message Link sends as soon as it can. Editing the text or switching conversation meanwhile cancels that.
 - Google Messages conversations show a small amber status under the title while something is wrong with the phone link: "Reconnecting to phone…", "Phone unavailable", "Renewing Google sign-in…".
 
@@ -305,7 +305,7 @@ The emoji button beside Send opens a picker with three tabs.
 
 - On Messenger and Instagram, press <kbd>Up</kbd> in an empty message box to edit your newest message. It must be text only and already confirmed by the service.
 - An **Editing message** bar appears, the message is tinted, and Send becomes a tick. <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels, <kbd>Shift+Enter</kbd> adds a line. Your draft is set aside and comes back afterwards.
-- **Edit message** in a message's menu edits any of your own text messages on those services. Edited messages are labelled **Edited**. The new words show the moment you save; if the service turns the edit down, the message goes back to what it said and a notice says why.
+- **Edit message** in a message's menu edits any of your own text messages on those services. Edited messages are labeled **Edited**. The new words show the moment you save; if the service turns the edit down, the message goes back to what it said and a notice says why.
 - An edit can't leave a message empty. If Message Link couldn't confirm an earlier change to a message, it won't change it again until you've checked.
 
 ### Safety nets {#safety-nets}
@@ -428,7 +428,7 @@ Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when 
 
 - The last message you sent says how it's doing in words: "Sending…", "Sent", "Delivered" or "Read". Once a reply comes after it, the status goes if the message was delivered, and stays while it says "Sent".
 - Click any message you sent to show its status, and click again to put it away.
-- Turn off **Delivery status as text** in [Appearance](#settings-appearance) for icons instead: a clock while sending, one check sent, two checks delivered, all in grey; two white checks read (black in a light theme). A red alert means failed, an amber question mark uncertain. "Not confirmed yet", "May not have sent" and "Edited" always show as words.
+- Turn off **Delivery status as text** in [Appearance](#settings-appearance) for icons instead: a clock while sending, one check sent, two checks delivered, all in gray; two white checks read (black in a light theme). A red alert means failed, an amber question mark uncertain. "Not confirmed yet", "May not have sent" and "Edited" always show as words.
 - In groups, small **read faces** sit under the newest message each person has read, and slide down as they read on. Hover for "Read by …".
 - Receipts appear only where the service reports them. Google Voice shows "Sent"; SMS never reports Read.
 
@@ -456,7 +456,7 @@ Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when 
 Google Voice calls appear as cards rather than a text conversation.
 
 - A **missed call** or **voicemail** gets a row in the list. A call you answered or made, or one nobody picked up, doesn't, and never counts as unread: choose **Calls** under **Type** in the Services dropdown to see every call, or search for it. The phone app hides them too; searching there finds them.
-- A coloured badge (red missed, blue voicemail, green connected), a headline such as "Missed voice call", and the full date.
+- A colored badge (red missed, blue voicemail, green connected), a headline such as "Missed voice call", and the full date.
 - **Voicemail** shows Google's transcript and a player. The audio downloads only when you press play. **Save** keeps it as a file named after the caller and the date.
 - **Send a message to *name*** opens the text conversation. If both Google Voice and your phone's Google Messages can reach them, Message Link asks which to use.
 - Message Link can't place or answer calls.
@@ -615,7 +615,7 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
   - **Pinned**: up to nine pinned conversations, alphabetically (seven when the suggestions need the room).
   - **Suggested**: three more conversations you're likely to want now. They're the ones you message most, counting the last few days most and the time of day you usually write to them; conversations you open count a little too. Until Message Link has a few days of that to go on, your most recent conversations fill in. What you send and open is recorded on this PC only, encrypted, and never with a message's words.
   - **New chat**, **Search** and **Quit Message Link** (quits as the tray's **Quit** does).
-  - Each conversation shows its contact photo, or its coloured initial when there's no photo. Turn **Photos in the taskbar menu** off in [Startup and tray](#settings-startup) to use the app's icon instead. Windows can only show these pictures from ordinary files, so while they're on, a copy of each photo shown sits in the app's data folder; it goes when its conversation leaves the list, and all of them go when you turn the option off, sign out of the account or uninstall.
+  - Each conversation shows its contact photo, or its colored initial when there's no photo. Turn **Photos in the taskbar menu** off in [Startup and tray](#settings-startup) to use the app's icon instead. Windows can only show these pictures from ordinary files, so while they're on, a copy of each photo shown sits in the app's data folder; it goes when its conversation leaves the list, and all of them go when you turn the option off, sign out of the account or uninstall.
 - A small progress bar on the button, and a dot above the list, show a launch that's still loading.
 
 ### Start with Windows {#start-with-windows}
@@ -628,7 +628,7 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
 
 ### Windows and restarts {#windows-and-restarts}
 
-- Message Link remembers its window size, whether it was maximized, the list's width and the compact list. A first run opens centred.
+- Message Link remembers its window size, whether it was maximized, the list's width and the compact list. A first run opens centered.
 - [Conversations in their own window](#pop-out-windows) come back where you left them.
 - When you sign out of Windows or restart, Message Link saves your drafts and closes within a few seconds, without asking. A send still in flight is reported as unknown afterwards, never resent.
 - Connections come back by themselves after sleep or a dropped network, and a service whose connection stops after it had connected resumes from its saved sign-in.
@@ -643,10 +643,10 @@ For keyboard people: <kbd>Ctrl+`</kbd> opens the chat console, a terminal of its
 
 ### The screen {#console-screen}
 
-- **The scroll** opens like a fresh terminal: the last login, `/neofetch`, then new messages as they arrive, each with its time, its service (in its colour) and the message. It holds 2,000 lines.
-- **The prompt** sits after the last line: `messages>`, or `messages:Lauren>` once you've chosen someone, their name in their service's colour. Commands you type stay in the scroll with what they printed, as in any terminal.
-- **The status line** at the bottom shows each service as a coloured letter with a dot (● connected, ○ offline), unread conversations, sends in flight, who's typing, your target and the clock. The title bar shows the size in characters, like `120×38`.
-- **Themes**: `/theme campbell`, `phosphor` (green screen), `amber`, `ice` or `mono`. The console stays dark whatever your Windows theme; high contrast uses your system colours. Service colours stay their own in every theme.
+- **The scroll** opens like a fresh terminal: the last login, `/neofetch`, then new messages as they arrive, each with its time, its service (in its color) and the message. It holds 2,000 lines.
+- **The prompt** sits after the last line: `messages>`, or `messages:Lauren>` once you've chosen someone, their name in their service's color. Commands you type stay in the scroll with what they printed, as in any terminal.
+- **The status line** at the bottom shows each service as a colored letter with a dot (● connected, ○ offline), unread conversations, sends in flight, who's typing, your target and the clock. The title bar shows the size in characters, like `120×38`.
+- **Themes**: `/theme campbell`, `phosphor` (green screen), `amber`, `ice` or `mono`. The console stays dark whatever your Windows theme; high contrast uses your system colors. Service colors stay their own in every theme.
 
 ### Talking {#console-talking}
 
@@ -741,7 +741,7 @@ These take over the console's screen until you press <kbd>q</kbd> or <kbd>Esc</k
 | Keys | What it does |
 |---|---|
 | <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> | Complete commands, options, filters and names; the choices list under the prompt |
-| <kbd>Right</kbd> or <kbd>End</kbd> | Take the grey suggestion of an earlier command |
+| <kbd>Right</kbd> or <kbd>End</kbd> | Take the gray suggestion of an earlier command |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Earlier and later lines you typed |
 | <kbd>Ctrl+R</kbd> | Search what you typed (reverse-i-search); <kbd>Enter</kbd> takes the match without running it |
 | <kbd>Ctrl+C</kbd> | Copy the selected lines; with none selected, drop the line you're typing |
@@ -855,8 +855,8 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 | Setting | What it does | Default |
 |---|---|---|
 | **Theme** | **Same as Windows**, **Light** or **Dark**. A change applies when Message Link restarts; **Restart now** appears beside it | Same as Windows |
-| **Message colours** | Your bubble colour per service and route: Google Messages RCS, SMS and MMS, and route unknown; Messenger; Instagram; Google Voice. Twelve swatches or **Custom colour**; a colour that would be hard to read is adjusted slightly. **Use service colours in linked conversations**, and **Reset to defaults** | Service colours |
-| **Background** | Shown in dark mode only. The background colour in dark mode: **Dark**, **Gray**, **Near black**, or a tinted **Slate**, **Navy**, **Midnight** (the darkest blue), **Graphite** or **Moss**. The conversation list, the conversation and incoming bubbles change together, at once | Dark |
+| **Message colors** | Your bubble color per service and route: Google Messages RCS, SMS and MMS, and route unknown; Messenger; Instagram; Google Voice. Twelve swatches or **Custom color**; a color that would be hard to read is adjusted slightly. **Use service colors in linked conversations**, and **Reset to defaults** | Service colors |
+| **Background** | Shown in dark mode only. The background color in dark mode: **Dark**, **Gray**, **Near black**, or a tinted **Slate**, **Navy**, **Midnight** (the darkest blue), **Graphite** or **Moss**. The conversation list, the conversation and incoming bubbles change together, at once | Dark |
 | **Service icons** | The service badge on conversation photos (<kbd>Ctrl+Shift+I</kbd>) | On |
 | **Link previews** | A picture and description for web links | On |
 | **Delivery status as text** | Sent, Delivered and Read in words instead of icons | On |
@@ -922,7 +922,7 @@ When Message Link uses a Message Link Server, the server keeps the backups and i
 Choose the folder or network share holding the backup first. The review warns when Messenger history is missing. The server page's saved password returns to the one in the backup, so use that password after the restart. A password set in the server's installation settings stays as it is.
 
 - Every device that's kept reconnects by itself, starts its copy of your conversations over and keeps its drafts. A device that joined after the backup was made is told **This server was restored from an earlier backup. Ask to join again.**
-- Every scheduled message is held for you to send or drop, whether or not its time has come: the backup can't know which you cancelled or sent early since. Nothing that was sending is sent again.
+- Every scheduled message is held for you to send or drop, whether or not its time has come: the backup can't know which you canceled or sent early since. Nothing that was sending is sent again.
 - Sign in to each account again on the server; it then fills in what arrived meanwhile, and adds Messenger's history once Messenger is signed in.
 - A backup made by a PC (before it used a server) restores onto a server too: its Messenger history and choices are added once those accounts are signed in on the server.
 - If the server moved to new hardware at a new address, **Settings → Connections → Message Link Server** changes only the address and keeps this PC's pairing; the server's certificate proves it's the same server.
@@ -980,7 +980,7 @@ Everything is in `%LOCALAPPDATA%\Message Link` on your PC. Uninstalling asks whe
 - **Tailscale asks to sign in again**: Tailscale signed this PC out, usually because its key expired. Choose **Sign in to Tailscale** on Connections › Server, then turn off key expiry for this PC in Tailscale's admin console.
 - **Tailscale asks to approve this PC**: approve it in Tailscale's admin console, under **Machines**.
 - **Tailscale says your network uses Tailnet Lock**: run the command the card shows on a device that can sign, then wait for the card to change.
-- **Windows warns about the installer**: the installer isn't signed, so Windows doesn't recognise it; choose **More info → Run anyway**.
+- **Windows warns about the installer**: the installer isn't signed, so Windows doesn't recognize it; choose **More info → Run anyway**.
 - **"Message Link closed unexpectedly last time"**: choose **Save logs** and send the file to whoever helps you.
 
 ## 20. What each service can do {#services}
