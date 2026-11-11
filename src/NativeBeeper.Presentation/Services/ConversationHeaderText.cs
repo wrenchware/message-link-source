@@ -2,13 +2,10 @@ using NativeBeeper.Core.Messaging;
 
 namespace NativeBeeper.Presentation.Services;
 
-/// <summary>One of the header's service dots: the colour family it is drawn in and the name it is read out as.</summary>
-public sealed record HeaderDot(BubbleFamily Family, string Name, bool Next = false);
-
 public static class ConversationHeaderText
 {
     // Direct chats show the other person's number, or their username where the service has none; groups their size. The
-    // service and route are the dots beside it (Dots), so they are named in words only when there is nothing else to say.
+    // service and route are the subtitle's tooltip (OnlyService), so they are named in words only when there is nothing else to say.
     public static string Subtitle(ChatSummary chat, string? transport)
     {
         var parts = new List<string>();
@@ -32,14 +29,14 @@ public static class ConversationHeaderText
     }
 
     // A merged conversation's header: the person's number, an RCS one first (owner, 2026-10-26), and how many more there
-    // are; its services are the dots. The tooltip says how many conversations it links and their services by name, as
-    // Details lists them, and every number when there are several. It used to count distinct networks, so a second
+    // are; the link badge beside it counts the linked conversations (LinkedCount). The tooltip says how many conversations
+    // it links and their services by name, and every number when there are several. It used to count distinct networks, so a second
     // conversation on a service already linked (another account, or the person's other number) was listed in Details but
     // left the header a number short. A Voice person's texts, calls and voicemail on one account are one conversation
     // there and one here.
     public static (string Subtitle, string Detail) Merged(IReadOnlyList<ChatSummary> members, Func<ChatSummary, string> serviceLabel, string? onlyLabel)
     {
-        var count = members.Select(LinkedKey).Distinct(StringComparer.Ordinal).Count();
+        var count = LinkedCount(members);
         var linked = $"{count} linked {(count == 1 ? "conversation" : "conversations")}";
         var numbers = Numbers(members);
         var lead = numbers.Count switch
@@ -52,6 +49,12 @@ public static class ConversationHeaderText
         if (numbers.Count > 1) detail += "\n" + string.Join("\n", numbers);
         return (onlyLabel is null ? lead : $"{onlyLabel} only · {lead}", detail);
     }
+    /// <summary>
+    /// How many conversations a merge links; the header's link badge shows it. Each is a conversation of its own, so a
+    /// person's RCS and SMS threads at one number count two where Details' Accounts has one row for them; a merge of
+    /// two must never read as one and lose its badge.
+    /// </summary>
+    public static int LinkedCount(IEnumerable<ChatSummary> members) => members.Select(LinkedKey).Distinct(StringComparer.Ordinal).Count();
     private static string LinkedKey(ChatSummary chat)
     {
         if (!chat.Network.Equals("Google Voice", StringComparison.OrdinalIgnoreCase)) return "chat|" + chat.Id;
@@ -69,15 +72,11 @@ public static class ConversationHeaderText
         .Select(DirectNumber).OfType<string>().DistinctBy(PhoneKey).ToArray();
 
     /// <summary>
-    /// The services a conversation is reached through, one dot each in the colour its sent bubbles have, the one the next
-    /// message goes by first. Google's are told apart by route, so a person on RCS and on SMS has two. The service colour
-    /// is used even where Settings draws a merged conversation's bubbles in one colour: the dots are there to tell the
-    /// services apart.
+    /// The one service a conversation is reached through, as the subtitle's tooltip names it ("RCS", "Messenger"); null
+    /// when there are several, which the link badge counts instead. Google's are told apart by route.
     /// </summary>
-    public static IReadOnlyList<HeaderDot> Dots(IEnumerable<ChatSummary> sources, string? sendChatId) => sources
-        .OrderBy(c => c.Id == sendChatId ? 0 : 1)
-        .Select(c => new HeaderDot(BubbleColours.TagFamily(c.Network, c.ExpectedTransport), ServiceName(c.Network, c.ExpectedTransport), c.Id == sendChatId))
-        .DistinctBy(d => d.Family).ToArray();
+    public static string? OnlyService(IEnumerable<ChatSummary> sources) =>
+        sources.Select(c => ServiceName(c.Network, c.ExpectedTransport)).Distinct(StringComparer.Ordinal).ToArray() is [var only] ? only : null;
 
     // Google by its route where one is expected ("RCS", "SMS"), every other service by its name.
     private static string ServiceName(string network, string? transport) =>
@@ -98,6 +97,13 @@ public static class ConversationHeaderText
         var others = chat.Participants.Where(p => p.IsSelf != true).ToArray();
         return Only(others.Select(p => Phone(p.Phone))) ?? Only(others.Select(p => Phone(p.Id)));
     }
+    // The counterpart's @handle where the service has no number; Send using tells two routes apart by it.
+    public static string? Handle(ChatSummary chat) => DirectHandle(chat);
+    // What Send using tells two routes to one number apart by: Google's RCS and SMS threads by route, a Messenger chat
+    // and its encrypted one by "Encrypted". Null where the service says neither.
+    public static string? RouteKind(ChatSummary chat) =>
+        chat.Network.Equals("Google Messages", StringComparison.OrdinalIgnoreCase) && ComposeTransport.BubbleFamily(chat.ExpectedTransport) is { } route
+            ? route : chat.IsEncrypted == true ? "Encrypted" : null;
     // A Messenger or Instagram person has a handle where Google has a number; one the rows agree on, as for numbers.
     private static string? DirectHandle(ChatSummary chat)
     {

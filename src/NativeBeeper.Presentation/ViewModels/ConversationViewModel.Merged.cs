@@ -71,7 +71,6 @@ public sealed partial class ConversationViewModel
         ExpectedTransport = id is null ? null : SourceChat(id)?.ExpectedTransport;
         OnPropertyChanged(nameof(SendChatId)); OnPropertyChanged(nameof(SendChat));
         SelectedMember = Members.FirstOrDefault(m => m.Id == id);
-        UpdateHeaderDots();
         SendChatChanged?.Invoke(this, id);
     }
     private void RefreshMergedRoutes()
@@ -80,7 +79,8 @@ public sealed partial class ConversationViewModel
         var choices = merges.Members(ActiveChatId!).Where(m => !MergedConversations.IsCall(m) && !m.IsReadOnly).ToArray();
         var group = merges.Find(ActiveChatId!);
         var labels = choices.Select(chat => new ConversationMember(chat.Id, merges.ServiceLabel(chat), chat.Network, merges.ServiceRouteLabel(chat),
-            group?.PinnedRoute?.ChatId == chat.Id)).ToArray();
+            group?.PinnedRoute?.ChatId == chat.Id, ConversationHeaderText.Number(chat) ?? ConversationHeaderText.Handle(chat),
+            ConversationHeaderText.RouteKind(chat))).ToArray();
         if (!Members.SequenceEqual(labels))
         {
             Members.Clear();
@@ -180,7 +180,7 @@ public sealed partial class ConversationViewModel
         if (merges?.Find(ActiveChatId!) is not null)
         {
             (Subtitle, SubtitleDetail) = MergedHeader(ActiveChatId!);
-            UpdateHeaderDots();
+            UpdateHeaderBadge();
             OnPropertyChanged(nameof(Accounts));
         }
         return RefreshAsync();

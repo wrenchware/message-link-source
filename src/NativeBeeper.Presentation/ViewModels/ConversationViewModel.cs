@@ -10,9 +10,44 @@ namespace NativeBeeper.Presentation.ViewModels;
 
 public sealed record ConversationMember(string Id, string Label, string Network = "", string? RouteLabel = null,
     // The merged conversation's "Always send with" route. Appended.
-    bool IsPinned = false)
+    bool IsPinned = false,
+    // The other person's number in this conversation, else their handle. Appended.
+    string? Detail = null,
+    // What else sets the route apart where the number does not: Google's route (RCS, SMS), else "Encrypted". Appended.
+    string? Kind = null)
 {
     public string DisplayRoute => RouteLabel ?? (Network.Length > 0 ? Network : Label);
+
+    /// <summary>
+    /// The route in words, with the number or handle it goes to when another route has the same name: two Google Voice
+    /// conversations with one person, one per number, both read "Google Voice" (owner, 2026-11-10). Two at one number
+    /// (Google's RCS and SMS threads, a Messenger chat and its encrypted one) are told apart by their kind instead.
+    /// </summary>
+    public string RouteTo(IEnumerable<ConversationMember> routes)
+    {
+        var twins = Twins(routes);
+        return DistinctNumber(twins) is { } number ? $"{DisplayRoute} to {number}"
+            : DistinctKind(twins) is { } kind ? $"{DisplayRoute} · {kind}" : DisplayRoute;
+    }
+
+    /// <summary>Whether another of these routes has the same name.</summary>
+    public bool IsAmbiguous(IEnumerable<ConversationMember> routes) => Twins(routes).Length > 0;
+
+    /// <summary>The number or handle telling this route from others of the same name; null when the name is unique or they share it.</summary>
+    public string? NumberApart(IEnumerable<ConversationMember> routes) => DistinctNumber(Twins(routes));
+
+    /// <summary>What tells this route from others of the same name: its number or handle, else its kind; null when neither does.</summary>
+    public string? DistinctDetail(IEnumerable<ConversationMember> routes)
+    {
+        var twins = Twins(routes);
+        return DistinctNumber(twins) ?? DistinctKind(twins);
+    }
+
+    private ConversationMember[] Twins(IEnumerable<ConversationMember> routes) => routes.Where(m => m.Id != Id && m.DisplayRoute == DisplayRoute).ToArray();
+    private string? DistinctNumber(ConversationMember[] twins) =>
+        Detail is { } detail && twins.Length > 0 && twins.All(m => m.Detail != detail) ? detail : null;
+    private string? DistinctKind(ConversationMember[] twins) =>
+        Kind is { } kind && twins.Length > 0 && twins.All(m => m.Kind != kind) ? kind : null;
 }
 
 // recoveryDelay replaces the automatic recheck schedule; the offline checks use it to keep bounded retries fast. Peek is
@@ -65,8 +100,10 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
     [ObservableProperty] private string? avatarOverrideId;
     [ObservableProperty] private string subtitle = "Choose a chat to read its history.";
     [ObservableProperty] private string? subtitleDetail;
-    /// <summary>The services the conversation is reached through, drawn beside the subtitle (ConversationHeaderText.Dots).</summary>
-    [ObservableProperty] private IReadOnlyList<HeaderDot> subtitleDots = [];
+    /// <summary>The one service the conversation is reached through, the subtitle's tooltip; null for several (ConversationHeaderText.OnlyService).</summary>
+    [ObservableProperty] private string? subtitleService;
+    /// <summary>How many conversations a merged conversation links (ConversationHeaderText.LinkedCount); 0 for anything else. The header's link badge.</summary>
+    [ObservableProperty] private int linkedCount;
     [ObservableProperty] private string status = "";
     // See INoticeSource: shown unless it is progress or success, which the conversation itself already reports.
     public bool StatusIsAdvisory { get; private set; }
@@ -186,7 +223,7 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
         // list, and the header showed it until the first render replaced it.
         if (merges is not null && MergedConversations.IsMerged(chat.Id)) (Subtitle, SubtitleDetail) = MergedHeader(chat.Id);
         else { Subtitle = ConversationHeaderText.Subtitle(chat, chat.ExpectedTransport); SubtitleDetail = null; }
-        UpdateHeaderDots();
+        UpdateHeaderBadge();
         HasConversation = true; Advisory("Loading history…");
         OnPropertyChanged(nameof(Accounts));
         try
@@ -509,12 +546,14 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
 
     private (string Subtitle, string Detail) MergedHeader(string chatId) =>
         ConversationHeaderText.Merged(merges!.Members(chatId), merges.ServiceRouteLabel, sourceFilter is null ? null : SourceFilterLabel);
-    // Replaced only when they change, so a render that changes nothing redraws nothing.
-    private void UpdateHeaderDots()
+    // Set properties raise nothing when unchanged, so a render that changes nothing redraws nothing.
+    private void UpdateHeaderBadge()
     {
-        if (CurrentChat is not { } chat) { SubtitleDots = []; return; }
-        var dots = ConversationHeaderText.Dots(merges is not null && MergedConversations.IsMerged(chat.Id) ? merges.Members(chat.Id) : [chat], sendChatId);
-        if (!dots.SequenceEqual(SubtitleDots)) SubtitleDots = dots;
+        if (CurrentChat is not { } chat) { SubtitleService = null; LinkedCount = 0; return; }
+        var merged = merges is not null && MergedConversations.IsMerged(chat.Id);
+        var sources = merged ? merges!.Members(chat.Id) : [chat];
+        SubtitleService = ConversationHeaderText.OnlyService(sources);
+        LinkedCount = merged ? ConversationHeaderText.LinkedCount(sources) : 0;
     }
 
     // Sent messages whose receipt a click put on show, by MessageIdentity.Key: a row is drawn afresh on every render and its
@@ -549,7 +588,7 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
         ExpectedTransport = IsMerged ? SendChat?.ExpectedTransport : current.Chat.ExpectedTransport;
         if (IsMerged && merges is not null) (Subtitle, SubtitleDetail) = MergedHeader(current.Chat.Id);
         else { Subtitle = ConversationHeaderText.Subtitle(current.Chat, current.Chat.ExpectedTransport); SubtitleDetail = null; }
-        UpdateHeaderDots();
+        UpdateHeaderBadge();
         // A provider that says who read each message but not where each reader stopped gets its faces placed here. One
         // service shown on its own (SourceFilter) leaves every other member's rows out, system lines included.
         var shown = ShownChatIds();
@@ -763,7 +802,7 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
         mergedRecoveryExpired = false; mergedRecoveryWarning = null;
         ResetSourceFilter(); ClearRouteNotice();
         Messages.Clear(); Members.Clear(); SelectedMember = null; HasMembers = false; HasMore = false;
-        HasConversation = false; IsBusy = false; AvatarUrl = AvatarChatId = AvatarOverrideId = null; Title = "Your conversations"; Subtitle = "Choose a chat to read its history."; SubtitleDetail = null; SubtitleDots = []; Status = "";
+        HasConversation = false; IsBusy = false; AvatarUrl = AvatarChatId = AvatarOverrideId = null; Title = "Your conversations"; Subtitle = "Choose a chat to read its history."; SubtitleDetail = null; SubtitleService = null; LinkedCount = 0; Status = "";
         OnPropertyChanged(nameof(Accounts));
     }
     // There is deliberately no Clear: the history cache is shared with every other window's conversation, so leaving
