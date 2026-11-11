@@ -14,8 +14,16 @@ public sealed record ConversationMember(string Id, string Label, string Network 
     // The other person's number in this conversation, else their handle. Appended.
     string? Detail = null,
     // What else sets the route apart where the number does not: Google's route (RCS, SMS), else "Encrypted". Appended.
-    string? Kind = null)
+    string? Kind = null,
+    // Where the person last wrote from, which is where a reply goes unless chosen otherwise; Send using says so. Appended.
+    bool IsLastIncoming = false)
 {
+    /// <summary>The services in the order the app always lists them; anything else after, in the order given.</summary>
+    public static int ServiceOrder(string network) => network switch
+    {
+        "Google Messages" => 0, "Messenger" => 1, "Google Voice" => 2, "Instagram" => 3, _ => 4,
+    };
+
     public string DisplayRoute => RouteLabel ?? (Network.Length > 0 ? Network : Label);
 
     /// <summary>

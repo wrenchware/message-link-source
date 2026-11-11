@@ -356,8 +356,12 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
         try
         {
             // A new profile, nothing copied: Chrome is closed first, so the display and the profile folder are the new ones alone.
-            await InteractAsync(session, run, output, cancellationToken, working.Path, GoogleVoiceSignInRules.LoginUrl, ChromiumRenewalTarget.Voice,
-                read => read.Cookies.ContainsKey("OSID"), () => chrome.StopAsync(), Prefix).ConfigureAwait(false);
+            try
+            {
+                await InteractAsync(session, run, output, cancellationToken, working.Path, GoogleVoiceSignInRules.LoginUrl, ChromiumRenewalTarget.Voice,
+                    read => read.Cookies.ContainsKey("OSID"), () => chrome.StopAsync(), Prefix, ChromeVisitedPages.GoogleVerification).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException failure) when (failure.Message == ChromeVisitedPages.GoogleVerificationWord) { run.Outcome = "verification"; throw; }
 
             run.Outcome = "signed_in";
             output.SignedIn();
@@ -383,6 +387,7 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
                     "cancelled" => "cancelled reason=client",
                     "timeout" => "timeout",
                     "signed_in" => $"failed reason=add code={addReason}",
+                    "verification" => $"refused reason={ChromeVisitedPages.GoogleVerificationWord}",
                     _ => null,
                 };
                 if (reason is not null) log($"{Prefix} {reason} shown={(run.Screen?.Frames > 0 ? "yes" : "no")} mouse={session.MouseSeen} applied={session.MouseApplied}");
@@ -395,12 +400,13 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
         }
     }
 
-    // Google's part: until the cookie store holds a NEW complete sign-in (and `ready` says it is the one wanted), which it leaves in run.Cookies.
+    // Google's part: until the cookie store holds a NEW complete sign-in (and `ready` says it is the one wanted), which it leaves in run.Cookies. When `deadEnd` is given and Chrome has opened a
+    // page starting with it (one the policy refuses, so nobody can get past it here), the sign-in ends with that page's word instead.
     private Task InteractAsync(Session session, Run run, IRemoteSignInOutput output, CancellationToken cancellationToken, string workingPath, string page, ChromiumRenewalTarget target,
-        Func<ChromeCookieRead, bool> ready, Func<Task>? prepare, string logPrefix) =>
+        Func<ChromeCookieRead, bool> ready, Func<Task>? prepare, string logPrefix, string? deadEnd = null) =>
         InteractAsync(session, run, output, cancellationToken, workingPath, page, async token =>
         {
-            var finished = await WaitForSignInAsync(workingPath, target, ready, token).ConfigureAwait(false);
+            var finished = await WaitForSignInAsync(workingPath, target, ready, deadEnd, token).ConfigureAwait(false);
             run.Lifetime = finished.SidtsLifetime;
             run.Cookies = new Dictionary<string, string>(finished.Cookies, StringComparer.Ordinal);
             finished.Cookies.Clear();
@@ -483,13 +489,14 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
 
     // Polls Chrome's cookie store until a NEW complete Google sign-in is there: one whose session cookies are not those the store held when the window opened (or any, when it held none), and that `ready`
     // accepts (Voice's own cookie, which only a Voice page that loaded sets).
-    private async Task<ChromeCookieRead> WaitForSignInAsync(string folder, ChromiumRenewalTarget target, Func<ChromeCookieRead, bool> ready, CancellationToken cancellationToken)
+    private async Task<ChromeCookieRead> WaitForSignInAsync(string folder, ChromiumRenewalTarget target, Func<ChromeCookieRead, bool> ready, string? deadEnd, CancellationToken cancellationToken)
     {
         var first = await cookies.ReadAsync(folder, target, cancellationToken).ConfigureAwait(false);
         var started = first is { Complete: true } ? Signature(first) : null;
         while (true)
         {
             await Task.Delay(PollGap, cancellationToken).ConfigureAwait(false);
+            if (deadEnd is not null && ChromeVisitedPages.Opened(folder, deadEnd)) throw new InvalidOperationException(ChromeVisitedPages.GoogleVerificationWord);
             var read = await cookies.ReadAsync(folder, target, cancellationToken).ConfigureAwait(false);
             if (read is not { Complete: true } || !ready(read)) continue;
             if (started is null || Signature(read) != started) return read;

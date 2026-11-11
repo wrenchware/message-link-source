@@ -417,6 +417,7 @@ internal sealed partial class ServerPage
         "sign_in_unsaved" or "sign_in_profile" => "The server's browser couldn't save this sign-in safely. Nothing was changed. Try again.",
         "missing_cookies" => $"{(service == RemoteSignInServices.Instagram ? "Instagram" : "Facebook")} hadn't finished signing you in when you chose Done. Start again, and choose Done once you're signed in.",
         "no_voice_number" => "That Google account has no Google Voice number. Sign in with the account that has one.",
+        "google_verification" => "Google wants to verify this account before it can use Google Voice. Set up Google Voice at voice.google.com on your phone or computer, then sign in here again.",
         { } other => $"The sign-in didn't finish ({other}). Start it again.",
         null => "The sign-in didn't finish. Start it again.",
     };

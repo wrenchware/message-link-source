@@ -78,9 +78,17 @@ public sealed partial class ConversationViewModel
         if (!IsMerged || merges is null) return;
         var choices = merges.Members(ActiveChatId!).Where(m => !MergedConversations.IsCall(m) && !m.IsReadOnly).ToArray();
         var group = merges.Find(ActiveChatId!);
-        var labels = choices.Select(chat => new ConversationMember(chat.Id, merges.ServiceLabel(chat), chat.Network, merges.ServiceRouteLabel(chat),
+        // Where the person last wrote from, among every route (a pin or a manual choice does not change it): the loaded
+        // page's newest incoming message, else the newest conversation whose own last message is theirs.
+        var lastIncoming = current?.Messages.Where(m => !m.IsOutgoing && !m.IsDeleted && !m.IsHidden && m.Type != "system" &&
+                choices.Any(c => c.Id == m.ChatId)).OrderByDescending(m => m.Timestamp).ThenByDescending(m => m.SortKey, StringComparer.Ordinal)
+                .FirstOrDefault()?.ChatId
+            ?? choices.Where(c => c.Preview is { IsOutgoing: false }).OrderByDescending(c => c.LastActivity).FirstOrDefault()?.Id;
+        // The house order (Google Messages, Messenger, Google Voice, Instagram), so a service is always in the same place.
+        var labels = choices.OrderBy(chat => ConversationMember.ServiceOrder(chat.Network))
+            .Select(chat => new ConversationMember(chat.Id, merges.ServiceLabel(chat), chat.Network, merges.ServiceRouteLabel(chat),
             group?.PinnedRoute?.ChatId == chat.Id, ConversationHeaderText.Number(chat) ?? ConversationHeaderText.Handle(chat),
-            ConversationHeaderText.RouteKind(chat))).ToArray();
+            ConversationHeaderText.RouteKind(chat), chat.Id == lastIncoming)).ToArray();
         if (!Members.SequenceEqual(labels))
         {
             Members.Clear();
