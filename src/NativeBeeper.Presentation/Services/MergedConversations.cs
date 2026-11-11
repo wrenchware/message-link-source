@@ -49,6 +49,10 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
     {
         var accounts = KnownChats().Where(c => c.Network == chat.Network).Select(c => c.AccountId).Append(chat.AccountId).Distinct().Order(StringComparer.Ordinal).ToArray();
         var account = accounts.Length > 1 ? accountNames.GetValueOrDefault(chat.AccountId) ?? "Account " + (Array.IndexOf(accounts, chat.AccountId) + 1) : null;
+        // A Voice account is named "Google Voice (202) 555-0100"; after the service it is only the number, not
+        // "Google Voice · Google Voice (202) 555-0100" (owner, 2026-11-11).
+        if (account is not null && account.StartsWith(chat.Network + " ", StringComparison.Ordinal) && account.Length > chat.Network.Length + 1)
+            account = account[(chat.Network.Length + 1)..];
         return chat.Network + (account is null ? "" : " · " + account);
     }
     public string ServiceLabel(ChatSummary chat) => ServiceRouteLabel(chat) + " · " + chat.Title;
