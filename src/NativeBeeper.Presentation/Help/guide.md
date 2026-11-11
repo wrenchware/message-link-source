@@ -58,7 +58,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 **Try sample conversations** on the welcome lets you try Message Link before connecting anything.
 
 - Message Link closes and opens again over made-up people and chats on all four services: friends, family and groups, one person on two services linked into one conversation, three labels, and archived and spam conversations. A banner across the top says "Sample conversations — nothing here is real".
-- **Nothing is sent.** The message box says so instead of sending, and a reaction, a new chat or a new group says the same rather than happening. Settings won't sign in to a service, join a server, restore a backup or check for updates here.
+- **Nothing is sent.** The message box says so instead of sending, and a reaction, a new chat or a new group says the same rather than happening. Settings won't sign in to a service, join a server or restore a backup here.
 - **Your own data stays closed.** The sample keeps its own temporary folder, which is removed when it ends. It shows no notifications, has no tray icon or taskbar menu, and doesn't start with Windows.
 - **Leave sample** in the banner opens Message Link again on the welcome. Closing the window ends the sample too.
 
@@ -135,7 +135,7 @@ Press <kbd>Ctrl+/</kbd> any time for the list inside the app. Shortcuts don't ru
 
 - **Search messages**, **Chat console**, **Saved messages**, **New chat**, **Open unread**, and **Quick replies…**
 - **Settings**, and each Settings page by name: *Settings → Connections*, *Notifications*, *Messaging*, *Appearance*, *Startup and tray*, *Storage and backup*, *Troubleshooting*, *About*.
-- **Check for updates**, **Connection health**, **Show service badges** or **Hide service badges**, **Keyboard shortcuts**, **Help guide** and **Take the tour**.
+- **Connection health**, **Show service badges** or **Hide service badges**, **Keyboard shortcuts**, **Help guide** and **Take the tour**.
 - **Pause notifications for 1 hour**, **Pause notifications until tomorrow morning**, or **Resume notifications** while paused.
 - **Open Instagram in browser**, and the same for Messenger, Google Messages and Google Voice.
 - **New label…** and **Show label: *name*** for each of your labels.
@@ -594,7 +594,6 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
 - Message Link talks to each service directly, unless you set up your own [Message Link Server](#messages-server).
 - **Link previews** (on by default) fetch the linked page's picture and description, which tells that site the message was opened. Opening a conversation fetches them by itself only for your own links, and for links from people you know while [private reading](#private-reading) is off; any other link waits for you to click **Load preview**. None are fetched in a Spam conversation. Turn them off in [Appearance](#settings-appearance).
 - **GIF search** goes to GIPHY, only when you use it.
-- **The update check** looks once a day for a newer version, carrying nothing about you. Turn it off in [About](#settings-about).
 - **Backups** go to the folder you choose; one that OneDrive, Google Drive or Dropbox syncs keeps a copy online.
 - **Tailscale**, once you sign in to it on Connections › Server, tells Tailscale's coordination servers that this PC is on your Tailscale network, and its relay servers may carry the connection to your server. Your messages stay encrypted between this PC and your server.
 
@@ -793,6 +792,7 @@ A Message Link Server is a small program you run at home so Message Link stays c
 - **Not set up.** Enter the server's **Address** (its name or address and its port, like `server.lan:8787`) and choose **Connect**. The server's page opens in your browser, where you approve this PC. While it waits, this PC shows a short code; approve only if the code on the page is the same. Once approved, the page shows a **finish code**: paste it here, or type it and choose **Finish** (within 5 minutes). It proves the approval came from the real server, so this PC keeps nothing until it matches. The request holds for 10 minutes, and **Cancel** stops asking. Asking works only from the server's home network, or through Tailscale; through Tailscale the page doesn't open on this PC, so approve on it from a device that reaches it. Or choose **Use a pairing code instead**, enter the server's **Fingerprint** and a **Pairing code** from its page, and choose **Connect**. Have the line from **Add a PC** on the server's page? Paste it into **Address**: the address, fingerprint and pairing code fill in by themselves, and **Connect** joins. A phone's join link pasted there works the same way. Either way Message Link checks that the server answers, then remembers it. Nothing moves yet. A new server takes requests only once its page has a password; until then a device uses the pairing code shown when the server was installed.
 - **Connected.** A card shows the server, with **Manage server…**, which opens its page. **Forget this server** removes the saved details.
 - **Tailscale.** Away from home, this PC reaches the server through Tailscale, which Message Link runs itself, so there's no Tailscale app to install. Choose **Sign in to Tailscale** on the same screen and sign in, in your browser, with the Tailscale account your server uses. If your Tailscale network asks for new devices to be approved, or uses Tailnet Lock, the card says what to do. Once signed in, Message Link finds the server on your Tailscale network by itself (**Find the server again** looks once more), then uses whichever answers first: the home address at home, Tailscale away. The card shows the account, this PC's name on your Tailscale network, how it reaches the server (**At home**, **Direct**, or **Through Tailscale's relay**), and the day Tailscale signs this PC out unless its key expiry is turned off. **Use another account** and **Sign out** take this PC off your Tailscale network; it then reaches the server only at home.
+- **On Connections.** The server's card says which network carries the connection: **Local network**, **Tailscale**, or **Tailscale relay** (slower). When it isn't connected, it says what Tailscale is waiting for. Until Tailscale is set up, **Reach your server from anywhere** under the card leads here with **Set up**; **Hide** removes that row for good, and Tailscale stays on this screen.
 
 **If the server is gone for good**, set up a new server, restore its latest backup from the new server's page, and connect your accounts there. Signing in to Messenger again adds a new device, and the old one may stay in your Facebook device list for you to remove. If Message Link says a move didn't finish, it offers to finish it when it opens.
 
@@ -890,8 +890,8 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 
 ### About {#settings-about}
 
-- The version, **Help** (**Take the tour** and **Open guide**), and **Updates** with **Check now**.
-- **Check for updates automatically** (on): once a day Message Link looks for a newer version and tells you; **Download** opens the download page in your browser. Nothing installs by itself.
+- The version, **Help** (**Take the tour** and **Open guide**), and **Licences and source code**.
+- The Microsoft Store keeps Message Link up to date.
 
 ## 18. Backup, export and your data {#backup}
 
