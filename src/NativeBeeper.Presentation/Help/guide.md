@@ -193,7 +193,7 @@ A dropdown that's filtering says so, for example "Services (2)", in your accent 
 Right-click a conversation, or use the **⋯** button in its header. You'll see, depending on the conversation:
 
 1. **Open in new window**, or **Move to main window** in a pop-out. In a pop-out, **Keep on top**.
-2. **Shared content**, **Details** and **Export conversation…**
+2. **Shared content**, **Open in Messenger** (a Messenger conversation, in your browser: for a Marketplace chat that's where you mark an item sold or rate the buyer), **Details** and **Export conversation…**
 3. **Merge with another conversation…**, or on a merged one **Merged conversations**, which holds **Add a conversation…**, **Remove a conversation…** and **Unmerge conversations…** See [Merged conversations](#linked-conversations).
 4. **Pin** or **Unpin**.
 5. **Mute**: For 1 hour, For 8 hours, For 1 week, or Until I unmute. When muted it reads **Unmute (muted until …)**.
@@ -229,7 +229,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 - **New label…** (from a conversation's menu, or Commands) asks for a name of up to 32 characters and one of eight colors: Red, Orange, Yellow, Green, Teal, Blue, Purple or Pink. A label made from a conversation's menu goes on that conversation at once.
 - **Manage labels…** renames (type and press Enter), recolors and deletes labels. Deleting says how many conversations will lose it.
 - Filter the list by labels from the view dropdown above the list (it reads **Messages** until you pick one), or **Show label: *name*** in Commands.
-- Facebook Marketplace conversations get a **Marketplace** label from your Message Link Server when they first appear. It's one of your labels: rename, recolor or delete it, or remove it from a conversation, on any device, and it stays that way.
+- Facebook Marketplace conversations get a **Marketplace** label from your Message Link Server when they first appear, and the buyer's first line has **View buyer profile**. It's one of your labels: rename, recolor or delete it, or remove it from a conversation, on any device, and it stays that way.
 
 ### Muting {#muting}
 

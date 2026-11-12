@@ -1162,6 +1162,7 @@ func (s *store) viewOf(key int64, current *message) viewMessage {
 		ReplyTo:  current.replyTo,
 		Notice:   current.notice,
 		Hidden:   current.receipt && strings.TrimSpace(text) == "" && len(visible) == 0,
+		Profile:  s.buyerProfileLocked(key, current),
 		// Facebook numbers these; anything other than a plain delivered state stays pending for now.
 		Status:    current.status,
 		Media:     visible,
@@ -1172,6 +1173,19 @@ func (s *store) viewOf(key int64, current *message) viewMessage {
 		Delivered: s.deliveredTo(key, current),
 		SeenAt:    s.seenAt(key, current),
 	}
+}
+
+// Where Messenger's "View buyer profile" leads, for a Marketplace chat's "<buyer> started this chat." line. Facebook sends
+// no button with that line (2026-11-12: no CTA id, title or type on any Marketplace notice); Messenger draws it itself,
+// so the address is built from the buyer's id. Empty for every other message. Call with the lock held.
+func (s *store) buyerProfileLocked(key int64, current *message) string {
+	if !current.notice || current.sender == 0 || current.sender == s.self || !strings.HasSuffix(strings.TrimSpace(current.text), " started this chat.") {
+		return ""
+	}
+	if thread := s.threads[key]; thread == nil || thread.kind != table.MARKETPLACE {
+		return ""
+	}
+	return "https://www.facebook.com/marketplace/profile/" + strconv.FormatInt(current.sender, 10) + "/"
 }
 
 // One message by the id Facebook gave it, or by the offline threading id this account sent it with. A message just

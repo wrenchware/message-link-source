@@ -22,6 +22,7 @@ func TestMarketplaceNoticesSurviveRestartAndCardStaysHidden(t *testing.T) {
 	a.kept = kept
 	a.chats.setSelf(1)
 	a.keepMessages(ctx, a.chats.apply(&table.LSTable{
+		LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 7, ThreadType: table.MARKETPLACE, ThreadName: "Synthetic · Listing"}},
 		LSInsertMessage: []*table.LSInsertMessage{
 			{ThreadKey: 7, MessageId: "synthetic-started", SenderId: 42, TimestampMs: 1000, Text: "Synthetic started this chat.", IsAdminMessage: true},
 			{ThreadKey: 7, MessageId: "synthetic-question", SenderId: 42, TimestampMs: 2000, Text: "Synthetic question?"},
@@ -49,7 +50,10 @@ func TestMarketplaceNoticesSurviveRestartAndCardStaysHidden(t *testing.T) {
 		if !page[0].Notice || page[0].Text != "Synthetic started this chat." {
 			t.Fatal("an admin message must be a notice with its words")
 		}
-		if page[1].Notice || page[1].Text != "Synthetic question?" {
+		if page[0].Profile != "https://www.facebook.com/marketplace/profile/42/" {
+			t.Fatalf("the buyer's first line must lead to their Marketplace profile: %q", page[0].Profile)
+		}
+		if page[1].Notice || page[1].Text != "Synthetic question?" || page[1].Profile != "" {
 			t.Fatal("a person's message must not be a notice")
 		}
 		// Asked for by id, as after a change event, it comes back with nothing to draw.

@@ -37,7 +37,9 @@ internal sealed record MessengerMessage(string Id, string ChatId, string Sender,
     int Delivered = 0, long SeenAt = 0,
     // A line Facebook writes into the conversation rather than a person ("Jay started this chat."), and a row Facebook's
     // own phone app does not show (Marketplace's "Message sent" card). Appended.
-    bool Notice = false, bool Hidden = false);
+    bool Notice = false, bool Hidden = false,
+    // The buyer's Marketplace profile, on a Marketplace chat's "started this chat." line: Messenger's "View buyer profile". Appended.
+    string? Profile = null);
 internal sealed record MessengerMessagePage(MessengerMessage[] Messages, bool Refreshing);
 internal sealed record MessengerMessageWindow(MessengerMessage[] Messages, bool MoreOlder, bool MoreNewer);
 internal sealed record MessengerReaction(string Key, string Sender);
@@ -182,6 +184,12 @@ internal static class MessengerModels
             new(message.Outgoing ? "SUCCESS" : null, message.Outgoing && message.Delivered > 0 ? message.Delivered : null, null,
                 message.Outgoing && message.SeenAt > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(message.SeenAt) : null,
                 (message.SeenBy ?? []).ToDictionary(Person, _ => (bool?)true),
-                (message.ReadMark ?? []).Select(Person).ToArray()));
+                (message.ReadMark ?? []).Select(Person).ToArray()),
+            // The helper builds it from the buyer's id (Facebook sends no button); only an https address on a line becomes one.
+            Action: message.Notice && message.Profile is { } profile && profile.StartsWith("https://www.facebook.com/", StringComparison.Ordinal)
+                ? new NoticeAction(BuyerProfileTitle, profile) : null);
     }
+
+    // Messenger's own words for its button.
+    public const string BuyerProfileTitle = "View buyer profile";
 }

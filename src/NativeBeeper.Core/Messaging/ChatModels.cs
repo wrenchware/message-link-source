@@ -88,7 +88,13 @@ public sealed record ChatMessage(string Id, string ChatId, string SenderId, stri
     // Our own message's copy as the provider returns it can carry the id the send's receipt named it by — Google Messages'
     // transaction id, which is not the message's id. It is how a still-pending send knows its copy has arrived, exactly
     // and not by guessing from the time. Null for a provider that answers a receipt with the message's own id. Appended.
-    string? PendingId = null);
+    string? PendingId = null,
+    // A button a service's own line carries, as its app draws one: Messenger's "View buyer profile" after a Marketplace buyer's
+    // first line. Only on a system line, and written only when there is one, so every other saved row reads as before. Appended.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    NoticeAction? Action = null);
+/// <summary>A button on a service's own line: its words, and the https address it opens in the browser.</summary>
+public sealed record NoticeAction(string Title, string Url);
 public sealed record MessageAttachment(string? Name, string Type, string? MimeType, long? Size,
     bool IsVoiceNote, bool IsGif, bool IsSticker, string? Id = null, string? SourceUrl = null, double? Width = null, double? Height = null,
     string? Availability = null, // null, "preview" (full size requested from the phone), or "downloading" / "manual" / "failed" while the phone has not downloaded the media

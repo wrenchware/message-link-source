@@ -48,6 +48,8 @@ type viewMessage struct {
 	Notice bool `json:"notice,omitempty"`
 	// A row Facebook's own phone app does not show, so neither does this one (store.go's receipt).
 	Hidden bool `json:"hidden,omitempty"`
+	// The buyer's Marketplace profile, on a Marketplace chat's "started this chat." line (store.go's buyerProfileLocked).
+	Profile string `json:"profile,omitempty"`
 	Status   int64       `json:"status"`
 	Media    []viewMedia `json:"media"`
 	// One per person who reacted, with the emoji they chose.

@@ -59,6 +59,10 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     public bool HasHeaderName => HeaderName.Length > 0;
     public string SystemContext => IsSystem ? IsMergedSource ? Time : HasHeaderName ? HeaderName + " · " + Time : "" : "";
     public bool HasSystemContext => SystemContext.Length > 0;
+    // A button on a service's own line (Messenger's "View buyer profile"); only an https address is ever opened.
+    public Uri? SystemActionUri => IsSystem && Message.Action is { } action && Uri.TryCreate(action.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri : null;
+    public string SystemActionTitle => SystemActionUri is null ? "" : Message.Action!.Title;
+    public bool HasSystemAction => SystemActionUri is not null;
     public bool ShowSender { get; private set; }
     public bool ContinuesGroup { get; private set; }
     public IReadOnlyList<ChatMessage> PhotoGroupMessages { get; private set; } = [];
