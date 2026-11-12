@@ -6,7 +6,7 @@ namespace NativeBeeper.Protocol;
 /// What "Add a phone" and "Add a PC" hand a new device (SWITCHBOARD.md 10.4): the server's machine name on its Tailscale network, its address on the home network,
 /// the SHA-256 of its certificate (pinned before anything is sent), a one-time pairing code, and the Tailscale account its door signed in with when it knows it.
 /// <para>
-/// The phone reads it as a link, <c>https://wrenchware.github.io/messages/join#v=1&amp;n=…&amp;a=…&amp;f=…&amp;c=…&amp;u=…</c> (the phone's JoinLink.kt reads the same
+/// The phone reads it as a link, <c>https://wrenchware.github.io/message-link/join#v=1&amp;n=…&amp;a=…&amp;f=…&amp;c=…&amp;u=…</c> (the phone's JoinLink.kt reads the same
 /// form), shown as a QR code. The values are in the fragment, so the pairing code never reaches a web server. A PC takes the link pasted, or the shorter line
 /// <see cref="Line"/> makes (address, fingerprint and code), into its server dialog.
 /// </para>
@@ -14,12 +14,12 @@ namespace NativeBeeper.Protocol;
 public static class JoinLink
 {
     /// <summary>Where the link points: the website's join page, which says to open it in Messages.</summary>
-    public const string Page = "https://wrenchware.github.io/messages/join";
+    public const string Page = "https://wrenchware.github.io/message-link/join";
 
     /// <summary>The website's pictured guide to the Firebase project a phone's notifications need, which the server's page links to.</summary>
-    public const string FirebaseGuide = "https://wrenchware.github.io/messages/firebase/";
+    public const string FirebaseGuide = "https://wrenchware.github.io/message-link/firebase/";
 
-    public const string SetupGuide = "https://wrenchware.github.io/messages/setup/";
+    public const string SetupGuide = "https://wrenchware.github.io/message-link/setup/";
 
     /// <summary>The original link version; a non-default Tailscale port needs version 2 so older phones ask for an update.</summary>
     public const string Version = "1";

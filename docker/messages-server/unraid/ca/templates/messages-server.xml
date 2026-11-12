@@ -8,7 +8,7 @@
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/wrenchware/unraid-templates/issues</Support>
-  <Project>https://wrenchware.github.io/messages/</Project>
+  <Project>https://wrenchware.github.io/message-link/</Project>
   <Overview>Message Link Server keeps your Google Messages, Messenger, Google Voice and Instagram accounts signed in on this server, so the Message Link apps on your PCs and Android phone use them from one place, at home or away through Tailscale.[br][br]
 [b]Setting up:[/b][br]
 1. In Settings, Docker, set Docker Stop Timeout to at least 60 seconds, so messages being sent can finish when the container stops. Then Apply this template.[br]
