@@ -6,7 +6,7 @@ require (
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867
 	golang.org/x/sys v0.49.0
 	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72
-	tailscale.com v1.104.4
+	tailscale.com v1.104.5
 )
 
 require (

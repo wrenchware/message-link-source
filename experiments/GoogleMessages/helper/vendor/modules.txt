@@ -24,7 +24,7 @@ go.mau.fi/mautrix-gmessages/pkg/libgm/crypto
 go.mau.fi/mautrix-gmessages/pkg/libgm/events
 go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto
 go.mau.fi/mautrix-gmessages/pkg/libgm/util
-# go.mau.fi/util v0.10.2-0.20260918225449-a4c0d5b86aa8
+# go.mau.fi/util v0.11.0
 ## explicit; go 1.26.0
 go.mau.fi/util/exbytes
 go.mau.fi/util/exerrors
@@ -38,7 +38,7 @@ go.mau.fi/util/random
 # golang.org/x/crypto v0.58.0
 ## explicit; go 1.26.0
 golang.org/x/crypto/hkdf
-# golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
+# golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
 ## explicit; go 1.26.0
 golang.org/x/exp/slices
 # golang.org/x/image v0.47.0

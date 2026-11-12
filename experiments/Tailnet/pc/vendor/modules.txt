@@ -298,7 +298,7 @@ gvisor.dev/gvisor/pkg/waiter
 # nativebeeper.local/messages-android-tailnet v0.0.0 => ../../../android/tailnet
 ## explicit; go 1.27.3
 nativebeeper.local/messages-android-tailnet
-# tailscale.com v1.104.4
+# tailscale.com v1.104.5
 ## explicit; go 1.27.3
 tailscale.com
 tailscale.com/appc

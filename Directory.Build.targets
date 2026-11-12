@@ -5,7 +5,7 @@
        the floor, the publish takes the floor's runtime packs from NuGet; once the SDK catches up this does nothing.
        Raise the floor with each .NET security release (https://dotnet.microsoft.com/download/dotnet/10.0). It sits in a
        .targets file because the SDK's KnownFrameworkReference items exist only after the project's props. -->
-  <ItemGroup Condition="'$(SelfContained)' == 'true' and $([MSBuild]::VersionLessThan('$(BundledNETCoreAppPackageVersion)', '10.0.14'))">
-    <KnownFrameworkReference Update="Microsoft.NETCore.App;Microsoft.AspNetCore.App" LatestRuntimeFrameworkVersion="10.0.14" />
+  <ItemGroup Condition="'$(SelfContained)' == 'true' and $([MSBuild]::VersionLessThan('$(BundledNETCoreAppPackageVersion)', '10.0.15'))">
+    <KnownFrameworkReference Update="Microsoft.NETCore.App;Microsoft.AspNetCore.App" LatestRuntimeFrameworkVersion="10.0.15" />
   </ItemGroup>
 </Project>
