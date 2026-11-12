@@ -68,6 +68,9 @@ type message struct {
 	aiUpdatedAt int64
 	// Supplied title of an ordinary text-only AI card, separate from provider body text.
 	cardText string
+	// A line Facebook writes into the conversation rather than a person ("Jay started this chat.", "Jay is waiting for
+	// your response.", a Marketplace chat, 2026-11-12). Messenger draws these across the conversation, not in a bubble.
+	notice bool
 }
 
 // What a batch of rows changed, so the app can refresh just those conversations rather than reloading everything.
@@ -545,6 +548,17 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 			logf("meta ai shape connection=lightspeed id=%s text=%v botResponse=%v unsent=%v",
 				tagOf(row.MessageId), strings.TrimSpace(row.Text) != "", row.BotResponseID != 0, row.IsUnsent)
 		}
+		if row.IsAdminMessage {
+			// Whether Facebook's own line carries a button (Messenger shows "View buyer profile" after a Marketplace
+			// chat's first line, 2026-11-12) and of what type, never its words: the evidence before linking anything.
+			kind := table.ThreadType(0)
+			if known := s.threads[row.ThreadKey]; known != nil {
+				kind = known.kind
+			}
+			logf("admin message shape chat=%s id=%s kind=%d text=%v cta=%v titled=%v type=%s",
+				tag(row.ThreadKey), tagOf(row.MessageId), kind, strings.TrimSpace(row.Text) != "",
+				row.AdminMsgCtaId != 0, strings.TrimSpace(row.AdminMsgCtaTitle) != "", ctaTypeWord(row.AdminMsgCtaType))
+		}
 		if s.revoked[row.MessageId] {
 			continue
 		}
@@ -598,6 +612,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 			unsent:    row.IsUnsent,
 			status:    row.SendStatusV2,
 			cardText:  cardText,
+			notice:    row.IsAdminMessage,
 		}
 	}
 	hybridRows := append([]*table.LSVerifyHybridThreadExists{}, tbl.LSVerifyHybridThreadExists...)
@@ -1139,6 +1154,7 @@ func (s *store) viewOf(key int64, current *message) viewMessage {
 		Outgoing: s.self != 0 && current.sender == s.self,
 		Deleted:  current.unsent,
 		ReplyTo:  current.replyTo,
+		Notice:   current.notice,
 		// Facebook numbers these; anything other than a plain delivered state stays pending for now.
 		Status:    current.status,
 		Media:     visible,

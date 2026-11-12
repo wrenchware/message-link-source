@@ -159,6 +159,17 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 			return nil, err
 		}
 	}
+	var hasNotice int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('encrypted_message') WHERE name = 'notice'`).Scan(&hasNotice); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if hasNotice == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE encrypted_message ADD COLUMN notice INTEGER NOT NULL DEFAULT 0`); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 	// The same archive also holds ordinary history. Its IDs cannot be sent as encrypted stanza IDs.
 	var hasChannel int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('encrypted_message') WHERE name = 'encrypted'`).Scan(&hasChannel); err != nil {
@@ -584,6 +595,22 @@ func (m *messageStore) rememberOrdinaryAIOn(ctx context.Context, on execer, thre
 	}
 }
 
+// Whether Facebook wrote an ordinary message as a line across the conversation. Written only for those, so the cold
+// start's thousands of plain messages pay nothing for it; Facebook never turns a person's message into one.
+func (m *messageStore) rememberNoticeOn(ctx context.Context, on execer, thread int64, id string, from *store) {
+	from.mu.Lock()
+	current := from.messages[thread][id]
+	notice := current != nil && !current.encrypted && current.notice
+	from.mu.Unlock()
+	if !notice {
+		return
+	}
+	if _, err := on.ExecContext(ctx, `UPDATE encrypted_message SET notice = 1 WHERE id = ? AND thread = ? AND encrypted = 0`,
+		id, thread); err != nil {
+		logf("a notice could not be kept")
+	}
+}
+
 // Corrected words, against the copy already written down. Without this the message would come back saying what it
 // said before the edit at the next start, which is the same fault the deletion record exists to prevent.
 func (m *messageStore) rememberEdit(ctx context.Context, id, text string, at int64) {
@@ -633,7 +660,7 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 			time.Since(started).Milliseconds())
 	}()
 	m.restoreIdentity(ctx, into)
-	rows, err := m.db.QueryContext(ctx, `SELECT thread, id, sender, body, reply, at, encrypted, ai_updated_at, edited_at, card_text FROM encrypted_message ORDER BY at`)
+	rows, err := m.db.QueryContext(ctx, `SELECT thread, id, sender, body, reply, at, encrypted, ai_updated_at, edited_at, card_text, notice FROM encrypted_message ORDER BY at`)
 	if err != nil {
 		logf("e2ee kept messages could not be read")
 		return 0
@@ -644,8 +671,8 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 		var thread, sender, at, aiUpdatedAt, editedAt int64
 		var id string
 		var protectedBody, protectedReply, protectedCard []byte
-		var encrypted bool
-		if rows.Scan(&thread, &id, &sender, &protectedBody, &protectedReply, &at, &encrypted, &aiUpdatedAt, &editedAt, &protectedCard) != nil {
+		var encrypted, notice bool
+		if rows.Scan(&thread, &id, &sender, &protectedBody, &protectedReply, &at, &encrypted, &aiUpdatedAt, &editedAt, &protectedCard, &notice) != nil {
 			continue
 		}
 		body, bodyErr := unprotectString(protectedBody)
@@ -655,12 +682,13 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 			continue
 		}
 		into.addEncrypted(thread, id, sender, body, replyTo, at, encrypted)
-		if aiUpdatedAt > 0 || editedAt > 0 || cardText != "" {
+		if aiUpdatedAt > 0 || editedAt > 0 || cardText != "" || notice {
 			into.mu.Lock()
 			if current := into.messages[thread][id]; current != nil {
 				current.aiUpdatedAt = aiUpdatedAt
 				current.editedAt = editedAt
 				current.cardText = cardText
+				current.notice = notice
 			}
 			into.mu.Unlock()
 		}
@@ -818,6 +846,8 @@ func (a *adapter) keepMessages(ctx context.Context, touched *changes) (cost keep
 					kept.rememberOrdinaryAIOn(ctx, tx, key, id, a.chats)
 				} else if e := kept.rememberCheckedOn(ctx, tx, key, id, sender, body, replyTo, at, a.chats.messageEncrypted(key, id)); e != nil {
 					logf("e2ee message could not be kept")
+				} else {
+					kept.rememberNoticeOn(ctx, tx, key, id, a.chats)
 				}
 			}
 			// The pictures too, not only the words. A message whose attachment is not kept comes back as a row with

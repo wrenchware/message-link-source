@@ -32,7 +32,9 @@ internal sealed record MessengerMessage(string Id, string ChatId, string Sender,
     string[]? SeenBy = null, string[]? ReadMark = null, long EditedAt = 0,
     // How many of the other people a message this account sent has reached, reading counted as reaching; and when it
     // was read, in milliseconds, only where Facebook said when and the helper saw that reading happen. Appended.
-    int Delivered = 0, long SeenAt = 0);
+    int Delivered = 0, long SeenAt = 0,
+    // A line Facebook writes into the conversation rather than a person ("Jay started this chat."). Appended.
+    bool Notice = false);
 internal sealed record MessengerMessagePage(MessengerMessage[] Messages, bool Refreshing);
 internal sealed record MessengerMessageWindow(MessengerMessage[] Messages, bool MoreOlder, bool MoreNewer);
 internal sealed record MessengerReaction(string Key, string Sender);
@@ -159,7 +161,15 @@ internal static class MessengerModels
             Description: string.IsNullOrWhiteSpace(item.Description) ? null : item.Description, Caption: item.Caption,
             ActionTitle: string.IsNullOrWhiteSpace(item.ActionTitle) ? null : item.ActionTitle)).ToArray();
         return new(Qualify(message.Id), Qualify(message.ChatId), Person(message.Sender), message.Name, message.At,
-            message.At.UtcTicks.ToString("D19"), message.Text, "text", message.Outgoing, message.Deleted, false,
+            // Facebook's own lines ("Jay is waiting for your response.") run across the conversation, as Messenger
+            // draws them, rather than in the sender's bubble.
+            message.At.UtcTicks.ToString("D19"), message.Text, message.Notice ? "system" : "text", message.Outgoing, message.Deleted,
+            // Nothing to draw: the helper leaves these out of history pages, but one asked for by id still comes back,
+            // and the phone drew it as an empty bubble. Marketplace's "Message sent" card is one (2026-11-12), and the
+            // Messenger phone app shows nothing for it either. A blank Meta AI answer keeps its own wording, and this
+            // account's own sends are left to the outbox, which matches a send to its copy.
+            !message.Deleted && !message.Outgoing && string.IsNullOrEmpty(message.Text) && attachments.Length == 0 &&
+                Person(message.Sender) != NativeBeeper.Presentation.Services.MetaAiMessages.SenderId,
             // Messenger reports a correction separately from the message, so "edited" is something the helper tells us
             // rather than something the message carries.
             message.EditedAt == 0 ? null : DateTimeOffset.FromUnixTimeMilliseconds(message.EditedAt),

@@ -55,7 +55,7 @@ import (
 //	               "previewOutgoing", "muteUntil"}],
 //	 "mappings":  [{"jid", "thread"}],
 //	 "deletions": [{"id", "thread", "at"}],
-//	 "messages":  [{"id", "thread", "sender", "body", "reply", "at", "encrypted", "aiUpdatedAt", "editedAt", "cardText",
+//	 "messages":  [{"id", "thread", "sender", "body", "reply", "at", "encrypted", "aiUpdatedAt", "editedAt", "cardText", "notice",
 //	               "media": [{"id", "name", "mime", "size", "width", "height", "video", "animated", "kind",
 //	                          "transport", "at", "link"}],
 //	               "share": the retained share schema,
@@ -193,6 +193,7 @@ type backupMessage struct {
 	AIUpdatedAt int64              `json:"aiUpdatedAt,omitempty"`
 	EditedAt    int64              `json:"editedAt,omitempty"`
 	CardText    string             `json:"cardText,omitempty"`
+	Notice      bool               `json:"notice,omitempty"`
 	Media       []backupMedia      `json:"media,omitempty"`
 	Share       []byte             `json:"share,omitempty"`
 	Attachments []backupAttachment `json:"attachments,omitempty"`
@@ -794,7 +795,7 @@ func threadForBackup(saved savedThread) backupThread {
 // and an import can take or refuse a message whole.
 func (e *backupExport) messageBatch(ctx context.Context, after int64) ([]backupUnit, bool, error) {
 	rows, err := e.db.QueryContext(ctx, `SELECT p.rowid, p.id, p.thread, p.sender, p.body, p.reply, p.at, p.encrypted,
-		p.ai_updated_at, p.edited_at, p.card_text FROM encrypted_message AS p
+		p.ai_updated_at, p.edited_at, p.card_text, p.notice FROM encrypted_message AS p
 		WHERE p.rowid > ? AND NOT EXISTS (SELECT 1 FROM deleted_message AS d WHERE d.id = p.id)
 		ORDER BY p.rowid LIMIT ?`, after, backupBatch)
 	if err != nil {
@@ -810,7 +811,7 @@ func (e *backupExport) messageBatch(ctx context.Context, after int64) ([]backupU
 		var h held
 		var body, reply, card []byte
 		if err := rows.Scan(&h.rowid, &h.message.ID, &h.message.Thread, &h.message.Sender, &body, &reply, &h.message.At,
-			&h.message.Encrypted, &h.message.AIUpdatedAt, &h.message.EditedAt, &card); err != nil {
+			&h.message.Encrypted, &h.message.AIUpdatedAt, &h.message.EditedAt, &card, &h.message.Notice); err != nil {
 			rows.Close()
 			return nil, false, err
 		}
@@ -1368,10 +1369,10 @@ func (a *adapter) importMessage(ctx context.Context, tx *sql.Tx, plan *importPla
 			return nil
 		}
 		written, err := tx.ExecContext(ctx, `INSERT INTO encrypted_message
-			(id, thread, sender, body, reply, at, encrypted, ai_updated_at, edited_at, card_text)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM deleted_message WHERE id = ?)
+			(id, thread, sender, body, reply, at, encrypted, ai_updated_at, edited_at, card_text, notice)
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM deleted_message WHERE id = ?)
 			ON CONFLICT(id) DO NOTHING`,
-			m.ID, plan.key, m.Sender, plan.sealed[0], plan.sealed[1], m.At, m.Encrypted, m.AIUpdatedAt, m.EditedAt, plan.sealed[2], m.ID)
+			m.ID, plan.key, m.Sender, plan.sealed[0], plan.sealed[1], m.At, m.Encrypted, m.AIUpdatedAt, m.EditedAt, plan.sealed[2], m.Notice, m.ID)
 		if err != nil {
 			return err
 		}
@@ -1499,10 +1500,11 @@ func (a *adapter) showImported(plan *importPlan, shown *importChanges) bool {
 			for _, id := range a.chats.facesMoved(plan.key, faces) {
 				shown.receipt(plan.key, id)
 			}
-			if m.AIUpdatedAt > 0 || m.EditedAt > 0 || m.CardText != "" {
+			if m.AIUpdatedAt > 0 || m.EditedAt > 0 || m.CardText != "" || m.Notice {
 				a.chats.mu.Lock()
 				if current := a.chats.messages[plan.key][m.ID]; current != nil {
 					current.aiUpdatedAt, current.editedAt, current.cardText = m.AIUpdatedAt, m.EditedAt, m.CardText
+					current.notice = m.Notice
 				}
 				a.chats.mu.Unlock()
 			}

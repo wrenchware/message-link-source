@@ -44,6 +44,8 @@ type viewMessage struct {
 	Outgoing bool      `json:"outgoing"`
 	Deleted  bool      `json:"deleted"`
 	ReplyTo  string      `json:"replyTo,omitempty"`
+	// Facebook's own line across the conversation rather than a person's message (store.go's notice).
+	Notice bool `json:"notice,omitempty"`
 	Status   int64       `json:"status"`
 	Media    []viewMedia `json:"media"`
 	// One per person who reacted, with the emoji they chose.
