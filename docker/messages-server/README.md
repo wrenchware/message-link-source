@@ -55,7 +55,7 @@ folders below and (re)starts the container.
 
 ## Updates from GitHub's registry
 
-Local builds remain the default. To publish private images from a copy of this repository:
+Local builds remain the default. To publish images from a copy of this repository:
 
 1. Enable GitHub Actions for the repository. Add the repository Actions
    secret **`MESSAGES_GHCR_TOKEN`**: a personal access token **(classic)** with `write:packages` (which includes read).
@@ -65,9 +65,10 @@ Local builds remain the default. To publish private images from a copy of this r
 2. Run **Message Link Server image** from Actions on `main`, or wait for the next main push. It builds the Linux x64
    image on every main push and each Sunday at 06:23 UTC. A missing secret skips the build and publishes
    nothing; manual runs from other branches cannot publish. Removing the secret disables future publishing.
-3. Check that the new `messages-server` package is **Private**, and give the Unraid token's account read access.
-   GHCR creates new packages private; the workflow refuses an existing package with any other visibility. It never
-   changes visibility. Keep it private unless you mean to share it.
+3. Make the new `messages-server` package **Public** (its Package settings, Change visibility). GHCR creates new
+   packages private, and the first build says so; the workflow refuses an existing package that is not public, as servers
+   pull it with no login, and it never changes visibility itself. Public since 2026-11-11: the source of every image is
+   already published (`docs/release.md`, Source offer), and a pull token's expiry had stopped Unraid's updates.
 
 The package is `ghcr.io/wrenchware/messages-server`. Tags are `latest`, the app version (such as `0.1.433`) and exact builds
 (`sha-<commit>-run-<run-id>-<attempt>`), each also under a `-google` name for servers installed when there were two images; they are one image. Version tags receive fresh runtime layers too;
@@ -76,22 +77,10 @@ runtime package installation is repeated and `CHROME_REFRESH` changes on every b
 .NET/Go versions still require source updates (Dependabot opens a pull request when one moves); the schedule refreshes
 Chrome and the base's own packages (`apt-get upgrade` in both runtime stages), not those pins.
 
-On Unraid, create a **separate classic token with only `read:packages`**, from an account with read access to the
-package. Log Docker in as root using a hidden prompt (put your GitHub username in the command):
-
-```sh
-read -rsp 'GitHub read:packages token: ' GHCR_PULL_TOKEN
-printf '\n'
-printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io --username YOUR_GITHUB_USERNAME --password-stdin
-unset GHCR_PULL_TOKEN
-chmod 700 /root/.docker
-chmod 600 /root/.docker/config.json
-```
-
-Keep this login in root's private Docker configuration, never in `install.env`, a template, a share, or the server's
-volumes. Unraid's Docker manager reads `/root/.docker/config.json` for private update checks and pulls. Root's home is
-normally in RAM, so log in again after a reboot unless you already restore Docker credentials securely; do not put
-them on an exported flash share. The install script uses the saved login and never accepts or writes a token.
+The package is public, so Unraid pulls it with no login. Do not log Docker in to ghcr.io for it: a saved ghcr.io login that
+has expired makes GitHub refuse every ghcr.io pull, public images included (seen 2026-11-11, `denied: denied`, with every
+ghcr.io container showing "not available" in Unraid's Docker tab). `docker logout ghcr.io` removes one, and any line that
+restores it at boot (as `/boot/config/go` did) goes too.
 
 Copy the new `install-unraid.sh` beside the existing `install.env` (the publisher also copies it). No source archive
 is needed for this mode. With Chrome's sandbox:

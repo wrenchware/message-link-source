@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds and (re)starts the Message Link Server container on Unraid from the bundle beside this script by default.
-# --ghcr pulls the private image instead, using Docker's saved read:packages login (README, Private GHCR images).
+# --ghcr pulls the published image from GitHub's registry instead (public since 2026-11-11, so no login; README, Updates from GitHub's registry).
 # (tools\Publish-ServerBundle.ps1 puts both in a share). Run it from Unraid's terminal:
 #
 #   bash /mnt/user/tmp/messages-server/install-unraid.sh
@@ -165,7 +165,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [ "$ghcr" = 1 ]; then
-    echo "Pulling $image (log in to ghcr.io with a read:packages token first; see the README)..."
+    echo "Pulling $image..."
     # Pull and check the install assets before touching the running server. Never fall back to a stale image on failure.
     docker pull "$image"
     # create does not run the entrypoint or mount the real data/keys. Remove its anonymous image volumes too.
