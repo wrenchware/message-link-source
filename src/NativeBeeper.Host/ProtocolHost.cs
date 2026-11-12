@@ -183,6 +183,14 @@ internal sealed class ProtocolHost : IDisposable
             unarchivesChats = unarchive.Merges is not null;
             source = HostIncomingUnarchive.Over(source, messaging, messaging, journal, roster, unarchive, log);
             log("incoming unarchive via=host");
+            // The Marketplace label (owner, 2026-11-12): one labeller and one memory for every device, writing the shared book as a client would.
+            if (options.SharedState is { } labelRows && options.HostTokens is not null)
+            {
+                source = HostMarketplaceLabels.Over(source, messaging, labelRows, async cancellationToken =>
+                    (await (served ?? throw new InvalidOperationException("The host's identity is not made yet.")).ReadAsync(cancellationToken).ConfigureAwait(false)).LocalKey,
+                    unarchive.State, unarchive.Merges, log);
+                log("marketplace label via=host");
+            }
         }
         // With a whole history each message event has its history change beside it: twice the ring, so a phone that resumes reaches back as far as before.
         var eventLog = new EventLog(source, history is null ? EventLog.DefaultCapacity : EventLog.DefaultCapacity * 2,

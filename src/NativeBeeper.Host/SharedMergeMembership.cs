@@ -27,6 +27,15 @@ internal sealed class SharedMergeMembership
         return merges.DisplayId(chat.Id) != chat.Id;
     }
 
+    /// <summary>The id the list shows <paramref name="chat"/> under: its merge's, or its own. Throws when the row cannot be read.</summary>
+    public async Task<string> DisplayIdAsync(ChatSummary chat, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await merges.ReloadAsync().ConfigureAwait(false);
+        merges.Observe([chat]);
+        return merges.DisplayId(chat.Id);
+    }
+
     private sealed class Key(Func<CancellationToken, Task<string?>> localKey) : IAccessTokenStore
     {
         public async ValueTask<string?> GetAsync(CancellationToken cancellationToken = default) => await localKey(cancellationToken).ConfigureAwait(false);

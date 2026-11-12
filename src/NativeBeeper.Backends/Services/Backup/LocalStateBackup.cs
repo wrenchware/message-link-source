@@ -70,6 +70,9 @@ internal static class LocalStateBackup
         ["preferences"] = ["pinned-order", "emoji-recents", "emoji-tone", "quick-replies"],
         ["merges"] = ["groups"],
         ["labels"] = ["book"],
+        // Which conversations a server has put the Marketplace label on, and which label it made (HostMarketplaceLabels), so a restored server does not
+        // put it back on conversations it was taken off, or make it again after it was deleted. Only a server's own state holds it.
+        ["auto-labels"] = ["marketplace"],
         // Custom photos for a conversation or person (LocalAvatarStore), and older releases' photos it moves on first read.
         ["avatar-v2"] = [],
         ["avatar"] = [],

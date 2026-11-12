@@ -229,6 +229,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 - **New label…** (from a conversation's menu, or Commands) asks for a name of up to 32 characters and one of eight colors: Red, Orange, Yellow, Green, Teal, Blue, Purple or Pink. A label made from a conversation's menu goes on that conversation at once.
 - **Manage labels…** renames (type and press Enter), recolors and deletes labels. Deleting says how many conversations will lose it.
 - Filter the list by labels from the view dropdown above the list (it reads **Messages** until you pick one), or **Show label: *name*** in Commands.
+- Facebook Marketplace conversations get a **Marketplace** label from your Message Link Server when they first appear. It's one of your labels: rename, recolor or delete it, or remove it from a conversation, on any device, and it stays that way.
 
 ### Muting {#muting}
 
