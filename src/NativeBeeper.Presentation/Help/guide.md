@@ -48,9 +48,16 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 - **Once an account connects** or you join a server, the welcome is gone for good. If you later sign out of everything, the conversation list offers **Add an account** instead.
 - **The welcome's last line** says Message Link is also available for Android, with a Message Link Server; **Learn more** opens the Message Link website.
 - **The title bar** has no search or navigation controls until something is set up, because they act on your conversations.
-- **The tour** is offered once: after your first account connects and your conversations are on screen, or while you look around the sample conversations. It never runs over the welcome. **Not now** skips it; you can take it any time from **More options → Take the tour**, the command palette, Settings → About, or this guide.
+- **After your first account connects**, **Set up Message Link** shows three short steps once, over the whole window, each with a picture of what it sets beside its choices:
+  - **Choose how it looks**: the **Theme** (**Light**, **Dark** or **Same as Windows**), shown on the window as you pick, and **Service icons** on conversation photos.
+  - **Set up notifications**: notifications on or off; **Show contact name**, **Show message content** and **Show contact photo** (the message and the photo come only with the name); and one sound for every service with a button to play it. The sample notification in the picture changes as you choose.
+  - **Start with Windows**: Message Link starts in the system tray when you sign in to Windows, so new messages reach you before you open it. It is on to begin with, and **Done** saves it. This step is left out when Start with Windows is turned off in Windows' Startup apps.
+  - The other choices apply at once. **Back** and **Next** move between the steps. **Skip setup** (on every step but the last) or <kbd>Esc</kbd> keeps what is set and finishes.
+  - A different theme takes effect when Message Link restarts, so Message Link restarts by itself as the steps finish; the last step says so beside **Done**.
+  - The steps are shown once, and every choice is also in Settings.
+  - A Google Voice account added later starts with the default sound; change it in Settings → Notifications → Sounds and privacy.
+- **The tour** is offered once: after your first account connects, the setup pages are done and your conversations are on screen, or while you look around the sample conversations. It never runs over the welcome. **Not now** skips it; you can take it any time from **More options → Take the tour**, the command palette, Settings → About, or this guide.
 - **Closing the window** the first time leaves Message Link running in the system tray, and a quiet notification says so: "Message Link is still running." Choose **Quit Message Link** from the tray icon to exit.
-- **After your first account connects**, Message Link asks once whether to start when you sign in to Windows. It starts in the tray, so new messages reach you before you open it.
 - **If Message Link closed unexpectedly** last time, a notice says so with **Save logs**, in case you want to send them to whoever helps you.
 
 ### Sample conversations {#sample-conversations}
@@ -569,7 +576,7 @@ Message Link shows Windows notifications while it's running, including from the 
 **Settings → Notifications → Sounds and privacy**:
 
 - **Services**: each service, and each Google Voice number, on or off, with its sound: one of Message Link's own, such as Pulse (the default) or Dock; Text message, Mail, Reminder or Windows default; one of nine more Windows sounds such as Chimes or Ding, a WAV file of your own under 2 MB (Choose a file), or No sound. Text message, Mail, Reminder and Windows default follow your Windows sound scheme. During Do Not Disturb, or for a scheduled reminder, any other sound is replaced by Text message. Choosing a sound plays it, and the play button beside it plays it again. Turning a service off here mutes nothing on the service.
-- **Show in notifications**: **Sender and message**, **Sender only** ("New message") or **No details**. **Show the sender's photo** is off by default.
+- **Show in notifications**: **Sender and message**, **Sender only** ("New message") or **No details**. **Show the sender's photo** is on by default.
 - **Pause**, as above.
 
 **Send test** on the same page shows a test notification whose buttons answer without contacting anyone. Windows' own settings (Do not disturb, Focus) can still hold banners back; Message Link can't change those.
@@ -860,7 +867,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 | Setting | What it does | Default |
 |---|---|---|
 | **Theme** | **Same as Windows**, **Light** or **Dark**. A change applies when Message Link restarts; **Restart now** appears beside it | Same as Windows |
-| **Message colors** | Your bubble color per service and route: Google Messages RCS, SMS and MMS, and route unknown; Messenger; Instagram; Google Voice. Twelve swatches or **Custom color**; a color that would be hard to read is adjusted slightly. **Use service colors in linked conversations**, and **Reset to defaults** | Service colors |
+| **Message colors** | Your bubble color per service and route: Google Messages RCS, SMS and MMS, and route unknown; Messenger; Google Voice; Instagram. Twelve swatches or **Custom color**; a color that would be hard to read is adjusted slightly. **Use service colors in linked conversations**, and **Reset to defaults** | Service colors |
 | **Background** | Shown in dark mode only. The background color in dark mode: **Dark**, **Gray**, **Near black**, or a tinted **Slate**, **Navy**, **Midnight** (the darkest blue), **Graphite** or **Moss**. The conversation list, the conversation and incoming bubbles change together, at once | Dark |
 | **Service icons** | The service badge on conversation photos (<kbd>Ctrl+Shift+I</kbd>) | On |
 | **Link previews** | A picture and description for web links | On |
@@ -873,7 +880,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 | **Keep running when the window closes** | Stay in the tray, receiving messages and notifications | On |
 | **Minimize to the system tray** | Hide the taskbar button when minimized | Off |
 | **Photos in the taskbar menu** | Contact photos beside conversations in the [jump list](#taskbar) | On |
-| **Start with Windows** | Start in the tray when you sign in to Windows | Off (offered once) |
+| **Start with Windows** | Start in the tray when you sign in to Windows | Off (asked once, on the [setup pages](#first-run)) |
 | **Global keyboard shortcut** | Show Message Link from any app: Off, Ctrl+Alt+M, Win+Alt+M or Ctrl+Alt+Shift+M | Ctrl+Alt+Shift+M |
 
 ### Storage and backup {#settings-storage}

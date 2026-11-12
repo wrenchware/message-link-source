@@ -71,6 +71,8 @@
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\AppIcon.png" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\EmptyConversation.png" CopyToOutputDirectory="PreserveNewest"/>
+    <!-- The setup pages' made-up sender: the Store screenshots' "Maya Chen" face (tools\StorePackage\Get-StorePictures.ps1, Unsplash License), 144 px. -->
+    <Content Include="Assets\SetupSamplePhoto.jpg" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\ServiceMessenger.png;Assets\ServiceGoogleMessages.png;Assets\ServiceGoogleVoice.png;Assets\ServiceInstagram.png" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\AvatarBadge*.png" CopyToOutputDirectory="PreserveNewest"/>
     <Content Include="Assets\Sounds\*.wav" CopyToOutputDirectory="PreserveNewest"/>

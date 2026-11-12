@@ -11,11 +11,11 @@ public enum NotificationDetail { SenderAndMessage, SenderOnly, None }
 // a service off here mutes, archives and marks nothing on it. Keys are service names ("Google Messages", "Messenger",
 // "Instagram") or, for each Google Voice account, "Google Voice/" and a one-way hash of the account, so the saved file
 // holds neither a phone number nor an account id.
-// SenderPhoto (appended): "Show the sender's photo", off unless turned on. Windows takes a notification's picture only as a
+// SenderPhoto (appended): "Show the sender's photo", on unless turned off (owner, 2026-11-12). Windows takes a notification's picture only as a
 // file, so while it is on a small copy of the picture this PC already has sits on disk as long as the notification does
 // (NotificationPhotos). Never with No details.
 public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDictionary<string, NotificationSound> Sounds,
-    NotificationDetail Detail, bool SenderPhoto = false, IReadOnlyDictionary<string, string>? CustomSounds = null)
+    NotificationDetail Detail, bool SenderPhoto = true, IReadOnlyDictionary<string, string>? CustomSounds = null)
 {
     private static readonly IReadOnlyDictionary<string, string> NoCustomSounds = new Dictionary<string, string>(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, string> Customs => CustomSounds ?? NoCustomSounds;
@@ -197,8 +197,8 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
         var detail = NotificationDetail.SenderAndMessage;
         if (root.TryGetProperty("detail", out var word) && word.ValueKind == JsonValueKind.String)
             detail = word.GetString() switch { "sender_only" => NotificationDetail.SenderOnly, "none" => NotificationDetail.None, _ => detail };
-        // Only an explicit true turns it on; anything else, or nothing (every file written before it), leaves it off.
-        var photo = root.TryGetProperty("sender_photo", out var switched) && switched.ValueKind == JsonValueKind.True;
+        // Only an explicit false turns it off; anything else, or nothing (a file written before it), leaves it on, the default.
+        var photo = !(root.TryGetProperty("sender_photo", out var switched) && switched.ValueKind == JsonValueKind.False);
         return new(off, sounds, detail, photo, custom);
     }
 }
