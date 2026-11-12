@@ -12,15 +12,20 @@ namespace NativeBeeper.Host;
 /// Puts the user's own "Marketplace" label on each Facebook Marketplace conversation once (owner, 2026-11-12), run by a server's host over the providers'
 /// feed so there is one labeller and one memory for every device. The label is an ordinary one in the shared label book (<see cref="ChatLabels"/>): the user
 /// renames, recolors or deletes it, or takes it off a conversation, from any device, and each of those sticks, because the host remembers which conversations
-/// it has labelled and which label it made, and never labels one twice or makes a deleted label again.
+/// it has labelled and which label it made, and never labels one twice.
 /// </summary>
 /// <remarks>
+/// <para><b>Deleted and back.</b> Deleting the label stops the labelling: the host makes no label of its own again. A label the user then names
+/// "Marketplace" (made anew or renamed) brings it back (owner, 2026-11-12, rather than a setting every device would need): the host takes that label as its own,
+/// and puts it on the Marketplace conversations in the newest page that do not have it, those that came while it was gone included, but never on one the user
+/// had taken it off. That is why the host watches the book's commits and keeps which labelled conversations no longer have the label (<see cref="Memory.Removed"/>):
+/// once the label is deleted the book no longer says.</para>
 /// <para><b>Where.</b> The book is the clients' shared row, written here as a client's <c>state.put</c> writes it: conditional on the rev it was read at, so
 /// an edit another device made meanwhile is never written over; a lost write is made again from the new book. The memory is a row of the host's own private
 /// state (<c>auto-labels:</c>, never a shared category), and goes into a server backup with the rows LocalStateBackup lists.</para>
 /// <para><b>When.</b> A conversation is looked at when an event names it, once per run (its kind never changes), and the first page of conversations once when
-/// Messenger connects, so one that already existed is labelled too. Every event passes on at once; the work is queued behind it and dropped, never waited
-/// for, when the queue is full.</para>
+/// Messenger connects, so one that already existed is labelled too, and again when the label comes back. Every event passes on at once; the work is queued
+/// behind it and dropped, never waited for, when the queue is full.</para>
 /// <para><b>Logs.</b> Fixed words and counts only.</para>
 /// </remarks>
 internal sealed class HostMarketplaceLabels : IRealtimeFeed
@@ -32,9 +37,15 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     private const int KnownLimit = 10_000;
     private const int RememberedLimit = 2_000;
     private const int Attempts = 4;
+    // In the queue beside the conversation ids (which all start "messenger:"): look at the book after a commit changed it.
+    private const string BookCheck = "book";
 
-    /// <summary>What the host remembers: the label it made (or found by name), and the rows it has put it on, oldest first.</summary>
-    public sealed record Memory(string? LabelId, string[] Labelled);
+    /// <summary>
+    /// What the host remembers: the label it made (or found by name), the rows it has put it on, oldest first, and which of those the user has taken it off
+    /// since. <paramref name="Stopped"/>: the label was deleted, and until a label is named "Marketplace" again nothing is labelled or made; the rows labelled
+    /// before are forgotten then, except the ones taken off.
+    /// </summary>
+    public sealed record Memory(string? LabelId, string[] Labelled, string[]? Removed = null, bool Stopped = false);
 
     private readonly IRealtimeFeed inner;
     private readonly IChatReader chats;
@@ -44,9 +55,11 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     private readonly SharedMergeMembership? merges;
     private readonly Action<string> log;
     private readonly Channel<string?> queue = Channel.CreateBounded<string?>(new BoundedChannelOptions(QueueLimit) { FullMode = BoundedChannelFullMode.DropWrite });
-    // Whether each conversation looked at is a Marketplace one: a conversation's kind never changes, so each is read once.
+    // Whether each conversation looked at is settled: false, not a Marketplace one; true, labelled now or before, or let be while the label is deleted (and
+    // looked at again when it comes back). A conversation's kind never changes, so each is read once.
     private readonly ConcurrentDictionary<string, bool> known = new(StringComparer.Ordinal);
     private int swept;
+    private int bookQueued;
 
     private HostMarketplaceLabels(IRealtimeFeed inner, IChatReader chats, SharedStateStore store, Func<CancellationToken, Task<string?>> localKey,
         PrivateState state, SharedMergeMembership? merges, Action<string> log)
@@ -61,6 +74,7 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var worker = Task.Run(() => WorkAsync(stop.Token), CancellationToken.None);
+        store.Committed += OnCommitted;
         try
         {
             await inner.RunAsync(async (change, token) =>
@@ -71,9 +85,18 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
         }
         finally
         {
+            store.Committed -= OnCommitted;
             await stop.CancelAsync().ConfigureAwait(false);
             try { await worker.ConfigureAwait(false); } catch (OperationCanceledException) { }
         }
+    }
+
+    // Under the store's gate: only queued, never read here. One look covers every commit before it.
+    private void OnCommitted(object? sender, SharedChange change)
+    {
+        if (change.Rows.Any(row => row.Key.StartsWith(SharedCategories.Labels + ":", StringComparison.Ordinal))
+            && Interlocked.Exchange(ref bookQueued, 1) == 0 && !queue.Writer.TryWrite(BookCheck))
+            Volatile.Write(ref bookQueued, 0);
     }
 
     // Only Messenger knows a Marketplace conversation. Null in the queue asks for the sweep of the first page.
@@ -106,6 +129,11 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
                     var page = await chats.GetChatsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
                     foreach (var chat in page.Items) await LookAsync(chat, cancellationToken).ConfigureAwait(false);
                 }
+                else if (id == BookCheck)
+                {
+                    Volatile.Write(ref bookQueued, 0);
+                    await CheckBookAsync(cancellationToken).ConfigureAwait(false);
+                }
                 else if (!known.ContainsKey(id))
                     await LookAsync(await chats.GetChatAsync(id, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
             }
@@ -129,33 +157,42 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
         if (await LabelAsync(chat, cancellationToken).ConfigureAwait(false)) known[chat.Id] = true;
     }
 
+    /// <summary>After a commit to the book: notes the conversations the label was taken off, and whether it was deleted or is back.</summary>
+    internal async Task CheckBookAsync(CancellationToken cancellationToken)
+    {
+        if (await ProfileAsync(cancellationToken).ConfigureAwait(false) is not { } profile) return;
+        var memory = await ReadMemoryAsync(profile).ConfigureAwait(false);
+        // Nothing labelled yet: the first Marketplace conversation decides.
+        if (memory.LabelId is null && !memory.Stopped) return;
+        var (book, _) = await ReadBookAsync(profile, cancellationToken).ConfigureAwait(false);
+        await SettleAsync(profile, memory, book, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Labels one Marketplace conversation if it was never labelled. Returns whether it is settled (labelled now or before, or the label deleted).</summary>
     internal async Task<bool> LabelAsync(ChatSummary chat, CancellationToken cancellationToken)
     {
         // Nothing is signed in and nothing is pinned: there is no book to write to yet.
-        if (await localKey(cancellationToken).ConfigureAwait(false) is not { } key || NotificationIdentity.ProfileOf(key) is not { } profile) return false;
+        if (await ProfileAsync(cancellationToken).ConfigureAwait(false) is not { } profile) return false;
         var row = merges is null ? chat.Id : await merges.DisplayIdAsync(chat, cancellationToken).ConfigureAwait(false);
-        var memory = await state.ReadAsync<Memory>(profile, MemoryCategory, MemoryRow).ConfigureAwait(false) ?? new Memory(null, []);
+        var memory = await ReadMemoryAsync(profile).ConfigureAwait(false);
         if (memory.Labelled.Contains(row, StringComparer.Ordinal)) return true;
         var bookKey = SharedCategories.KeyOf(profile, SharedCategories.Labels, SharedCategories.LabelsRow);
         for (var attempt = 0; attempt < Attempts; attempt++)
         {
-            var stored = (await store.LiveRowsWithRevAsync(bookKey, cancellationToken).ConfigureAwait(false)).FirstOrDefault(found => found.Key == bookKey);
-            var book = stored.Value is { } bytes ? JsonSerializer.Deserialize<ChatLabelBook>(bytes) ?? Empty() : Empty();
+            var (book, rev) = await ReadBookAsync(profile, cancellationToken).ConfigureAwait(false);
+            memory = await SettleAsync(profile, memory, book, cancellationToken).ConfigureAwait(false);
+            if (memory.Labelled.Contains(row, StringComparer.Ordinal)) return true;
+            // Deleted, and no label is named Marketplace again: let be, not remembered, so it is labelled if the label comes back.
+            if (memory.Stopped)
+            {
+                Write("outcome=stopped");
+                return true;
+            }
             var labels = (book.Labels ?? []).ToList();
             var assignments = new Dictionary<string, string[]>(book.Assignments ?? [], StringComparer.Ordinal);
             string labelId;
-            if (memory.LabelId is { } made)
-            {
-                // The label made before is gone: the user deleted it, and it is never made again.
-                if (!labels.Any(label => label.Id == made))
-                {
-                    await RememberAsync(profile, memory, row, "deleted", cancellationToken).ConfigureAwait(false);
-                    return true;
-                }
-                labelId = made;
-            }
-            else if (labels.FirstOrDefault(label => string.Equals(label.Name, LabelName, StringComparison.OrdinalIgnoreCase)) is { } named) labelId = named.Id;
+            if (memory.LabelId is { } made) labelId = made;
+            else if (Named(labels) is { } named) labelId = named.Id;
             else
             {
                 labelId = Guid.NewGuid().ToString("N");
@@ -172,7 +209,7 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
             }
             assignments[row] = [.. on, labelId];
             var next = JsonSerializer.SerializeToElement(new ChatLabelBook([.. labels], assignments));
-            var put = await store.PutAsync(new StatePutParams("host-labels-" + Guid.NewGuid().ToString("N"), [new SharedWrite(bookKey, next, stored.Rev)]),
+            var put = await store.PutAsync(new StatePutParams("host-labels-" + Guid.NewGuid().ToString("N"), [new SharedWrite(bookKey, next, rev)]),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             switch (put.Results.Single().Status)
             {
@@ -187,6 +224,70 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
         }
         Write("outcome=conflict");
         return false;
+    }
+
+    /// <summary>
+    /// Brings the memory up to the book: the labelled rows that lack the label are the ones the user took it off; a label that is gone stops the labelling; and
+    /// while stopped, a label named Marketplace is taken as the label from then on, and the newest page is looked at again for what came meanwhile.
+    /// </summary>
+    private async Task<Memory> SettleAsync(string profile, Memory memory, ChatLabelBook book, CancellationToken cancellationToken)
+    {
+        var labels = book.Labels ?? [];
+        var assignments = book.Assignments ?? new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var next = memory;
+        var changed = false;
+        if (memory.LabelId is { } id)
+        {
+            if (labels.Any(label => label.Id == id))
+            {
+                var removed = memory.Labelled.Where(row => !(assignments.GetValueOrDefault(row) ?? []).Contains(id, StringComparer.Ordinal)).ToArray();
+                if (!removed.SequenceEqual(memory.Removed ?? [], StringComparer.Ordinal))
+                {
+                    next = memory with { Removed = removed };
+                    changed = true;
+                }
+            }
+            else
+            {
+                var kept = memory.Removed ?? [];
+                next = new Memory(null, kept, kept, Stopped: true);
+                changed = true;
+                Write("outcome=deleted");
+            }
+        }
+        var back = false;
+        if (next.Stopped && Named(labels) is { } named)
+        {
+            next = next with { LabelId = named.Id, Stopped = false };
+            changed = back = true;
+        }
+        if (!changed) return memory;
+        await state.WriteAsync(profile, MemoryCategory, MemoryRow, next).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (back)
+        {
+            Write("outcome=back");
+            // What was let be while it was gone is looked at again, from the newest page now and as events name it.
+            foreach (var settled in known.Where(pair => pair.Value).Select(pair => pair.Key).ToArray()) known.TryRemove(settled, out _);
+            queue.Writer.TryWrite(null);
+        }
+        return next;
+    }
+
+    private static ChatLabel? Named(IEnumerable<ChatLabel> labels) =>
+        labels.FirstOrDefault(label => string.Equals(label.Name?.Trim(), LabelName, StringComparison.OrdinalIgnoreCase));
+
+    private async Task<string?> ProfileAsync(CancellationToken cancellationToken) =>
+        await localKey(cancellationToken).ConfigureAwait(false) is { } key ? NotificationIdentity.ProfileOf(key) : null;
+
+    private async Task<Memory> ReadMemoryAsync(string profile) =>
+        await state.ReadAsync<Memory>(profile, MemoryCategory, MemoryRow).ConfigureAwait(false) ?? new Memory(null, []);
+
+    private async Task<(ChatLabelBook Book, long Rev)> ReadBookAsync(string profile, CancellationToken cancellationToken)
+    {
+        var bookKey = SharedCategories.KeyOf(profile, SharedCategories.Labels, SharedCategories.LabelsRow);
+        var stored = (await store.LiveRowsWithRevAsync(bookKey, cancellationToken).ConfigureAwait(false)).FirstOrDefault(found => found.Key == bookKey);
+        return (stored.Value is { } bytes ? JsonSerializer.Deserialize<ChatLabelBook>(bytes) ?? Empty() : Empty(), stored.Rev);
     }
 
     private static ChatLabelBook Empty() => new([], []);
