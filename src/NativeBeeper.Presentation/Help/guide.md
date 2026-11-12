@@ -904,6 +904,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 ### About {#settings-about}
 
 - The version, **Help** (**Take the tour** and **Open guide**), and **Licences and source code**.
+- **Support Message Link**: Message Link is free. **Support on Ko-fi** opens a page for an optional donation, which doesn't unlock anything.
 - The Microsoft Store keeps Message Link up to date.
 
 ## 18. Backup, export and your data {#backup}

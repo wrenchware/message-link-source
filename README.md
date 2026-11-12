@@ -52,3 +52,6 @@ any later version. The full text is in `LICENSE`. Third-party code keeps its own
 `third_party` and in each `vendor` folder, and `THIRD_PARTY_NOTICES.md`.
 
 Message Link is a one-person project, so issues and pull requests here are not monitored.
+
+Message Link is free. You can support its development with an optional donation on
+[Ko-fi](https://ko-fi.com/wrenchware). Donations do not unlock features or benefits.
