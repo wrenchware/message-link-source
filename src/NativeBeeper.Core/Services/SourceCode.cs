@@ -7,7 +7,7 @@ namespace NativeBeeper.Core.Services;
 // commit a server image was built from. A build that has neither tag yet (a development copy) still gets the repository.
 public static partial class SourceCode
 {
-    public const string Repository = "https://github.com/wrenchware/switchboard-messages";
+    public const string Repository = "https://github.com/wrenchware/message-link-source";
 
     public static string For(string? version = null, string? revision = null)
     {

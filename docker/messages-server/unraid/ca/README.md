@@ -7,5 +7,5 @@ Templates for Unraid's Community Applications.
   Setup: https://wrenchware.github.io/message-link/unraid/
 - `ca_profile.xml`: the maintainer profile Community Applications shows.
 
-The server's source: https://github.com/wrenchware/switchboard-messages. The templates in this repository are under
+The server's source: https://github.com/wrenchware/message-link-source. The templates in this repository are under
 the MIT License (`LICENSE`); the server has its own licences.

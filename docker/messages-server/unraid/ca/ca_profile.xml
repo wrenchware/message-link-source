@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Maintainer>
-  <Icon>https://raw.githubusercontent.com/wrenchware/switchboard-messages/main/assets/app-icon.png</Icon>
-  <Profile>Wrenchware makes Message Link: native apps for Windows and Android that bring Google Messages, Messenger, Google Voice and Instagram into one inbox, and Message Link Server, which keeps those accounts signed in on your own home server. The server's source is at https://github.com/wrenchware/switchboard-messages.</Profile>
+  <Icon>https://raw.githubusercontent.com/wrenchware/message-link-source/main/assets/app-icon.png</Icon>
+  <Profile>Wrenchware makes Message Link: native apps for Windows and Android that bring Google Messages, Messenger, Google Voice and Instagram into one inbox, and Message Link Server, which keeps those accounts signed in on your own home server. The server's source is at https://github.com/wrenchware/message-link-source.</Profile>
   <WebPage>https://wrenchware.github.io/message-link/</WebPage>
 </Maintainer>

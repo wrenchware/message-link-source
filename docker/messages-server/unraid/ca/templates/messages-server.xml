@@ -20,7 +20,7 @@
   <Category>Network:Messenger Network:Other</Category>
   <WebUI>https://[IP]:[PORT:8787]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/wrenchware/unraid-templates/main/templates/messages-server.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/wrenchware/switchboard-messages/main/assets/app-icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/wrenchware/message-link-source/main/assets/app-icon.png</Icon>
   <ExtraParams>--init --user=2787:2787 --stop-timeout=60 --security-opt=no-new-privileges:true --security-opt=seccomp=unconfined --cap-drop=ALL --memory=4g --memory-swap=4g --pids-limit=2048 -v messages-server-data:/data -v messages-server-keys:/keys</ExtraParams>
   <PostArgs/>
   <CPUset/>

@@ -14,7 +14,7 @@ its first visit and then walks you through Tailscale, your accounts, your phone 
 - **Proxmox VE.** In the node's **Shell**:
 
   ```sh
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/wrenchware/switchboard-messages/main/docker/messages-server/proxmox/install-proxmox.sh)"
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/wrenchware/message-link-source/main/docker/messages-server/proxmox/install-proxmox.sh)"
   ```
 
   It asks a few questions (each with a default), makes an unprivileged Debian 13 container with the server, Google
