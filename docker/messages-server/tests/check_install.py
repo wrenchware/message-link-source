@@ -284,7 +284,8 @@ class PublishChecks(unittest.TestCase):
                 blocks.append(textwrap.dedent('\n'.join(lines[i + 1:end])))
         return blocks
 
-    def test_visibility_check_refuses_public_and_auth_errors(self):
+    # Public since 2026-11-11: servers pull with no login, so a private or internal package stops the build, as do auth errors.
+    def test_visibility_check_refuses_private_and_auth_errors(self):
         code = compile(self.python_steps()[0], str(WORKFLOW), 'exec')
         for kind in ['User', 'Organization']:
             for outcome in ['private', 'public', 'internal', 404, 401, 403, 500]:
@@ -299,7 +300,7 @@ class PublishChecks(unittest.TestCase):
                         return io.StringIO(json.dumps({'visibility': outcome}))
                     with patch.dict(os.environ, {'GITHUB_REPOSITORY_OWNER': 'example', 'GHCR_TOKEN': 'synthetic'}), \
                          patch('urllib.request.urlopen', respond), patch('sys.stdout', io.StringIO()):
-                        if outcome in ['private', 404]:
+                        if outcome in ['public', 404]:
                             exec(code, {})
                         else:
                             with self.assertRaises(SystemExit):
