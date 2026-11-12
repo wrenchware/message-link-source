@@ -71,6 +71,9 @@ type message struct {
 	// A line Facebook writes into the conversation rather than a person ("Jay started this chat.", "Jay is waiting for
 	// your response.", a Marketplace chat, 2026-11-12). Messenger draws these across the conversation, not in a bubble.
 	notice bool
+	// Marketplace's "Message sent" card under a buyer's first message (shares.go's marketplaceReceipt), which the
+	// Messenger phone app does not show, and neither does this app (owner, 2026-11-12).
+	receipt bool
 }
 
 // What a batch of rows changed, so the app can refresh just those conversations rather than reloading everything.
@@ -595,9 +598,11 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		}
 		s.noteSendStatus(row.SendStatusV2, s.self != 0 && row.SenderId == s.self)
 		cardText := ""
+		receipt := false
 		replyTo := row.ReplySourceId
 		if previous := thread[row.MessageId]; previous != nil && previous.sender == row.SenderId && !row.IsUnsent {
 			cardText = previous.cardText
+			receipt = previous.receipt
 			if row.SenderId == metaAIMessengerID && replyTo == "" {
 				replyTo = previous.replyTo
 			}
@@ -613,6 +618,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 			status:    row.SendStatusV2,
 			cardText:  cardText,
 			notice:    row.IsAdminMessage,
+			receipt:   receipt,
 		}
 	}
 	hybridRows := append([]*table.LSVerifyHybridThreadExists{}, tbl.LSVerifyHybridThreadExists...)
@@ -1155,6 +1161,7 @@ func (s *store) viewOf(key int64, current *message) viewMessage {
 		Deleted:  current.unsent,
 		ReplyTo:  current.replyTo,
 		Notice:   current.notice,
+		Hidden:   current.receipt && strings.TrimSpace(text) == "" && len(visible) == 0,
 		// Facebook numbers these; anything other than a plain delivered state stays pending for now.
 		Status:    current.status,
 		Media:     visible,
@@ -1398,12 +1405,14 @@ func (s *store) view(current *thread) viewChat {
 		PreviewOutgoing: previewOutgoing,
 		At:              time.UnixMilli(current.lastActivity).UTC(),
 		// A watermark of zero means Messenger has not told us; treat that as read rather than inventing unread chats.
-		Unread:    current.readAt > 0 && current.lastActivity > current.readAt && !previewOutgoing,
-		ReadAt:    current.readAt,
-		Group:     !current.kind.IsOneToOne(),
-		Archived:  archivedFolder(current.folder),
-		AvatarURL: avatar,
-		Members:   s.membersOf(current),
+		Unread: current.readAt > 0 && current.lastActivity > current.readAt && !previewOutgoing,
+		ReadAt: current.readAt,
+		Group:  !current.kind.IsOneToOne(),
+		// Facebook's own kind for a buyer and seller's chat (5), which the app labels "Marketplace" (2026-11-12).
+		Marketplace: current.kind == table.MARKETPLACE,
+		Archived:    archivedFolder(current.folder),
+		AvatarURL:   avatar,
+		Members:     s.membersOf(current),
 	}
 }
 

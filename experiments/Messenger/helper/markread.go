@@ -257,7 +257,10 @@ func (s *store) readThroughLocked(key, watermark int64) int64 {
 
 func (s *store) newerMessageLocked(key, watermark int64) bool {
 	for _, message := range s.messages[key] {
-		if !message.unsent && message.timestamp > watermark {
+		// A hidden Marketplace receipt can never be read up to, so it must not hold the read short of the conversation's
+		// newest moment (2026-11-12). Anything else not drawn here (an encrypted poll this build cannot read) still does:
+		// reading here must not tell Facebook it was seen.
+		if !message.unsent && message.timestamp > watermark && !(message.receipt && message.text == "") {
 			return true
 		}
 	}

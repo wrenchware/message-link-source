@@ -36,7 +36,12 @@ public sealed record ChatSummary(string Id, string AccountId, string Title, stri
     // Muted on the service itself, from this or another of the account's devices (Messenger reports it), as the
     // provider said it; null when the service reports none or does not say. Received only: nothing here sends a mute.
     // LocalPreferenceChatReader folds it into IsMuted and MutedUntil. Appended.
-    ServiceMute? ServiceMute = null);
+    ServiceMute? ServiceMute = null,
+    // A Marketplace buyer and seller's chat (Messenger says so by the chat's own kind). Appended, and written only when
+    // true, so every saved row
+    // and wire copy of any other conversation reads exactly as before.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    bool IsMarketplace = false);
 // A mute the service reports. Until: when it ends; null for a mute until turned off. Key: how a mute set aside on this
 // PC names the one it set aside, so a newer mute from the service shows again (LocalChatPreferences.ServiceMuteSetAside).
 public sealed record ServiceMute(DateTimeOffset? Until)

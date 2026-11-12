@@ -20,7 +20,9 @@ internal sealed record MessengerChat(string Id, string Title, MessengerPerson[] 
     // removing for its admins. Appended (2026-10-04).
     bool CanRename = false, bool CanAddMembers = false, bool CanRemoveMembers = false,
     // Who wrote the preview's words in a group, as its messages name them; none for this account and one-to-ones. Appended (2026-10-28).
-    string? PreviewSender = null, string? PreviewName = null);
+    string? PreviewSender = null, string? PreviewName = null,
+    // A Marketplace buyer and seller's chat, by Facebook's own thread kind. Appended (2026-11-12).
+    bool Marketplace = false);
 internal sealed record MessengerMedia(string Id, string? Name, string? Mime, long Size, double Width, double Height, bool Video,
     string? Preview = null, bool Animated = false, string? Link = null, bool Play = false, string? Description = null, string? Caption = null,
     string? ActionTitle = null);
@@ -33,8 +35,9 @@ internal sealed record MessengerMessage(string Id, string ChatId, string Sender,
     // How many of the other people a message this account sent has reached, reading counted as reaching; and when it
     // was read, in milliseconds, only where Facebook said when and the helper saw that reading happen. Appended.
     int Delivered = 0, long SeenAt = 0,
-    // A line Facebook writes into the conversation rather than a person ("Jay started this chat."). Appended.
-    bool Notice = false);
+    // A line Facebook writes into the conversation rather than a person ("Jay started this chat."), and a row Facebook's
+    // own phone app does not show (Marketplace's "Message sent" card). Appended.
+    bool Notice = false, bool Hidden = false);
 internal sealed record MessengerMessagePage(MessengerMessage[] Messages, bool Refreshing);
 internal sealed record MessengerMessageWindow(MessengerMessage[] Messages, bool MoreOlder, bool MoreNewer);
 internal sealed record MessengerReaction(string Key, string Sender);
@@ -92,7 +95,7 @@ internal static class MessengerModels
             // its members are not listed yet.
             Math.Max(chat.Participants.Length, chat.Members), IsEncrypted: chat.Encrypted,
             ReadUpTo: chat.ReadAt > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(chat.ReadAt) : null,
-            ServiceMute: ServiceMuteOf(chat.MutedUntil));
+            ServiceMute: ServiceMuteOf(chat.MutedUntil), IsMarketplace: chat.Marketplace);
     }
 
     // A mute set in Messenger, on this account's phone or anywhere else. Whether it still holds is decided when the
@@ -164,12 +167,9 @@ internal static class MessengerModels
             // Facebook's own lines ("Jay is waiting for your response.") run across the conversation, as Messenger
             // draws them, rather than in the sender's bubble.
             message.At.UtcTicks.ToString("D19"), message.Text, message.Notice ? "system" : "text", message.Outgoing, message.Deleted,
-            // Nothing to draw: the helper leaves these out of history pages, but one asked for by id still comes back,
-            // and the phone drew it as an empty bubble. Marketplace's "Message sent" card is one (2026-11-12), and the
-            // Messenger phone app shows nothing for it either. A blank Meta AI answer keeps its own wording, and this
-            // account's own sends are left to the outbox, which matches a send to its copy.
-            !message.Deleted && !message.Outgoing && string.IsNullOrEmpty(message.Text) && attachments.Length == 0 &&
-                Person(message.Sender) != NativeBeeper.Presentation.Services.MetaAiMessages.SenderId,
+            // Marketplace's "Message sent" card (2026-11-12), which the Messenger phone app does not show either; the
+            // helper names it by its shape. Only that: anything else with nothing to draw still notifies and shows.
+            message.Hidden && !message.Deleted,
             // Messenger reports a correction separately from the message, so "edited" is something the helper tells us
             // rather than something the message carries.
             message.EditedAt == 0 ? null : DateTimeOffset.FromUnixTimeMilliseconds(message.EditedAt),

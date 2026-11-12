@@ -138,6 +138,12 @@ func (s *store) applyShares(tbl *table.LSTable, note func(int64, string)) {
 				note(key.thread, key.message)
 			}
 		}
+		if current != nil && !current.encrypted {
+			if receipt := rows.marketplaceReceipt(); current.receipt != receipt {
+				current.receipt = receipt
+				note(key.thread, key.message)
+			}
+		}
 		drawn := map[string]bool{}
 		for _, candidate := range rows.thumbnails(key) {
 			if candidate.source == "" || !strings.HasPrefix(candidate.mime, "image/") {
@@ -175,6 +181,31 @@ func (s *store) applyShares(tbl *table.LSTable, note func(int64, string)) {
 
 // The pinned upstream xmaAttachmentToMatrix renders TitleText when no media URL exists.
 // Keep only explicit title fields; do not decode metadata or infer joins between differing cards.
+// Marketplace's receipt under a buyer's first message ("Message sent", 2026-11-12): a card with no picture whose every
+// button is Marketplace's own call-function, which only Facebook's apps can run. Messenger on the web draws it as a
+// bubble; the Messenger phone app draws nothing. Any other card, or one with a picture, is not this.
+func (rows *shareRows) marketplaceReceipt() bool {
+	if len(rows.ctas) == 0 {
+		return false
+	}
+	for _, cta := range rows.ctas {
+		if cta.Type_ != "marketplace_xma_call_function" {
+			return false
+		}
+	}
+	for _, row := range rows.items {
+		if firstOf(row.PreviewUrlLarge, row.PreviewUrl, row.PreviewUrlFallback, row.ImageUrl, row.PlayableUrl, row.PlayableUrlFallback) != "" {
+			return false
+		}
+	}
+	for _, row := range rows.containers {
+		if firstOf(row.PreviewUrlLarge, row.PreviewUrl, row.PreviewUrlFallback, row.ImageUrl, row.ImageUrlFallback, row.PlayableUrl, row.PlayableUrlFallback) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func (rows *shareRows) textOnlyTitles() string {
 	var titles []string
 	seen := map[string]bool{}

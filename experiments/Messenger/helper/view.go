@@ -46,6 +46,8 @@ type viewMessage struct {
 	ReplyTo  string      `json:"replyTo,omitempty"`
 	// Facebook's own line across the conversation rather than a person's message (store.go's notice).
 	Notice bool `json:"notice,omitempty"`
+	// A row Facebook's own phone app does not show, so neither does this one (store.go's receipt).
+	Hidden bool `json:"hidden,omitempty"`
 	Status   int64       `json:"status"`
 	Media    []viewMedia `json:"media"`
 	// One per person who reacted, with the emoji they chose.
@@ -91,6 +93,8 @@ type viewChat struct {
 	// Messenger has not said, as for Unread.
 	ReadAt            int64             `json:"readAt,omitempty"`
 	Group             bool              `json:"group"`
+	// A Marketplace buyer and seller's chat, by Facebook's own thread kind.
+	Marketplace bool `json:"marketplace,omitempty"`
 	Archived          bool              `json:"archived"`
 	Hidden            bool              `json:"hidden"`
 	AvatarColor       string            `json:"avatarColor,omitempty"`
