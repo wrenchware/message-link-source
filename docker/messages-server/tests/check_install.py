@@ -321,20 +321,208 @@ class PublishChecks(unittest.TestCase):
                 self.assertEqual(Path(env['GITHUB_OUTPUT']).read_text(), 'publish=' + enabled + '\n')
                 self.assertNotIn('synthetic', result.stdout + result.stderr)
 
+    # The nightly channel (2026-11-12): a build publishes nightly and its exact tag, never a stable tag.
     def test_tag_metadata_and_chrome_refresh(self):
         code = compile(self.python_steps()[1], str(WORKFLOW), 'exec')
         version = ET.parse(ROOT / 'src/NativeBeeper.App/NativeBeeper.App.csproj').findtext('.//Version')
-        for suffix in ['', '-google']:
-            with tempfile.TemporaryDirectory() as folder:
-                env = {'GITHUB_REPOSITORY_OWNER': 'Example', 'GITHUB_SHA': 'a' * 40,
-                       'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2', 'SUFFIX': suffix,
-                       'GITHUB_OUTPUT': folder + '/output'}
-                with patch.dict(os.environ, env), contextlib.chdir(ROOT):
-                    exec(code, {})
-                output = Path(env['GITHUB_OUTPUT']).read_text()
-                for tag in ['latest', version, 'sha-' + 'a' * 40 + '-run-123-2']:
-                    self.assertIn('ghcr.io/example/messages-server:' + tag + suffix + '\n', output)
-                self.assertRegex(output, r'refresh=\d{8}T\d{6}Z\n')
+        with tempfile.TemporaryDirectory() as folder:
+            env = {'GITHUB_REPOSITORY_OWNER': 'Example', 'GITHUB_SHA': 'a' * 40,
+                   'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2', 'GITHUB_OUTPUT': folder + '/output'}
+            with patch.dict(os.environ, env), contextlib.chdir(ROOT):
+                exec(code, {})
+            output = Path(env['GITHUB_OUTPUT']).read_text()
+            tags = output.split('tags<<TAGS\n', 1)[1].split('TAGS\n', 1)[0].splitlines()
+            self.assertEqual(tags, ['ghcr.io/example/messages-server:nightly',
+                                    'ghcr.io/example/messages-server:sha-' + 'a' * 40 + '-run-123-2'])
+            self.assertIn('version=' + version + '\n', output)
+            self.assertRegex(output, r'refresh=\d{8}T\d{6}Z\n')
+
+    def run_cleanup(self, versions):
+        code = compile(self.python_steps()[2], str(WORKFLOW), 'exec')
+        deleted = []
+        def respond(request, timeout):
+            url = request.full_url
+            if request.get_method() == 'DELETE':
+                deleted.append(int(url.rsplit('/', 1)[1]))
+                return io.BytesIO(b'')
+            if url.endswith('/users/example'):
+                return io.BytesIO(json.dumps({'type': 'User'}).encode())
+            return io.BytesIO(json.dumps(versions if url.endswith('page=1') else []).encode())
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY_OWNER': 'example', 'GHCR_TOKEN': 'synthetic'}), \
+             patch('urllib.request.urlopen', respond), patch('sys.stdout', io.StringIO()):
+            try:
+                exec(code, {})
+            except SystemExit as stopped:
+                self.assertEqual(stopped.code, 0)
+        return set(deleted)
+
+    # Never the image latest or nightly names, however old; every image of the last ten days; parts only beside an image kept.
+    def test_cleanup_keeps_stable_nightly_and_recent_images(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        def version(id, days, *tags, hours=0):
+            when = (now - timedelta(days=days, hours=hours)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            return {'id': id, 'created_at': when, 'metadata': {'container': {'tags': list(tags)}}}
+        versions = [
+            version(1, 0.1, 'nightly', 'sha-n'), version(2, 0.2, 'sha-b'), version(3, 3, 'sha-c'), version(4, 9, 'sha-d'),
+            version(5, 12, 'sha-e'), version(6, 13, 'sha-f'),
+            version(7, 30, 'latest', 'latest-google', '0.1.400', '0.1.400-google', 'sha-l'),
+            version(8, 40, '0.1.390', 'sha-g'),
+            # Parts: one beside the stable image, one beside a removed image, one beside a recent one.
+            version(9, 30, hours=0.5), version(10, 13, hours=0.5), version(11, 3, hours=0.2)]
+        self.assertEqual(self.run_cleanup(versions), {5, 6, 8, 10})
+        # Few images: the newest three stay even when older than ten days, and so does latest.
+        few = [version(1, 20, 'nightly', 'sha-n'), version(2, 21, 'sha-b'), version(3, 22, 'sha-c'), version(4, 23, 'sha-d'),
+               version(5, 60, 'latest', 'sha-l')]
+        self.assertEqual(self.run_cleanup(few), {4})
+        # latest and nightly on one image (just promoted), older than the rest.
+        same = [version(1, 1, 'sha-a'), version(2, 2, 'sha-b'), version(3, 3, 'sha-c'), version(4, 20, 'sha-x'),
+                version(5, 15, 'nightly', 'latest', 'latest-google', 'sha-n')]
+        self.assertEqual(self.run_cleanup(same), {4})
+        # A listing without latest, or without nightly, removes nothing.
+        for missing in ['latest', 'nightly']:
+            with self.subTest(missing=missing):
+                listing = [version(i, 20 + i, 'sha-' + str(i)) for i in range(1, 8)] + [version(9, 0.1, 'latest' if missing == 'nightly' else 'nightly')]
+                self.assertEqual(self.run_cleanup(listing), set())
+
+
+PROMOTE = ROOT / '.github/scripts/promote-server-image.py'
+COMMIT = 'a' * 40
+MAIN = 'f' * 40
+NIGHTLY = 'sha256:' + 'b' * 64
+STABLE = 'sha256:' + 'c' * 64
+INDEX = 'application/vnd.oci.image.index.v1+json'
+
+
+class PromoteChecks(unittest.TestCase):
+    """messages-server-promote.yml's script, against a stand-in for GitHub, the registry and git."""
+
+    def module(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('promote_server_image', PROMOTE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def world(self):
+        return {
+            'versions': [
+                {'name': NIGHTLY, 'metadata': {'container': {'tags': ['nightly', 'sha-' + COMMIT + '-run-123-1']}}},
+                {'name': STABLE, 'metadata': {'container': {'tags': ['latest', 'latest-google', '0.1.400', '0.1.400-google',
+                                                                       'sha-' + 'd' * 40 + '-run-99-1', 'sha-' + 'd' * 40 + '-run-99-1-google']}}},
+            ],
+            'run': {'path': '.github/workflows/messages-server.yml', 'head_branch': 'main', 'head_sha': COMMIT, 'event': 'push',
+                    'created_at': '2026-11-10T08:00:00Z'},
+            'jobs': [{'name': 'enabled', 'conclusion': 'success'}, {'name': 'image', 'conclusion': 'success'}],
+            'compare': 'ahead',
+            'project': '<Project><PropertyGroup><Version>0.1.453</Version></PropertyGroup></Project>',
+            'registry': {NIGHTLY: (NIGHTLY, INDEX), 'latest': (STABLE, INDEX)},
+            'source': 'f00d\trefs/tags/src-' + COMMIT[:12] + '\n',
+        }
+
+    def run_script(self, action, world, extra=None):
+        module = self.module()
+        class Response(io.BytesIO):
+            def __init__(self, body=b'', headers=None):
+                super().__init__(body)
+                self.headers = headers or {}
+        def respond(request, timeout):
+            url = request.full_url
+            def missing():
+                raise urllib.error.HTTPError(url, 404, 'synthetic', {}, io.BytesIO())
+            if url.startswith('https://ghcr.io/token'):
+                return Response(json.dumps({'token': 'pull'}).encode())
+            if url.startswith('https://ghcr.io/v2/example/messages-server/manifests/'):
+                found = world['registry'].get(url.rsplit('/', 1)[1])
+                if found is None:
+                    missing()
+                return Response(headers={'Docker-Content-Digest': found[0], 'Content-Type': found[1]})
+            path = url.removeprefix('https://api.github.com')
+            if path == '/users/Example':
+                return Response(json.dumps({'type': 'User'}).encode())
+            if path.startswith('/users/Example/packages/container/messages-server/versions'):
+                return Response(json.dumps(world['versions'] if path.endswith('page=1') else []).encode())
+            if path == '/repos/Example/app/actions/runs/123':
+                return Response(json.dumps(world['run']).encode()) if world['run'] else missing()
+            if path.startswith('/repos/Example/app/actions/runs/123/attempts/1/jobs'):
+                return Response(json.dumps({'jobs': world['jobs']}).encode())
+            if path == '/repos/Example/app/compare/' + COMMIT + '...' + MAIN:
+                return Response(json.dumps({'status': world['compare']}).encode())
+            if path == '/repos/Example/app/contents/src/NativeBeeper.App/NativeBeeper.App.csproj?ref=' + COMMIT:
+                return Response(world['project'].encode())
+            missing()
+        def git(arguments, **options):
+            self.assertEqual(arguments[:3], ['git', 'ls-remote', '--tags'])
+            self.assertEqual(arguments[3], 'https://github.com/example/source.git')
+            return subprocess.CompletedProcess(arguments, 0, world['source'], '')
+        with tempfile.TemporaryDirectory() as folder:
+            env = {'GITHUB_REPOSITORY_OWNER': 'Example', 'GITHUB_REPOSITORY': 'Example/app', 'GITHUB_SHA': MAIN,
+                   'GHCR_TOKEN': 'synthetic', 'GH_TOKEN': 'synthetic', 'SOURCE_REPOSITORY': 'example/source',
+                   'GITHUB_OUTPUT': folder + '/output', 'GITHUB_STEP_SUMMARY': folder + '/summary'}
+            env.update(extra or {})
+            with patch('urllib.request.urlopen', respond), patch.object(module.subprocess, 'run', git), patch('sys.stdout', io.StringIO()):
+                getattr(module, action)(env)
+            output = Path(env['GITHUB_OUTPUT'])
+            return output.read_text() if output.exists() else ''
+
+    def test_a_published_nightly_from_main_is_promoted_by_tag_or_digest(self):
+        for given in ['sha-' + COMMIT + '-run-123-1', 'sha-' + COMMIT + '-run-123-1-google', NIGHTLY,
+                      'ghcr.io/example/messages-server:sha-' + COMMIT + '-run-123-1', ' ghcr.io/example/messages-server@' + NIGHTLY + '\n']:
+            with self.subTest(given=given):
+                output = self.run_script('check', self.world(), {'INPUT_IMAGE': given})
+                self.assertIn('image=ghcr.io/example/messages-server\n', output)
+                self.assertIn('digest=' + NIGHTLY + '\n', output)
+                self.assertIn('commit=' + COMMIT + '\n', output)
+                self.assertIn('tags<<TAGS\nlatest\nlatest-google\n0.1.453\n0.1.453-google\nTAGS\n', output)
+
+    def test_anything_else_is_refused_before_a_tag_moves(self):
+        def change(**changes):
+            world = self.world()
+            for key, value in changes.items():
+                if key in ('run', 'jobs', 'versions') and callable(value):
+                    value(world[key])
+                else:
+                    world[key] = value
+            return world
+        given = 'sha-' + COMMIT + '-run-123-1'
+        cases = {
+            'a stable tag': (self.world(), 'latest'),
+            'nightly by name': (self.world(), 'nightly'),
+            'a shell word': (self.world(), given + '; echo'),
+            'an unknown digest': (self.world(), 'sha256:' + 'e' * 64),
+            'a tag of no image': (self.world(), 'sha-' + 'e' * 40 + '-run-123-1'),
+            'an image no build tagged': (change(versions=lambda versions: versions[0]['metadata']['container']['tags'].remove('sha-' + COMMIT + '-run-123-1')), NIGHTLY),
+            'two builds on one image': (change(versions=lambda versions: versions[0]['metadata']['container']['tags'].append('sha-' + 'e' * 40 + '-run-7-1')), NIGHTLY),
+            'a run that is not there': (change(run=None), given),
+            'another workflow': (change(run=lambda run: run.update(path='.github/workflows/other.yml')), given),
+            'another branch': (change(run=lambda run: run.update(head_branch='work')), given),
+            'another commit': (change(run=lambda run: run.update(head_sha='e' * 40)), given),
+            'a pull request': (change(run=lambda run: run.update(event='pull_request')), given),
+            'an image job that failed': (change(jobs=[{'name': 'image', 'conclusion': 'failure'}]), given),
+            'a commit no longer on main': (change(compare='diverged'), given),
+            'a version that is not a tag': (change(project='<Project><Version>1.0</Version></Project>'), given),
+            'source not published': (change(source=''), given),
+            'a bare manifest': (change(registry={NIGHTLY: (NIGHTLY, 'application/vnd.oci.image.manifest.v1+json')}), given),
+            'not in the public registry': (change(registry={}), given),
+        }
+        for name, (world, image) in cases.items():
+            with self.subTest(name):
+                with self.assertRaises(SystemExit) as refused:
+                    self.run_script('check', world, {'INPUT_IMAGE': image})
+                self.assertIn('Refusing to promote', str(refused.exception.code))
+
+    def test_verify_needs_every_stable_tag_on_the_digest(self):
+        tags = 'latest\nlatest-google\n0.1.453\n0.1.453-google\n'
+        promoted = {tag: (NIGHTLY, INDEX) for tag in tags.split()}
+        world = self.world()
+        world['registry'] = promoted
+        self.run_script('verify', world, {'IMAGE': 'ghcr.io/example/messages-server', 'DIGEST': NIGHTLY, 'TAGS': tags})
+        for tag in tags.split():
+            with self.subTest(tag=tag):
+                world['registry'] = dict(promoted)
+                world['registry'][tag] = (STABLE, INDEX)
+                with self.assertRaises(SystemExit):
+                    self.run_script('verify', world, {'IMAGE': 'ghcr.io/example/messages-server', 'DIGEST': NIGHTLY, 'TAGS': tags})
 
 
 if __name__ == '__main__':

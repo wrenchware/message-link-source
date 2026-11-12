@@ -92,7 +92,10 @@ public static class Program
             // Messenger's and Instagram's sign-in profiles are never kept: whatever a stopped server left goes (SWITCHBOARD.md 10.5).
             ThrowawayChromeProfile.Sweep(google.SignInProfilesRoot, AppLog.Write);
         }
-        AppLog.Write($"server started version={typeof(Program).Assembly.GetName().Version?.ToString(3)} host=linux lease=ok previous_exit={previousExit} restore={options.Restore} umask={mask}");
+        // revision= and built= name the image: many nightlies share a version, and a promotion needs to know which one ran here and since when (docs/release.md, "Server image channels").
+        var built = ServerImage.FromEnvironment(Environment.GetEnvironmentVariable);
+        AppLog.Write($"server started version={typeof(Program).Assembly.GetName().Version?.ToString(3)} host=linux lease=ok previous_exit={previousExit} restore={options.Restore} umask={mask} " +
+            $"revision={built.Revision ?? "none"} built={built.Built?.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture) ?? "none"}");
         // Whether each helper this host runs is beside it, said once at start: a missing one otherwise shows only when that provider is first connected.
         // Google Messages' is named only when Google runs here (Prepare has already refused it, with no_helper, when it is missing).
         var helpers = google is null ? new[] { UnavailableProviders.MessengerHelper, UnavailableProviders.InstagramHelper }

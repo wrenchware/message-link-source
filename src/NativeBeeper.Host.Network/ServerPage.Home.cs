@@ -486,7 +486,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
     private void AboutSection(StringBuilder body, HttpRequest request, HostStatus? status, string open, string token)
     {
         body.Append("<section class=\"sec\" id=\"about\"><div class=\"sh\"><h2>About</h2></div><div class=\"box\">");
-        // The version alone: how the server is updated is its host's schedule, which it cannot know, and its protocol and build are in its log.
+        // The version alone: how the server is updated is its host's schedule, which it cannot know, and its protocol and build are in its log. Nor does it say nightly
+        // or stable: a promotion gives the nightly's very image the stable tags, so the image cannot tell which tag its server pulled (docs/release.md, "Server image channels").
         if (status is null) body.Append(Row("The server couldn't say what it is just now.", null, null, Act("")));
         else
         {
