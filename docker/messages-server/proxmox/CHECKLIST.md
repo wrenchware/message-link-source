@@ -7,8 +7,12 @@ The setup code, the first-run steps and the QR code (part 3) come with the serve
 screen (10.8). With a package from before them, set the page password at the script's question instead, sign Tailscale
 in with the link the script prints, and add the phone with the pairing code.
 
-Have ready: the package `messages-server-<version>-linux-x64.tar.gz` and its `.sha256` (from
-`tools\Build-ServerTarball.ps1`, in `artifacts\server-tarball`), the phone with the regular Message Link app
+The script and the package come from the newest stable release (a promotion publishes both, `docs/release.md`, "Server
+image channels"). To try a build that isn't released yet, use `--tarball` with the package
+`messages-server-<version>-linux-x64.tar.gz` and its `.sha256` from `tools\Build-ServerTarball.ps1` (in
+`artifacts\server-tarball`), copied to the host with the script; the nightly update then leaves that package alone.
+
+Have ready: the phone with the regular Message Link app
 (`com.wrenchware.messages`, sideloaded with `android\Build.ps1 -Release -Install -Device <serial>`, never the `.dev`
 build), a Google account that has never used Tailscale or Firebase, a PC browser signed in as that account only (a
 fresh browser profile, so no other account's sign-in is offered), and a folder for screenshots.
@@ -19,17 +23,20 @@ project id while taking them; they are blurred afterwards, before anything is pu
 
 ## 1. Make the container
 
-1. Copy the package and its `.sha256` to the Proxmox host, for example with WinSCP or
-   `scp messages-server-<version>-linux-x64.tar.gz* root@<proxmox>:/root/`.
-2. Copy `docker/messages-server/proxmox/install-proxmox.sh` there too (until the script has a public address).
-3. In the Proxmox web interface: the node, **Shell**. Run:
-   `bash /root/install-proxmox.sh --tarball /root/messages-server-<version>-linux-x64.tar.gz`
-4. Take every default, except: answer the backups question with a test folder such as `/mnt/messages-backups-test`,
-   and leave the Tailscale auth key and the page password empty (Enter).
-5. Note how long it took and whether any question was unclear.
+1. In the Proxmox web interface: the node, **Shell**. Run:
+   `bash -c "$(curl -fsSL https://github.com/wrenchware/message-link-source/releases/latest/download/install-proxmox.sh)"`
+   (an unreleased build: `bash /root/install-proxmox.sh --tarball /root/messages-server-<version>-linux-x64.tar.gz`).
+2. Wanted: a blue dialog box titled "Message Link Server <version>" offering **Default** and **Advanced**. Choose
+   **Advanced** and take every value (Enter), except: the backups folder, a test folder such as
+   `/mnt/messages-backups-test`; and leave the Tailscale auth key and the page password empty (Enter). Wanted: the
+   storages and bridges are lists to pick from, and both secrets show as stars.
+3. Wanted: one last box listing what it will make, with **Make it** and **Cancel**. Choose **Make it**.
+4. Wanted: a line per step, each ending with a check mark, and no apt or download noise.
+5. Note how long it took, whether any box was cut off or hard to read, and whether any question was unclear.
 
 Report: the last 20 lines it printed (the setup code and pairing code there are for a test server and expire, but leave
-out the Tailscale link), and anything it stopped on.
+out the Tailscale link), anything it stopped on, and whether **Default** with **Cancel** on the next box ends with
+"Nothing was changed." (try it once before the real run).
 
 ## 2. The container
 
@@ -41,7 +48,11 @@ pct exec <id> -- systemctl is-active messages-server messages-server-update.time
 pct exec <id> -- journalctl -u messages-server --no-pager -o cat | grep -E 'server google|google chrome|sandbox|tailnet state|server started|refused'
 pct exec <id> -- stat -c '%U %a %n' /var/lib/messages-server/backups
 ls -ln /mnt/messages-backups-test -d
+pct exec <id> -- cat /etc/messages-server/update
 ```
+
+Also open the container's **Summary** in the web interface: wanted, notes headed "Message Link Server" with the page's
+address as a link, the guide's link and the update command, shown as formatted text.
 
 Report all of it. The two things this run is for:
 
@@ -72,18 +83,19 @@ Report: each step's result, the time from scanning to conversations shown, and t
 
 ## 4. Running it again (update)
 
-Run the same command again. Wanted: it finds the container, asks to update it, and the server comes back with the
-test account still signed in and the phone still joined (no new pairing). Report what it printed.
+Run the same command again. Wanted: a box "Update Message Link Server" naming the container, then a check-mark line
+per step, and the server comes back with the test account still signed in and the phone still joined (no new
+pairing). Report what it printed.
 
 ## 5. The nightly update and backups
 
 ```sh
-pct exec <id> -- systemctl start messages-server-update
-pct exec <id> -- journalctl -u messages-server-update --no-pager -o cat | tail -n 5
+pct exec <id> -- update
 ls -l /mnt/messages-backups-test
 ```
 
-Wanted: "no release address", and with Google on a line about Chrome. Report the lines, and whether a backup file
+Wanted from `update`: "the installed release is the newest." (installed from the release), or "no release address"
+(installed with `--tarball`), and with Google on a line about Chrome. Report the lines, and whether a backup file
 appears in the test folder after the page's backups step has been run.
 
 ## 5b. Notifications (Firebase)

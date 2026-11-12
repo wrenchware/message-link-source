@@ -89,9 +89,10 @@ two places at once.
 
 ## Updates
 
-`messages-server-update.timer` runs each night at about 03:00. It updates the server only when
-`/etc/messages-server/update` names a release address (`MESSAGES_RELEASE_URL=`, empty until a public release exists),
-checking the download against its `.sha256` before anything is stopped. With Google on it also takes the newest stable
+`messages-server-update.timer` runs each night at about 03:00 and takes the newest stable release from the address in
+`/etc/messages-server/update` (`MESSAGES_RELEASE_URL=`), checking the download against its `.sha256` before anything is
+stopped. `install.sh` writes the stable release's address there when the file is new and keeps a file it finds; an
+empty address leaves the server as it is. With Google on it also takes the newest stable
 Google Chrome, stopping the server while Chrome is replaced. Run it now with `sudo systemctl start messages-server-update`
 and read what it did with `journalctl -u messages-server-update`.
 

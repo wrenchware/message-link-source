@@ -12,7 +12,7 @@
 #   - puts the server, its helpers and its tailnet door in /opt/messages-server, owned by root so the account cannot
 #     change them, and links mlink (Message Link in a terminal) into /usr/local/bin;
 #   - makes /etc/messages-server/environment (root only) for the settings, unless it is already there, and
-#     /etc/messages-server/update for the nightly update's release address (empty: off);
+#     /etc/messages-server/update with the stable release's address for the nightly update, unless it is already there;
 #   - with --google: installs Google Chrome from Google's own repository (its signing key checked against a pinned
 #     fingerprint), Xvfb, and Chrome's policy, and adds messages-server.service.d/google.conf;
 #   - installs messages-server.service and the nightly messages-server-update.timer, and starts the server. systemd makes
@@ -246,11 +246,11 @@ if [ ! -e "$settings/update" ]; then
     (
     umask 077
     cat > "$settings/update" <<'EOF'
-# The nightly update (messages-server-update.timer, about 03:00). Off until the line below names the newest release's
-# package: an https:// address of messages-server-linux-x64.tar.gz with its .sha256 at the same address plus .sha256.
-# Each night the .sha256 is read; a new package is downloaded, checked and installed with its own install.sh.
-# With Google on, the newest stable Google Chrome is taken each night either way.
-#MESSAGES_RELEASE_URL=
+# The nightly update (messages-server-update.timer, about 03:00): the newest stable release of Message Link Server
+# from the address below, messages-server-linux-x64.tar.gz with its .sha256 at the same address plus .sha256. Each
+# night the .sha256 is read; a new package is downloaded, checked and installed with its own install.sh. Empty: the
+# server itself is not updated. With Google on, the newest stable Google Chrome is taken each night either way.
+MESSAGES_RELEASE_URL=https://github.com/wrenchware/message-link-source/releases/latest/download/messages-server-linux-x64.tar.gz
 EOF
     )
     chmod 0600 "$settings/update"

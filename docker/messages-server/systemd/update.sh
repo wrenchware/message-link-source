@@ -3,8 +3,9 @@
 # systemctl start messages-server-update, then journalctl -u messages-server-update). Two things, each only when it
 # applies, and the server is stopped and started at most once for both:
 #
-#   - a newer release: /etc/messages-server/update names it (MESSAGES_RELEASE_URL=https://.../messages-server-linux-x64.tar.gz,
-#     with its .sha256 at the same address plus .sha256). Without that line nothing is downloaded. The package is
+#   - a newer stable release, from the address in /etc/messages-server/update (MESSAGES_RELEASE_URL=https://.../
+#     messages-server-linux-x64.tar.gz, with its .sha256 at the same address plus .sha256). install.sh writes the
+#     stable release's address there; an empty one downloads nothing. The package is
 #     checked against its .sha256 before anything is stopped, and installed by its own install.sh, which keeps the
 #     data, keys, sign-ins, paired devices and Google's setting.
 #   - a newer stable Google Chrome, when Google is on here (install.sh --google): Chrome is replaced only while the

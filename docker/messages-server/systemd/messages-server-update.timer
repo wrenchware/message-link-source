@@ -1,5 +1,5 @@
 # Each night at about 03:00 (the hour Unraid's Auto Update Applications pulls the image), Message Link Server takes the
-# newest release when /etc/messages-server/update names one, and the newest stable Chrome when Google is on. A night the
+# newest stable release from the address in /etc/messages-server/update, and the newest stable Chrome when Google is on. A night the
 # machine was off is made up at the next boot.
 [Unit]
 Description=Nightly Message Link Server update
