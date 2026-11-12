@@ -72,7 +72,7 @@ github.com/imroc/req/v3/internal/transport
 github.com/imroc/req/v3/internal/util
 github.com/imroc/req/v3/pkg/altsvc
 github.com/imroc/req/v3/pkg/tls
-# github.com/klauspost/compress v1.20.0
+# github.com/klauspost/compress v1.20.2
 ## explicit; go 1.25
 github.com/klauspost/compress
 github.com/klauspost/compress/fse
@@ -334,7 +334,7 @@ golang.org/x/image/riff
 golang.org/x/image/vp8
 golang.org/x/image/vp8l
 golang.org/x/image/webp
-# golang.org/x/net v0.61.0
+# golang.org/x/net v0.62.0
 ## explicit; go 1.26.0
 golang.org/x/net/bpf
 golang.org/x/net/html

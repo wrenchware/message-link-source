@@ -21,7 +21,7 @@ go.mau.fi/mautrix-gvoice/pkg/libgv/utf16chunk
 ## explicit; go 1.26.0
 go.mau.fi/util/exhttp
 go.mau.fi/util/pblite
-# golang.org/x/net v0.61.0
+# golang.org/x/net v0.62.0
 ## explicit; go 1.26.0
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2

@@ -9,7 +9,7 @@
 # Chrome also needs MESSAGES_CHROMIUM_NO_SANDBOX=1, unless the container is given chrome-seccomp.json or seccomp=unconfined (see the ENV below). Chrome always runs headed on its own Xvfb. Written for the classic builder as well as BuildKit.
 
 # ---- Google Messages helper (Go). The version is experiments/GoogleMessages/helper/go.mod's "go" line. -------------------------------------------
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS gmessages-helper
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS gmessages-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 # go.mod replaces go.mau.fi/mautrix-gmessages with ../../../third_party/mautrix-gmessages, so the tree keeps the repo's layout.
 COPY third_party/mautrix-gmessages/ /source/third_party/mautrix-gmessages/
@@ -21,7 +21,7 @@ COPY experiments/GoogleMessages/helper/ ./
 RUN go test ./... && go build -trimpath -o /out/gmessages-helper .
 
 # ---- Messenger helper (Go), built from its own source. ----------------------------------------------------------------------------------------
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS messenger-helper
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS messenger-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 COPY third_party/mautrix-meta/ /source/third_party/mautrix-meta/
 WORKDIR /source/experiments/Messenger/helper
@@ -32,7 +32,7 @@ RUN go test ./... go.mau.fi/mautrix-meta/pkg/messagix \
  && go build -trimpath -o /out/messenger-helper .
 
 # ---- Instagram helper (Go), built from its own source. ----------------------------------------------------------------------------------------
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS instagram-helper
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS instagram-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 COPY third_party/mautrix-meta/ /source/third_party/mautrix-meta/
 WORKDIR /source/experiments/Instagram/helper
@@ -44,7 +44,7 @@ RUN go test ./... \
 
 # ---- Google Voice helper (Go). It has no replace directive: its one library (go.mau.fi/mautrix-gvoice) is fetched and verified from go.sum, like the others' dependencies. ---------
 # Started only beside the server's own Chrome (SWITCHBOARD.md 5.4, Google Voice on the server), which signs Voice in and renews it; one process per Voice account.
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS gvoice-helper
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS gvoice-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 WORKDIR /source/experiments/GoogleVoice/helper
 COPY experiments/GoogleVoice/helper/go.mod experiments/GoogleVoice/helper/go.sum ./
@@ -56,7 +56,7 @@ RUN go test ./... && go build -trimpath -o /out/gvoice-helper .
 # ---- Tailnet door (Go): the server's own node on the owner's tailnet (SWITCHBOARD.md 4.7, TailnetDoor.cs), run only with MESSAGES_TAILNET=1. -------
 # Tailscale's tsnet: userspace networking, so the container needs no capability or tun device for it. The licence files of every module it links (and
 # Go's own) are copied beside it, as the app's THIRD_PARTY_NOTICES.md lists only what the PC installer ships; a module without one stops the build.
-FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS tailnet-door
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS tailnet-door
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 WORKDIR /source/experiments/Tailnet/door
 COPY experiments/Tailnet/door/go.mod experiments/Tailnet/door/go.sum ./

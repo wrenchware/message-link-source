@@ -3,8 +3,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Services/EmojiSequences.txt" />
     <EmbeddedResource Include="Help/guide.md" LogicalName="NativeBeeper.Presentation.Help.guide.md" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="HtmlAgilityPack" Version="1.13.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />
   </ItemGroup>
 </Project>
