@@ -287,7 +287,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
                 && at - time.GetUtcNow() < TimeSpan.FromDays(30) ? at : (DateTimeOffset?)null;
             rows.Append(Row(view.State == "NeedsLogin" ? "Tailscale needs signing in" : view.NeedsApproval ? "Tailscale needs the server approved"
                 : soon is { } day ? $"Tailscale signs the server out on {day.ToString("d MMM yyyy", CultureInfo.InvariantCulture)}" : "Tailscale has a step left",
-                soon is null ? null : "Turn off key expiry to keep it signed in.", null, "<a class=\"button\" href=\"/manage/tailscale\">Review</a>"));
+                soon is null ? null : "Disable key expiry in Tailscale to keep it signed in.", null, "<a class=\"button\" href=\"/manage/tailscale\">Review</a>"));
         }
         if (pushes is { Switch.Current: not null } card)
             foreach (var phone in card.Health.Status(true, card.Registry, devices.List(null)).Phones ?? [])

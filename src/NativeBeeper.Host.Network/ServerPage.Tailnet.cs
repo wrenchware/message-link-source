@@ -137,15 +137,15 @@ internal sealed partial class ServerPage
         // Tailscale's own advice for a server is key expiry off, so the button names that, and the page ticks it by itself once Tailscale says so.
         if (view.ExpiryOff) Done("Server stays signed in");
         else if (view.Expiry is { } expiry)
-            lines.Append(Line(false, "Keep the server signed in", $"Tailscale signs the server out{Until(expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry. This page notices by itself.",
-                Link(MachinePage(view.Address), "Turn off key expiry")));
+            lines.Append(Line(false, "Keep the server signed in", $"Tailscale signs the server out{Until(expiry)} unless you turn that off. On the page that opens, choose Machine settings, then Disable key expiry. This page notices by itself.",
+                Link(MachinePage(view.Address), "Open in Tailscale")));
 
         foreach (var phone in view.Phones ?? [])
         {
             if (phone.ExpiryOff) Done($"{phone.Name} stays signed in");
             else
-                lines.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale signs this {(phone.Pc ? "PC" : "phone")} out{Until(phone.Expiry)} unless you turn that off. On the page that opens, choose ⋯ and then Disable key expiry.",
-                    Link(MachinePage(phone.Address), "Turn off key expiry")));
+                lines.Append(Line(false, $"Keep {phone.Name} signed in", $"Tailscale signs this {(phone.Pc ? "PC" : "phone")} out{Until(phone.Expiry)} unless you turn that off. On the page that opens, choose Machine settings, then Disable key expiry.",
+                    Link(MachinePage(phone.Address), "Open in Tailscale")));
         }
 
         var rule = Html($"\"grants\": [\n  {{ \"src\": [\"{view.Owner ?? "you@example.com"}\"], \"dst\": [\"{view.Address ?? "100.x.y.z"}\"], \"ip\": [\"tcp:{board.Port}\"] }}\n]");
