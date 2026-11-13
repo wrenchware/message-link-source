@@ -19,9 +19,10 @@ namespace NativeBeeper.Host.Network;
 /// again only to that phone (which keeps its own record of the ids it wrote and looks the number up first), and never handed to another, which could not tell it had
 /// been written. A phone that turns the setting off or is removed with a request taken and unanswered leaves it <c>unknown</c>, for the person to check.
 /// A number for an existing contact names that contact by its key on the phone that found it, so it goes to that phone and that account alone.</para>
-/// <para><b>Woken by a push.</b> A phone not showing Messages is woken with its encrypted push (kind <c>contacts</c>): at normal priority for a request, which may wait
-/// until Android lets it run, and urgently for a search, which a PC is waiting on (owner, 2026-11-05: searches are rare, so the urgent pushes that show nothing stay
-/// few). An open phone hears the <c>phoneContacts</c> signal instead.</para>
+/// <para><b>Woken by a push.</b> A phone not showing Messages is woken urgently with its encrypted push (kind <c>contacts</c>), for a request as for a search: a
+/// normal-priority push waited until Android let it run, often long after the PC's dialog closed, and the owner would rather the phone buzz and save it now
+/// (2026-11-13). The phone shows a notice while it works, so these urgent pushes are never ones that show nothing. An open phone hears the <c>phoneContacts</c>
+/// signal instead.</para>
 /// Logged by kinds, states and counts only: never a name, number, account or photo.
 /// </remarks>
 internal sealed class PhoneContactsQueue
@@ -172,7 +173,7 @@ internal sealed class PhoneContactsQueue
         finally { committing.Release(); }
         if (woken is null) return state;
         announce();
-        var woke = !inFront(woken.DeviceId) && await wake(woken.DeviceId, false).ConfigureAwait(false);
+        var woke = !inFront(woken.DeviceId) && await wake(woken.DeviceId, true).ConfigureAwait(false);
         log($"phone contacts submitted kind={request.Kind} waiting={Waiting()} woke={(woke ? "yes" : inFront(woken.DeviceId) ? "open" : "no")}");
         return state;
     }
