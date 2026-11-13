@@ -331,7 +331,7 @@ Message Link never sends anything twice behind your back.
 
 ### Attaching {#attaching}
 
-- The **+** button (**Photo or file**), **drag and drop** onto the conversation ("Drop to attach"), <kbd>Ctrl+V</kbd> for a picture or for files copied in File Explorer, the GIF tab, or **Send to → Message Link** in File Explorer, which waits in the conversation you choose without sending.
+- The **paperclip** button, **drag and drop** onto the conversation ("Drop to attach"), <kbd>Ctrl+V</kbd> for a picture or for files copied in File Explorer, the GIF tab, or **Send to → Message Link** in File Explorer, which waits in the conversation you choose without sending.
 - Up to **10 photos** at once, or one video or file. Each item up to 50 MB, a photo set up to 100 MB. Photos can wait unsent in up to four conversations at a time.
 - An attachment can't go with a reply: cancel the reply first.
 
