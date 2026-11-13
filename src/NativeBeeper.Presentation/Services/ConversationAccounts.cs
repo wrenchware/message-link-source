@@ -55,10 +55,12 @@ public static class ConversationAccounts
         rows.Where(r => r.Phone is not null).GroupBy(r => PhoneKey(r.Phone!), StringComparer.Ordinal)
             .Select(g => new AccountCopyValue(string.Join(" / ", g.Select(Label).Distinct()) + " · Phone number", g.First().Phone!)).ToArray();
 
+    // Each item shows the value it copies (a name, or a handle such as @someone), led by the services that use it, so
+    // one name shared by several services is a single item.
     public static IReadOnlyList<AccountCopyValue> Names(IReadOnlyList<ConversationAccount> rows) =>
-        rows.SelectMany(r => new[] { r.DisplayName is { } name ? new AccountCopyValue(Label(r) + " · Name", name) : null,
-                r.Username is { } username ? new AccountCopyValue(Label(r) + " · Username", username) : null })
-            .OfType<AccountCopyValue>().Distinct().ToArray();
+        rows.SelectMany(r => new[] { r.DisplayName, r.Username }.OfType<string>().Select(value => (r.Service, Value: value)))
+            .GroupBy(pair => pair.Value, StringComparer.Ordinal)
+            .Select(g => new AccountCopyValue(string.Join(" / ", g.Select(pair => pair.Service).Distinct()) + " · " + g.Key, g.Key)).ToArray();
 
     private static string Label(ConversationAccount row) => row.Service + (row.DisplayName is { } name ? " · " + name : row.Username is { } handle ? " · " + handle : "");
     private static string? Text(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -53,7 +53,8 @@ Each service's details, limits and fixes are in [What each service can do](#serv
   - **Set up notifications**: notifications on or off; **Show contact name**, **Show message content** and **Show contact photo** (the message and the photo come only with the name); and one sound for every service with a button to play it. The sample notification in the picture changes as you choose.
   - **Reach your server from anywhere**, on a PC that uses a Message Link Server: **Sign in to Tailscale**, then keep this PC signed in. Tailscale signs a PC out after a few months unless its key expiry is disabled: **Open this PC in Tailscale** opens its page in Tailscale's admin console, where you choose **Machine settings**, then **Disable key expiry**, as the picture shows. The step notices by itself once it's done. It is left out when this PC already reaches the server through the Tailscale app, or is signed in with key expiry off.
   - **Start with Windows**: Message Link starts in the system tray when you sign in to Windows, so new messages reach you before you open it. It is on to begin with, and **Done** saves it. This step is left out when Start with Windows is turned off in Windows' Startup apps.
-  - The other choices apply at once. **Back** and **Next** move between the steps. **Skip setup** (on every step but the last) or <kbd>Esc</kbd> keeps what is set and finishes.
+  - **Support Message Link**, the last step: Message Link is free, and **Support on Ko-fi** opens a page for an optional donation, which doesn't unlock anything. **Done** finishes either way.
+  - The other choices apply at once. **Back** and **Next** move between the steps. **Skip setup**, on the steps before **Start with Windows** (before the last step when that one is left out), keeps what is set and finishes. <kbd>Esc</kbd> does the same, and after **Start with Windows** it finishes as **Done** does.
   - A different theme takes effect when Message Link restarts, so Message Link restarts by itself as the steps finish; the last step says so beside **Done**.
   - The steps are shown once, and every choice is also in Settings.
   - A Google Voice account added later starts with the default sound; change it in Settings → Notifications → Sounds and privacy.
@@ -269,6 +270,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 - **Right-click a conversation's title** in its header for **Name this conversation**, plus Copy name, Copy number and Copy account name. Your name is kept in Message Link only, up to 128 characters. A person's name follows them across their one-to-one chats; a group keeps its own. **Remove name** puts the service's back. (One-to-one Google Messages chats take their names from your phone's contacts instead.)
 - **Add to contacts…** in the same menu, or when you right-click a conversation in the list, saves a number that isn't in your contacts yet (one shown as a number, or one you named here). **New contact** takes first and last name, phone and its type, and a company if you like; **Existing contact** finds someone on your phone by name and adds the number to them, for a second number. Your phone saves it to its Google account, and Google Messages and Google Voice then show the name on every device. It's offered while a phone joined to your Message Link Server has **Save contacts from your PC** on (Message Link on your phone → Settings → Contacts), and the dialog names that phone and its Google account. If the phone is away, it saves the contact when it next connects and Message Link tells you then; a number already in your contacts is never added twice. **Existing contact** needs the phone to answer within a few seconds. On the phone, **Add to contacts** is in a conversation's menu (long-press it in the list, or ⋮ in the conversation) and opens your phone's Contacts app, where **Add to existing** adds it to someone you have and you can add a photo.
 - **Choose contact photo…** in the conversation menu sets your own picture (PNG, JPG or WEBP); **Remove custom photo** undoes it. While a phone saves contacts, the PC then asks whether to put the photo on (or take it off) the person's contact too, so Google Messages and your phone show it. The person has to be in your contacts already.
+- In a merged conversation, **Choose conversation photo…** shows the photo each of its conversations has, by service: choose one and **Save**, or **Choose a file…**. Message Link saves a copy, so it stays the same if the person changes theirs later. Without a custom photo, a merged conversation shows its first conversation's photo.
 
 ## 6. Writing and sending {#writing-and-sending}
 
@@ -489,9 +491,9 @@ Click the conversation's title, or **Details** in its menu, for a panel beside t
 
 ### Conversations in their own window {#pop-out-windows}
 
-- **Open in new window** (<kbd>Ctrl+Shift+N</kbd>) moves a conversation into its own window, with its draft. A conversation is open in one place at a time.
-- **Keep on top** in its menu keeps it above other windows (not remembered). **Move to main window** brings it back.
-- The main window says "This conversation is open in its own window." with **Show window** and **Bring it back here**.
+- **Open in new window** (<kbd>Ctrl+Shift+N</kbd>) opens a conversation in its own window, and you write to it there: its draft goes with it.
+- The main window still shows the conversation. In place of the box, **This conversation is open in another window** switches to that window. **Reply** and **Edit message** there switch to it too.
+- **Keep on top** in its menu keeps it above other windows (not remembered). **Move to main window**, in either window's menu, closes the window and you write in the main window again.
 - Windows open when you quit come back next time, behind the main window and without marking anything read, on a monitor that still exists.
 
 ## 10. Merged conversations {#linked-conversations}
