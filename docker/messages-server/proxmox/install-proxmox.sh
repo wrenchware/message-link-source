@@ -320,6 +320,54 @@ Update now, in this host's shell: \`pct exec $ctid -- update\`
 The server's log: \`pct exec $ctid -- journalctl -u messages-server -f\`"
     quiet pct set "$ctid" --description "$notes" || fail "could not write container $ctid's notes."
 }
+# Installs the package in the container with its own install.sh. The last command there leaves a marker this run named,
+# and the marker, not pct exec's exit code, says the install finished: on Proxmox VE 9.2 pct exec once exited non-zero
+# after an install that had finished, with nothing printed (2026-11-12).
+install_status=0
+install_note=""
+install_in_container() { # install_in_container <install.sh's flag, or empty>
+    local marker="/root/.messages-server-installed-$$-$RANDOM"
+    install_status=0
+    pct push "$ctid" "$package" /root/messages-server.tar.gz
+    quiet in_ct bash -c "set -e; rm -rf /root/messages-server-install; mkdir -p /root/messages-server-install
+        tar -xzf /root/messages-server.tar.gz -C /root/messages-server-install --no-same-owner
+        /root/messages-server-install/$top/install.sh $1
+        echo $sha > /opt/messages-server/.package-sha256
+        rm -rf /root/messages-server-install /root/messages-server.tar.gz
+        touch $marker" || install_status=$?
+    if in_ct test -e "$marker"; then
+        in_ct rm -f "$marker" || true
+        if [ "$install_status" -ne 0 ]; then
+            printf 'pct exec exited %s after the install had finished.\n' "$install_status" >>"$log"
+            install_note="pct exec reported exit $install_status after the install had finished; the install is complete."
+        fi
+        return 0
+    fi
+    if [ "$install_status" -eq 0 ]; then install_status=1; fi
+    return 1
+}
+# The container's clock now, for read_server_log; empty when it can't be read.
+container_time() {
+    local now
+    now=$(in_ct date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
+    if [[ "$now" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then printf '%s' "$now"; fi
+}
+# Waits up to a minute for the server to listen, then reads what the closing lines show. With a time, only the log
+# since then counts, so an update's earlier starts don't.
+read_server_log() { # read_server_log <container time, or empty>
+    local window=""
+    if [ -n "$1" ]; then window="--since '$1'"; fi
+    listening=no
+    for _ in $(seq 1 60); do
+        if in_ct sh -c "journalctl -u messages-server --no-pager -o cat $window 2>/dev/null | grep -q 'server listening'"; then listening=yes; break; fi
+        sleep 1
+    done
+    server_log=$(in_ct sh -c "journalctl -u messages-server --no-pager -o cat $window 2>/dev/null" || true)
+    setup=$(printf '%s\n' "$server_log" | sed -n 's/.*server setup code=\([^ ]*\).*/\1/p' | tail -n 1)
+    pairing=$(printf '%s\n' "$server_log" | sed -n 's/.*server pairing code=\([^ ]*\).*/\1/p' | tail -n 1)
+    fingerprint=$(printf '%s\n' "$server_log" | sed -n 's/.*server tls fingerprint sha256=\([0-9a-f]*\).*/\1/p' | tail -n 1)
+    login=$(printf '%s\n' "$server_log" | sed -n 's/.*tailnet login url=\([^ ]*\).*/\1/p' | tail -n 1)
+}
 
 update=no
 if pct status "$ctid" >/dev/null 2>&1; then
@@ -348,14 +396,11 @@ if [ "$update" = yes ]; then
     # The container keeps Google's setting (install.sh reads it) unless this run said --no-google.
     if [ "$google" = no ]; then flag="--no-google"; fi
     step "Updating Message Link Server to $version"
-    pct push "$ctid" "$package" /root/messages-server.tar.gz
-    quiet in_ct bash -c "set -e; rm -rf /root/messages-server-install; mkdir -p /root/messages-server-install
-        tar -xzf /root/messages-server.tar.gz -C /root/messages-server-install --no-same-owner
-        /root/messages-server-install/$top/install.sh $flag
-        echo $sha > /opt/messages-server/.package-sha256
-        rm -rf /root/messages-server-install /root/messages-server.tar.gz" \
-        || fail "the update did not install; the server keeps the version it had."
+    since=$(container_time)
+    install_in_container "$flag" \
+        || fail "the update did not install (pct exec exited $install_status); the server keeps the version it had."
     done_step "Message Link Server is $version"
+    if [ -n "$install_note" ]; then say "    ${dim}$install_note${plain}"; fi
 
     step "Setting the nightly update"
     # Without --tarball, an empty address (a container made before the release existed, or after a --tarball run) becomes
@@ -383,8 +428,18 @@ if [ "$update" = yes ]; then
         write_notes "$ip"
         done_step "The container's notes name its page, the guide and the update command"
     fi
+    step "Starting the server"
+    read_server_log "$since"
+    if [ "$listening" = yes ]; then done_step "The server is running"
+    else done_step "The server is still starting (its log: pct exec $ctid -- journalctl -u messages-server -f)"; fi
     say ""
     say "${bold}Message Link Server in container $ctid is now $version.${plain}"
+    where="$ip"
+    [ -n "$where" ] || where="<the container's address>"
+    say "  Its page:      https://$where:$port/"
+    # Shown while the page has no password yet, as after a first run that stopped early.
+    if [ -n "$setup" ]; then say "  Setup code:    $setup"; fi
+    if [ -n "$pairing" ]; then say "  Pairing code:  $pairing (works once, for 10 minutes; a PC can also ask to join from the page)"; fi
     if [ "$follow" = no ] && [ -z "$release" ]; then say "  Updates:       $(updates_line)"
     else say "  Update now:    pct exec $ctid -- update"; fi
     say "  Its log:       pct exec $ctid -- journalctl -u messages-server -f"
@@ -627,28 +682,15 @@ rm -f "$work/environment"
 
 step "Installing Message Link Server $version$([ "$google" = yes ] && printf ' and Google Chrome')"
 flag=""; [ "$google" = yes ] && flag="--google"
-pct push "$ctid" "$package" /root/messages-server.tar.gz
-quiet in_ct bash -c "set -e; rm -rf /root/messages-server-install; mkdir -p /root/messages-server-install
-    tar -xzf /root/messages-server.tar.gz -C /root/messages-server-install --no-same-owner
-    /root/messages-server-install/$top/install.sh $flag
-    echo $sha > /opt/messages-server/.package-sha256
-    rm -rf /root/messages-server-install /root/messages-server.tar.gz" \
-    || fail "Message Link Server did not install. Remove the container (pct stop $ctid; pct destroy $ctid) and run this again."
+install_in_container "$flag" \
+    || fail "Message Link Server did not install (pct exec exited $install_status). Remove the container (pct stop $ctid; pct destroy $ctid) and run this again."
 install_update_command
 done_step "Installed Message Link Server $version$([ "$google" = yes ] && printf ' and Google Chrome')"
+if [ -n "$install_note" ]; then say "    ${dim}$install_note${plain}"; fi
 
 # ---- What to do next ----
 step "Starting the server"
-listening=no
-for _ in $(seq 1 60); do
-    if in_ct sh -c 'journalctl -u messages-server --no-pager -o cat 2>/dev/null | grep -q "server listening"'; then listening=yes; break; fi
-    sleep 1
-done
-server_log=$(in_ct sh -c 'journalctl -u messages-server --no-pager -o cat 2>/dev/null' || true)
-setup=$(printf '%s\n' "$server_log" | sed -n 's/.*server setup code=\([^ ]*\).*/\1/p' | tail -n 1)
-pairing=$(printf '%s\n' "$server_log" | sed -n 's/.*server pairing code=\([^ ]*\).*/\1/p' | tail -n 1)
-fingerprint=$(printf '%s\n' "$server_log" | sed -n 's/.*server tls fingerprint sha256=\([0-9a-f]*\).*/\1/p' | tail -n 1)
-login=$(printf '%s\n' "$server_log" | sed -n 's/.*tailnet login url=\([^ ]*\).*/\1/p' | tail -n 1)
+read_server_log ""
 if [ "$listening" = yes ]; then done_step "The server is running"
 else done_step "The server is still starting (its log: pct exec $ctid -- journalctl -u messages-server -f)"; fi
 step "Writing the container's notes"

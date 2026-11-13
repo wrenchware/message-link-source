@@ -23,7 +23,7 @@ CHECK, CROSS = chr(0x2713), chr(0x2717)
 # One stand-in for every Proxmox command, told apart by its name. Each call is logged as JSON; the container's files
 # live under $CT_ROOT/<id>.
 STAND_IN = r'''#!/usr/bin/env python3
-import json, os, pathlib, shutil, sys
+import json, os, pathlib, re, shutil, sys
 name = pathlib.Path(sys.argv[0]).name
 a = sys.argv[1:]
 state = pathlib.Path(os.environ['STATE'])
@@ -86,8 +86,22 @@ if name == 'pct':
             print('server tls fingerprint sha256=' + 'ab' * 32)
         elif command.startswith('test -x'):
             sys.exit(0 if os.environ.get('INSTALLED', '1') == '1' else 1)
+        elif command.startswith('test -e '):
+            sys.exit(0 if ct_path(a[1], command.split()[2]).exists() else 1)
+        elif command.startswith('rm -f '):
+            ct_path(a[1], command.split()[2]).unlink(missing_ok=True)
+        elif command.startswith('date'):
+            print('2026-11-12 20:40:00')
         elif 'install.sh' in command:
             print('Installing Google Chrome from Google\'s repository...')
+            # INSTALL_FAILS: install.sh fails, so the run's last command never leaves its marker. PCT_EXEC_EXIT: pct exec
+            # reports this code even though every command finished, as Proxmox VE 9.2 once did.
+            if os.environ.get('INSTALL_FAILS'):
+                sys.exit(1)
+            marker = ct_path(a[1], re.search(r'touch (\S+)', command).group(1))
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text('')
+            sys.exit(int(os.environ.get('PCT_EXEC_EXIT', '0')))
 elif name == 'pvesh':
     print('105')
 elif name == 'pvesm':
@@ -274,6 +288,29 @@ class ProxmoxChecks(unittest.TestCase):
         root = _[1]
         self.assertIn('MESSAGES_RELEASE_URL=\n', (root / 'ct/105/etc/messages-server/update').read_text())
         self.assertIn('keeps the package given with --tarball', result.stdout)
+
+    def test_a_finished_install_counts_even_when_pct_exec_reports_a_failure(self):
+        result, calls, notes, root, *_ = self.run_script('--yes', extra={'PCT_EXEC_EXIT': '1'})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('pct exec reported exit 1 after the install had finished', result.stdout)
+        self.assertIn('Setup code:    ABCD-EFGH', result.stdout)
+        self.assertTrue((root / 'ct/105/usr/local/bin/update').exists())
+        self.assertIsNotNone(notes)
+        self.assertFalse(list((root / 'ct/105/root').glob('.messages-server-installed-*')))
+
+    def test_an_install_that_failed_stops_with_pct_execs_code(self):
+        result, calls, *_ = self.run_script('--yes', extra={'INSTALL_FAILS': '1'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('did not install (pct exec exited 1)', result.stderr)
+        self.assertIn(CROSS, result.stdout)
+
+    def test_rerun_after_a_first_run_that_stopped_shows_the_page_and_setup_code(self):
+        result, calls, notes, root, *_ = self.run_script('--yes', extra={'EXISTING': '112', 'EXISTING_NOTES': 'Message Link Server (install-proxmox.sh), being installed.'})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Its page:      https://192.0.2.50:8787/', result.stdout)
+        self.assertIn('Setup code:    ABCD-EFGH', result.stdout)
+        journal = [call for call in calls if call[:3] == ['pct', 'exec', '112'] and 'journalctl' in ' '.join(call)]
+        self.assertTrue(journal and all("--since '2026-11-12 20:40:00'" in ' '.join(call) for call in journal))
 
     def test_rerun_with_a_tarball_stops_following_stable_and_without_one_follows_again(self):
         folder = tempfile.TemporaryDirectory()
