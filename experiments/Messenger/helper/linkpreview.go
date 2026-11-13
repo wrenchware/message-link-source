@@ -43,8 +43,15 @@ func generatedLinkPreview(id string) bool { return strings.HasPrefix(id, linkPre
 // Facebook's own (2026-11-01). The service makes one card a message, so any card of its own carrying a link is that one.
 func serviceLinkCard(id, link string) bool { return link != "" && !generatedLinkPreview(id) }
 
+// A service card that came with no picture, only words (shareCardWords). It is the only card with no mime. A card made
+// from the page, picture and all, takes its place.
+func pictureless(id, link, mime string) bool { return serviceLinkCard(id, link) && mime == "" }
+
 // Whether a message already holding this card needs none made for link.
-func cardCovers(id, cardLink, link string) bool {
+func cardCovers(id, cardLink, mime, link string) bool {
+	if pictureless(id, cardLink, mime) {
+		return false
+	}
 	return sameLink(cardLink, link) || serviceLinkCard(id, cardLink)
 }
 
@@ -116,7 +123,7 @@ func (a *adapter) loadLinkPreviews(key int64, ids []string) {
 		}
 		pictured := false
 		for _, item := range current.Media {
-			if cardCovers(item.ID, item.Link, link) {
+			if cardCovers(item.ID, item.Link, item.Mime, link) {
 				pictured = true
 				break
 			}
@@ -205,7 +212,7 @@ func (jobs *linkPreviewJobs) work() {
 			current, exists := jobs.a.chats.messageByID(target.thread, target.id)
 			needed := exists && !current.Deleted && current.Text == target.text
 			for _, media := range current.Media {
-				if cardCovers(media.ID, media.Link, target.link) {
+				if cardCovers(media.ID, media.Link, media.Mime, target.link) {
 					needed = false
 					break
 				}
@@ -258,7 +265,7 @@ func (s *store) attachLinkPreview(key int64, id, originalText string, result *li
 		return nil
 	}
 	for _, existing := range s.attached[id] {
-		if cardCovers(existing.id, existing.link, link) {
+		if cardCovers(existing.id, existing.link, existing.mime, link) {
 			return nil
 		}
 	}

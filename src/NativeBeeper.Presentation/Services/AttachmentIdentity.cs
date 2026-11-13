@@ -10,7 +10,11 @@ public static class AttachmentIdentity
     {
         if (Kind(first) != Kind(second)) return false;
         if (!string.IsNullOrWhiteSpace(first.Id) && !string.IsNullOrWhiteSpace(second.Id)) return first.Id == second.Id;
-        return !string.IsNullOrWhiteSpace(first.SourceUrl) && first.SourceUrl == second.SourceUrl;
+        if (!string.IsNullOrWhiteSpace(first.SourceUrl)) return first.SourceUrl == second.SourceUrl;
+        // A link card with no picture (Instagram's share with no media, Messenger's card of words) has neither: it is
+        // the same card while it leads to the same place. Called different, it was rebuilt on every receipt.
+        return string.IsNullOrWhiteSpace(first.Id) && string.IsNullOrWhiteSpace(second.Id) && string.IsNullOrWhiteSpace(second.SourceUrl) &&
+            first.Link is not null && first.Link == second.Link;
     }
 
     // The same picture, possibly now available in full. Google Messages names a photo by a hash that includes its

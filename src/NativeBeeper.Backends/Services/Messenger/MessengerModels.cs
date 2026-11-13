@@ -150,16 +150,22 @@ internal static class MessengerModels
         }
     }
 
+    // The helper's card of words alone: a link and no media type, nothing to fetch (pictureless in its linkpreview.go).
+    internal static bool Pictureless(MessengerMedia item) =>
+        !string.IsNullOrEmpty(item.Link) && string.IsNullOrEmpty(item.Mime) && string.IsNullOrEmpty(item.Preview) && !item.Video;
+
     public static ChatMessage Map(MessengerMessage message)
     {
         var attachments = (message.Media ?? []).Select(item => new MessageAttachment(
             item.Name,
             // Audio (a voice message, or a recording sent as a file) plays in place, as it does from the other services.
-            item.Video ? "video" : item.Mime?.StartsWith("image/", StringComparison.Ordinal) == true ? "img"
+            // A shared card with no picture, only its words (the helper's shareCardWords), is a link card all the same:
+            // "img" with no id is the card with its picture area folded away, on the PC and the phone alike.
+            item.Video ? "video" : item.Mime?.StartsWith("image/", StringComparison.Ordinal) == true || Pictureless(item) ? "img"
                 : item.Mime?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true ? "audio" : "file",
-            item.Mime, item.Size == 0 ? null : item.Size, false, item.Animated || item.Mime == "image/gif", false,
+            Pictureless(item) ? null : item.Mime, item.Size == 0 ? null : item.Size, false, item.Animated || item.Mime == "image/gif", false,
             // SourceUrl carries a video's still, as the Google side does, so the conversation shows an image inline.
-            QualifyMedia(item.Id), string.IsNullOrEmpty(item.Preview) ? null : QualifyMedia(item.Preview),
+            Pictureless(item) ? null : QualifyMedia(item.Id), string.IsNullOrEmpty(item.Preview) ? null : QualifyMedia(item.Preview),
             item.Width == 0 ? null : item.Width, item.Height == 0 ? null : item.Height,
             // A shared reel or post: a picture of it, and where it leads when opened.
             Link: string.IsNullOrEmpty(item.Link) ? null : item.Link, Play: item.Play,

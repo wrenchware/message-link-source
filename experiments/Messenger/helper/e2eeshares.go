@@ -129,7 +129,9 @@ func encryptedShare(content *waArmadilloXMA.ExtendedContentMessage, messageID st
 		items = append(items, encryptedShareMedia{item: item, held: held})
 	}
 	text = content.GetMessageText()
+	pictures := len(items)
 	// If Facebook supplies no usable picture, keep its actual destination visible instead of a blank row.
+	carded := false
 	if len(items) == 0 {
 		if link != "" && !strings.Contains(text, link) {
 			if text != "" {
@@ -140,10 +142,37 @@ func encryptedShare(content *waArmadilloXMA.ExtendedContentMessage, messageID st
 		if text == "" {
 			text = "Shared message — open in Messenger"
 		}
+		// A post shared from Facebook came with no picture at all, and Messenger still drew it as a card from its words
+		// alone: the author, the post's opening line, "Facebook" (2026-11-12). Kept as a bare link, it read as one here.
+		// The card carries no mime, which is how a card with no picture is told apart (pictureless).
+		if title, description := shareCardWords(content); link != "" && title != "" {
+			items = append(items, encryptedShareMedia{item: &attachment{id: fmt.Sprintf("e2ee:%s:share:card", messageID),
+				name: title, description: description, link: link, actionTitle: action}})
+			carded = true
+		}
 	}
-	logf("e2ee share id=%s previews=%d thumbnails=%d ctas=%d linked=%v text=%v",
-		tagOf(messageID), len(content.GetPreviews()), len(items), len(content.GetCtas()), link != "", text != "")
+	logf("e2ee share id=%s previews=%d thumbnails=%d ctas=%d linked=%v text=%v carded=%v title=%v subtitle=%v header=%v headerSubtitle=%v headerImage=%v favicon=%v overlay=%v",
+		tagOf(messageID), len(content.GetPreviews()), pictures, len(content.GetCtas()), link != "", text != "", carded,
+		strings.TrimSpace(content.GetTitleText()) != "", strings.TrimSpace(content.GetSubtitleText()) != "",
+		strings.TrimSpace(content.GetHeaderTitle()) != "", strings.TrimSpace(content.GetHeaderSubtitle()) != "",
+		content.GetHeaderImage() != nil, content.GetFavicon() != nil,
+		strings.TrimSpace(content.GetOverlayTitle()) != "" || strings.TrimSpace(content.GetOverlayDescription()) != "")
 	return
+}
+
+// The words of a share's card, for one with no picture: its title, then the first other line that says something
+// different (for a Facebook post, its author). Which field Facebook fills for which part is not documented; the
+// "e2ee share" line records which were present.
+func shareCardWords(content *waArmadilloXMA.ExtendedContentMessage) (title, description string) {
+	// The subtitle last: Messenger's own card ended in "Facebook", which as the title would name only the site.
+	title = firstOf(strings.TrimSpace(content.GetTitleText()), strings.TrimSpace(content.GetHeaderTitle()),
+		strings.TrimSpace(content.GetSubtitleText()))
+	for _, candidate := range []string{content.GetHeaderTitle(), content.GetSubtitleText(), content.GetHeaderSubtitle()} {
+		if candidate = strings.TrimSpace(candidate); candidate != "" && candidate != title {
+			return title, candidate
+		}
+	}
+	return title, ""
 }
 
 func shareWebLink(value string) string {

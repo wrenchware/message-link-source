@@ -440,7 +440,9 @@ internal sealed class MessengerKeptHistory(Func<MessengerKeptAccount?> account, 
         var outgoing = sender == snapshot.Self;
         var at = DateTimeOffset.FromUnixTimeMilliseconds(row.At);
         var attachments = (snapshot.ItemsByMessage.GetValueOrDefault(id) ?? []).Select(item => new MessageAttachment(
-            Empty(item.Name), item.Video ? "video" : item.Mime.StartsWith("image/", StringComparison.Ordinal) ? "img" : "file",
+            // A card of words (link, no media type) is a link card, as MessengerModels.Map draws it.
+            Empty(item.Name), item.Video ? "video" : item.Mime.StartsWith("image/", StringComparison.Ordinal) ||
+                item.Mime.Length == 0 && !string.IsNullOrEmpty(item.Link) ? "img" : "file",
             Empty(item.Mime), item.Size == 0 ? null : item.Size, false, item.Animated || item.Mime == "image/gif", false,
             Width: item.Width == 0 ? null : item.Width, Height: item.Height == 0 ? null : item.Height,
             Link: Empty(item.Link), Description: string.IsNullOrWhiteSpace(item.Description) ? null : item.Description)).ToArray();

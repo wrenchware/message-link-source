@@ -196,3 +196,116 @@ func TestEncryptedShareDiagnosticsContainNoContent(t *testing.T) {
 		t.Fatal("diagnostics must not contain identifiers, text, titles or addresses")
 	}
 }
+
+func TestArmadilloShareWithNoPictureBecomesACardOfWords(t *testing.T) {
+	const link = "https://www.facebook.com/share/p/synthetic/"
+	share := &waArmadilloXMA.ExtendedContentMessage{
+		TitleText: proto.String("Synthetic post words"), HeaderTitle: proto.String("Synthetic author"),
+		Ctas: []*waArmadilloXMA.ExtendedContentMessage_CTA{{ActionURL: proto.String(link)}},
+	}
+	items, text := encryptedShare(share, "m")
+	if text != link {
+		t.Fatal("the link must stay the message's words, so lists and notifications still read it")
+	}
+	if len(items) != 1 || items[0].held != nil {
+		t.Fatal("a share with words and no picture must become one card with nothing to download")
+	}
+	card := items[0].item
+	if card.name != "Synthetic post words" || card.description != "Synthetic author" || card.link != link || card.mime != "" {
+		t.Fatal("the card must carry the share's title, its other line and its destination, and no media type")
+	}
+	if !pictureless(card.id, card.link, card.mime) || cardCovers(card.id, card.link, card.mime, link) {
+		t.Fatal("a card of words must leave room for a card made from the page")
+	}
+	if title, description := shareCardWords(&waArmadilloXMA.ExtendedContentMessage{SubtitleText: proto.String("Only line"), HeaderTitle: proto.String("Only line")}); title != "Only line" || description != "" {
+		t.Fatal("a line repeated across fields must not be drawn twice")
+	}
+	if items, _ := encryptedShare(&waArmadilloXMA.ExtendedContentMessage{Ctas: share.Ctas}, "m"); len(items) != 0 {
+		t.Fatal("a share with no words must stay a plain link")
+	}
+	if items, _ := encryptedShare(&waArmadilloXMA.ExtendedContentMessage{TitleText: share.TitleText}, "m"); len(items) != 0 {
+		t.Fatal("a card needs somewhere to lead")
+	}
+
+	// Whichever arrives first, the card made from the page (with its picture) is the one card left, and a card with a
+	// picture from Facebook still wins over one made from the page.
+	for _, wordsFirst := range []bool{true, false} {
+		s := newStore()
+		s.addEncrypted(7, "m", 4, text, "", 1700)
+		if wordsFirst {
+			s.attachSecure(7, "m", 1700, card, nil)
+			if s.attachLinkPreview(7, "m", text, fixturePreview()) == nil {
+				t.Fatal("a card of words must not stop the page's card")
+			}
+		} else {
+			if s.attachLinkPreview(7, "m", text, fixturePreview()) == nil {
+				t.Fatal("the page's card must attach")
+			}
+			s.attachSecure(7, "m", 1700, card, nil)
+		}
+		views := s.history(7, 0)
+		if len(views) != 1 || len(views[0].Media) != 1 || !generatedLinkPreview(views[0].Media[0].ID) {
+			t.Fatalf("wordsFirst=%v: expected only the page's card", wordsFirst)
+		}
+	}
+	s := newStore()
+	s.addEncrypted(7, "m", 4, text, "", 1700)
+	s.attachSecure(7, "m", 1700, &attachment{id: "native-card", name: "Native share", mime: "image/jpeg", source: "https://example.test/native.jpg", link: link}, nil)
+	if s.attachLinkPreview(7, "m", text, fixturePreview()) != nil {
+		t.Fatal("a card with Facebook's own picture must still stop the page's card")
+	}
+}
+
+func TestEncryptedShareCardOfWordsDiagnosticsContainNoContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "synthetic.log")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := diagnostics
+	diagnostics = &logger{file: file}
+	t.Cleanup(func() { closeLog(); diagnostics = previous })
+	const secret = "PRIVATE_SYNTHETIC_SENTINEL"
+	encryptedShare(&waArmadilloXMA.ExtendedContentMessage{
+		TitleText: proto.String(secret), HeaderTitle: proto.String(secret), SubtitleText: proto.String(secret),
+		Ctas: []*waArmadilloXMA.ExtendedContentMessage_CTA{{ActionURL: proto.String("https://example.test/" + secret)}},
+	}, secret)
+	closeLog()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte("thumbnails=0")) || !bytes.Contains(raw, []byte("carded=true")) || !bytes.Contains(raw, []byte("header=true")) {
+		t.Fatal("diagnostics must say a card of words was made and which fields were present")
+	}
+	if bytes.Contains(raw, []byte(secret)) || bytes.Contains(raw, []byte("https://")) {
+		t.Fatal("diagnostics must not contain identifiers, text or addresses")
+	}
+}
+
+func TestCardOfWordsReturnsWhenThePagesCardGoes(t *testing.T) {
+	const link = "https://www.facebook.com/share/p/synthetic/"
+	s := newStore()
+	s.addEncrypted(7, "m", 4, link, "", 1700)
+	s.attachSecure(7, "m", 1700, &attachment{id: "e2ee:m:share:card", name: "Synthetic post", link: link}, nil)
+	generated := s.attachLinkPreview(7, "m", link, fixturePreview())
+	if generated == nil {
+		t.Fatal("the page's card must attach")
+	}
+	// What retryLinkPreview does when the page's picture cannot be read.
+	list := s.attached["m"]
+	for index, item := range list {
+		if item.id == generated.id {
+			s.attached["m"] = append(list[:index], list[index+1:]...)
+			delete(s.media, generated.id)
+			break
+		}
+	}
+	views := s.history(7, 0)
+	if len(views) != 1 || len(views[0].Media) != 1 || views[0].Media[0].ID != "e2ee:m:share:card" {
+		t.Fatal("the card of words must show again once the page's card is gone")
+	}
+	if title, description := shareCardWords(&waArmadilloXMA.ExtendedContentMessage{SubtitleText: proto.String("Site"), HeaderTitle: proto.String("Author")}); title != "Author" || description != "Site" {
+		t.Fatal("a header comes before a subtitle in the title")
+	}
+}

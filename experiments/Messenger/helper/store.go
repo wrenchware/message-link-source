@@ -943,10 +943,12 @@ func (s *store) attach(messageID string, item *attachment) {
 		list := s.attached[messageID]
 		kept := make([]*attachment, 0, len(list))
 		for _, old := range list {
-			if generatedLinkPreview(item.id) && serviceLinkCard(old.id, old.link) {
+			// The service's card wins over one made from the page. A card of words alone stays beside the page's card
+			// and viewOf hides it while that card shows, so it comes back if the page's picture is later dropped.
+			if generatedLinkPreview(item.id) && serviceLinkCard(old.id, old.link) && !pictureless(old.id, old.link, old.mime) {
 				return
 			}
-			if generatedLinkPreview(old.id) && serviceLinkCard(item.id, item.link) {
+			if generatedLinkPreview(old.id) && serviceLinkCard(item.id, item.link) && !pictureless(item.id, item.link, item.mime) {
 				delete(s.media, old.id)
 				continue
 			}
@@ -1136,11 +1138,23 @@ func (s *store) historyBefore(key int64, before int64, count int) []viewMessage 
 func (s *store) viewOf(key int64, current *message) viewMessage {
 	media := s.mediaFor(current.id)
 	visible := media[:0]
+	generated := false
 	for _, item := range media {
 		if generatedLinkPreview(item.ID) && (current.unsent || item.Link != firstPreviewURL(current.text)) {
 			continue
 		}
+		generated = generated || generatedLinkPreview(item.ID)
 		visible = append(visible, item)
+	}
+	// A card of words gives way to the page's card, picture and all (attach keeps both).
+	if generated {
+		kept := visible[:0]
+		for _, item := range visible {
+			if !pictureless(item.ID, item.Link, item.Mime) {
+				kept = append(kept, item)
+			}
+		}
+		visible = kept
 	}
 	text := current.text
 	if current.sender == metaAIMessengerID && current.sender != s.self && !current.unsent &&
