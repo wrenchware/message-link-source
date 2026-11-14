@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using NativeBeeper.Core.Messaging;
 using NativeBeeper.Core.Services;
@@ -40,7 +41,8 @@ internal sealed record MessengerMessage(string Id, string ChatId, string Sender,
     bool Notice = false, bool Hidden = false,
     // The buyer's Marketplace profile, on a Marketplace chat's "started this chat." line: Messenger's "View buyer profile". Appended.
     string? Profile = null,
-    // A laid-out card's answers in Facebook's words (Marketplace Assistant's "Have you sold this item?"). Appended.
+    // A laid-out card's answers in Facebook's words (Marketplace Assistant's "Have you sold this item?"); only whether
+    // there are any is used, for the card's "Answer in Messenger" link. Appended.
     string[]? Choices = null);
 internal sealed record MessengerMessagePage(MessengerMessage[] Messages, bool Refreshing);
 internal sealed record MessengerMessageWindow(MessengerMessage[] Messages, bool MoreOlder, bool MoreNewer);
@@ -195,11 +197,19 @@ internal static class MessengerModels
                 (message.ReadMark ?? []).Select(Person).ToArray()),
             // The helper builds it from the buyer's id (Facebook sends no button); only an https address on a line becomes one.
             Action: message.Notice && message.Profile is { } profile && profile.StartsWith("https://www.facebook.com/", StringComparison.Ordinal)
-                ? new NoticeAction(BuyerProfileTitle, profile) : null,
-            // Words only: pressing one in Messenger sends a reply, which this app does not do for it.
-            Choices: message.Choices is { Length: > 0 } choices ? choices.Where(choice => !string.IsNullOrWhiteSpace(choice)).ToArray() : null);
+                ? new NoticeAction(BuyerProfileTitle, profile) : AnswerAction(message));
     }
 
     // Messenger's own words for its button.
     public const string BuyerProfileTitle = "View buyer profile";
+    public const string AnswerTitle = "Answer in Messenger";
+
+    // A card that asks something with buttons (the Marketplace Assistant's "Have you sold this item?"): the conversation
+    // in Facebook's Messenger page, where the buttons can be pressed. A press sends a value Messenger's own script makes,
+    // not the button's hidden text (seen live 2026-11-14), so this app does not press them. Facebook's page rather than
+    // messenger.com: the account signs in through facebook.com, and Marketplace conversations are Facebook's.
+    private static NoticeAction? AnswerAction(MessengerMessage message) =>
+        !message.Deleted && message.Choices?.Any(choice => !string.IsNullOrWhiteSpace(choice)) == true &&
+        long.TryParse(message.ChatId, NumberStyles.None, CultureInfo.InvariantCulture, out var thread) && thread > 0
+            ? new NoticeAction(AnswerTitle, $"https://www.facebook.com/messages/t/{thread.ToString(CultureInfo.InvariantCulture)}/") : null;
 }

@@ -26,8 +26,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     // (SharedLinkPresentation.CardReplacesText). The body itself is unchanged for copying, search and the list preview.
     public bool ShowsBody => Body.Length > 0 &&
         (Message.IsDeleted || Message.IsHidden || !SharedLinkPresentation.CardReplacesText(Message.Text, Message.Attachments)) ||
-        // A card's answers with no words of the message's own above them (a pictured card that asks something) keep the bubble.
-        ChoicesLine.Length > 0;
+        AnswerInBubble;
     // A service's own note arrives as markup: Google's "Link previews are off.<br />Learn more or turn on in <u>Settings</u>."
     // showed its tags. Read as text, the way a bubble reads its body, without the links a note has no use for.
     public string SystemBody => IsSystem ? EncryptionLineText(NativeBeeper.Presentation.Services.MessageText.PlainText(Body)) : "";
@@ -64,8 +63,15 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     // A button on a service's own line (Messenger's "View buyer profile"); only an https address is ever opened.
     public Uri? SystemActionUri => IsSystem && Message.Action is { } action && Uri.TryCreate(action.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri : null;
     public string SystemActionTitle => SystemActionUri is null ? "" : Message.Action!.Title;
-    // A card's answers (Messenger's Marketplace Assistant: "Yes, sold on Facebook" and two more), on one quiet line.
-    public string ChoicesLine => Message.IsDeleted || Message.Choices is not { Count: > 0 } choices ? "" : string.Join(" · ", choices);
+    // A link under a message that asks something only the service can answer (Messenger's Marketplace Assistant: "Answer
+    // in Messenger"); only an https address is ever opened.
+    public Uri? AnswerUri => !IsSystem && !Message.IsDeleted && Message.Action is { } action && action.Title.Length > 0 &&
+        Uri.TryCreate(action.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri : null;
+    public string AnswerTitle => AnswerUri is null ? "" : Message.Action!.Title;
+    // In the bubble under the words; a pictured card that asks something, with no words of the message's own (they are the
+    // card's), has it under the card instead, since the bubble is drawn above the card (code review, 2026-11-14).
+    public bool AnswerInBubble => AnswerUri is not null && !(string.IsNullOrWhiteSpace(Body) && Message.Attachments.Count > 0);
+    public bool AnswerUnderCard => AnswerUri is not null && !AnswerInBubble;
     public bool HasSystemAction => SystemActionUri is not null;
     public bool ShowSender { get; private set; }
     public bool ContinuesGroup { get; private set; }
