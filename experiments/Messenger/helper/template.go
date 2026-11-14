@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
 )
@@ -24,7 +25,19 @@ type cardTemplate struct {
 
 const sendTextChoice bloks.BloksFunctionID = "bk.action.xs.SendTextMessageCTA"
 
-func parseCardTemplate(dataclass string) (cardTemplate, bool) {
+// A layout this cannot read is no card, never a crash: upstream's decoder dereferences what Facebook sends (a null
+// variable entry panics, code review 2026-11-14), and a panic here would end login or drop a whole socket batch.
+func parseCardTemplate(dataclass string) (card cardTemplate, ok bool) {
+	defer func() {
+		if recover() != nil {
+			logf("share template unreadable")
+			card, ok = cardTemplate{}, false
+		}
+	}()
+	return readCardTemplate(dataclass)
+}
+
+func readCardTemplate(dataclass string) (cardTemplate, bool) {
 	var card cardTemplate
 	var outer struct {
 		Content struct {
@@ -126,32 +139,63 @@ func describeArgs(call *bloks.BloksScriptFuncall, words string) string {
 	return strings.Join(kinds, "+")
 }
 
-// Facebook's name for an action ("bk.action.xs.SendTextMessageCTA"); anything else is not repeated.
+// Facebook's name for an action ("bk.action.xs.SendTextMessageCTA"), only when it is one the Bloks library itself
+// names (its unminifier's table); anything else is not repeated.
 func functionWord(fn bloks.BloksFunctionID) string {
-	value := string(fn)
-	if value == "" || len(value) > 60 || strings.Trim(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") != "" {
+	knownFunctionsOnce.Do(func() {
+		knownFunctions = map[bloks.BloksFunctionID]bool{}
+		if table, err := bloks.GetUnminifier(&bloks.BloksBundle{}); err == nil {
+			for _, name := range table.Functions {
+				knownFunctions[name] = true
+			}
+		}
+	})
+	if !knownFunctions[fn] {
 		return "other"
 	}
-	return value
+	return string(fn)
 }
+
+var (
+	knownFunctionsOnce sync.Once
+	knownFunctions     map[bloks.BloksFunctionID]bool
+)
 
 func (card cardTemplate) logShape(message string) {
 	logf("share template message=%s lines=%d choices=%d picture=%v link=%v pressed=%s", tagOf(message), len(card.lines),
 		len(card.choices), card.picture != "", card.link != "", strings.Join(card.pressed, ","))
 }
 
-// A laid-out card's words and choices share the kept card_text cell (and a backup's cardText): the words, then each
-// choice after a record separator. Meta AI's card text never holds one, so it reads back as it was written.
-const choiceMark = "\x1e"
+// A laid-out card's words and choices share the kept card_text cell (and a backup's cardText). Plain words are kept as
+// they are, which is how Meta AI's card text always was; anything with choices, or words that could be mistaken for
+// this form, is cardForm and JSON, which reads back exactly (code review, 2026-11-14). The first build of this, on
+// 2026-11-14, kept words and choices joined by a record separator; those still read.
+const (
+	cardForm   = "\x00card1:"
+	choiceMark = "\x1e"
+)
+
+type packedCard struct {
+	Text    string   `json:"t,omitempty"`
+	Choices []string `json:"c,omitempty"`
+}
 
 func packCard(text string, choices []string) string {
-	if len(choices) == 0 {
+	if len(choices) == 0 && !strings.HasPrefix(text, cardForm) && !strings.Contains(text, choiceMark) {
 		return text
 	}
-	return text + choiceMark + strings.Join(choices, choiceMark)
+	encoded, _ := json.Marshal(packedCard{text, choices})
+	return cardForm + string(encoded)
 }
 
 func unpackCard(kept string) (string, []string) {
+	if encoded, ok := strings.CutPrefix(kept, cardForm); ok {
+		var card packedCard
+		if json.Unmarshal([]byte(encoded), &card) == nil {
+			return card.Text, card.Choices
+		}
+		return "", nil
+	}
 	parts := strings.Split(kept, choiceMark)
 	if len(parts) == 1 {
 		return kept, nil
@@ -164,12 +208,12 @@ func unpackCard(kept string) (string, []string) {
 func (m *messageStore) rememberCardOn(ctx context.Context, on execer, thread int64, id string, from *store) {
 	from.mu.Lock()
 	current := from.messages[thread][id]
-	kept := ""
+	kept, carded := "", false
 	if current != nil && !current.encrypted && current.sender != metaAIMessengerID {
-		kept = packCard(current.cardText, current.choices)
+		kept, carded = packCard(current.cardText, current.choices), current.carded
 	}
 	from.mu.Unlock()
-	if kept == "" {
+	if kept == "" && !carded {
 		return
 	}
 	sealed, err := protectStrings(kept)

@@ -25,7 +25,9 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     // Whether the bubble draws the body: a body that is only the address of the reel card under it is left to the card
     // (SharedLinkPresentation.CardReplacesText). The body itself is unchanged for copying, search and the list preview.
     public bool ShowsBody => Body.Length > 0 &&
-        (Message.IsDeleted || Message.IsHidden || !SharedLinkPresentation.CardReplacesText(Message.Text, Message.Attachments));
+        (Message.IsDeleted || Message.IsHidden || !SharedLinkPresentation.CardReplacesText(Message.Text, Message.Attachments)) ||
+        // A card's answers with no words of the message's own above them (a pictured card that asks something) keep the bubble.
+        ChoicesLine.Length > 0;
     // A service's own note arrives as markup: Google's "Link previews are off.<br />Learn more or turn on in <u>Settings</u>."
     // showed its tags. Read as text, the way a bubble reads its body, without the links a note has no use for.
     public string SystemBody => IsSystem ? EncryptionLineText(NativeBeeper.Presentation.Services.MessageText.PlainText(Body)) : "";

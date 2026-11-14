@@ -185,3 +185,100 @@ func TestCardTemplateReachesAppAfterLoginAndNamesThePreview(t *testing.T) {
 		t.Fatalf("the preview must be the card's words: %q", chat.Preview)
 	}
 }
+
+// Code review, 2026-11-14: each finding, as it would have gone wrong.
+func TestCardTemplateReviewFindings(t *testing.T) {
+	// A null variable entry panicked inside upstream's decoder; it is no card, not a crash.
+	if _, ok := parseCardTemplate(syntheticTemplate(t, `null}, "data": [null], "x": {`)); ok {
+		t.Fatal("a broken layout must not read as a card")
+	}
+	broken, err := json.Marshal(map[string]any{"content": map[string]any{"custom_template_data": map[string]any{
+		"payload": `{"layout":{"bloks_payload":{"data":[null]}}}`}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := parseCardTemplate(string(broken)); ok {
+		t.Fatal("a layout with a null variable must not read as a card")
+	}
+	// Words and choices come back exactly, separators and all, and the first build's form still reads.
+	for _, sample := range []struct {
+		text    string
+		choices []string
+	}{{"a\x1eb", nil}, {"words", []string{"x\x1ey", "z"}}, {cardForm + "{}", nil}, {"", []string{"only"}}, {"plain", nil}} {
+		text, choices := unpackCard(packCard(sample.text, sample.choices))
+		if text != sample.text || !slices.Equal(choices, sample.choices) {
+			t.Fatalf("%q %q read back as %q %q", sample.text, sample.choices, text, choices)
+		}
+	}
+	if text, choices := unpackCard("Words\x1eA\x1eB"); text != "Words" || !slices.Equal(choices, []string{"A", "B"}) {
+		t.Fatal("the first build's kept form must still read")
+	}
+	// Only action names the Bloks library knows are repeated.
+	if functionWord("bk.action.xs.SendTextMessageCTA") != "bk.action.xs.SendTextMessageCTA" || functionWord("private_name") != "other" ||
+		functionWord("12345") != "other" {
+		t.Fatal("an action name must be one the library knows")
+	}
+
+	s := newStore()
+	s.setSelf(1)
+	second := strings.Replace(strings.Replace(syntheticListing, "Synthetic listing", "Second listing", 1), "listing.jpg", "second.jpg", 1)
+	choicesOnly := `{"bk.components.Flexbox":{"on_click":"(bk.action.xs.SendTextMessageCTA \"Synthetic yes\" 7)","children":[{"bk.components.Text":{"text":"Synthetic yes"}}]}}`
+	s.apply(&table.LSTable{
+		LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 7, ThreadType: table.ONE_TO_ONE, ThreadName: "Synthetic assistant"}},
+		LSInsertMessage: []*table.LSInsertMessage{
+			{ThreadKey: 7, MessageId: "two-cards", SenderId: 42, TimestampMs: 1000},
+			{ThreadKey: 7, MessageId: "choices-only", SenderId: 42, TimestampMs: 2000},
+		},
+		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{
+			{ThreadKey: 7, MessageId: "two-cards", AttachmentFbid: "first", XmaDataclass: syntheticTemplate(t, syntheticListing)},
+			{ThreadKey: 7, MessageId: "two-cards", AttachmentFbid: "second", AttachmentIndex: 1, XmaDataclass: syntheticTemplate(t, second)},
+			{ThreadKey: 7, MessageId: "choices-only", AttachmentFbid: "third", XmaDataclass: syntheticTemplate(t, choicesOnly)},
+		},
+	})
+	// Two pictured cards on one message are two cards, each with its own title.
+	cards, _ := s.messageByID(7, "two-cards")
+	if len(cards.Media) != 2 || cards.Media[0].Name == cards.Media[1].Name {
+		t.Fatalf("two laid-out cards must stay two, each its own: %+v", cards.Media)
+	}
+	// A card of choices alone is on the conversation's page.
+	page := s.historyBefore(7, 0, 10)
+	if len(page) != 2 || page[1].ID != "choices-only" || !slices.Equal(page[1].Choices, []string{"Synthetic yes"}) {
+		t.Fatalf("a card of choices alone must be on the page: %+v", page)
+	}
+}
+
+// A card that lost its words (now a pictured card) must not get them back at the next start.
+func TestCardTemplateClearedWordsStayCleared(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "synthetic.db")
+	kept, err := openMessageStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newAdapter(&output{})
+	a.kept = kept
+	a.chats.setSelf(1)
+	card := func(tree string) *table.LSTable {
+		return &table.LSTable{
+			LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 7, ThreadType: table.ONE_TO_ONE, ThreadName: "Synthetic assistant"}},
+			LSUpsertMessage:          []*table.LSUpsertMessage{{ThreadKey: 7, MessageId: "m", SenderId: 42, TimestampMs: 1000}},
+			LSInsertXmaAttachment:    []*table.LSInsertXmaAttachment{{ThreadKey: 7, MessageId: "m", AttachmentFbid: "c", XmaDataclass: syntheticTemplate(t, tree)}},
+		}
+	}
+	a.keepMessages(ctx, a.chats.apply(card(syntheticQuestion)))
+	a.keepMessages(ctx, a.chats.apply(card(syntheticListing)))
+	if err = kept.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	kept, err = openMessageStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kept.db.Close()
+	back := newStore()
+	back.setSelf(1)
+	kept.restore(ctx, back)
+	if got, ok := back.messageByID(7, "m"); !ok || got.Text != "" || len(got.Choices) != 0 {
+		t.Fatalf("cleared card words came back after a restart: %q %q", got.Text, got.Choices)
+	}
+}

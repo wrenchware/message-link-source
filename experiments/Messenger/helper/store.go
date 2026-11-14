@@ -77,6 +77,9 @@ type message struct {
 	// What a card Facebook lays out itself offers as answers (template.go), in its words, shown under the message.
 	// Pressing one in Facebook's apps sends a reply; here they are words only.
 	choices []string
+	// A laid-out card was read for it this run, so its words and choices are written down even when now empty: a card that
+	// lost its words must not get them back from the kept copy at the next start (code review, 2026-11-14).
+	carded bool
 }
 
 // What a batch of rows changed, so the app can refresh just those conversations rather than reloading everything.
@@ -618,11 +621,13 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		s.noteSendStatus(row.SendStatusV2, s.self != 0 && row.SenderId == s.self)
 		cardText := ""
 		var choices []string
+		wasCarded := false
 		receipt := false
 		replyTo := row.ReplySourceId
 		if previous := thread[row.MessageId]; previous != nil && previous.sender == row.SenderId && !row.IsUnsent {
 			cardText = previous.cardText
 			choices = previous.choices
+			wasCarded = previous.carded
 			receipt = previous.receipt
 			if row.SenderId == metaAIMessengerID && replyTo == "" {
 				replyTo = previous.replyTo
@@ -639,6 +644,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 			status:    row.SendStatusV2,
 			cardText:  cardText,
 			choices:   choices,
+			carded:    wasCarded,
 			notice:    row.IsAdminMessage,
 			receipt:   receipt,
 		}
@@ -1091,7 +1097,7 @@ func (s *store) drawableLocked(key int64, before int64) []*message {
 		}
 		// A laid-out card's words (shares.go's template) are something to draw: without them here the Marketplace
 		// Assistant's question was read and kept but never on a page (2026-11-14).
-		if current.text == "" && current.cardText == "" && !current.unsent && len(s.attached[current.id]) == 0 && (current.sender != metaAIMessengerID || current.sender == s.self) {
+		if current.text == "" && current.cardText == "" && len(current.choices) == 0 && !current.unsent && len(s.attached[current.id]) == 0 && (current.sender != metaAIMessengerID || current.sender == s.self) {
 			continue
 		}
 		known = append(known, current)

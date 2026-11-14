@@ -154,10 +154,9 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 		// A laid-out card's words are its message's when it has no picture (the question); with one, they are the
 		// picture card's title and lines (the listing). Its choices are the message's either way.
 		if templated && current != nil && !current.encrypted && current.sender != metaAIMessengerID && current.sender != s.self {
-			text := ""
-			if template.picture == "" {
-				text = strings.Join(template.lines, "\n")
-			}
+			// template() keeps only the lines of cards without a picture; a pictured card's lines are its own title.
+			text := strings.Join(template.lines, "\n")
+			current.carded = true
 			if current.cardText != text || !slices.Equal(current.choices, template.choices) {
 				current.cardText, current.choices = text, template.choices
 				note(key.thread, key.message)
@@ -167,7 +166,7 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 			card(key.thread, key.message)
 		}
 		drawn := map[string]bool{}
-		for _, candidate := range rows.thumbnails(key, template) {
+		for _, candidate := range rows.thumbnails(key) {
 			if candidate.source == "" || !strings.HasPrefix(candidate.mime, "image/") {
 				continue
 			}
@@ -266,7 +265,7 @@ func orderedShareKeys[T any](rows map[shareRowKey]T) []shareRowKey {
 	return keys
 }
 
-func (rows *shareRows) thumbnails(message shareMessageKey, template cardTemplate) []shareThumbnail {
+func (rows *shareRows) thumbnails(message shareMessageKey) []shareThumbnail {
 	var result []shareThumbnail
 	for _, key := range orderedShareKeys(rows.items) {
 		row := rows.items[key]
@@ -288,16 +287,19 @@ func (rows *shareRows) thumbnails(message shareMessageKey, template cardTemplate
 	for _, key := range orderedShareKeys(rows.containers) {
 		row := rows.containers[key]
 		source := firstOf(row.PreviewUrlLarge, row.PreviewUrl, row.PreviewUrlFallback, row.ImageUrl, row.ImageUrlFallback)
-		if source == "" && template.picture != "" && row.XmaDataclass != "" {
-			id := firstOf(row.AttachmentFbid, row.MessageId+":xma:"+strconv.FormatInt(row.AttachmentIndex, 10))
-			title, lines := "Shared link", []string(nil)
-			if len(template.lines) > 0 {
-				title, lines = template.lines[0], template.lines[1:]
+		if source == "" && row.XmaDataclass != "" {
+			// This container's own layout, never another card's on the same message.
+			if own, ok := parseCardTemplate(row.XmaDataclass); ok && own.picture != "" {
+				id := firstOf(row.AttachmentFbid, row.MessageId+":xma:"+strconv.FormatInt(row.AttachmentIndex, 10))
+				title, lines := "Shared link", []string(nil)
+				if len(own.lines) > 0 {
+					title, lines = own.lines[0], own.lines[1:]
+				}
+				result = append(result, shareThumbnail{attachment: &attachment{
+					id: id, name: title, description: strings.Join(lines, "\n"), mime: "image/jpeg", source: own.picture,
+					link: own.link,
+				}, legacyID: id})
 			}
-			result = append(result, shareThumbnail{attachment: &attachment{
-				id: id, name: title, description: strings.Join(lines, "\n"), mime: "image/jpeg", source: template.picture,
-				link: template.link,
-			}, legacyID: id})
 			continue
 		}
 		if source == "" {
@@ -483,10 +485,11 @@ func logContainerFields(row *table.LSInsertXmaAttachment, current *message) {
 			filled = append(filled, field.name)
 		}
 	}
-	logf("share container fields message=%s unknown=%s filled=%s layout=%d template=%d type=%d dataclass=%s content=%s typeOne=%s typeTwo=%s body=%v",
+	// Facebook's type words (XmaDataclass, the XMA type and content-type columns) are no longer repeated: only presence,
+	// which the filled list says (code review, 2026-11-14: a check of characters is not an allowlist).
+	logf("share container fields message=%s unknown=%s filled=%s layout=%d template=%d type=%d typed=%v body=%v",
 		tagOf(row.MessageId), strings.Join(fields, ","), strings.Join(filled, ","), row.XmaLayoutType, row.XmasTemplateType,
-		row.AttachmentType, ctaTypeWord(strings.ToLower(row.XmaDataclass)), ctaTypeWord(strings.ToLower(row.LoggingGenericXMAContentType)),
-		ctaTypeWord(strings.ToLower(row.XMATypeOne)), ctaTypeWord(strings.ToLower(row.XMATypeTwo)),
+		row.AttachmentType, row.XMATypeOne != "" || row.XMATypeTwo != "" || row.LoggingGenericXMAContentType != "",
 		current != nil && strings.TrimSpace(current.text) != "")
 }
 
@@ -511,14 +514,29 @@ func valueKind(value any) string {
 	}
 }
 
-// The first of a message's cards that Facebook lays out itself (template.go). Others are ordinary cards.
+// What a message's cards that Facebook lays out itself (template.go) give the message: the lines of those without a
+// picture (a pictured one is its own card, thumbnails), every card's choices and how each press reads. Each card is
+// read on its own, so two never share one's picture or words (code review, 2026-11-14).
 func (rows *shareRows) template() (cardTemplate, bool) {
+	var merged cardTemplate
+	found := false
 	for _, key := range orderedShareKeys(rows.containers) {
-		if dataclass := rows.containers[key].XmaDataclass; dataclass != "" {
-			if card, ok := parseCardTemplate(dataclass); ok {
-				return card, true
-			}
+		dataclass := rows.containers[key].XmaDataclass
+		if dataclass == "" {
+			continue
 		}
+		card, ok := parseCardTemplate(dataclass)
+		if !ok {
+			continue
+		}
+		found = true
+		if card.picture == "" {
+			merged.lines = append(merged.lines, card.lines...)
+		} else {
+			merged.picture, merged.link = firstOf(merged.picture, card.picture), firstOf(merged.link, card.link)
+		}
+		merged.choices = append(merged.choices, card.choices...)
+		merged.pressed = append(merged.pressed, card.pressed...)
 	}
-	return cardTemplate{}, false
+	return merged, found
 }
