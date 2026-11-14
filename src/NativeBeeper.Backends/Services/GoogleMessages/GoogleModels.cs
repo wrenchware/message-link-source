@@ -19,6 +19,25 @@ internal sealed record GoogleMessage(string Id, string ChatId, string Sender, st
     bool Encrypted = false);
 internal static class GoogleModels
 {
+    // Whose typing a message that just arrived ends. Nothing says the phone sends a stop when a message lands, and the
+    // dots stayed up to the rest of their fifteen seconds under the message they announced. Only a message received:
+    // not this account's own, not a conversation note (TOMBSTONE statuses) or a deletion. In a direct conversation it
+    // ends everyone's there (person null): only the other person types in one, and the number typing names them by need
+    // not be the participant row the message names (one person can be listed twice, a hidden RCS identity beside the
+    // visible one). In a group, its sender's, by the number typing goes by, and nobody's when the sender is not listed.
+    // Nothing older than a couple of minutes (a replay, or the phone's clock well behind) ends typing going on now.
+    public static bool EndsTyping(GoogleMessage m, GoogleChat? chat, DateTimeOffset now, out string? person)
+    {
+        person = null;
+        if (chat is null || m.At < now - TimeSpan.FromMinutes(2) || !m.Status.StartsWith("INCOMING_", StringComparison.Ordinal) ||
+            m.Status == "INCOMING_DELETED") return false;
+        var sender = chat.Participants.FirstOrDefault(p => p.NativeId == m.Sender);
+        if (sender is { Self: true }) return false;
+        if (!chat.Group) return true;
+        if (sender is not { Id.Length: > 0 }) return false;
+        person = sender.Id;
+        return true;
+    }
     // UI availability from synchronized state. The helper still checks fresh SIM,
     // conversation and message state before executing any mutation.
     public static NativeBeeper.Core.Services.MessageActionOptions Actions(GoogleChat chat, GoogleMessage message)

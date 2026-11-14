@@ -4,10 +4,31 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// A typing ping still queued or on its way when a message is sent. Typing waits in the mutation queue so a late one
+// does not reach the phone after the message it led to (Google has no stop to take it back); a send queued behind one
+// that was waiting out a slow relay waited with it, for up to its three seconds. One not started yet is dropped. One
+// already posted keeps typingGrace to be answered: letting go of it cannot take back what the relay accepted, so a
+// stalled one may still arrive after the message, as it could when its own three seconds ran out.
+var errTypingSuperseded = errors.New("typing superseded by a send")
+
+var typingGrace = 500 * time.Millisecond
+
+type typingWait struct {
+	supersede context.CancelCauseFunc
+	started   atomic.Bool
+}
+
+// What ends any typing still waiting: the message that typing was for.
+func supersedesTyping(method string) bool {
+	return method == "ui.sendText" || method == "ui.sendMedia"
+}
 
 func lifecycleMethod(method string) bool {
 	switch method {
@@ -48,6 +69,7 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 	defer stop()
 	var workers sync.WaitGroup
 	var pending sync.Map // request ID -> cancel; includes queued mutations
+	var typings sync.Map // request ID -> *typingWait, for ui.typing queued or running
 	slots := make(chan struct{}, 64)
 	tail := make(chan struct{})
 	close(tail)
@@ -58,6 +80,8 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 		var code string
 		if deadline.Err() == nil {
 			result, code = call(deadline, r)
+		} else if errors.Is(context.Cause(deadline), errTypingSuperseded) {
+			result = map[string]bool{"skipped": true}
 		} else {
 			code = "request_cancelled"
 		}
@@ -85,9 +109,26 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 			cancel()
 			continue
 		}
+		if supersedesTyping(r.Method) {
+			typings.Range(func(_, value any) bool {
+				waiting := value.(*typingWait)
+				if waiting.started.Load() {
+					time.AfterFunc(typingGrace, func() { waiting.supersede(errTypingSuperseded) })
+				} else {
+					waiting.supersede(errTypingSuperseded)
+				}
+				return true
+			})
+		}
 		slots <- struct{}{}
 		budget := requestBudget(r.Method)
 		deadline, cancel := context.WithTimeout(ctx, budget)
+		var waiting *typingWait
+		if r.Method == "ui.typing" {
+			waiting = &typingWait{}
+			deadline, waiting.supersede = context.WithCancelCause(deadline)
+			typings.Store(r.ID, waiting)
+		}
 		pending.Store(r.ID, cancel)
 		workers.Add(1)
 		previous := tail
@@ -100,10 +141,14 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 			defer workers.Done()
 			defer cancel()
 			defer pending.Delete(r.ID)
+			defer typings.Delete(r.ID)
 			defer func() { <-slots }()
 			if finished != nil {
 				defer close(finished)
 				<-previous
+			}
+			if waiting != nil {
+				waiting.started.Store(true)
 			}
 			run(deadline, r)
 		}(r, previous, finished)

@@ -446,7 +446,7 @@ Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when 
 
 ### Typing {#typing}
 
-- When someone types, their photo peeks out above the message box with three moving dots (up to three photos in a group). Hover for "Sam is typing…".
+- When someone types, their photo peeks out above the message box with three moving dots (up to three photos in a group). Hover for "Sam is typing…". The dots go when their message arrives, or a few seconds after they stop.
 - Your own typing is sent on Google Messages, Messenger and Instagram, unless [private reading](#private-reading) is on for that service.
 
 ### Scrolling {#scrolling}

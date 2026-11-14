@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto"
 	"time"
 )
@@ -46,6 +47,10 @@ func (a *adapter) typingCall(ctx context.Context, r request) (any, string) {
 		return skipped, ""
 	}
 	if a.client.SetTyping(ctx, p.ChatID, sim.GetSIMData().GetSIMPayload()) != nil {
+		// A send let go of it (dispatch.go): not a failure, only no longer waited for.
+		if errors.Is(context.Cause(ctx), errTypingSuperseded) {
+			return skipped, ""
+		}
 		return nil, "typing_failed"
 	}
 	return map[string]bool{"submitted": true}, ""

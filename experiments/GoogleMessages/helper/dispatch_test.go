@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 	"testing"
@@ -183,6 +184,87 @@ func TestEOFDoesNotExecuteQueuedMutation(t *testing.T) {
 	if _, ran := calls.Load(2); ran {
 		t.Fatal("queued read marker ran after EOF")
 	}
+	outputWriter.Close()
+	outputReader.Close()
+}
+
+// A send lets go of typing ahead of it: the one waiting on a stalled relay stops waiting once its grace is up, the one
+// queued behind it never goes, and neither reads as a failure. Typing that arrives after the send is untouched.
+func TestSendSupersedesWaitingTyping(t *testing.T) {
+	input, writer := io.Pipe()
+	outputReader, outputWriter := io.Pipe()
+	var mu sync.Mutex
+	called := []int{}
+	stalled := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		dispatch(input, &output{encoder: json.NewEncoder(outputWriter)}, func(ctx context.Context, r request) (any, string) {
+			mu.Lock()
+			called = append(called, r.ID)
+			mu.Unlock()
+			if r.ID == 1 {
+				close(stalled)
+				<-ctx.Done()
+				if errors.Is(context.Cause(ctx), errTypingSuperseded) {
+					return map[string]bool{"skipped": true}, ""
+				}
+				return nil, "typing_failed"
+			}
+			return map[string]bool{"ok": true}, ""
+		})
+	}()
+	replies := make(chan response, 10)
+	go func() {
+		decoder := json.NewDecoder(outputReader)
+		for {
+			var r response
+			if decoder.Decode(&r) != nil {
+				return
+			}
+			replies <- r
+		}
+	}()
+	encoder := json.NewEncoder(writer)
+	encoder.Encode(request{ID: 1, Method: "ui.typing"})
+	waitDispatch(t, stalled)
+	encoder.Encode(request{ID: 2, Method: "ui.typing"})
+	sending := time.Now()
+	encoder.Encode(request{ID: 3, Method: "ui.sendText"})
+	encoder.Encode(request{ID: 4, Method: "ui.typing"})
+	got := map[int]response{}
+	var sent time.Duration
+	for len(got) < 4 {
+		select {
+		case r := <-replies:
+			got[r.ID] = r
+			if r.ID == 3 {
+				sent = time.Since(sending)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("send waited behind typing: %v", got)
+		}
+	}
+	// The posted one had its grace to be answered, and no more than that.
+	if sent < typingGrace-50*time.Millisecond || sent > typingGrace+time.Second {
+		t.Fatalf("send went after %v, grace %v", sent, typingGrace)
+	}
+	for _, id := range []int{1, 2} {
+		skipped, _ := got[id].Result.(map[string]any)
+		if got[id].Error != "" || skipped["skipped"] != true {
+			t.Fatalf("typing %d: %+v", id, got[id])
+		}
+	}
+	if got[3].Error != "" || got[4].Error != "" {
+		t.Fatalf("send or later typing failed: %+v %+v", got[3], got[4])
+	}
+	mu.Lock()
+	if len(called) != 3 || called[0] != 1 || called[1] != 3 || called[2] != 4 {
+		t.Fatalf("calls %v", called)
+	}
+	mu.Unlock()
+	writer.Close()
+	waitDispatch(t, done)
 	outputWriter.Close()
 	outputReader.Close()
 }

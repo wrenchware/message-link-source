@@ -15,6 +15,11 @@ public sealed class DirectTypingState
         foreach (var key in entries.Where(p => p.Value <= now).Select(p => p.Key).ToArray()) entries.Remove(key);
         return entries.Where(p => p.Key.Chat == chat).Select(p => p.Key.User).Order(StringComparer.Ordinal).ToArray();
     }
+    // Their message arrived: whatever they were typing has gone. Nobody named ends everyone in the conversation.
+    public void Ended(string chat, string? user)
+    {
+        foreach (var key in entries.Keys.Where(key => key.Chat == chat && (user is null || key.User == user)).ToArray()) entries.Remove(key);
+    }
     public void Clear() => entries.Clear();
     public DateTimeOffset ExpiresAt(string chat, string user) => entries.GetValueOrDefault((chat, user));
 }
