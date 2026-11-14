@@ -161,7 +161,10 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 			if s.cardThreads == nil {
 				s.cardThreads = map[int64]bool{}
 			}
-			s.cardThreads[key.thread] = true
+			if s.cardThreads[key.thread] || len(s.cardThreads) < maxPressThreads {
+				s.cardThreads[key.thread] = true
+			}
+			s.rememberChoices(key, template)
 			if current.cardText != text || !slices.Equal(current.choices, template.choices) {
 				current.cardText, current.choices = text, template.choices
 				note(key.thread, key.message)
@@ -542,6 +545,7 @@ func (rows *shareRows) template() (cardTemplate, bool) {
 		}
 		merged.choices = append(merged.choices, card.choices...)
 		merged.pressed = append(merged.pressed, card.pressed...)
+		merged.hidden = append(merged.hidden, card.hidden...)
 	}
 	return merged, found
 }

@@ -154,6 +154,8 @@ type store struct {
 	previewNoted map[int64]bool
 	// Conversations with a laid-out card read this run, whose message rows say which columns they fill (template.go).
 	cardThreads map[int64]bool
+	// The choices of those cards with the text a press of each carries, in memory only (template.go's notePress).
+	pressChoices map[int64][]pressChoice
 	// Revoked stanza IDs remain rejected even if a delayed encrypted delivery arrives.
 	revoked  map[string]bool
 	media    map[string]*attachment
