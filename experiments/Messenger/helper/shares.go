@@ -42,6 +42,7 @@ type shareThumbnail struct {
 // Call with the store lock held. Logs contain only presence, counts and one-way tags, including whether the actual
 // container FBID was present; earlier diagnostics could not answer that question.
 func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) {
+	defer logCardThreadRows(s, tbl)
 	dirty := map[shareMessageKey]*shareRows{}
 	rowsFor := func(thread int64, message string) *shareRows {
 		key := shareMessageKey{thread, message}
@@ -157,6 +158,10 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 			// template() keeps only the lines of cards without a picture; a pictured card's lines are its own title.
 			text := strings.Join(template.lines, "\n")
 			current.carded = true
+			if s.cardThreads == nil {
+				s.cardThreads = map[int64]bool{}
+			}
+			s.cardThreads[key.thread] = true
 			if current.cardText != text || !slices.Equal(current.choices, template.choices) {
 				current.cardText, current.choices = text, template.choices
 				note(key.thread, key.message)

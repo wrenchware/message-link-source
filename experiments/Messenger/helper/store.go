@@ -152,6 +152,8 @@ type store struct {
 	messages map[int64]map[string]*message
 	// Conversations whose preview stayed Facebook's bare "text" this run, logged once each (view).
 	previewNoted map[int64]bool
+	// Conversations with a laid-out card read this run, whose message rows say which columns they fill (template.go).
+	cardThreads map[int64]bool
 	// Revoked stanza IDs remain rejected even if a delayed encrypted delivery arrives.
 	revoked  map[string]bool
 	media    map[string]*attachment

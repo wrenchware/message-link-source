@@ -282,3 +282,43 @@ func TestCardTemplateClearedWordsStayCleared(t *testing.T) {
 		t.Fatalf("cleared card words came back after a restart: %q %q", got.Text, got.Choices)
 	}
 }
+
+// In a conversation with laid-out cards, each message row says which columns it fills, by name only.
+func TestCardThreadRowsNameColumnsNotValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "synthetic-rows.log")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := diagnostics
+	diagnostics = &logger{file: file}
+	t.Cleanup(func() {
+		closeLog()
+		diagnostics = previous
+	})
+	s := newStore()
+	s.setSelf(1)
+	s.apply(&table.LSTable{
+		LSInsertMessage: []*table.LSInsertMessage{{ThreadKey: 7, MessageId: "q", SenderId: 42, TimestampMs: 1000}},
+		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{
+			{ThreadKey: 7, MessageId: "q", AttachmentFbid: "c", XmaDataclass: syntheticTemplate(t, syntheticQuestion)},
+		},
+	})
+	s.apply(&table.LSTable{LSInsertMessage: []*table.LSInsertMessage{
+		{ThreadKey: 7, MessageId: "a", SenderId: 1, TimestampMs: 2000, Text: "Synthetic yes", Unrecognized: map[int]any{99: "synthetic-hidden"}},
+		{ThreadKey: 8, MessageId: "elsewhere", SenderId: 1, TimestampMs: 2000, Text: "Synthetic elsewhere"},
+	}})
+	closeLog()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(data)
+	if strings.Contains(strings.ToLower(log), "synthetic") {
+		t.Fatalf("the row log repeated a value:\n%s", log)
+	}
+	if !strings.Contains(log, "card thread row kind=insert message="+tagOf("a")+" own=true filled=Text,ThreadKey,TimestampMs,MessageId,SenderId unknown=99:s16") ||
+		strings.Contains(log, tagOf("elsewhere")) {
+		t.Fatalf("the row log must name the filled columns of a card conversation's rows, and only there:\n%s", log)
+	}
+}

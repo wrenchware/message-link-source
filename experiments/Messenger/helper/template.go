@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
+	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
 
 // A card Facebook lays out itself (2026-11-14, Marketplace Assistant: a listing with its picture, title and price, and
@@ -241,4 +245,52 @@ func countIDs(byChat map[string][]string) int {
 		count += len(ids)
 	}
 	return count
+}
+
+// Whether a button press is only a typed reply (owner, 2026-11-14): in a conversation with laid-out cards, each message
+// row says which of Facebook's columns it fills, by name, never a value. A pressed answer and a typed one from the
+// account, side by side, show whether a press carries anything a typed message does not.
+func logCardThreadRows(s *store, tbl *table.LSTable) {
+	for _, row := range tbl.LSInsertMessage {
+		if s.cardThreads[row.ThreadKey] {
+			logf("card thread row kind=insert message=%s own=%v filled=%s unknown=%s", tagOf(row.MessageId), s.self != 0 && row.SenderId == s.self,
+				filledColumns(row), unknownColumns(row.Unrecognized))
+		}
+	}
+	for _, row := range tbl.LSUpsertMessage {
+		if s.cardThreads[row.ThreadKey] {
+			logf("card thread row kind=upsert message=%s own=%v filled=%s unknown=%s", tagOf(row.MessageId), s.self != 0 && row.SenderId == s.self,
+				filledColumns(row), unknownColumns(row.Unrecognized))
+		}
+	}
+}
+
+// The names of a row's columns that hold something, from the table's own field names; never what they hold.
+func filledColumns(row any) string {
+	value := reflect.Indirect(reflect.ValueOf(row))
+	if value.Kind() != reflect.Struct {
+		return ""
+	}
+	names := []string{}
+	for index := 0; index < value.NumField(); index++ {
+		field := value.Type().Field(index)
+		if !field.IsExported() || field.Name == "Unrecognized" || value.Field(index).IsZero() {
+			continue
+		}
+		names = append(names, field.Name)
+	}
+	return strings.Join(names, ",")
+}
+
+func unknownColumns(unrecognized map[int]any) string {
+	indexes := make([]int, 0, len(unrecognized))
+	for index := range unrecognized {
+		indexes = append(indexes, index)
+	}
+	sort.Ints(indexes)
+	kinds := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		kinds = append(kinds, strconv.Itoa(index)+":"+valueKind(unrecognized[index]))
+	}
+	return strings.Join(kinds, ",")
 }
