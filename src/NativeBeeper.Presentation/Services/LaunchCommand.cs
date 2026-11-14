@@ -30,9 +30,21 @@ public sealed record LaunchCommand(LaunchAction Action, string? ChatId = null, s
     // alone, for a tool to go on from, and for a person that was a menu item that did nothing (audit, 2026-11-01).
     public const string QuitFromMenuArgument = "--quit-from-menu";
 
+    // Started again by Windows after a Microsoft Store update replaced the running app (WindowsStoreUpdates.RegisterRestart),
+    // whose window was open: a background launch that then shows the window as it was (owner, 2026-11-14: an update keeps
+    // the last state). Restored shows it without activating it, so nothing is read until the person turns to it: the
+    // Store's own updates come whenever it likes. RestoredFront is for the person's own Restart to update, made from the
+    // open window: it comes forward as opening it from the tray does. Not commands either.
+    public const string RestoredArgument = "--restored";
+    public const string RestoredFrontArgument = "--restored-front";
+
     // Exactly the argument, quoted or not; "--background=1" and "--backgroundx" are not it.
     public static bool IsBackground(IEnumerable<string> arguments)
         => arguments.Any(raw => raw is not null && raw.Trim('"') == BackgroundArgument);
+
+    // Which restored launch this is (RestoredArgument or RestoredFrontArgument), or null for any other.
+    public static string? Restored(IEnumerable<string> arguments)
+        => arguments.Select(raw => raw?.Trim('"')).FirstOrDefault(argument => argument is RestoredArgument or RestoredFrontArgument);
     // A redirected launch's whole command line is this one argument, with or without the program's path at its head, split
     // as Windows splits it. Splitting on spaces found " --quit " inside a shared file's name (Send to "a --quit b.txt")
     // and quit instead of staging the file; the same went for --background, which dropped the file.

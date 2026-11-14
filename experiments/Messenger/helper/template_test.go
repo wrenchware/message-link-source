@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -40,9 +39,6 @@ func TestCardTemplateReadsLinesChoicesPictureAndLink(t *testing.T) {
 	if !ok || !slices.Equal(question.lines, []string{"Synthetic question?"}) ||
 		!slices.Equal(question.choices, []string{"Synthetic yes", "Synthetic no"}) || question.picture != "" {
 		t.Fatalf("question card read as %+v", question)
-	}
-	if !slices.Equal(question.pressed, []string{"label+n", "label+n"}) {
-		t.Fatalf("a press must be described by kind: %q", question.pressed)
 	}
 	listing, ok := parseCardTemplate(syntheticTemplate(t, syntheticListing))
 	if !ok || listing.picture != "https://example.test/listing.jpg" || listing.link != "https://www.facebook.com/marketplace/item/1/" ||
@@ -147,7 +143,7 @@ func TestCardTemplateLogHoldsNoWords(t *testing.T) {
 	if strings.Contains(strings.ToLower(log), "synthetic") || strings.Contains(log, "https://") {
 		t.Fatalf("the template log repeated a card's words or address:\n%s", log)
 	}
-	if !strings.Contains(log, "share template message=") || !strings.Contains(log, "lines=1 choices=2 picture=false link=false pressed=label+n,label+n") {
+	if !strings.Contains(log, "share template message=") || !strings.Contains(log, "lines=1 choices=2 picture=false link=false") {
 		t.Fatalf("the template log must say the card's shape:\n%s", log)
 	}
 }
@@ -214,12 +210,6 @@ func TestCardTemplateReviewFindings(t *testing.T) {
 	if text, choices := unpackCard("Words\x1eA\x1eB"); text != "Words" || !slices.Equal(choices, []string{"A", "B"}) {
 		t.Fatal("the first build's kept form must still read")
 	}
-	// Only action names the Bloks library knows are repeated.
-	if functionWord("bk.action.xs.SendTextMessageCTA") != "bk.action.xs.SendTextMessageCTA" || functionWord("private_name") != "other" ||
-		functionWord("12345") != "other" {
-		t.Fatal("an action name must be one the library knows")
-	}
-
 	s := newStore()
 	s.setSelf(1)
 	second := strings.Replace(strings.Replace(syntheticListing, "Synthetic listing", "Second listing", 1), "listing.jpg", "second.jpg", 1)
@@ -281,149 +271,5 @@ func TestCardTemplateClearedWordsStayCleared(t *testing.T) {
 	kept.restore(ctx, back)
 	if got, ok := back.messageByID(7, "m"); !ok || got.Text != "" || len(got.Choices) != 0 {
 		t.Fatalf("cleared card words came back after a restart: %q %q", got.Text, got.Choices)
-	}
-}
-
-// In a conversation with laid-out cards, each message row says which columns it fills, by name only.
-func TestCardThreadRowsNameColumnsNotValues(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "synthetic-rows.log")
-	file, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := diagnostics
-	diagnostics = &logger{file: file}
-	t.Cleanup(func() {
-		closeLog()
-		diagnostics = previous
-	})
-	s := newStore()
-	s.setSelf(1)
-	s.apply(&table.LSTable{
-		LSInsertMessage: []*table.LSInsertMessage{{ThreadKey: 7, MessageId: "q", SenderId: 42, TimestampMs: 1000}},
-		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{
-			{ThreadKey: 7, MessageId: "q", AttachmentFbid: "c", XmaDataclass: syntheticTemplate(t, syntheticQuestion)},
-		},
-	})
-	s.apply(&table.LSTable{LSInsertMessage: []*table.LSInsertMessage{
-		{ThreadKey: 7, MessageId: "a", SenderId: 1, TimestampMs: 2000, Text: "Synthetic yes", Unrecognized: map[int]any{99: "synthetic-hidden"}},
-		{ThreadKey: 8, MessageId: "elsewhere", SenderId: 1, TimestampMs: 2000, Text: "Synthetic elsewhere"},
-	}})
-	closeLog()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(data)
-	if strings.Contains(strings.ToLower(log), "synthetic") {
-		t.Fatalf("the row log repeated a value:\n%s", log)
-	}
-	if !strings.Contains(log, "card thread row kind=insert message="+tagOf("a")+" own=true filled=Text,ThreadKey,TimestampMs,MessageId,SenderId unknown=99:s16") ||
-		strings.Contains(log, tagOf("elsewhere")) {
-		t.Fatalf("the row log must name the filled columns of a card conversation's rows, and only there:\n%s", log)
-	}
-}
-
-// A pressed answer's PlatformXmdEncoded is compared with each choice's hidden text: yes or no, never the value.
-func TestCardPressComparesHiddenTextWithoutLoggingIt(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "synthetic-press.log")
-	file, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := diagnostics
-	diagnostics = &logger{file: file}
-	t.Cleanup(func() {
-		closeLog()
-		diagnostics = previous
-	})
-	question := `{"bk.components.Flexbox":{"children":[
-	{"bk.components.Text":{"text":"Synthetic question?"}},
-	{"bk.components.Flexbox":{"on_click":"(bk.action.xs.SendTextMessageCTA \"Synthetic yes\" \"synthetic-secret-yes\")","children":[{"bk.components.Text":{"text":"Synthetic yes"}}]}},
-	{"bk.components.Flexbox":{"on_click":"(bk.action.xs.SendTextMessageCTA \"Synthetic no\" \"synthetic-secret-no\")","children":[{"bk.components.Text":{"text":"Synthetic no"}}]}}]}}`
-	s := newStore()
-	s.setSelf(1)
-	s.apply(&table.LSTable{
-		LSInsertMessage:       []*table.LSInsertMessage{{ThreadKey: 7, MessageId: "q", SenderId: 42, TimestampMs: 1000}},
-		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{{ThreadKey: 7, MessageId: "q", AttachmentFbid: "c", XmaDataclass: syntheticTemplate(t, question)}},
-	})
-	s.apply(&table.LSTable{LSInsertMessage: []*table.LSInsertMessage{
-		{ThreadKey: 7, MessageId: "pressed", SenderId: 1, TimestampMs: 2000, Text: "Synthetic no", PlatformXmdEncoded: "synthetic-secret-no"},
-		{ThreadKey: 7, MessageId: "typed", SenderId: 1, TimestampMs: 3000, Text: "Synthetic no"},
-	}})
-	closeLog()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(data)
-	if strings.Contains(strings.ToLower(log), "synthetic") {
-		t.Fatalf("the press log repeated a value:\n%s", log)
-	}
-	want := "card press message=" + tagOf("pressed") + " xmd=s19 match=exact choiceOf=" + tagOf("q") + " choice=1 words=true"
-	if !strings.Contains(log, want) || strings.Contains(log, "card press message="+tagOf("typed")) {
-		t.Fatalf("a press must be matched to its choice, and a typed answer not named a press:\n%s", log)
-	}
-}
-
-func TestHiddenShapeNamesKeysNotValues(t *testing.T) {
-	for hidden, want := range map[string]string{
-		`{"quick_replies":{"content_type":"text","payload":"synthetic","title":"Synthetic"}}`: "quick_replies{content_type;payload;title}",
-		`{"quick_replies":[{"payload":"synthetic"}],"Synthetic Name":1}`:                      "other;quick_replies[payload]",
-		`synthetic plain`: "text",
-		`"synthetic"`:     "s9",
-	} {
-		if got := hiddenShape(hidden); got != want {
-			t.Fatalf("%q: got %q, want %q", hidden, got, want)
-		}
-	}
-}
-
-// Code review, 2026-11-14: a lowercase word used as a key is not repeated; an empty value matches nothing; the choices
-// kept for comparison are bounded.
-func TestPressDiagnosticsReviewFindings(t *testing.T) {
-	if got := hiddenShape(`{"quick_replies":{"payload":"x","privatename":1},"anothername":{"title":"y"}}`); got != "other;quick_replies{other;payload}" {
-		t.Fatalf("only known quick-reply keys may be named: %q", got)
-	}
-	path := filepath.Join(t.TempDir(), "synthetic-empty.log")
-	file, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := diagnostics
-	diagnostics = &logger{file: file}
-	t.Cleanup(func() {
-		closeLog()
-		diagnostics = previous
-	})
-	s := newStore()
-	s.setSelf(1)
-	s.cardThreads = map[int64]bool{7: true}
-	s.pressChoices = map[int64][]pressChoice{7: {{message: "q", index: 0, words: "w", hidden: []string{"synthetic-secret"}}}}
-	s.mu.Lock()
-	s.notePress(&table.LSInsertMessage{ThreadKey: 7, MessageId: "m", SenderId: 1, Text: "w", PlatformXmdEncoded: ""})
-	s.mu.Unlock()
-	closeLog()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "xmd=empty match=none") || strings.Contains(string(data), "match=within") {
-		t.Fatalf("an empty value must not match a choice:\n%s", data)
-	}
-
-	bounded := newStore()
-	for thread := int64(1); thread <= maxPressThreads+5; thread++ {
-		for message := 0; message < 20; message++ {
-			bounded.rememberChoices(shareMessageKey{thread, "m" + strconv.Itoa(message)},
-				cardTemplate{choices: []string{"a", "b"}, hidden: [][]string{{"x"}, {"y"}}})
-		}
-	}
-	if len(bounded.pressChoices) != maxPressThreads || len(bounded.pressChoices[1]) != maxPressChoices {
-		t.Fatalf("kept choices must be bounded: threads=%d choices=%d", len(bounded.pressChoices), len(bounded.pressChoices[1]))
-	}
-	bounded.forgetThread(1)
-	if _, ok := bounded.pressChoices[1]; ok {
-		t.Fatal("a forgotten conversation must drop its choices")
 	}
 }

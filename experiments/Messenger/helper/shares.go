@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"slices"
 	"sort"
 	"strconv"
@@ -42,7 +41,6 @@ type shareThumbnail struct {
 // Call with the store lock held. Logs contain only presence, counts and one-way tags, including whether the actual
 // container FBID was present; earlier diagnostics could not answer that question.
 func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) {
-	defer logCardThreadRows(s, tbl)
 	dirty := map[shareMessageKey]*shareRows{}
 	rowsFor := func(thread int64, message string) *shareRows {
 		key := shareMessageKey{thread, message}
@@ -79,7 +77,6 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 		if row.MessageId == "" {
 			continue
 		}
-		logContainerFields(row, s.messages[row.ThreadKey][row.MessageId])
 		logf("share text shape connection=lightspeed id=%s kind=container title=%v picture=%v playable=%v",
 			tagOf(row.MessageId), strings.TrimSpace(row.TitleText) != "",
 			firstOf(row.PreviewUrl, row.PreviewUrlFallback, row.PreviewUrlLarge, row.ImageUrl, row.ImageUrlFallback) != "", row.PlayableUrl != "")
@@ -158,13 +155,6 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 			// template() keeps only the lines of cards without a picture; a pictured card's lines are its own title.
 			text := strings.Join(template.lines, "\n")
 			current.carded = true
-			if s.cardThreads == nil {
-				s.cardThreads = map[int64]bool{}
-			}
-			if s.cardThreads[key.thread] || len(s.cardThreads) < maxPressThreads {
-				s.cardThreads[key.thread] = true
-			}
-			s.rememberChoices(key, template)
 			if current.cardText != text || !slices.Equal(current.choices, template.choices) {
 				current.cardText, current.choices = text, template.choices
 				note(key.thread, key.message)
@@ -466,62 +456,6 @@ func playableLink(link string) bool {
 	return false
 }
 
-// A Marketplace Assistant card (2026-11-14: a listing with picture, title and price, then a question with three
-// buttons) arrived with every field this library knows empty and three it does not. This line says where its words and
-// pictures are: the unknown columns by position and kind, which known text columns are filled, Facebook's own layout
-// numbers and type words, and whether the message itself had words. Never a value but a lowercase type word.
-func logContainerFields(row *table.LSInsertXmaAttachment, current *message) {
-	unknown := make([]int, 0, len(row.Unrecognized))
-	for index := range row.Unrecognized {
-		unknown = append(unknown, index)
-	}
-	sort.Ints(unknown)
-	fields := make([]string, 0, len(unknown))
-	for _, index := range unknown {
-		fields = append(fields, strconv.Itoa(index)+":"+valueKind(row.Unrecognized[index]))
-	}
-	filled := []string{}
-	for _, field := range []struct {
-		name, value string
-	}{{"subtitle", row.SubtitleText}, {"description", row.DescriptionText}, {"source", row.SourceText},
-		{"header", row.HeaderTitle}, {"headerSubtitle", row.HeaderSubtitleText}, {"headerImage", row.HeaderImageUrl},
-		{"body", row.BodyText}, {"caption", row.CaptionBodyText}, {"footer", row.FooterTitle},
-		{"listDescription", row.ListItemsDescriptionText}, {"listItem", row.ListItemTitleText1},
-		{"accessibility", row.AccessibilitySummaryText}, {"defaultCta", row.DefaultCtaTitle}, {"cta1", row.Cta1Title},
-		{"dataclass", row.XmaDataclass}} {
-		if strings.TrimSpace(field.value) != "" {
-			filled = append(filled, field.name)
-		}
-	}
-	// Facebook's type words (XmaDataclass, the XMA type and content-type columns) are no longer repeated: only presence,
-	// which the filled list says (code review, 2026-11-14: a check of characters is not an allowlist).
-	logf("share container fields message=%s unknown=%s filled=%s layout=%d template=%d type=%d typed=%v body=%v",
-		tagOf(row.MessageId), strings.Join(fields, ","), strings.Join(filled, ","), row.XmaLayoutType, row.XmasTemplateType,
-		row.AttachmentType, row.XMATypeOne != "" || row.XMATypeTwo != "" || row.LoggingGenericXMAContentType != "",
-		current != nil && strings.TrimSpace(current.text) != "")
-}
-
-// A decoded value's kind and size, never the value: s<length> for text, n for a number, b for true or false, l<count>
-// for a list, m<count> for a map, null for nothing.
-func valueKind(value any) string {
-	switch typed := value.(type) {
-	case nil:
-		return "null"
-	case string:
-		return "s" + strconv.Itoa(len(typed))
-	case bool:
-		return "b"
-	case int, int64, float64, json.Number:
-		return "n"
-	case []any:
-		return "l" + strconv.Itoa(len(typed))
-	case map[string]any:
-		return "m" + strconv.Itoa(len(typed))
-	default:
-		return "other"
-	}
-}
-
 // What a message's cards that Facebook lays out itself (template.go) give the message: the lines of those without a
 // picture (a pictured one is its own card, thumbnails), every card's choices and how each press reads. Each card is
 // read on its own, so two never share one's picture or words (code review, 2026-11-14).
@@ -544,8 +478,6 @@ func (rows *shareRows) template() (cardTemplate, bool) {
 			merged.picture, merged.link = firstOf(merged.picture, card.picture), firstOf(merged.link, card.link)
 		}
 		merged.choices = append(merged.choices, card.choices...)
-		merged.pressed = append(merged.pressed, card.pressed...)
-		merged.hidden = append(merged.hidden, card.hidden...)
 	}
 	return merged, found
 }

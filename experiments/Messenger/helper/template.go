@@ -3,14 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"reflect"
-	"sort"
-	"strconv"
 	"strings"
-	"sync"
 
 	"go.mau.fi/mautrix-meta/pkg/messagix/bloks"
-	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 )
 
 // A card Facebook lays out itself (2026-11-14, Marketplace Assistant: a listing with its picture, title and price, and
@@ -23,11 +18,6 @@ type cardTemplate struct {
 	choices []string
 	picture string
 	link    string
-	// What each choice's press carries, for the log (template log line): the action's arguments by kind, never a value.
-	pressed []string
-	// Per choice, the text its press carries besides its words (the 600-760 characters seen 2026-11-14). Held in memory to
-	// compare with what a pressed answer carries (template.go's notePress); never logged or kept.
-	hidden [][]string
 }
 
 const sendTextChoice bloks.BloksFunctionID = "bk.action.xs.SendTextMessageCTA"
@@ -65,18 +55,11 @@ func readCardTemplate(dataclass string) (cardTemplate, bool) {
 		if words == "" {
 			continue
 		}
-		var press *bloks.BloksScriptFuncall
-		text.FindAncestor(func(comp *bloks.BloksTreeComponent) bool {
-			press = onClickCall(comp, sendTextChoice)
-			return press != nil
-		})
-		if press == nil {
+		if text.FindAncestor(func(comp *bloks.BloksTreeComponent) bool { return onClickCall(comp, sendTextChoice) != nil }) == nil {
 			card.lines = append(card.lines, words)
 			continue
 		}
 		card.choices = append(card.choices, words)
-		card.pressed = append(card.pressed, describeArgs(press, words))
-		card.hidden = append(card.hidden, hiddenArgs(press, words))
 	}
 	bundle.FindDescendant(func(comp *bloks.BloksTreeComponent) bool {
 		if call := onClickCall(comp, "bk.action.navigation.OpenUrlV2"); call != nil && len(call.Args) > 0 {
@@ -125,57 +108,9 @@ func findCall(node *bloks.BloksScriptNode, fn bloks.BloksFunctionID) *bloks.Blok
 	return nil
 }
 
-// A press's arguments by kind: "label" for the choice's own words, s<length> for other text, n, b, null, a nested
-// action by Facebook's name for it, and l/m with a count. Whether a press is more than its words is the question this
-// answers before the app sends one.
-func describeArgs(call *bloks.BloksScriptFuncall, words string) string {
-	kinds := make([]string, 0, len(call.Args))
-	for _, arg := range call.Args {
-		switch content := arg.Content.(type) {
-		case *bloks.BloksScriptFuncall:
-			kinds = append(kinds, "f:"+functionWord(content.Function))
-		case *bloks.BloksScriptLiteral:
-			if text, ok := content.Value().(string); ok && strings.TrimSpace(text) == words {
-				kinds = append(kinds, "label")
-			} else {
-				kinds = append(kinds, valueKind(content.Value()))
-			}
-		default:
-			kinds = append(kinds, "other")
-		}
-	}
-	return strings.Join(kinds, "+")
-}
-
-// Facebook's name for an action ("bk.action.xs.SendTextMessageCTA"), only when it is one the Bloks library itself
-// names (its unminifier's table); anything else is not repeated.
-func functionWord(fn bloks.BloksFunctionID) string {
-	knownFunctionsOnce.Do(func() {
-		knownFunctions = map[bloks.BloksFunctionID]bool{}
-		if table, err := bloks.GetUnminifier(&bloks.BloksBundle{}); err == nil {
-			for _, name := range table.Functions {
-				knownFunctions[name] = true
-			}
-		}
-	})
-	if !knownFunctions[fn] {
-		return "other"
-	}
-	return string(fn)
-}
-
-var (
-	knownFunctionsOnce sync.Once
-	knownFunctions     map[bloks.BloksFunctionID]bool
-)
-
 func (card cardTemplate) logShape(message string) {
-	hidden := ""
-	if len(card.hidden) > 0 && len(card.hidden[0]) > 0 {
-		hidden = hiddenShape(card.hidden[0][0])
-	}
-	logf("share template message=%s lines=%d choices=%d picture=%v link=%v pressed=%s hidden=%s", tagOf(message), len(card.lines),
-		len(card.choices), card.picture != "", card.link != "", strings.Join(card.pressed, ","), hidden)
+	logf("share template message=%s lines=%d choices=%d picture=%v link=%v", tagOf(message), len(card.lines),
+		len(card.choices), card.picture != "", card.link != "")
 }
 
 // A laid-out card's words and choices share the kept card_text cell (and a backup's cardText). Plain words are kept as
@@ -254,194 +189,3 @@ func countIDs(byChat map[string][]string) int {
 	}
 	return count
 }
-
-// Whether a button press is only a typed reply (owner, 2026-11-14): in a conversation with laid-out cards, each message
-// row says which of Facebook's columns it fills, by name, never a value. A pressed answer and a typed one from the
-// account, side by side, show whether a press carries anything a typed message does not.
-func logCardThreadRows(s *store, tbl *table.LSTable) {
-	for _, row := range tbl.LSInsertMessage {
-		if s.cardThreads[row.ThreadKey] {
-			s.notePress(row)
-		}
-		if s.cardThreads[row.ThreadKey] {
-			logf("card thread row kind=insert message=%s own=%v filled=%s unknown=%s", tagOf(row.MessageId), s.self != 0 && row.SenderId == s.self,
-				filledColumns(row), unknownColumns(row.Unrecognized))
-		}
-	}
-	for _, row := range tbl.LSUpsertMessage {
-		if s.cardThreads[row.ThreadKey] {
-			logf("card thread row kind=upsert message=%s own=%v filled=%s unknown=%s", tagOf(row.MessageId), s.self != 0 && row.SenderId == s.self,
-				filledColumns(row), unknownColumns(row.Unrecognized))
-		}
-	}
-}
-
-// The names of a row's columns that hold something, from the table's own field names; never what they hold.
-func filledColumns(row any) string {
-	value := reflect.Indirect(reflect.ValueOf(row))
-	if value.Kind() != reflect.Struct {
-		return ""
-	}
-	names := []string{}
-	for index := 0; index < value.NumField(); index++ {
-		field := value.Type().Field(index)
-		if !field.IsExported() || field.Name == "Unrecognized" || value.Field(index).IsZero() {
-			continue
-		}
-		names = append(names, field.Name)
-	}
-	return strings.Join(names, ",")
-}
-
-func unknownColumns(unrecognized map[int]any) string {
-	indexes := make([]int, 0, len(unrecognized))
-	for index := range unrecognized {
-		indexes = append(indexes, index)
-	}
-	sort.Ints(indexes)
-	kinds := make([]string, 0, len(indexes))
-	for _, index := range indexes {
-		kinds = append(kinds, strconv.Itoa(index)+":"+valueKind(unrecognized[index]))
-	}
-	return strings.Join(kinds, ",")
-}
-
-// The text a press carries besides its words: every string argument of the press that is not the label.
-func hiddenArgs(call *bloks.BloksScriptFuncall, words string) []string {
-	var hidden []string
-	for _, arg := range call.Args {
-		if literal, ok := arg.Content.(*bloks.BloksScriptLiteral); ok {
-			if text, ok := literal.Value().(string); ok && strings.TrimSpace(text) != words && text != "" {
-				hidden = append(hidden, text)
-			}
-		}
-	}
-	return hidden
-}
-
-type pressChoice struct {
-	message string
-	index   int
-	words   string
-	hidden  []string
-}
-
-// What a pressed answer carries (2026-11-14: a press filled PlatformXmdEncoded and a typed answer did not, and only the
-// press got the bot's answer). Says whether that value is exactly, or holds, or is held in, a choice's hidden text, and
-// whether the row's words are that choice's: yes or no, kinds and lengths, never a value. Call with the lock held.
-func (s *store) notePress(row *table.LSInsertMessage) {
-	if s.self == 0 || row.SenderId != s.self || row.PlatformXmdEncoded == nil {
-		return
-	}
-	encoded, isText := row.PlatformXmdEncoded.(string)
-	if isText && encoded == "" {
-		// Empty is held in every text, so it would match any choice (code review, 2026-11-14).
-		logf("card press message=%s xmd=empty match=none", tagOf(row.MessageId))
-		return
-	}
-	match, message, index, words := "none", "none", -1, false
-	for _, choice := range s.pressChoices[row.ThreadKey] {
-		for _, hidden := range choice.hidden {
-			found := ""
-			switch {
-			case !isText:
-			case encoded == hidden:
-				found = "exact"
-			case strings.Contains(encoded, hidden):
-				found = "holds"
-			case strings.Contains(hidden, encoded):
-				found = "within"
-			}
-			if found != "" && (match == "none" || found == "exact") {
-				match, message, index, words = found, tagOf(choice.message), choice.index, strings.TrimSpace(row.Text) == choice.words
-			}
-		}
-	}
-	logf("card press message=%s xmd=%s match=%s choiceOf=%s choice=%d words=%v", tagOf(row.MessageId),
-		valueKind(row.PlatformXmdEncoded), match, message, index, words)
-}
-
-// A card's choices, replacing what an earlier reading of the same message held. Call with the lock held.
-func (s *store) rememberChoices(key shareMessageKey, template cardTemplate) {
-	if s.pressChoices == nil {
-		s.pressChoices = map[int64][]pressChoice{}
-	}
-	// Bounded (code review, 2026-11-14): the newest choices of a few conversations are all a press is compared with.
-	if _, known := s.pressChoices[key.thread]; !known && len(s.pressChoices) >= maxPressThreads {
-		return
-	}
-	kept := s.pressChoices[key.thread][:0:0]
-	for _, choice := range s.pressChoices[key.thread] {
-		if choice.message != key.message {
-			kept = append(kept, choice)
-		}
-	}
-	for index, words := range template.choices {
-		var hidden []string
-		if index < len(template.hidden) {
-			hidden = template.hidden[index]
-		}
-		kept = append(kept, pressChoice{message: key.message, index: index, words: words, hidden: hidden})
-	}
-	if len(kept) > maxPressChoices {
-		kept = kept[len(kept)-maxPressChoices:]
-	}
-	s.pressChoices[key.thread] = kept
-}
-
-// The shape of a press's hidden text: its JSON keys two levels down, sorted, never a value; "text" when it is not JSON.
-// Facebook's older web client sent a quick-reply answer as platform_xmd, {"quick_replies": {"content_type", "title",
-// "payload", ...}}, and read it back as platform_xmd_encoded (fbchat's _message.py), the column a press fills.
-func hiddenShape(hidden string) string {
-	var decoded any
-	if json.Unmarshal([]byte(hidden), &decoded) != nil {
-		return "text"
-	}
-	return jsonKeys(decoded, 2)
-}
-
-func jsonKeys(value any, depth int) string {
-	switch typed := value.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(typed))
-		for key := range typed {
-			if !jsonKeyWord(key) {
-				key = "other"
-			}
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		if depth > 1 {
-			for index, key := range keys {
-				if inner, ok := typed[key].(map[string]any); ok {
-					keys[index] = key + "{" + jsonKeys(inner, depth-1) + "}"
-				} else if list, ok := typed[key].([]any); ok && len(list) > 0 {
-					keys[index] = key + "[" + jsonKeys(list[0], depth-1) + "]"
-				}
-			}
-		}
-		return strings.Join(keys, ";")
-	case []any:
-		if len(typed) == 0 {
-			return "[]"
-		}
-		return "[" + jsonKeys(typed[0], depth) + "]"
-	default:
-		return valueKind(value)
-	}
-}
-
-// A JSON key repeated in the log: only a field name a quick reply is known to have (fbchat's _message.py and
-// _quick_reply.py); any other key is "other", since a key can be a value (code review, 2026-11-14).
-func jsonKeyWord(key string) bool {
-	switch key {
-	case "quick_replies", "content_type", "payload", "external_payload", "data", "title", "image_url", "ignore_for_webhook":
-		return true
-	}
-	return false
-}
-
-const (
-	maxPressThreads = 50
-	maxPressChoices = 30
-)

@@ -535,10 +535,6 @@ func TestShareDiagnosticsDoNotExposeContent(t *testing.T) {
 	if strings.Contains(strings.ToLower(string(data)), strings.ToLower(secret)) || strings.Contains(string(data), "https://") {
 		t.Fatal("share diagnostics exposed synthetic content or an address")
 	}
-	if !strings.Contains(string(data), "unknown=140:s40,141:n,142:l1 filled=body,dataclass") ||
-		!strings.Contains(string(data), "body=true") {
-		t.Fatalf("share diagnostics did not say where the card's unknown columns and words are:\n%s", data)
-	}
 }
 
 // The badge says the picture stands for something that plays. Facebook marks that outright only on the encrypted

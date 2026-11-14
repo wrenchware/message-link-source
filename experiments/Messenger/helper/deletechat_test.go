@@ -164,3 +164,27 @@ func TestForgettingAConversationWipesOnlyThatConversation(t *testing.T) {
 		t.Fatalf("stored messages left=%d reactions left=%d", left, reactions)
 	}
 }
+
+// A conversation deleted in the same page that read its card: login names no card of it, as nothing else of it goes out
+// (review, 2026-11-14).
+func TestDeletedConversationSendsNoCardAtLogin(t *testing.T) {
+	a, _ := identityAdapter(t)
+	a.applyTable(context.Background(), &table.LSTable{
+		LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 9, ThreadType: table.MARKETPLACE, ThreadName: "Synthetic assistant",
+			LastActivityTimestampMs: 2000}},
+		LSInsertMessage: []*table.LSInsertMessage{{ThreadKey: 9, MessageId: "synthetic-question", SenderId: 42, TimestampMs: 2000}},
+	})
+	card := &table.LSTable{
+		LSUpsertMessage: []*table.LSUpsertMessage{{ThreadKey: 9, MessageId: "synthetic-question", SenderId: 42, TimestampMs: 2000}},
+		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{
+			{ThreadKey: 9, MessageId: "synthetic-question", AttachmentFbid: "synthetic-card", XmaDataclass: syntheticTemplate(t, syntheticQuestion)},
+		},
+	}
+	if a.applyTable(context.Background(), card).cardChanges() == nil {
+		t.Fatal("the card was not read, so this proves nothing")
+	}
+	card.LSDeleteThread = []*table.LSDeleteThread{{ThreadKey: 9}}
+	if cards := a.applyTable(context.Background(), card).cardChanges(); cards != nil {
+		t.Fatalf("a deleted conversation's card went out at login: %+v", cards)
+	}
+}

@@ -80,6 +80,7 @@ func (a *adapter) applyTable(ctx context.Context, tbl *table.LSTable) *changes {
 			delete(touched.Deleted, id)
 			delete(touched.Receipts, id)
 			delete(touched.History, id)
+			delete(touched.cards, id)
 			touched.Chats = slices.DeleteFunc(touched.Chats, func(value string) bool { return value == id })
 		}
 	}

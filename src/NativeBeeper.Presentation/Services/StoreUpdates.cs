@@ -154,13 +154,18 @@ public sealed class StoreUpdates
 
     private async Task WaitForQuietAsync(CancellationToken cancellationToken)
     {
-        // Until the install is under way, whether this loop or the person's Restart to update started it.
-        while (!cancellationToken.IsCancellationRequested && Stage == StoreUpdateStage.Ready)
+        // Until the install is under way, whether this loop or the person's Restart to update started it. A person's attempt
+        // still running (Installing) is waited out, not taken for one under way: the quit can still refuse it, and the update
+        // is then ready again for the next quiet moment. Ending here then left it to the next launch (review, 2026-11-14).
+        while (!cancellationToken.IsCancellationRequested && !handedOver)
         {
-            if (await TryInstallAsync(byPerson: false) is null) return;
+            if (Stage == StoreUpdateStage.Ready && await TryInstallAsync(byPerson: false) is null) return;
             await Task.Delay(timing.QuietPoll, cancellationToken);
         }
     }
+
+    // Set once the App's install has taken over (this run is ending), whoever started it.
+    private volatile bool handedOver;
 
     /// <summary>Settings' Restart to update. Null when the restart is under way; otherwise the reason, for <see cref="StoreUpdatePolicy.Explain"/>.</summary>
     public Task<string?> RestartNowAsync() => IsReady ? TryInstallAsync(byPerson: true) : Task.FromResult<string?>("not_ready");
@@ -186,6 +191,7 @@ public sealed class StoreUpdates
                 catch (Exception failure) { reason = "failed_" + failure.GetType().Name; }
                 // Refused by the quit itself (a draft it could not save, a window still busy): ready again for the next moment.
                 if (reason is not null) Set(StoreUpdateStage.Ready);
+                else handedOver = true;
             }
         }
         finally { Volatile.Write(ref attempting, 0); }

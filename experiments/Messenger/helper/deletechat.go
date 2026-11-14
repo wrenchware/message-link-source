@@ -201,8 +201,6 @@ func (a *adapter) forgetChatLocked(ctx context.Context, key int64) {
 func (s *store) forgetThread(key int64) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.pressChoices, key)
-	delete(s.cardThreads, key)
 	if current := s.threads[key]; current != nil && current.deleted {
 		return 0
 	}
