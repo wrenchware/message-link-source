@@ -642,6 +642,7 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
 - Message Link remembers its window size, whether it was maximized, the list's width and the compact list. A first run opens centered.
 - [Conversations in their own window](#pop-out-windows) come back where you left them.
 - When you sign out of Windows or restart, Message Link saves your drafts and closes within a few seconds, without asking. A send still in flight is reported as unknown afterwards, never resent.
+- After a [Microsoft Store update](#settings-about), Message Link opens again in the tray, with no conversation opened or marked read.
 - Connections come back by themselves after sleep or a dropped network, and a service whose connection stops after it had connected resumes from its saved sign-in.
 
 ## 16. The chat console {#the-chat-console}
@@ -908,7 +909,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 
 - The version, **Help** (**Take the tour** and **Open guide**), and **Licences and source code**.
 - **Support Message Link**: Message Link is free. **Support on Ko-fi** opens a page for an optional donation, which doesn't unlock anything.
-- The Microsoft Store keeps Message Link up to date.
+- **Updates**: Message Link from the Microsoft Store downloads its updates from the Store by itself. It installs one while it's in the system tray with nothing being sent, saved, signed in or backed up, then opens again in the tray. **Update ready** shows here once an update has downloaded; **Restart to update** installs it now.
 
 ## 18. Backup, export and your data {#backup}
 
