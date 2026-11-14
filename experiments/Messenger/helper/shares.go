@@ -160,8 +160,11 @@ func (s *store) applyShares(tbl *table.LSTable, note, card func(int64, string)) 
 			}
 			if current.cardText != text || !slices.Equal(current.choices, template.choices) {
 				current.cardText, current.choices = text, template.choices
-				card(key.thread, key.message)
+				note(key.thread, key.message)
 			}
+			// Changed or not: after a restart the words come back from the kept store, while the server may still hold the
+			// message as it was before they were read (main.go's login sends these).
+			card(key.thread, key.message)
 		}
 		drawn := map[string]bool{}
 		for _, candidate := range rows.thumbnails(key, template) {

@@ -99,6 +99,10 @@ func TestCardTemplatesDrawAndSurviveRestart(t *testing.T) {
 			t.Fatalf("the listing card must carry its title, price and link: %+v", card)
 		}
 	}
+	// And on a page, as the app reads a conversation, not only by id.
+	if page := a.chats.historyBefore(7, 0, 10); len(page) != 2 || page[1].Text != "Synthetic question?" || len(page[1].Choices) != 2 {
+		t.Fatalf("the question must be on the conversation's page with its words and choices: %+v", page)
+	}
 	check(a.chats)
 	if err = kept.db.Close(); err != nil {
 		t.Fatal(err)
@@ -148,14 +152,14 @@ func TestCardTemplateLogHoldsNoWords(t *testing.T) {
 }
 
 // After a restart the first page is announced to nobody, so a question kept empty before its card could be read stayed
-// blank in the app (2026-11-14). Login sends exactly those messages, as history; reading the same card again sends none.
-// The chat list's preview is the card's words, not Facebook's snippet "text".
+// blank in the app (2026-11-14). Login sends the first page's cards, as history. The chat list's preview is the card's
+// words, not Facebook's snippet "text", even when Facebook's activity time is not the card's.
 func TestCardTemplateReachesAppAfterLoginAndNamesThePreview(t *testing.T) {
 	s := newStore()
 	s.setSelf(1)
 	s.apply(&table.LSTable{
 		LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 7, ThreadType: table.MARKETPLACE, ThreadName: "Synthetic assistant",
-			Snippet: "text", LastActivityTimestampMs: 2000}},
+			Snippet: "text", LastActivityTimestampMs: 9000}},
 		LSInsertMessage: []*table.LSInsertMessage{{ThreadKey: 7, MessageId: "synthetic-question", SenderId: 42, TimestampMs: 2000}},
 	})
 	page := &table.LSTable{
@@ -169,8 +173,10 @@ func TestCardTemplateReachesAppAfterLoginAndNamesThePreview(t *testing.T) {
 		!slices.Equal(cards.History["7"], []string{"synthetic-question"}) || len(cards.Chats) != 0 {
 		t.Fatalf("login must send the question alone, as history: %+v", cards)
 	}
-	if again := s.apply(page).cardChanges(); again != nil {
-		t.Fatalf("a card read again unchanged must send nothing: %+v", again)
+	// Read again unchanged, as after a restart that restored its words from the kept store: login still sends it, since
+	// the server may hold the copy from before (2026-11-14), but nothing else announces it.
+	if again := s.apply(page).cardChanges(); again == nil || !slices.Equal(again.History["7"], []string{"synthetic-question"}) {
+		t.Fatalf("a card read again must still go out at login: %+v", again)
 	}
 	s.mu.Lock()
 	chat := s.view(s.threads[7])

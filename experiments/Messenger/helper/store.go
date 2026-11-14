@@ -93,8 +93,8 @@ type changes struct {
 	// Subset of the changed ids supplied by a history snapshot. Keep them in Messages/Deleted for redraw and
 	// persistence, while allowing the app to learn their current state without announcing it as live activity.
 	History map[string][]string `json:"history,omitempty"`
-	// Of the changed messages, those whose laid-out card was just read into words or choices (store.go's apply). Never sent
-	// as such: login, which otherwise sends nothing, sends these as history (main.go).
+	// Messages with a laid-out card in this batch, changed or not (store.go's apply). Never sent as such: login, which
+	// otherwise sends nothing, sends these as history (main.go).
 	cards map[string][]string
 }
 
@@ -147,6 +147,8 @@ type store struct {
 	contacts map[int64]string
 	pictures map[int64]string
 	messages map[int64]map[string]*message
+	// Conversations whose preview stayed Facebook's bare "text" this run, logged once each (view).
+	previewNoted map[int64]bool
 	// Revoked stanza IDs remain rejected even if a delayed encrypted delivery arrives.
 	revoked  map[string]bool
 	media    map[string]*attachment
@@ -419,10 +421,9 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		}
 		known[id] = true
 	}
-	// Messages whose laid-out card was read into words or choices (shares.go). Login sends these alone (main.go).
+	// Messages with a laid-out card in this batch, read into words or choices (shares.go). Login sends these alone (main.go).
 	carded := map[string][]string{}
 	card := func(key int64, id string) {
-		note(key, id)
 		if key != 0 && id != "" {
 			chat := strconv.FormatInt(key, 10)
 			carded[chat] = append(carded[chat], id)
@@ -1088,7 +1089,9 @@ func (s *store) drawableLocked(key int64, before int64) []*message {
 		if before != 0 && current.timestamp >= before {
 			continue
 		}
-		if current.text == "" && !current.unsent && len(s.attached[current.id]) == 0 && (current.sender != metaAIMessengerID || current.sender == s.self) {
+		// A laid-out card's words (shares.go's template) are something to draw: without them here the Marketplace
+		// Assistant's question was read and kept but never on a page (2026-11-14).
+		if current.text == "" && current.cardText == "" && !current.unsent && len(s.attached[current.id]) == 0 && (current.sender != metaAIMessengerID || current.sender == s.self) {
 			continue
 		}
 		known = append(known, current)
@@ -1434,12 +1437,23 @@ func (s *store) view(current *thread) viewChat {
 				// the name when the conversation was read and lost it when the phone let it go (its diary, 2026-10-28).
 				previewSender = latest.sender
 			}
-			// Facebook's snippet for a laid-out card is the bare word "text" (Marketplace Assistant, 2026-11-14): its words
-			// as read (shares.go's template) say what it is.
-			if latest.sender != s.self && latest.sender != metaAIMessengerID && strings.TrimSpace(latest.text) == "" &&
-				strings.TrimSpace(latest.cardText) != "" {
-				snippet, _, _ = strings.Cut(strings.TrimSpace(latest.cardText), "\n")
+		}
+		// Facebook's snippet for a laid-out card is the bare word "text" (Marketplace Assistant, 2026-11-14): its words as
+		// read (shares.go's template) say what it is. Taken when the newest message is that card and either the activity
+		// time names it or the snippet is that word, which named the card though the times did not agree.
+		if latest != nil && latest.sender != s.self && latest.sender != metaAIMessengerID && strings.TrimSpace(latest.text) == "" &&
+			strings.TrimSpace(latest.cardText) != "" && (strings.TrimSpace(current.snippet) == "text" ||
+			current.lastActivity >= latest.timestamp && current.lastActivity-latest.timestamp <= 1000) {
+			snippet, _, _ = strings.Cut(strings.TrimSpace(latest.cardText), "\n")
+		} else if strings.TrimSpace(current.snippet) == "text" && latest != nil && !s.previewNoted[current.key] {
+			// Once a conversation per run: why Facebook's bare "text" stayed its preview.
+			if s.previewNoted == nil {
+				s.previewNoted = map[int64]bool{}
 			}
+			s.previewNoted[current.key] = true
+			logf("preview text kept chat=%s latest=%s own=%v words=%v carded=%v gapMs=%d", tag(current.key), tagOf(latest.id),
+				latest.sender == s.self, strings.TrimSpace(latest.text) != "", strings.TrimSpace(latest.cardText) != "",
+				current.lastActivity-latest.timestamp)
 		}
 	}
 	previewSenderID, previewName := "", ""
