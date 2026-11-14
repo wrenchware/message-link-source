@@ -510,7 +510,8 @@ func TestShareDiagnosticsDoNotExposeContent(t *testing.T) {
 		LSInsertXmaAttachment: []*table.LSInsertXmaAttachment{
 			{ThreadKey: 4, MessageId: secret + "-message", AttachmentFbid: secret + "-container",
 				AttachmentType: table.AttachmentTypeXMA, TitleText: secret + "-title",
-				Unrecognized: map[int]any{140: secret + "-unknown"}},
+				BodyText: secret + "-body-text", XmaDataclass: secret + "-dataclass", LoggingGenericXMAContentType: secret + "-content",
+				Unrecognized: map[int]any{140: secret + "-unknown", 141: float64(7), 142: []any{secret}}},
 		},
 		LSInsertAttachmentItem: []*table.LSInsertAttachmentItem{
 			{ThreadKey: 4, MessageId: secret + "-message", AttachmentFbid: secret + "-item",
@@ -531,8 +532,12 @@ func TestShareDiagnosticsDoNotExposeContent(t *testing.T) {
 	if len(data) == 0 {
 		t.Fatal("expected diagnostics for the synthetic rows")
 	}
-	if strings.Contains(string(data), secret) || strings.Contains(string(data), "https://") {
+	if strings.Contains(strings.ToLower(string(data)), strings.ToLower(secret)) || strings.Contains(string(data), "https://") {
 		t.Fatal("share diagnostics exposed synthetic content or an address")
+	}
+	if !strings.Contains(string(data), "unknown=140:s40,141:n,142:l1 filled=body,dataclass") ||
+		!strings.Contains(string(data), "dataclass=other content=other") || !strings.Contains(string(data), "body=true") {
+		t.Fatalf("share diagnostics did not say where the card's unknown columns and words are:\n%s", data)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,6 +77,7 @@ func (s *store) applyShares(tbl *table.LSTable, note func(int64, string)) {
 		if row.MessageId == "" {
 			continue
 		}
+		logContainerFields(row, s.messages[row.ThreadKey][row.MessageId])
 		logf("share text shape connection=lightspeed id=%s kind=container title=%v picture=%v playable=%v",
 			tagOf(row.MessageId), strings.TrimSpace(row.TitleText) != "",
 			firstOf(row.PreviewUrl, row.PreviewUrlFallback, row.PreviewUrlLarge, row.ImageUrl, row.ImageUrlFallback) != "", row.PlayableUrl != "")
@@ -420,4 +422,59 @@ func playableLink(link string) bool {
 		}
 	}
 	return false
+}
+
+// A Marketplace Assistant card (2026-11-14: a listing with picture, title and price, then a question with three
+// buttons) arrived with every field this library knows empty and three it does not. This line says where its words and
+// pictures are: the unknown columns by position and kind, which known text columns are filled, Facebook's own layout
+// numbers and type words, and whether the message itself had words. Never a value but a lowercase type word.
+func logContainerFields(row *table.LSInsertXmaAttachment, current *message) {
+	unknown := make([]int, 0, len(row.Unrecognized))
+	for index := range row.Unrecognized {
+		unknown = append(unknown, index)
+	}
+	sort.Ints(unknown)
+	fields := make([]string, 0, len(unknown))
+	for _, index := range unknown {
+		fields = append(fields, strconv.Itoa(index)+":"+valueKind(row.Unrecognized[index]))
+	}
+	filled := []string{}
+	for _, field := range []struct {
+		name, value string
+	}{{"subtitle", row.SubtitleText}, {"description", row.DescriptionText}, {"source", row.SourceText},
+		{"header", row.HeaderTitle}, {"headerSubtitle", row.HeaderSubtitleText}, {"headerImage", row.HeaderImageUrl},
+		{"body", row.BodyText}, {"caption", row.CaptionBodyText}, {"footer", row.FooterTitle},
+		{"listDescription", row.ListItemsDescriptionText}, {"listItem", row.ListItemTitleText1},
+		{"accessibility", row.AccessibilitySummaryText}, {"defaultCta", row.DefaultCtaTitle}, {"cta1", row.Cta1Title},
+		{"dataclass", row.XmaDataclass}} {
+		if strings.TrimSpace(field.value) != "" {
+			filled = append(filled, field.name)
+		}
+	}
+	logf("share container fields message=%s unknown=%s filled=%s layout=%d template=%d type=%d dataclass=%s content=%s typeOne=%s typeTwo=%s body=%v",
+		tagOf(row.MessageId), strings.Join(fields, ","), strings.Join(filled, ","), row.XmaLayoutType, row.XmasTemplateType,
+		row.AttachmentType, ctaTypeWord(strings.ToLower(row.XmaDataclass)), ctaTypeWord(strings.ToLower(row.LoggingGenericXMAContentType)),
+		ctaTypeWord(strings.ToLower(row.XMATypeOne)), ctaTypeWord(strings.ToLower(row.XMATypeTwo)),
+		current != nil && strings.TrimSpace(current.text) != "")
+}
+
+// A decoded value's kind and size, never the value: s<length> for text, n for a number, b for true or false, l<count>
+// for a list, m<count> for a map, null for nothing.
+func valueKind(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return "null"
+	case string:
+		return "s" + strconv.Itoa(len(typed))
+	case bool:
+		return "b"
+	case int, int64, float64, json.Number:
+		return "n"
+	case []any:
+		return "l" + strconv.Itoa(len(typed))
+	case map[string]any:
+		return "m" + strconv.Itoa(len(typed))
+	default:
+		return "other"
+	}
 }
