@@ -110,7 +110,13 @@ public sealed class ChatItemViewModel(ChatSummary chat) : ObservableObject
     // The linked-conversations mark is a service mark like the others, so turning service icons off hides it too.
     public bool ShowNetworkBadge => showNetwork && !ShowNetworkWords;
     public string Preview => Chat.Preview is { IsHidden: false } message
-        ? NativeBeeper.Presentation.Services.ChatPreviewText.Format(message.IsOutgoing, MessageItemViewModel.PreviewText(message)) : "";
+        ? NativeBeeper.Presentation.Services.ChatPreviewText.Format(message.IsOutgoing, MessageItemViewModel.PreviewText(message), PreviewSender(message)) : "";
+    // In a group, who wrote the last message: the service's name for them, else the member with that id.
+    private string? PreviewSender(ChatMessage message) => IsGroup && !message.IsOutgoing
+        ? NativeBeeper.Presentation.Services.ChatPreviewText.Sender(
+            message.SenderName ?? Chat.Participants.FirstOrDefault(p => p.Id == message.SenderId && message.SenderId.Length > 0)?.DisplayName,
+            Chat.Participants.Select(p => p.DisplayName))
+        : null;
     // Unsent text in this conversation's composer, as one line, while no composer has it open; the row's second line then
     // reads "Draft: …" in place of the last message. Set by the list, from ComposerDrafts, and never kept on Chat, so the
     // saved list cache never holds it.

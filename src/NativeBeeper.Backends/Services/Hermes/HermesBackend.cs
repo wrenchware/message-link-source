@@ -30,7 +30,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
     internal TimeSpan CheckEvery { get; init; } = TimeSpan.FromMinutes(15);
     internal IReadOnlyList<TimeSpan> RetrySteps { get; init; } =
         [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(30)];
-    internal const int MaxProfiles = 20, MaxTextLength = 32_000;
+    internal const int MaxProfiles = 20, MaxTextLength = 32_000, MaxTitleLength = 64;
     internal const long MaxImageBytes = 20 << 20;
     private static readonly string[] ImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
@@ -114,10 +114,17 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             var key = input.Key?.Trim() is { Length: > 0 } typed ? typed : settings.Profiles.FirstOrDefault(p => p.Name == name)?.Key;
             if (string.IsNullOrEmpty(key)) throw new ArgumentException("Enter the API key for each profile.");
             if (key.Any(char.IsControl) || key.Length > 512) throw new ArgumentException("That API key can't be used.");
-            kept.Add(new(name, key));
+            // Like the key, a name of null keeps the saved one (the app's settings card and older clients send none) and a blank one clears it.
+            // The default name typed out is kept as no name, so the field shows blank again and the thread follows the default.
+            var title = input.Title is null ? settings.Profiles.FirstOrDefault(p => p.Name == name)?.Title
+                : input.Title.Trim() is { Length: > 0 } named && named != DefaultTitle(name) ? named : null;
+            if (title is not null && (title.Any(char.IsControl) || title.Length > MaxTitleLength))
+                throw new ArgumentException($"A conversation name can have up to {MaxTitleLength} characters, on one line.");
+            kept.Add(new(name, key, title));
         }
         var next = new HermesSettings(parsed?.ToString(), kept);
         string[] removed, added;
+        var renamed = new List<(string ChatId, string[] Ids)>();
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -131,7 +138,14 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
                 if (addressChanged || settings.Profiles.FirstOrDefault(p => p.Name == profile.Name)?.Key != profile.Key) statuses.TryRemove(profile.Name, out _);
             foreach (var gone in removed) statuses.TryRemove(gone, out _);
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
+            var titled = kept.Where(p => settings.Profiles.Any(old => old.Name == p.Name) && (settings.Profiles.First(old => old.Name == p.Name).Title ?? DefaultTitle(p.Name))
+                != (p.Title ?? DefaultTitle(p.Name))).Select(p => p.Name).ToArray();
             settings = next;
+            // Hermes's messages carry the thread's name as their sender, and the server's history keeps them: a rename names each of them again, or the copy
+            // there would keep the old name, its conversation not having moved since.
+            foreach (var name in titled)
+                if (threads.TryGetValue(name, out var held))
+                    renamed.Add((HermesIds.Chat(name), [.. held.Messages.Where(m => !m.Outgoing).Select(m => m.Id)]));
             try { Volatile.Read(ref checking)?.Cancel(); } catch (ObjectDisposedException) { }
             foreach (var name in added)
                 if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) ?? NewThread(name);
@@ -140,6 +154,9 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         log($"hermes configured profiles={kept.Count} added={added.Length} removed={removed.Length}");
         if (removed.Length > 0) realtime.TryWrite(new(RealtimeKind.ChatDeleted, null, [.. removed.Select(HermesIds.Chat)], null, clock.GetUtcNow()));
         if (kept.Count > 0) realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [.. kept.Select(p => HermesIds.Chat(p.Name))], null, clock.GetUtcNow()));
+        // In batches of 64, the most ids the server's history takes from one event (ConversationHistory.MaxEventIds) before reading the conversation again.
+        foreach (var (chatId, ids) in renamed)
+            foreach (var batch in ids.Chunk(64)) realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, batch, false, clock.GetUtcNow()));
         Raise();
         Interlocked.Exchange(ref checkNow, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
     }
@@ -711,7 +728,11 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
 
     // "Hermes Agent", or "Hermes Agent - <profile>" for any other profile (owner, 2026-11-15): one name the list sorts together and a person can
     // rename here. The model Hermes reports stays out of it; a model id read like a code, not a conversation.
-    internal static string Title(string profile) => profile == HermesClient.DefaultProfile ? "Hermes Agent" : "Hermes Agent - " + profile;
+    public static string DefaultTitle(string profile) => profile == HermesClient.DefaultProfile ? "Hermes Agent" : "Hermes Agent - " + profile;
+
+    // The name the owner gave the profile on the server's page, else the default (owner, 2026-11-15: a profile name is lowercase with no spaces, which
+    // reads poorly as a conversation's). It names the thread and Hermes's side of it, so a rename reaches the messages already there.
+    private string Title(string profile) => settings.Profiles.FirstOrDefault(p => p.Name == profile)?.Title ?? DefaultTitle(profile);
 
     private static string Profile(string chatId) => HermesIds.ProfileOf(chatId) is { } profile && HermesClient.ValidProfile(profile) ? profile
         : throw new BackendException(BackendFailure.Unsupported, "That isn't a Hermes conversation.");

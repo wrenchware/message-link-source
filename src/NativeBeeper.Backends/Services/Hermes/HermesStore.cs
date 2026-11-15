@@ -11,7 +11,8 @@ public sealed record HermesSettings(string? Address, IReadOnlyList<HermesProfile
     public static HermesSettings Empty { get; } = new(null, []);
     public bool Configured => HermesClient.ParseBase(Address) is not null && Profiles.Count > 0;
 }
-public sealed record HermesProfileSetting(string Name, string Key);
+/// <summary>A profile: its name in Hermes, its key, and the thread's name when the owner gave it one (null: <see cref="HermesBackend.DefaultTitle"/>).</summary>
+public sealed record HermesProfileSetting(string Name, string Key, string? Title = null);
 
 /// <summary>One message of a thread as the server keeps it: Hermes holds no history this side can read back.</summary>
 public sealed record HermesStoredMessage(string Id, DateTimeOffset At, bool Outgoing, string? Text,

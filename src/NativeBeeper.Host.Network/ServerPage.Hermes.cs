@@ -41,14 +41,13 @@ internal sealed partial class ServerPage
 
     private static bool HermesWarns(string status) => status is "unreachable" or "key_rejected" or "no_profile";
 
-    // What a profile is called on the page, as its thread is titled: the model Hermes names for it, "Hermes" for the default profile (whose model Hermes calls
-    // hermes-agent), otherwise the profile's name; and the profile's name under it when that differs.
-    private static (string Name, string? Under) HermesNames(HermesAgentState agent)
-    {
-        var name = agent.Title is { Length: > 0 } title and not "hermes-agent" ? title
-            : agent.Name == NativeBeeper.App.Services.Hermes.HermesClient.DefaultProfile ? "Hermes" : agent.Name;
-        return (name, name == agent.Name ? null : "Profile " + agent.Name);
-    }
+    // What a profile is called on the page, as its thread is titled (the name given here, else Hermes Agent's own), with the profile's name under it.
+    private static (string Name, string? Under) HermesNames(HermesAgentState agent) =>
+        (agent.Title is { Length: > 0 } title ? title : NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(agent.Name), "Profile " + agent.Name);
+
+    // The name given here, or blank when the thread goes by the default.
+    private static string HermesGivenTitle(HermesAgentState agent) =>
+        agent.Title is { Length: > 0 } title && title != NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(agent.Name) ? title : "";
 
     // The line in Accounts: how many profiles, and how the worst of them stands.
     private void HermesLine(StringBuilder body)
@@ -91,13 +90,13 @@ internal sealed partial class ServerPage
             var (name, under) = HermesNames(agent);
             body.Append(Row(name, under, HermesWord(agent.Status), null, warn: HermesWarns(agent.Status)));
         }
-        body.Append("</div><div class=\"box\">").Append(Row("Change Hermes", "The address, the profiles and their API keys.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
+        body.Append("</div><div class=\"box\">").Append(Row("Change Hermes", "The address, the profiles, their API keys and conversation names.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
             .Append("</div></section>");
         return state.Agents.Any(agent => agent.Status == "unchecked");
     }
 
-    // One profile row of the form as typed or saved: its name, and whether a key is saved for it (shown only as a placeholder).
-    private sealed record HermesRow(string Name, bool Saved);
+    // One profile row of the form as typed or saved: its name, whether a key is saved for it (shown only as a placeholder), and the conversation's name given here.
+    private sealed record HermesRow(string Name, bool Saved, string Title = "");
 
     private string HermesForm(string token, string? problem, string? address, IReadOnlyList<HermesRow> rows)
     {
@@ -113,22 +112,30 @@ internal sealed partial class ServerPage
         var index = 0;
         foreach (var row in rows)
         {
-            Profile(index++, row.Name, row.Saved, existing: true);
+            Profile(index++, row.Name, row.Saved, row.Title, existing: true);
         }
         // A blank row to add one; with nothing set up yet, the first is Hermes's own default profile.
-        Profile(index, rows.Count == 0 ? NativeBeeper.App.Services.Hermes.HermesClient.DefaultProfile : "", false, existing: false);
+        Profile(index, rows.Count == 0 ? NativeBeeper.App.Services.Hermes.HermesClient.DefaultProfile : "", false, "", existing: false);
         body.Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
             .Append("<button type=\"submit\">Save</button><a class=\"cancel\" href=\"/manage/hermes\">Cancel</a></form>");
         return body.Append("</section>").ToString();
 
-        void Profile(int i, string name, bool saved, bool existing)
+        void Profile(int i, string name, bool saved, string title, bool existing)
         {
             body.Append("<fieldset class=\"hp\"><legend>").Append(existing ? "Profile" : "Add a profile").Append("</legend>")
                 .Append("<label for=\"name-").Append(i).Append("\">Profile name</label><input id=\"name-").Append(i).Append("\" name=\"name-").Append(i)
                 .Append("\" type=\"text\" value=\"").Append(Html(name)).Append("\" autocomplete=\"off\" spellcheck=\"false\">")
                 .Append("<label for=\"key-").Append(i).Append("\">API key</label><input id=\"key-").Append(i).Append("\" name=\"key-").Append(i)
                 // new-password: a browser must not offer the page's own password here.
-                .Append("\" type=\"password\" autocomplete=\"new-password\"").Append(saved ? " placeholder=\"Saved. Leave blank to keep it.\"" : "").Append('>');
+                .Append("\" type=\"password\" autocomplete=\"new-password\"").Append(saved ? " placeholder=\"Saved. Leave blank to keep it.\"" : "").Append('>')
+                // Optional: a profile name is lowercase with no spaces, so the conversation can go by another. Blank keeps Hermes Agent's own name, shown as the placeholder.
+                .Append("<label for=\"title-").Append(i).Append("\">Conversation name (optional)</label><input id=\"title-").Append(i).Append("\" name=\"title-").Append(i)
+                .Append("\" type=\"text\" value=\"").Append(Html(title)).Append("\" maxlength=\"").Append(NativeBeeper.App.Services.Hermes.HermesBackend.MaxTitleLength)
+                .Append("\" autocomplete=\"off\"");
+            var profile = name.Trim().ToLowerInvariant();
+            if (NativeBeeper.App.Services.Hermes.HermesClient.ValidProfile(profile))
+                body.Append(" placeholder=\"").Append(Html(NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(profile))).Append('"');
+            body.Append('>');
             if (existing) body.Append("<label class=\"check\"><input type=\"checkbox\" name=\"remove-").Append(i).Append("\" value=\"yes\">Remove this profile</label>");
             body.Append("</fieldset>");
         }
@@ -143,7 +150,7 @@ internal sealed partial class ServerPage
         if (form is null)
         {
             await PageAsync(context, StatusCodes.Status200OK, title,
-                HermesForm(token, null, state.Address, [.. state.Agents.Select(agent => new HermesRow(agent.Name, agent.HasKey))])).ConfigureAwait(false);
+                HermesForm(token, null, state.Address, [.. state.Agents.Select(agent => new HermesRow(agent.Name, agent.HasKey, HermesGivenTitle(agent)))])).ConfigureAwait(false);
             return;
         }
         // What was typed, keys aside, so a refused form comes back as it was sent.
@@ -155,14 +162,16 @@ internal sealed partial class ServerPage
             if (form["remove-" + i] == "yes") continue;
             var name = form["name-" + i].ToString().Trim();
             var key = form["key-" + i].ToString();
+            var given = form["title-" + i].ToString().Trim();
             if (name.Length == 0)
             {
                 nameless |= key.Trim().Length > 0;
                 continue;
             }
-            profiles.Add(new(name, string.IsNullOrWhiteSpace(key) ? null : key));
+            // The field always sends its name, blank included, so clearing it goes back to the default rather than keeping the saved one.
+            profiles.Add(new(name, string.IsNullOrWhiteSpace(key) ? null : key, given));
         }
-        string Ask(string? problem) => HermesForm(token, problem, address, [.. profiles.Select(profile => new HermesRow(profile.Name, Saved(profile.Name.ToLowerInvariant())))]);
+        string Ask(string? problem) => HermesForm(token, problem, address, [.. profiles.Select(profile => new HermesRow(profile.Name, Saved(profile.Name.ToLowerInvariant()), profile.Title ?? ""))]);
         if (nameless)
         {
             await PageAsync(context, StatusCodes.Status400BadRequest, title, Ask("Enter a profile name for each API key.")).ConfigureAwait(false);
