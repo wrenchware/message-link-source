@@ -42,9 +42,9 @@ public static class HermesThreads
         _ => "Checking",
     };
 
-    /// <summary>The name a profile goes by: its title from Hermes, else "Hermes" for the default profile and the profile's own name otherwise.</summary>
+    /// <summary>The name a profile goes by: the title its host gives, else "Hermes Agent", or "Hermes Agent - &lt;profile&gt;" for any other profile.</summary>
     public static string Title(HermesAgentState agent) =>
-        agent.Title is { Length: > 0 } title ? title : agent.Name == "default" ? "Hermes" : agent.Name;
+        agent.Title is { Length: > 0 } title ? title : agent.Name == "default" ? "Hermes Agent" : "Hermes Agent - " + agent.Name;
 
     /// <summary>
     /// What the conversation says while someone is typing. A participant's status (Hermes: the tool it is using) is said in place of the typing

@@ -77,7 +77,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
     private bool Has(string profile) => settings.Profiles.Any(p => p.Name == profile);
 
     public HermesAccountState State => new(settings.Address,
-        [.. settings.Profiles.Select(p => new HermesAgentState(p.Name, Title(p.Name, statuses.TryGetValue(p.Name, out var s) ? s.Title : null), Word(p.Name), p.Key.Length > 0))],
+        [.. settings.Profiles.Select(p => new HermesAgentState(p.Name, Title(p.Name), Word(p.Name), p.Key.Length > 0))],
         CanConfigure: true);
 
     private readonly object loading = new();
@@ -564,9 +564,8 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
     private void Typing(string chatId, string? status, bool stopped)
     {
         var profile = HermesIds.ProfileOf(chatId)!;
-        var title = statuses.TryGetValue(profile, out var known) ? known.Title : null;
         typing.Writer.TryWrite(new(chatId, stopped ? [] :
-            [new(AgentId(profile), Title(profile, title), clock.GetUtcNow().AddMinutes(2), status)]));
+            [new(AgentId(profile), Title(profile), clock.GetUtcNow().AddMinutes(2), status)]));
     }
 
     // ---- the realtime feed and the checks ----
@@ -679,8 +678,9 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
     private static string AgentId(string profile) => HermesIds.Chat(profile) + ":agent";
     private static string SelfId(string profile) => HermesIds.Chat(profile) + ":me";
 
-    private static string Title(string profile, string? model) =>
-        model is { Length: > 0 } and not "hermes-agent" ? model : profile == HermesClient.DefaultProfile ? "Hermes" : profile;
+    // "Hermes Agent", or "Hermes Agent - <profile>" for any other profile (owner, 2026-11-15): one name the list sorts together and a person can
+    // rename here. The model Hermes reports stays out of it; a model id read like a code, not a conversation.
+    internal static string Title(string profile) => profile == HermesClient.DefaultProfile ? "Hermes Agent" : "Hermes Agent - " + profile;
 
     private static string Profile(string chatId) => HermesIds.ProfileOf(chatId) is { } profile && HermesClient.ValidProfile(profile) ? profile
         : throw new BackendException(BackendFailure.Unsupported, "That isn't a Hermes conversation.");
@@ -689,7 +689,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
     {
         if (!Has(profile)) throw new BackendException(BackendFailure.Unavailable, "This Hermes profile isn't set up.");
         var thread = Thread(profile);
-        var title = Title(profile, statuses.TryGetValue(profile, out var s) ? s.Title : null);
+        var title = Title(profile);
         var last = thread.Messages.LastOrDefault();
         var unread = thread.Messages.Count(m => !m.Outgoing && m.Kind == "message" && m.State != "streaming" && (thread.ReadUpTo is null || m.At > thread.ReadUpTo));
         var chatId = HermesIds.Chat(profile);
@@ -708,7 +708,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         // The shared words every client reads: SUCCESS is Sent, FAILED is Failed.
         var sendState = !message.Outgoing ? null : message.State switch { "failed" => "FAILED", "unknown" => null, _ => "SUCCESS" };
         return new(message.Id, chatId, message.Outgoing ? SelfId(profile) : AgentId(profile),
-            message.Outgoing ? null : Title(profile, statuses.TryGetValue(profile, out var s) ? s.Title : null),
+            message.Outgoing ? null : Title(profile),
             message.At, message.At.UtcTicks.ToString("D19"), message.Text, type, message.Outgoing, false, false, null, null, attachments, [],
             new MessageDelivery(sendState, null, null, null, new Dictionary<string, bool?>()));
     }
