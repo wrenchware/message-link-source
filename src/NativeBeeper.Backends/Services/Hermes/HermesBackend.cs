@@ -121,6 +121,8 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Moved before anything changes: an answer made with the old settings that lands meanwhile (during the save) is not taken for the new ones.
+            Interlocked.Increment(ref generation);
             var addressChanged = settings.Address != next.Address;
             removed = [.. settings.Profiles.Select(p => p.Name).Except(kept.Select(p => p.Name))];
             added = [.. kept.Select(p => p.Name).Except(settings.Profiles.Select(p => p.Name))];
@@ -130,7 +132,6 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             foreach (var gone in removed) statuses.TryRemove(gone, out _);
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
             settings = next;
-            Interlocked.Increment(ref generation);
             try { Volatile.Read(ref checking)?.Cancel(); } catch (ObjectDisposedException) { }
             foreach (var name in added)
                 if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) ?? NewThread(name);
@@ -656,10 +657,40 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         if (before?.Word == word && before.Title == status.Title) return;
         log($"hermes profile state={word} profile={Tag(profile)} was={before?.Word ?? "unchecked"}");
         var chatId = HermesIds.Chat(profile);
+        if (word == "connected") _ = GreetAsync(profile, chatId, generation >= 0 ? generation : Volatile.Read(ref this.generation));
         // No Connected, Disconnected or AuthenticationRequired event: a client reads those as a service connection (a sign-in banner, a phone's full
         // re-read on catch-up). How a profile stands travels in the host's state (HermesAccountState) and, when a turn fails, as a line in its thread.
         realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
         Raise();
+    }
+
+    // A profile's first answer, while its thread is still empty, leaves a line of ours there, so the conversation has an activity and comes to the top of every
+    // client's list (owner, 2026-11-15: an empty one sorted last, found only by filtering). Saved in the thread, so it happens once: a restart's first check finds
+    // the line, and a send or a new conversation fills the thread first. No Hermes turn is spent on it.
+    internal const string Greeting = "Connected to Hermes.";
+
+    // Settings saved since the answer (a new key or address, never yet answered) make it not this profile's first answer any more: checked again under the
+    // gate, which a save holds (code review, 2026-11-15).
+    private async Task GreetAsync(string profile, string chatId, int generation)
+    {
+        try
+        {
+            HermesStoredMessage note;
+            await gate.WaitAsync(stop.Token).ConfigureAwait(false);
+            try
+            {
+                if (generation != Volatile.Read(ref this.generation) || !Has(profile) || Thread(profile).Messages.Count > 0) return;
+                note = new(NewMessageId(profile), clock.GetUtcNow(), false, Greeting, Kind: "note", State: "done");
+                threads[profile] = Thread(profile) with { Messages = [note], ReadUpTo = note.At };
+                await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
+            }
+            finally { gate.Release(); }
+            log($"hermes greeted profile={Tag(profile)}");
+            realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [note.Id], false, clock.GetUtcNow()));
+            realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException) { log($"hermes greet failed error={failure.GetType().Name}"); }
+        catch (OperationCanceledException) { }
     }
 
     private void Raise()

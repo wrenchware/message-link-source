@@ -1530,7 +1530,7 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
                         if (pages >= most) done = true;
                     }
                     foreach (var row in stretch) listed[row.Id] = row;
-                    changed += await StoreRowsAsync(stretch, cancellationToken).ConfigureAwait(false);
+                    changed += await StoreRowsAsync(stretch, cancellationToken, announceIf: rowsDue.ContainsKey).ConfigureAwait(false);
                     if (whole)
                     {
                         var answered = rows.Keys.Select(Service).ToHashSet(StringComparer.Ordinal);
@@ -1560,16 +1560,18 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
 
     // Keeps rows as built, and with [announce] puts each that changed in the event sequence for clients of 25 (EventKinds.Row): what a row did by itself (its
     // copy moved, an event named it) reaches a connected client's list with no read. A whole read of the list announces nothing (on the first after this
-    // version it changes every row, which would push real events out of the ring); clients take those from the feed when they next read it.
-    private async Task<int> StoreRowsAsync(IReadOnlyList<ChatSummary> rows, CancellationToken cancellationToken, bool announce = false)
+    // version it changes every row, which would push real events out of the ring); clients take those from the feed when they next read it. Except a row an
+    // event is waiting to build ([announceIf]): the read wrote what the event changed, so the event's own pass found nothing changed and no row event went out
+    // (a Hermes reply during the server's first list read, 2026-11-15; the apps also read the row again on the realtime event, so their lists still moved).
+    private async Task<int> StoreRowsAsync(IReadOnlyList<ChatSummary> rows, CancellationToken cancellationToken, bool announce = false, Func<string, bool>? announceIf = null)
     {
         if (rows.Count == 0) return 0;
         var built = new Dictionary<string, ChatSummary>(StringComparer.Ordinal);
         foreach (var row in rows) built[row.Id] = await BuildRowAsync(row, cancellationToken).ConfigureAwait(false);
         var changed = await db.WriteRowsAsync([.. built.Values.Select(row => new HistoryListRow(row.Id, JsonSerializer.SerializeToUtf8Bytes(row, ProtocolJson.Options)))],
             cancellationToken).ConfigureAwait(false);
-        if (announce && events is { } sequence)
-            foreach (var row in changed) sequence.AppendRow(new(row.ChatId, built.GetValueOrDefault(row.ChatId)));
+        if ((announce || announceIf is not null) && events is { } sequence)
+            foreach (var row in changed.Where(row => announce || announceIf!(row.ChatId))) sequence.AppendRow(new(row.ChatId, built.GetValueOrDefault(row.ChatId)));
         return changed.Count;
     }
 
