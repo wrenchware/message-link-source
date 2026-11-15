@@ -69,7 +69,7 @@ public static class TourSteps
             "with a prompt. Try `/help` and `/chats`. Only what you type as a message is ever sent.", null, "the-chat-console"),
         new("done", "That's the tour",
             "<kbd>F1</kbd> opens the full guide, searchable, from anywhere in Message Link. You can take this tour again from " +
-            "**More options → Take the tour**.", null, "getting-help"),
+            "**More options → Quick tour**.", null, "getting-help"),
     ];
 
     /// <summary>The stops for this copy: the account stop only before any account is connected.</summary>

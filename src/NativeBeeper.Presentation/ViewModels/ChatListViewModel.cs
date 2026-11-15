@@ -219,8 +219,12 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
     [RelayCommand(CanExecute = nameof(CanLoad))]
     private Task RefreshAsync() => LoadAsync(true, announce: false);
     public Task RefreshChosenAsync() => IsBusy ? Task.CompletedTask : LoadAsync(true);
+    // A service that hands back a page it already gave has nothing more to give from where paging stands, so Load more
+    // conversations then starts again from the newest page. That was the "Refresh to try again" the menu's Refresh
+    // conversations answered before it moved to Commands (2026-11-14).
+    private bool restartPaging;
     [RelayCommand(CanExecute = nameof(CanLoadMore))]
-    private Task LoadMoreAsync() => LoadAsync(false);
+    private Task LoadMoreAsync() => LoadAsync(restartPaging);
 
     // announce: whether the list says it is loading. A refresh somebody asked for should; one the app decided to
     // do on its own should not — the bar appearing over a conversation list nobody touched reads as something being
@@ -271,7 +275,7 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
             // What each row already says, for KeepKnownPreview: a refresh empties the list before adding the page back.
             var known = new Dictionary<string, ChatSummary>(StringComparer.Ordinal);
             foreach (var chat in loaded) known.TryAdd(chat.Id, chat);
-            if (refresh) { ReplaceLoaded(PartialChatPages.Preserve(loaded, page).ToArray()); cursors.Clear(); }
+            if (refresh) { ReplaceLoaded(PartialChatPages.Preserve(loaded, page).ToArray()); cursors.Clear(); restartPaging = false; }
             foreach (var chat in WithoutHeldRemovals(page.Items))
             {
                 var index = loaded.FindIndex(c => c.Id == chat.Id);
@@ -280,13 +284,14 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
             }
             var repeated = page.HasMore && (page.OldestCursor is null || !cursors.Add(page.OldestCursor));
             cursor = page.OldestCursor;
-            HasMore = page.HasMore && !repeated && loaded.Count < 2000;
+            restartPaging = repeated;
+            HasMore = page.HasMore && loaded.Count < 2000;
             Rebuild();
             await ClaimUnownedDraftsAsync();
             if (page.Warning is { Length: > 0 }) Status = page.Warning;
             _ = FillMissingPreviewsAsync(token);
-            if (repeated) Status = "Couldn't load more conversations. Refresh to try again.";
-            else if (loaded.Count >= 2000) Advisory("Showing 2,000 loaded conversations. Refresh to return to recent chats.");
+            if (repeated && HasMore) Status = "Couldn't load more conversations. Choose Load more conversations to try again.";
+            else if (loaded.Count >= 2000) Advisory("Showing the 2,000 most recent conversations.");
             await SaveLoadedAsync();
         }
         catch (OperationCanceledException) { }
@@ -601,7 +606,7 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
         if (heldUnreadChatId is { } held && matches(held)) heldUnreadChatId = null;
         if (heldDraftChatId is { } heldDraft && matches(heldDraft)) heldDraftChatId = null;
         foreach (var id in typingTexts.Keys.Where(matches).ToArray()) typingTexts.Remove(id);
-        cursors.Clear(); cursor = null; HasMore = false;
+        cursors.Clear(); cursor = null; HasMore = false; restartPaging = false;
         Rebuild();
         SaveLoadedSoon();
         return removed;
@@ -649,7 +654,7 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
         if (page is not null)
         {
             var retained = PartialChatPages.Preserve(loaded, page).ToArray();
-            ReplaceLoaded(page.Items.Concat(retained).DistinctBy(chat => chat.Id).ToArray()); cursors.Clear(); cursor = page.OldestCursor;
+            ReplaceLoaded(page.Items.Concat(retained).DistinctBy(chat => chat.Id).ToArray()); cursors.Clear(); restartPaging = false; cursor = page.OldestCursor;
             if (cursor is not null) cursors.Add(cursor);
             HasMore = page.HasMore && cursor is not null;
         }

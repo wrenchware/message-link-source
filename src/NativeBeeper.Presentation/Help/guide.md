@@ -2,7 +2,7 @@
 
 Everything Message Link does, from the first sign-in to the last keyboard shortcut. Use the contents on the left, or search: every word in every chapter is searchable. Press <kbd>F1</kbd> anywhere in Message Link to come back here.
 
-> **Tip:** New to Message Link? The two-minute tour points out what's easy to miss. Choose **Take the tour** under the contents, or **More options → Take the tour** in the main window.
+> **Tip:** New to Message Link? The two-minute tour points out what's easy to miss. Choose **Take a tour** under the contents, or **More options → Quick tour** in the main window.
 
 ## 1. Getting started {#basics}
 
@@ -21,7 +21,7 @@ It is a real Windows app, not a web page wrapped in a window. A browser window a
 - **The filters** sit above the list: a view (Messages, Unread, Archive, Spam, Drafts), the services, and your labels. See [Narrowing the list](#filters-and-views).
 - **The conversation** is on the right, with the message box at the bottom.
 - **The search box** is in the title bar (<kbd>Ctrl+E</kbd>), with **Back** and **Forward** buttons beside it. In a very narrow window it becomes a magnifier button that opens the box.
-- **More options** (⋯) above the list has Search messages, Commands, Refresh conversations, the Help guide, the tour, the keyboard shortcuts and Settings. **New chat** is next to it.
+- **More options** (⋯) above the list has Search messages, Commands, the Help guide, the tour, the keyboard shortcuts and Settings. **New chat** is next to it.
 
 In a narrow window (under 800 pixels wide) Message Link shows one pane at a time, the list or the conversation, with a **Back to conversations** button. You can also collapse the list to a strip of photos: see [Compact list](#compact-list).
 
@@ -58,7 +58,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
   - A different theme takes effect when Message Link restarts, so Message Link restarts by itself as the steps finish; the last step says so beside **Done**.
   - The steps are shown once, and every choice is also in Settings.
   - A Google Voice account added later starts with the default sound; change it in Settings → Notifications → Sounds and privacy.
-- **The tour** is offered once: after your first account connects, the setup pages are done and your conversations are on screen, or while you look around the sample conversations. It never runs over the welcome. **Not now** skips it; you can take it any time from **More options → Take the tour**, the command palette, Settings → About, or this guide.
+- **The tour** is offered once: after your first account connects, the setup pages are done and your conversations are on screen, or while you look around the sample conversations. It never runs over the welcome. **Not now** skips it; you can take it any time from **More options → Quick tour**, the command palette, Settings → About, or this guide.
 - **Closing the window** the first time leaves Message Link running in the system tray, and a quiet notification says so: "Message Link is still running." Choose **Quit Message Link** from the tray icon to exit.
 - **If Message Link closed unexpectedly** last time, a notice says so with **Save logs**, in case you want to send them to whoever helps you.
 
@@ -75,7 +75,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 
 - <kbd>F1</kbd> opens this guide from the main window or the chat console. Search it with the box above the contents (<kbd>Ctrl+F</kbd> or <kbd>Ctrl+E</kbd> there), and go back to the previous chapter with <kbd>Alt+Left</kbd>.
 - <kbd>Ctrl+/</kbd> lists the keyboard shortcuts, with a few mouse tricks.
-- **More options → Take the tour** replays the tour.
+- **More options → Quick tour** replays the tour.
 - [What each service can do](#services) lists what each service can and can't do.
 - In the chat console, `/help` lists commands and `/help command` shows a command's manual page.
 - **Settings → Troubleshooting** has the diagnostic logs and Connection health; see [Troubleshooting](#troubleshooting).
@@ -144,7 +144,7 @@ Press <kbd>Ctrl+/</kbd> any time for the list inside the app. Shortcuts don't ru
 
 - **Search messages**, **Chat console**, **Saved messages**, **New chat**, **Open unread**, and **Quick replies…**
 - **Settings**, and each Settings page by name: *Settings → Connections*, *Notifications*, *Messaging*, *Appearance*, *Startup and tray*, *Storage and backup*, *Troubleshooting*, *About*.
-- **Connection health**, **Show service badges** or **Hide service badges**, **Keyboard shortcuts**, **Help guide** and **Take the tour**.
+- **Connection health**, **Refresh conversations** (the list keeps itself up to date; this reloads it from every service), **Show service badges** or **Hide service badges**, **Keyboard shortcuts**, **Help guide** and **Quick tour**.
 - **Pause notifications for 1 hour**, **Pause notifications until tomorrow morning**, or **Resume notifications** while paused.
 - **Open Instagram in browser**, and the same for Messenger, Google Messages and Google Voice.
 - **New label…** and **Show label: *name*** for each of your labels.
@@ -894,6 +894,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 |---|---|---|
 | **Backup and restore** | Opens Backup. See [Backup](#backup-and-restore) | Off |
 | **Storage** | Shows disk use and clears cached pictures. See [Storage](#storage) | |
+| **Server storage** | On a PC that uses a Message Link Server, opens the server's page to what the server keeps | |
 | **Saved drafts** | How many conversations have unsent text, and **Clear drafts…** | |
 
 ### Troubleshooting {#settings-troubleshooting}
@@ -907,7 +908,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 
 ### About {#settings-about}
 
-- The version, **Help** (**Take the tour** and **Open guide**), and **Licences and source code**.
+- The version, **Help** (**Take a tour** and **Open guide**), and **Licences and source code**.
 - **Support Message Link**: Message Link is free. **Support on Ko-fi** opens a page for an optional donation, which doesn't unlock anything.
 - **Updates**: Message Link from the Microsoft Store downloads its updates from the Store by itself. It installs one while it's in the system tray with nothing being sent, saved, signed in or backed up, then opens again in the tray. **Update ready** shows here once an update has downloaded; **Restart to update** installs it now and opens Message Link again in front.
 
@@ -957,7 +958,7 @@ Choose the folder or network share holding the backup first. The review warns wh
 - **Clear pictures…** removes cached pictures and videos; they download again when next shown, though some older ones may no longer be available from the service.
 - **Saved photos** are the copies kept for saved messages. **Clear saved photos…** removes them without unsaving anything; Clear pictures never touches them.
 
-A PC that uses a Message Link Server lists only what is on the PC, and **See what your server keeps** opens the server's page, which shows the rest.
+A PC that uses a Message Link Server lists only what is on the PC. **Settings → Storage and backup → Server storage** opens the server's page, which shows the rest.
 
 ### Reset Google Messages local data {#google-reset}
 
@@ -971,7 +972,7 @@ Everything is in `%LOCALAPPDATA%\Message Link` on your PC. Uninstalling asks whe
 
 ### Tools {#troubleshooting-tools}
 
-- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source** (Message Link, each service, the run before this one, and Google Messages' sign-in history; on a PC that uses a Message Link Server, the server's logs too). **Following** keeps it live; **Copy**, and **Save all logs…** into one file to send to whoever helps you. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
+- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source**: Message Link and each service, or, on a PC that uses a Message Link Server, the server and each service on it. Only logs that have been written are listed. **This run** and **Previous run** choose between this run's log and the one before it. **Following** keeps it live; **Copy**, and **Save all logs…** into one file to send to whoever helps you. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
 - **Connection health** (also in Commands) shows each service's state, its last activity and last message sent, and how long its connection has been running. **Restart** reconnects from the saved sign-in; it waits for any message still sending and asks before leaving one's outcome unknown. It never pairs again or signs in afresh.
 - **Send test** (Settings → Notifications) checks notifications without contacting anyone.
 - The console's `/diag` and `/status` summarize everything at once.
