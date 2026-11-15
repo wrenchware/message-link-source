@@ -23,12 +23,10 @@ internal sealed partial class ServerPage
 
     private static bool IsHermesPath(string? path) => path is "/hermes";
 
-    // Its own mark, drawn here: the picture the page draws the four services' marks from has none for it.
-    private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><rect width=\"24\" height=\"24\" rx=\"6\" fill=\"#5b4bd1\"/>"
-        + "<path d=\"M5 15.5c2.6-.2 4.6-1.4 6-3.6 1.6-2.4 3.9-3.8 7.5-4.1-1.3 1-2.1 2.1-2.4 3.4 1-.2 1.8-.2 2.6 0-1.6 1.1-3.3 1.8-5 2-1.4 2-3.9 2.8-8.7 2.3z\" fill=\"#fff\"/>"
-        + "<circle cx=\"7.5\" cy=\"9\" r=\"1.6\" fill=\"#fff\"/></svg></span>";
+    // Hermes Agent's own app icon, the sixth picture in the page's sprite (THIRD_PARTY_NOTICES.md).
+    private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";
 
-    private const string HermesStyle = ".ic.hm{background:none}.ic.hm svg{display:block}fieldset.hp{border:1px solid var(--line);border-radius:12px;padding:12px 16px 2px;margin:0 0 14px}"
+    private const string HermesStyle = "fieldset.hp{border:1px solid var(--line);border-radius:12px;padding:12px 16px 2px;margin:0 0 14px}"
         + "fieldset.hp legend{padding:0 6px;font-weight:600}label.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0 0 12px}label.check input{margin:0}";
 
     // A profile's state in the page's words.
