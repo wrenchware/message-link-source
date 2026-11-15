@@ -1,6 +1,10 @@
 namespace NativeBeeper.Core.Services;
 
-public sealed record TypingParticipant(string UserId, string DisplayName, DateTimeOffset ExpiresAt);
+public sealed record TypingParticipant(string UserId, string DisplayName, DateTimeOffset ExpiresAt,
+    // What the other end is doing instead of typing, in a few words, where the service says (Hermes: the tool it is using).
+    // Null is plain typing. Appended, and written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Status = null);
 public sealed record TypingUpdate(string ChatId, IReadOnlyList<TypingParticipant> Participants);
 
 public interface ITypingService

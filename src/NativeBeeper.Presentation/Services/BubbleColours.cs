@@ -5,7 +5,7 @@ namespace NativeBeeper.Presentation.Services;
 // Incoming messages are always the neutral grey. Kept out of the view so every colour the app can draw is checked for
 // readable text offline, rather than discovered in a screenshot. Neutral claims no service and cannot be chosen: it is
 // a linked conversation with service colours off, and a service this table does not know.
-public enum BubbleFamily { GoogleRcs, GoogleSms, GoogleUnknown, Messenger, Instagram, GoogleVoice, Neutral }
+public enum BubbleFamily { GoogleRcs, GoogleSms, GoogleUnknown, Messenger, Instagram, GoogleVoice, Hermes, Neutral }
 
 // Why a family was chosen, so a check can tell a linked conversation's neutral bubble from an unknown service's.
 public enum BubbleReason { GoogleRoute, Service, LinkedNeutral, UnknownService }
@@ -75,6 +75,8 @@ public static class BubbleColours
         BubbleFamily.Messenger => "bright-blue",
         BubbleFamily.Instagram => "purple",
         BubbleFamily.GoogleVoice => "green",
+        // A colour no other service wears by default, carrying white in both themes.
+        BubbleFamily.Hermes => "teal",
         // The route-unknown default, and the fixed neutral colour: the muted blue both had before colours could be chosen.
         _ => "muted-blue"
     };
@@ -107,6 +109,7 @@ public static class BubbleColours
             "Messenger" => new(BubbleFamily.Messenger, BubbleReason.Service),
             "Instagram" => new(BubbleFamily.Instagram, BubbleReason.Service),
             "Google Voice" => new(BubbleFamily.GoogleVoice, BubbleReason.Service),
+            "Hermes" => new(BubbleFamily.Hermes, BubbleReason.Service),
             _ => new(BubbleFamily.Neutral, BubbleReason.UnknownService)
         };
     }

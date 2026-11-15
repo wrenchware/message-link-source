@@ -65,16 +65,20 @@ public sealed class ConsoleTyping(TimeProvider? clock = null, Func<string, bool>
     {
         var now = time.GetUtcNow();
         var shown = Visible;
-        var typists = new List<(string Chat, string Name)>();
+        var typists = new List<(string Chat, string Name, string? Status)>();
         foreach (var (chatId, participants) in current)
         {
             if (shown is not null && !shown(chatId)) continue;
             foreach (var person in participants)
-                if (person.ExpiresAt > now && !typists.Any(t => t.Chat == chatId && t.Name == Display(person))) typists.Add((chatId, Display(person)));
+                if (person.ExpiresAt > now && !typists.Any(t => t.Chat == chatId && t.Name == Display(person)))
+                    typists.Add((chatId, Display(person), string.IsNullOrWhiteSpace(person.Status) ? null : person.Status.Trim()));
         }
         return typists.Count switch
         {
             0 => null,
+            // Hermes says what it is doing ("Using terminal: date -u") in place of typing; without that, it is working, not typing.
+            1 when typists[0].Status is { } status => typists[0].Name + ": " + status + " · " + ServiceScopes.Name(typists[0].Chat),
+            1 when HermesIds.Owns(typists[0].Chat) => typists[0].Name + " is working… · " + ServiceScopes.Name(typists[0].Chat),
             1 => typists[0].Name + " is typing… · " + ServiceScopes.Name(typists[0].Chat),
             2 => typists[0].Name + " and " + typists[1].Name + " are typing…",
             _ => typists.Count.ToString(CultureInfo.CurrentCulture) + " people are typing…"

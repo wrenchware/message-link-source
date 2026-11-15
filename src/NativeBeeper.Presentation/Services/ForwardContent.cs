@@ -25,6 +25,10 @@ public static class ForwardContent
             .Take(AttachmentBatchRules.ItemLimit)];
     }
 
+    // Where Forward and Share may put something: never a Hermes thread (the owner's privacy line, 2026-11-14), which gets only what is typed
+    // or sent in it. Forwarding out of one is the person's own choice and stays.
+    public static bool IsTarget(ChatSummary chat) => !HermesThreads.Is(chat);
+
     // The words that go with them: the message's text as plain text, or none.
     public static string? Text(ChatMessage message) =>
         message.IsDeleted || message.IsHidden || string.IsNullOrWhiteSpace(message.Text) ? null : MessageText.PlainText(message.Text);

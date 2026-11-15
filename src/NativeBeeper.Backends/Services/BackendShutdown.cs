@@ -46,11 +46,13 @@ internal static class BackendShutdown
         var messenger = provider.GetRequiredService<MessengerBackend>();
         var instagram = provider.GetRequiredService<InstagramBackend>();
         var voice = provider.GetRequiredService<GoogleVoiceAccounts>();
+        var hermes = provider.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>();
         var stops = new (string Name, Func<Task> Stop)[]
         {
             ("google", google.StopAsync),
             ("messenger", messenger.ShutdownAsync),
             ("instagram", instagram.CloseAsync),
+            ("hermes", hermes.CloseAsync),
             // Every account at once: one after another, at up to three seconds each, a few accounts would outrun the
             // bound by themselves. Each finishes its protected cookie save before its close completes.
             ("voice", async () =>

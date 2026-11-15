@@ -1633,7 +1633,8 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
         lock (mirrorGate)
         {
             SweepRounds();
-            foreach (var group in rows.Where(row => !row.IsSpam && held.TryGetValue(row.Id, out var chat) && chat.State.Filled && !mirroring.ContainsKey(row.Id))
+            // Not Hermes: its threads live on this server (HermesBackend's own store), so there is no service's copy to compare the history with.
+            foreach (var group in rows.Where(row => !row.IsSpam && !HermesIds.Owns(row.Id) && held.TryGetValue(row.Id, out var chat) && chat.State.Filled && !mirroring.ContainsKey(row.Id))
                          .GroupBy(row => Service(row.Id), StringComparer.Ordinal))
             {
                 if (rounds.ContainsKey(group.Key)) continue;

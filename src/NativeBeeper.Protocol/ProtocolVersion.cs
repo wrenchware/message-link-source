@@ -117,10 +117,17 @@ namespace NativeBeeper.Protocol;
 /// <c>phoneContacts</c> account signal (<see cref="AccountSignals.PhoneContacts"/>). A PC hands the server a new contact, a number for an existing one or a contact's photo,
 /// and a phone with the setting on writes it into its Google account. Additive: a client below 29 never calls them and is never sent the signal (its place in the sequence
 /// counts as sent), and a host answers them as not supported to a connection that negotiated less, which a PC of 29 reads as "no phone saves contacts".</para>
+/// <para>31 (owner, 2026-11-14) adds Hermes Agent, a thread a Hermes profile: <c>HostState.Hermes</c> (the address and each profile's name, title and state, never a key),
+/// the <c>hermes:</c> scope, <c>accounts.hermes.newConversation</c>, <c>accounts.hermes.configure</c> (page-only on a server), <see cref="TypingParticipant.Status"/> (what Hermes is doing while it
+/// works), and the repeats: <c>repeats.create</c>, <c>repeats.cancel</c>, the host-owned <c>repeat:</c> rows and <c>HostLimits.Repeats</c>. Additive: a client below 31 never calls them, is never
+/// given the rows, and a host answers the methods as not supported to it. Such a client still lists a Hermes thread, as a service it does not know; the owner updates
+/// server, PC and phone together (2026-11-12), so no client below 31 is filtered.</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 30;
+    public const int Current = 31;
+    /// <summary>The first version with Hermes (<see cref="ProtocolMethods.AccountsHermesNewConversation"/>, <c>HostState.Hermes</c>) and the repeats (<see cref="ProtocolMethods.RepeatsCreate"/>).</summary>
+    public const int Hermes = 31;
     public const int MultipleAccounts = 30;
     /// <summary>The first version with contacts saved through the phone (<see cref="ProtocolMethods.PhoneContactsOffer"/> and the <c>phoneContacts</c> signal).</summary>
     public const int PhoneContacts = 29;

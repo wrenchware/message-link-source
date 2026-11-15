@@ -20,7 +20,9 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     public bool IsOutgoing => Message.IsOutgoing;
     public bool IsIncoming => !IsOutgoing;
     // A conversation event from the phone (for example switching between SMS and RCS), shown as a centered note.
-    public bool IsSystem => Message.Type == "system";
+    // A Hermes repeat's prompt is drawn the same way, as a small "Scheduled: …" label rather than a bubble the person sent.
+    public bool IsSystem => Message.Type == "system" || IsScheduledPrompt;
+    public bool IsScheduledPrompt => HermesThreads.IsScheduledPrompt(Message);
     public string Body => Message.IsDeleted ? "Message deleted" : NativeBeeper.Presentation.Services.MetaAiMessages.Text(Message) ?? (Message.Attachments.Count == 0 ? $"[{Message.Type ?? "Message"}]" : "");
     // Whether the bubble draws the body: a body that is only the address of the reel card under it is left to the card
     // (SharedLinkPresentation.CardReplacesText). The body itself is unchanged for copying, search and the list preview.
@@ -29,7 +31,8 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         AnswerInBubble;
     // A service's own note arrives as markup: Google's "Link previews are off.<br />Learn more or turn on in <u>Settings</u>."
     // showed its tags. Read as text, the way a bubble reads its body, without the links a note has no use for.
-    public string SystemBody => IsSystem ? EncryptionLineText(NativeBeeper.Presentation.Services.MessageText.PlainText(Body)) : "";
+    public string SystemBody => IsScheduledPrompt ? HermesThreads.ScheduledLabel(Message.Text)
+        : IsSystem ? EncryptionLineText(NativeBeeper.Presentation.Services.MessageText.PlainText(Body)) : "";
     // The line Google adds when a conversation becomes end-to-end encrypted. Its text is the phone's, the same as the
     // line before it ("RCS chat with …" twice, 2026-10-01); Messages for Web draws it as a lock and "Private chat with …".
     public bool IsEncryptionLine => IsSystem && Message.EncryptionSwitch == true;

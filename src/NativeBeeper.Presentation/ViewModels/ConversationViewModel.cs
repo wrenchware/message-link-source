@@ -21,7 +21,7 @@ public sealed record ConversationMember(string Id, string Label, string Network 
     /// <summary>The services in the order the app always lists them; anything else after, in the order given.</summary>
     public static int ServiceOrder(string network) => network switch
     {
-        "Google Messages" => 0, "Messenger" => 1, "Google Voice" => 2, "Instagram" => 3, _ => 4,
+        "Google Messages" => 0, "Messenger" => 1, "Google Voice" => 2, "Instagram" => 3, "Hermes" => 4, _ => 5,
     };
 
     public string DisplayRoute => RouteLabel ?? (Network.Length > 0 ? Network : Label);

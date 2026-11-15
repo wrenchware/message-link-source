@@ -152,8 +152,9 @@ public sealed partial class ConversationViewModel
     }
 
     // Where a card is made by fetching the linked page, which is where Load preview does anything: Google Messages and
-    // Messenger. Instagram and Google Voice make none (MessagingRouter.LoadLinkPreviewsAsync answers them with nothing).
-    private static bool FetchesLinkPages(string chatId) => PrivateReading.Of(chatId) is ReadService.GoogleMessages or ReadService.Messenger;
+    // Messenger. Instagram, Google Voice and Hermes make none (MessagingRouter.LoadLinkPreviewsAsync answers them with nothing).
+    private static bool FetchesLinkPages(string chatId) =>
+        !HermesThreads.Is(chatId) && PrivateReading.Of(chatId) is ReadService.GoogleMessages or ReadService.Messenger;
 
     // A conversation the list files as spam fetches no page for its links as it opens: the fetch tells the sender's site
     // the message was read, and from where. The incoming preload refuses spam for the same reason (GoogleIncomingCards).

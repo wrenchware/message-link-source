@@ -33,19 +33,22 @@ internal sealed class DirectoryRouter(GoogleMessagesBackend google, MessengerBac
     // Instagram ids are account-scoped, so which account is asking is not known here; the backend owns that and
     // refuses an id that is not its own.
     private static bool Instagram(string accountId) => InstagramIdentity.OwnsAny(accountId);
+    // Hermes threads are its profiles, set up in Settings: nobody is found, started or grouped there.
+    private static bool Herm(string accountId) => HermesIds.Owns(accountId);
+    private static Task<T> NotHermes<T>() => Task.FromException<T>(new SendException(false, "Hermes conversations come from its profiles in Settings."));
 
     public Task<ContactOptions> GetContactOptionsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Voice(accountId) ? voice.GetContactOptionsAsync(accountId)
+        => Herm(accountId) ? NotHermes<ContactOptions>() : Voice(accountId) ? voice.GetContactOptionsAsync(accountId)
             : Instagram(accountId) ? InstagramAccount(accountId).GetContactOptionsAsync(accountId, cancellationToken)
             : Mine(accountId) ? Messenger(accountId).GetContactOptionsAsync(accountId, cancellationToken) : Google(accountId).GetContactOptionsAsync(accountId, cancellationToken);
 
     public Task<IReadOnlyList<ContactPerson>> FindContactsAsync(string accountId, string query, CancellationToken cancellationToken = default)
-        => Voice(accountId) ? voice.FindContactsAsync(accountId, query, cancellationToken)
+        => Herm(accountId) ? Task.FromResult<IReadOnlyList<ContactPerson>>([]) : Voice(accountId) ? voice.FindContactsAsync(accountId, query, cancellationToken)
             : Instagram(accountId) ? InstagramAccount(accountId).FindContactsAsync(accountId, query, cancellationToken)
             : Mine(accountId) ? Messenger(accountId).FindContactsAsync(accountId, query, cancellationToken) : Google(accountId).FindContactsAsync(accountId, query, cancellationToken);
 
     public Task<ChatSummary> StartDirectAsync(ContactPerson contact, bool allowInvite, CancellationToken cancellationToken = default)
-        => Voice(contact.AccountId) ? voice.StartDirectAsync(contact)
+        => Herm(contact.AccountId) ? NotHermes<ChatSummary>() : Voice(contact.AccountId) ? voice.StartDirectAsync(contact)
             : Instagram(contact.AccountId) ? InstagramAccount(contact.AccountId).StartDirectAsync(contact, allowInvite, cancellationToken)
             : Mine(contact.AccountId) ? Messenger(contact.AccountId).StartDirectAsync(contact, allowInvite, cancellationToken) : Google(contact.AccountId).StartDirectAsync(contact, allowInvite, cancellationToken);
 
@@ -60,12 +63,12 @@ internal sealed class DirectoryRouter(GoogleMessagesBackend google, MessengerBac
     // Only Google Messages' phone keeps a ranking of who this account writes to most. The others have none that the
     // helpers expose, and unknown is nothing: New chat shows no Frequent section for them.
     public Task<IReadOnlyList<ContactPerson>?> GetFrequentContactsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Voice(accountId) || Instagram(accountId) || Mine(accountId)
+        => Voice(accountId) || Instagram(accountId) || Mine(accountId) || Herm(accountId)
             ? Task.FromResult<IReadOnlyList<ContactPerson>?>(null)
             : Google(accountId).GetFrequentContactsAsync(accountId, cancellationToken);
 
     public ChatSummary? FindDirectChat(ContactPerson contact)
-        => Voice(contact.AccountId) ? voice.FindDirectChat(contact)
+        => Herm(contact.AccountId) ? null : Voice(contact.AccountId) ? voice.FindDirectChat(contact)
             : Instagram(contact.AccountId) ? InstagramAccount(contact.AccountId).FindDirectChat(contact)
             : Mine(contact.AccountId) ? Messenger(contact.AccountId).FindDirectChat(contact) : ((IDirectChatLookup)Google(contact.AccountId)).FindDirectChat(contact);
 
@@ -73,14 +76,15 @@ internal sealed class DirectoryRouter(GoogleMessagesBackend google, MessengerBac
     // one conversation as well as what that service does about groups. Google Voice is the only one that cannot make
     // them: upstream has no call for it at all, and Beeper does not offer it either.
     public Task<GroupOptions> GetGroupOptionsAsync(string accountId, CancellationToken cancellationToken = default)
-        => Voice(accountId)
+        => Herm(accountId) ? Task.FromResult(new GroupOptions(false, "Hermes conversations come from its profiles in Settings."))
+            : Voice(accountId)
             ? Task.FromResult(new GroupOptions(false, "Google Voice group texts can't be started from New chat."))
             : Instagram(accountId) ? InstagramAccount(accountId).GetGroupOptionsAsync(accountId, cancellationToken)
             : Mine(accountId) ? Messenger(accountId).GetGroupOptionsAsync(accountId, cancellationToken)
             : Google(accountId).GetGroupOptionsAsync(accountId, cancellationToken);
 
     public Task<ChatSummary> CreateGroupAsync(string accountId, IReadOnlyList<ContactPerson> people, string title, CancellationToken cancellationToken = default)
-        => Voice(accountId)
+        => Herm(accountId) ? NotHermes<ChatSummary>() : Voice(accountId)
             ? throw new SendException(false, "Google Voice group texts can't be started from New chat.")
             : Instagram(accountId) ? InstagramAccount(accountId).CreateGroupAsync(accountId, people, title, cancellationToken)
             : Mine(accountId) ? Messenger(accountId).CreateGroupAsync(accountId, people, title, cancellationToken)

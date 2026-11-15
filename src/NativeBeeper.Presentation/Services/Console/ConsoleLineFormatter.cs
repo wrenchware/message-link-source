@@ -1,5 +1,6 @@
 using System.Globalization;
 using NativeBeeper.Core.Messaging;
+using NativeBeeper.Core.Services;
 using NativeBeeper.Presentation.ViewModels;
 
 namespace NativeBeeper.Presentation.Services;
@@ -41,6 +42,7 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
         "Messenger" => "Messenger",
         "Instagram" => "Instagram",
         "Google Voice" => "Voice",
+        HermesIds.Network => "Hermes",
         _ => ""
     };
 
@@ -51,6 +53,7 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
         "Messenger" => "messenger",
         "Instagram" => "instagram",
         "Google Voice" => "voice",
+        HermesIds.Network => "hermes",
         _ => "unknown"
     };
 
@@ -139,6 +142,8 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
         kind = ConsoleLineKind.Event;
         switch (entry.Kind)
         {
+            case ActivityKind.Message when HermesNote(entry) is { } note:
+                return note;
             case ActivityKind.Message:
                 if (entry.IsOutgoing)
                 {
@@ -162,7 +167,7 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
             case ActivityKind.Read:
                 return "· " + (entry.IsGroup ? Name(entry.SenderName, null) : Conversation(entry)) + " read your message";
             case ActivityKind.Typing:
-                return "· " + (entry.IsGroup ? Name(entry.SenderName, null) : Conversation(entry)) + " is typing…";
+                return "· " + (entry.IsGroup ? Name(entry.SenderName, null) : Conversation(entry)) + (HermesIds.Owns(entry.ChatId) ? " is working…" : " is typing…");
             case ActivityKind.Call:
                 if (entry.IsOutgoing) return "· Call to " + Conversation(entry);
                 return entry.Detail?.Contains("missed", StringComparison.OrdinalIgnoreCase) == true
@@ -184,6 +189,21 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// A Hermes thread's own lines, dim as events are: a note of ours ("Hermes isn't reachable.") as it is, and the prompt a repeat sent as
+    /// "Scheduled: text" rather than as something you typed. Null for anything else.
+    /// </summary>
+    public static string? HermesNote(ActivityEntry entry)
+    {
+        if (!HermesIds.Owns(entry.ChatId) || entry.Message is not { } message) return null;
+        return message.Type switch
+        {
+            "system" => "· " + Words(message),
+            "scheduled" => "· Scheduled: " + Words(message),
+            _ => null,
+        };
     }
 
     private string Caller(ActivityEntry entry) => entry.IsGroup ? Name(entry.SenderName, entry.ConversationTitle) : Conversation(entry);

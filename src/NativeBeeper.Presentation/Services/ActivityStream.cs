@@ -352,11 +352,12 @@ public sealed class ActivityStream(IMessagePeek peek, IAccessTokenStore tokens, 
         if (change.IsHistory) return;
         // A message from before this session is history, not an arrival, however the event labels it: a reaction, an edit
         // or a link preview on an older message, and every row a history page stores. It is measured as a change instead.
-        if (mayBeNew && IsArrival(message.Timestamp))
+        var hermesLine = HermesLine(change, id, message);
+        if ((mayBeNew || hermesLine) && IsArrival(message.Timestamp))
         {
             recorded.Put(id, true);
             // A system line, a hidden row, a message already taken back or one first seen edited says nothing new.
-            if (message.IsHidden || message.IsDeleted || message.Type == "system" || message.EditedAt is not null) return;
+            if (message.IsHidden || message.IsDeleted || message.Type == "system" && !hermesLine || message.EditedAt is not null) return;
             Count(Counter.Peek);
             Arrival(batch, chatId, chat, message, ActivitySource.Peek, output);
             return;
@@ -368,6 +369,12 @@ public sealed class ActivityStream(IMessagePeek peek, IAccessTokenStore tokens, 
     // A change that may announce a new message: the event says so, and the stream has neither recorded nor seen it.
     private bool MayBeNew(RealtimeEvent change, string id) =>
         !change.IsHistory && !change.ReceiptOnly && change.IsNewMessage != false && !recorded.Contains(id) && copies.Get(id) is null;
+
+    // Hermes announces its own notes and the prompts the server's repeats send as changes, not arrivals, and a reply streams in under one id whose
+    // copy is already held when the change that says it is whole comes: each of those is still a line of its own, once.
+    private bool HermesLine(RealtimeEvent change, string id, ChatMessage message) =>
+        HermesIds.Owns(message.ChatId) && !change.IsHistory && !change.ReceiptOnly && !recorded.Contains(id) &&
+        (message.Type is "system" or "scheduled" || change.IsNewMessage == true && !message.IsOutgoing);
 
     // Sent during this session, after the app launched. Before its connection's since it is backfill, replayed after a
     // reconnect or a resync; before launch it is history, for which the stream has no line.
@@ -415,7 +422,7 @@ public sealed class ActivityStream(IMessagePeek peek, IAccessTokenStore tokens, 
     /// </summary>
     public ActivityEntry? Earlier(ChatSummary chat, ChatMessage message)
     {
-        if (chat.IsSpam || message.IsHidden || message.IsDeleted || message.Type == "system") return null;
+        if (chat.IsSpam || message.IsHidden || message.IsDeleted || message.Type == "system" && !HermesIds.Owns(message.ChatId)) return null;
         var (kind, detail) = KindOf(message);
         return Entry(kind, message.Timestamp, message.ChatId, PlaceOf(message.ChatId), chat,
             Sender(chat, message.SenderId, message.SenderName, message.IsOutgoing), message.IsOutgoing, message, detail, false, ActivitySource.History);

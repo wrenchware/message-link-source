@@ -34,7 +34,7 @@ public static class ConsoleCatalog
         _ => "FUN",
     };
 
-    private static readonly string[] ChatViews = ["all", "unread", "pinned", "muted", "archived", "google", "messenger", "instagram", "voice"];
+    private static readonly string[] ChatViews = ["all", "unread", "pinned", "muted", "archived", "google", "messenger", "voice", "instagram", "hermes"];
     private static readonly string[] TopPages = ["overview", "workers", "queues", "cache", "perf"];
 
     public static IReadOnlyList<ConsoleCommandInfo> All { get; } =
@@ -51,8 +51,8 @@ public static class ConsoleCatalog
             ["/reply m3 see you there", "/reply ^ yes!", "/reply #2 found it"], Sends: true, SeeAlso: ["r", "msgs", "react"],
             Seen: "This sends a real message, quoting theirs, to everyone in that conversation."),
         new("w", "talk", "/w name [text]", "message someone; without text, make them the target",
-            ["name may end in @service (@google, @messenger, @instagram, @voice, @voice:label) when a linked person is on",
-             "several. Quote names with spaces when text follows: /w \"Alex Smith\" hi. A name that only begins a name is",
+            ["name may end in @service (@google, @messenger, @voice, @voice:label, @instagram, @hermes) when a linked person",
+             "is on several. Quote names with spaces when text follows: /w \"Alex Smith\" hi. A name that only begins a name is",
              "offered back rather than sent to."],
             ["/w Lauren running late", "/w \"Alex Smith\"@messenger hi", "/w Mom"], Aliases: ["msg", "query"], Names: true, Sends: true,
             SeeAlso: ["to", "route"]),
@@ -88,6 +88,18 @@ public static class ConsoleCatalog
              "happen; /unsend m7 yes, typed within 60 seconds, does it."],
             ["/unsend m7", "/unsend m7 yes"], SeeAlso: ["delete", "edit"], Acts: true,
             Seen: "It is taken back from everyone in the conversation; they may already have read it."),
+        new("new", "talk", "/new", "start a new conversation with Hermes",
+            ["In a Hermes conversation (the prompt shows it): Hermes starts again without what was said before. The earlier",
+             "messages stay in the scroll, under a New conversation line."],
+            ["/to Hermes", "/new"], SeeAlso: ["repeat", "to"], Acts: true),
+        new("repeat", "talk", "/repeat [days time text|cancel N]", "ask Hermes the same thing on a schedule",
+            ["In a Hermes conversation, on a server: the server sends text to Hermes on those days at that time, in the",
+             "server's time zone, and the answer arrives as a notification. days is daily, weekdays, weekends or days",
+             "such as mon,wed,fri; time is 7:00, 19:30 or 7:30pm. /repeat alone lists this conversation's repeats, numbered;",
+             $"/repeat cancel 2 stops one. Up to {RepeatRequest.MaxRepeats.ToString(System.Globalization.CultureInfo.InvariantCulture)}."],
+            ["/repeat weekdays 7:00 Morning brief", "/repeat mon,wed,fri 6:30pm Plan tomorrow", "/repeat", "/repeat cancel 1"],
+            Options: ["weekdays", "weekends", "daily", "cancel"], SeeAlso: ["new"], Acts: true,
+            Seen: "The server sends it to Hermes by itself at each time, until you cancel it."),
 
         // ---- manage ----
         new("archive", "manage", "/archive name|N|.", "archive a conversation",
@@ -158,7 +170,7 @@ public static class ConsoleCatalog
             ["/history", "/history 48"], Options: ["24", "48", "168", "inputs"], SeeAlso: ["commands"]),
         new("filter", "look", "/filter what", "show only some services or a person",
             ["what is one or more services, person name, muted or all."], ["/filter messenger instagram", "/filter person Lauren", "/filter all"],
-            Options: ["all", "person", "muted", "google", "messenger", "instagram", "voice"], SeeAlso: ["watch", "events"]),
+            Options: ["all", "person", "muted", "google", "messenger", "voice", "instagram", "hermes"], SeeAlso: ["watch", "events"]),
         new("watch", "look", "/watch name|off", "follow one person: the scroll shows only them", ["The same as /filter person name."],
             ["/watch Lauren", "/watch off"], Names: true, Options: ["off"], SeeAlso: ["filter"]),
         new("events", "look", "/events quiet|normal|all", "how chatty the scroll is",
@@ -176,7 +188,7 @@ public static class ConsoleCatalog
         new("perf", "apps", "/perf", "memory, collections, handles and threads", ["/top on its perf page."], ["/perf"]),
         new("chats", "apps", "/chats [view|name]", "browse conversations full-screen",
             ["Up/Down move, Enter or t makes it the target, i inspects, r marks read (asks first), m mutes, / filters,",
-             "Tab changes view, 1-4 picks a service, q returns."],
+             "Tab changes view, 1-5 picks a service, q returns."],
             ["/chats", "/chats unread"], Options: ChatViews, SeeAlso: ["ls", "thread"]),
         new("logs", "apps", "/logs [source]", "live tail of the diagnostic logs",
             ["The server's sanitized logs. Tab changes log, f follows, / greps, g and G jump, c copies."],

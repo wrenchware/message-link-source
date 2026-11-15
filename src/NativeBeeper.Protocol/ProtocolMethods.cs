@@ -161,6 +161,7 @@ public static partial class ProtocolMethods
         .. DeviceEntries(),
         .. SharedStateEntries(),
         .. ScheduledEntries(),
+        .. HermesEntries(),
         .. StateImportEntries(),
         .. AccountMoveEntries(),
         .. HostLogsEntries(),

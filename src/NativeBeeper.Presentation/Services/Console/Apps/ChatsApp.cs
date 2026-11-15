@@ -12,7 +12,7 @@ public sealed class ChatsApp : ConsoleApp
 {
     public static readonly IReadOnlyList<string> Views = ["all", "unread", "pinned", "muted", "archived"];
     private static readonly (string Network, string Word)[] Services =
-        [("Google Messages", "google"), ("Messenger", "messenger"), ("Instagram", "instagram"), ("Google Voice", "voice")];
+        [("Google Messages", "google"), ("Messenger", "messenger"), ("Google Voice", "voice"), ("Instagram", "instagram"), ("Hermes", "hermes")];
 
     private int view;
     private string? service;
@@ -80,7 +80,7 @@ public sealed class ChatsApp : ConsoleApp
         if (key.Kind != ConsoleKeyKind.Char) return false;
         switch (key.Char)
         {
-            case >= '1' and <= '4':
+            case >= '1' and <= '5':
                 var picked = Services[key.Char - '1'].Network;
                 service = service == picked ? null : picked;
                 selected = 0; Reload();
@@ -173,6 +173,6 @@ public sealed class ChatsApp : ConsoleApp
         var body = table.Render(width).Select(row => new ConsoleRow(row.Spans, row.Selected)).ToList();
         if (rows.Count == 0) body.Add(ConsoleRow.Of(Filter.Length > 0 ? $"No conversation matches “{Filter}”." : "Nothing here.", ConsoleTone.Dim));
         return Screen(title, Fill(body, height), ("↑↓", "move"), ("⏎", "target"), ("i", "info"), ("s", "stats"), ("r", "read"),
-            ("m", "mute"), ("/", "filter"), ("Tab", "view"), ("1-4", "service"), ("q", "quit"));
+            ("m", "mute"), ("/", "filter"), ("Tab", "view"), ("1-5", "service"), ("q", "quit"));
     }
 }

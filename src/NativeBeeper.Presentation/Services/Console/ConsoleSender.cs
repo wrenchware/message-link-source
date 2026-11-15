@@ -124,10 +124,10 @@ public sealed class ConsoleSender : IDisposable
     private static string Join(IReadOnlyList<string> items, string last) =>
         items.Count == 1 ? items[0] : string.Join(", ", items.Take(items.Count - 1)) + " " + last + " " + items[^1];
 
-    /// <summary>The word that names a route label after @: google, messenger, instagram, voice or voice:label.</summary>
+    /// <summary>The word that names a route label after @: google, messenger, instagram, voice, voice:label or hermes.</summary>
     public static string ServiceWord(string routeLabel)
     {
-        foreach (var (network, word) in new[] { ("Google Messages", "google"), ("Messenger", "messenger"), ("Instagram", "instagram"), ("Google Voice", "voice") })
+        foreach (var (network, word) in new[] { ("Google Messages", "google"), ("Messenger", "messenger"), ("Instagram", "instagram"), ("Google Voice", "voice"), (HermesIds.Network, "hermes") })
         {
             if (routeLabel == network) return word;
             if (routeLabel.StartsWith(network + " · ", StringComparison.Ordinal))

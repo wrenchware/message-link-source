@@ -66,6 +66,12 @@ public sealed record ConsoleActionResult(ConsoleActionOutcome Outcome, string? M
     public static Task<ConsoleActionResult> NotHere => Task.FromResult(Unavailable);
 }
 
+/// <summary>How a repeat the console asked for ended, with the server's words when it refused, and when the repeat next fires.</summary>
+public sealed record ConsoleRepeatResult(ConsoleActionOutcome Outcome, string? Message = null, DateTimeOffset? NextDue = null)
+{
+    public static readonly ConsoleRepeatResult Unavailable = new(ConsoleActionOutcome.Unavailable);
+}
+
 /// <summary>
 /// What the chat console asks of the program around it: mlink's terminal host, over Message Link Server. Every member is
 /// an explicit user action, a preference, or a read of state the host already holds — never a provider request of the
@@ -150,6 +156,21 @@ public interface IConsoleHost
     Task<ConsoleActionResult> SaveMessageAsync(ChatSummary chat, ChatMessage message) => ConsoleActionResult.NotHere;
     /// <summary>The menu's Remind me: Saved Messages with a time.</summary>
     Task<ConsoleActionResult> RemindAsync(ChatSummary chat, ChatMessage message, DateTimeOffset at) => ConsoleActionResult.NotHere;
+
+    // ---- Hermes (protocol 31): its own threads only ----
+    // Hermes only ever gets what is typed or sent in its own thread, so none of these takes another conversation.
+
+    /// <summary>New conversation: the Hermes thread starts over on a fresh Hermes session, and its scrollback stays.</summary>
+    Task<ConsoleActionResult> NewHermesConversationAsync(string chatId) => ConsoleActionResult.NotHere;
+    /// <summary>Whether this host keeps repeats (a server: HostLimits.Repeats). False: none are offered.</summary>
+    bool KeepsRepeats => false;
+    /// <summary>The repeats the host keeps for a Hermes thread, oldest first: its own rows as this terminal holds them, never a provider read.</summary>
+    Task<IReadOnlyList<RepeatingSend>> RepeatsAsync(string chatId) => Task.FromResult<IReadOnlyList<RepeatingSend>>([]);
+    /// <summary>A new repeat in a Hermes thread: on <paramref name="days"/> (bit 0 Sunday) at <paramref name="minute"/> after midnight in the
+    /// server's time zone. Asked once, never retried.</summary>
+    Task<ConsoleRepeatResult> CreateRepeatAsync(string chatId, string text, int days, int minute) => Task.FromResult(ConsoleRepeatResult.Unavailable);
+    /// <summary>Stops a repeat. Asked once, never retried.</summary>
+    Task<ConsoleRepeatResult> CancelRepeatAsync(string id) => Task.FromResult(ConsoleRepeatResult.Unavailable);
 
     // ---- The console's own preferences ----
 

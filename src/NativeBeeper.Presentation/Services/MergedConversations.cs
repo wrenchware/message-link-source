@@ -59,7 +59,9 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
     public event EventHandler? Changed;
     public static bool IsMerged(string? id) => id?.StartsWith("merged:", StringComparison.Ordinal) == true;
     public static bool IsCall(ChatSummary chat) => chat.IsCallHistory || chat.Network == "Google Voice" && chat.Preview?.CallKind is not null;
-    public static bool CanMerge(ChatSummary chat) => !IsMerged(chat.Id) && chat.MemberChatIds.Count == 0 &&
+    // Never a Hermes thread (the owner's privacy line, 2026-11-14): a merge would show another conversation's words beside its prompts and let one
+    // composer write to both.
+    public static bool CanMerge(ChatSummary chat) => !IsMerged(chat.Id) && chat.MemberChatIds.Count == 0 && !HermesThreads.Is(chat) &&
         // Providers classify direct chats; Google may list the same person under several identities.
         chat.Type == "single" && chat.Participants.Any(p => p.IsSelf != true) && !chat.IsSpam;
     // Whether a conversation is in no merge, without knowing the merges: every way in (CanMerge, a Voice person's other conversations, a call's text

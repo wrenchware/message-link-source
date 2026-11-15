@@ -8,6 +8,7 @@ internal static class ServiceSetup
 {
     public static bool GooglePaired => NativeBeeper.App.Services.GoogleMessages.GoogleSessionProfile.HasSavedSession;
     public static bool OtherThanGoogle => NativeBeeper.App.Services.GoogleVoice.GoogleVoiceAccounts.HasSavedSessions ||
-        NativeBeeper.App.Services.Messenger.MessengerBackend.HasSavedSession || NativeBeeper.App.Services.Instagram.InstagramBackend.AnySavedSession;
+        NativeBeeper.App.Services.Messenger.MessengerBackend.HasSavedSession || NativeBeeper.App.Services.Instagram.InstagramBackend.AnySavedSession ||
+        File.Exists(AppPaths.Combine("Hermes", "settings.protected"));
     public static bool Any => GooglePaired || OtherThanGoogle;
 }

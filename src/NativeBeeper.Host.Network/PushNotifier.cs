@@ -130,7 +130,7 @@ internal sealed class DevicePush(Func<PushSetup?> setupNow, PushRegistry registr
 /// at the service as Messenger reports one unless it was set aside in Messages; a snooze; an Instagram archive kept in Messages, which an arrival lifts) and
 /// MergedConversations (a merge's mute, archive and snooze over its members'). A conversation archived at its service, or a merge, is judged as the inbox
 /// will show it once the arrival returns it there (the host's incoming unarchive, or the client that holds the merge), as the PC judges one its host is
-/// returning. Not for an outgoing, hidden, deleted, edited or system message, spam, a merged row, or one older than a few minutes. A row that cannot be read
+/// returning. Not for an outgoing, hidden, deleted, edited or system message, a Hermes repeat's prompt ("scheduled"), spam, a merged row, or one older than a few minutes. A row that cannot be read
 /// leaves the push to go.</para>
 /// <para><b>Off the log's reading.</b> Pushes wait in one bounded queue for Firebase, each send up to its timeout, so the log is read at its own pace;
 /// one that does not fit is dropped and counted. A resync after the feed opened (this reader fell behind) is logged.</para>
@@ -260,7 +260,7 @@ internal sealed class PushNotifier : IAsyncDisposable
         {
             var message = await messages.ResolveMessageAsync(chatId, id, token).ConfigureAwait(false);
             var now = DateTimeOffset.UtcNow;
-            if (message.ChatId != chatId || message.IsHidden || message.IsDeleted || message.Type == "system" || message.EditedAt is not null ||
+            if (message.ChatId != chatId || message.IsHidden || message.IsDeleted || message.Type is "system" or "scheduled" || message.EditedAt is not null ||
                 message.Timestamp < now - Fresh || message.Timestamp > now.AddMinutes(1)) continue;
             if (message.IsOutgoing)
             {

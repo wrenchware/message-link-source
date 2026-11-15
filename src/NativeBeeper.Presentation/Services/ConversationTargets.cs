@@ -361,7 +361,7 @@ public sealed class ConversationTargets : IDisposable
         message is { IsOutgoing: false, IsDeleted: false, IsHidden: false } && message.Type != "system";
 
     /// <summary>
-    /// The service a word names: google, sms or rcs; messenger or fb; instagram or ig; voice; or voice:label for one
+    /// The service a word names: google, sms or rcs; messenger or fb; instagram or ig; voice; hermes; or voice:label for one
     /// Voice account. A leading @ is allowed. Returns the network, or for one Voice account its route label
     /// ("Google Voice · label"); null when the word names no service.
     /// </summary>
@@ -380,11 +380,12 @@ public sealed class ConversationTargets : IDisposable
             "messenger" or "fb" => "Messenger",
             "instagram" or "ig" => "Instagram",
             "voice" => "Google Voice",
+            "hermes" => "Hermes",
             _ => null
         };
     }
 
-    private static readonly string[] Networks = ["Google Messages", "Messenger", "Instagram", "Google Voice"];
+    private static readonly string[] Networks = ["Google Messages", "Messenger", "Instagram", "Google Voice", "Hermes"];
 
     // A service as given: a service word, a network's own name, or a route label ("Google Voice · Work"), which is what
     // NeedsService offers and so what may come back. Anything else is a service nothing is on.

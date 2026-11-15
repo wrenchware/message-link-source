@@ -76,6 +76,7 @@ public sealed class HostStateCache
     /// <summary>Each account's own change, with the same meaning as that account port's <c>Changed</c>: its snapshot differs, or the host said its conversation list changed.</summary>
     public event EventHandler? MessengerChanged;
     public event EventHandler? InstagramChanged;
+    public event EventHandler? HermesChanged;
     public event EventHandler? GoogleChanged;
     public event EventHandler? VoiceChanged;
 
@@ -176,6 +177,7 @@ public sealed class HostStateCache
         if (previous is null || !MessengerNow(previous).Equals(MessengerNow(next)) || previous.Revisions.Messenger != next.Revisions.Messenger) Raise(MessengerChanged);
         if (previous is null || !InstagramNow(previous).Equals(InstagramNow(next)) || previous.Revisions.Instagram != next.Revisions.Instagram) Raise(InstagramChanged);
         if (previous is null || !GoogleNow(previous).Equals(GoogleNow(next)) || previous.Revisions.Google != next.Revisions.Google) Raise(GoogleChanged);
+        if (previous is null || !string.Equals(HermesJson(previous), HermesJson(next), StringComparison.Ordinal)) Raise(HermesChanged);
         if (previous is null || !previous.Voice.SequenceEqual(next.Voice) || !previous.VoiceKnownKeys.SequenceEqual(next.VoiceKnownKeys, StringComparer.Ordinal)
             || previous.Revisions.Voice != next.Revisions.Voice) Raise(VoiceChanged);
         if (state.Identity is { } identity && (previous?.IdentityJson is not { } before || !string.Equals(before, next.IdentityJson, StringComparison.Ordinal)))
@@ -232,6 +234,9 @@ public sealed class HostStateCache
 
     public MessengerAccountState Messenger => current is { } snapshot ? MessengerNow(snapshot) : NoMessenger;
     public InstagramAccountState Instagram => current is { } snapshot ? InstagramNow(snapshot) : NoInstagram;
+    /// <summary>Hermes as the newest state says it (protocol 31); none from an older host or one that does not run it.</summary>
+    public HermesAccountState Hermes => current?.State.Hermes ?? HermesAccountState.None;
+    private static string HermesJson(Snapshot snapshot) => System.Text.Json.JsonSerializer.Serialize(snapshot.State.Hermes, ProtocolJson.Options);
     public GoogleMessagesAccountState Google => current is { } snapshot ? GoogleNow(snapshot) : NoGoogle;
     public IReadOnlyList<GoogleVoiceAccountState> VoiceAccounts => current?.Voice ?? [];
     public IReadOnlyList<string> VoiceKnownKeys => current?.VoiceKnownKeys ?? [];

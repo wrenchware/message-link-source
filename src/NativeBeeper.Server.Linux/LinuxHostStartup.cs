@@ -65,9 +65,9 @@ internal sealed partial class LinuxHostStartup : IDisposable
         collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<HostClientState>());
         collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<HostClientState>());
         collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading)));
+            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
         collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading)));
+            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
         collection.AddSingleton<IChatReader>(sp => sp.GetRequiredService<MessagingRouter>());
         step.Took("registrations");
         var services = collection.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
@@ -85,8 +85,8 @@ internal sealed partial class LinuxHostStartup : IDisposable
         // helper is connected, at the "nobody looking" pace while no client is (HostClientState), as on Windows. With Google Messages, its feed joins
         // them (LinuxHostStartup.Google.cs).
         var feed = withGoogle is null
-            ? new GatedRealtimeFeed(new CompositeRealtimeFeed(() => false, (ProviderScopes.Messenger, messenger), (ProviderScopes.Instagram, instagram)))
-            : GoogleFeed(google, messenger, instagram, services.GetRequiredService<GoogleVoiceBackend>(), withGoogle.VoiceRuns);
+            ? new GatedRealtimeFeed(new CompositeRealtimeFeed(() => false, (ProviderScopes.Messenger, messenger), (ProviderScopes.Instagram, instagram), (HermesIds.Scope, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())))
+            : GoogleFeed(google, messenger, instagram, services.GetRequiredService<GoogleVoiceBackend>(), withGoogle.VoiceRuns, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>());
         // Both slots exist whenever the host restores, so a client's restore of either waits for (or is answered skipped by) the paced one, never logs in
         // beside it or ahead of the ledger; and Google's too when it runs.
         var restores = !restore ? RestoreOnce.None : withGoogle is null ? new RestoreOnce([RestoreOnce.Messenger, RestoreOnce.Instagram]) : GoogleRestores(withGoogle.VoiceRuns);
@@ -160,7 +160,8 @@ internal sealed partial class LinuxHostStartup : IDisposable
             // Its status to every device, Back up now and its password to the owner (protocol 26).
             Backup: backup,
             // Messenger and Instagram signed in in the server's own Chrome too (protocol 27, SWITCHBOARD.md 10.5), wherever Google's sign-in in it is offered.
-            MetaRemoteSignIn: remoteSignIn.Meta, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: new HelperKeyFileCells(keys.HelperKey)));
+            MetaRemoteSignIn: remoteSignIn.Meta, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: new HelperKeyFileCells(keys.HelperKey),
+            Hermes: services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>()));
         built = host;
         // Each change in how the backup stands is a signal in the host's sequence, so a client of 26 reads the status again.
         backup.Changed += status => host.Services.Events?.AppendSignal(new AccountSignal(AccountSignals.Backup, !status.Stale));

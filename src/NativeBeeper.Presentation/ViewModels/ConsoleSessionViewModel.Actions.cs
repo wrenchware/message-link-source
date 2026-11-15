@@ -34,6 +34,8 @@ public sealed partial class ConsoleSessionViewModel
         {
             case "msgs": await MsgsAsync(act.Ref, act.Rest); return;
             case "delete" or "unsend": await DeleteAsync(act); return;
+            case "new": await HermesNewAsync(); return;
+            case "repeat": await RepeatAsync(act.Rest); return;
             case var verb when ChatVerbs.Contains(verb): await ChatActAsync(verb, act.Ref!, act.Rest); return;
             default: await MessageActAsync(act.Verb, act.Ref!, act.Rest); return;
         }
@@ -109,8 +111,14 @@ public sealed partial class ConsoleSessionViewModel
             spans.AddRange([new ConsoleSpan(title, ConsoleTone.Strong), new ConsoleSpan(" · ", ConsoleTone.Dim),
                 ConsoleSpan.For(ConsoleLineFormatter.Tag(item.Chat.Network), family), new ConsoleSpan(" · " + time + " · ", ConsoleTone.Dim)]);
         else spans.Add(new ConsoleSpan(time + "  ", ConsoleTone.Dim));
-        spans.Add(new ConsoleSpan(sender, message.IsOutgoing ? ConsoleTone.Accent : ConsoleTone.Default));
-        spans.Add(new ConsoleSpan(": " + words));
+        // A Hermes thread's own lines: a note of ours as it is, and the prompt a repeat sent under a small label, both dim.
+        if (HermesIds.Owns(item.Chat.Id) && message.Type is "system" or "scheduled")
+            spans.Add(new ConsoleSpan(message.Type == "scheduled" ? "Scheduled: " + words : words, ConsoleTone.Dim));
+        else
+        {
+            spans.Add(new ConsoleSpan(sender, message.IsOutgoing ? ConsoleTone.Accent : ConsoleTone.Default));
+            spans.Add(new ConsoleSpan(": " + words));
+        }
         if (message.Reactions.Count > 0) spans.Add(new ConsoleSpan("  " + string.Concat(message.Reactions.Select(r => r.Key).Distinct()), ConsoleTone.Dim));
         return new ConsoleOutLine(spans);
     }
@@ -200,6 +208,7 @@ public sealed partial class ConsoleSessionViewModel
     private async Task MessageActAsync(string verb, string typed, string rest)
     {
         if (await MessageAsync(typed) is not { } item) return;
+        if (HermesIds.Owns(item.Chat.Id) && HermesRefusal(verb) is { } notHermes) { Fail(notHermes); return; }
         var provider = ConsoleLineFormatter.Provider(Service(item.Chat));
         switch (verb)
         {
@@ -285,6 +294,7 @@ public sealed partial class ConsoleSessionViewModel
     {
         Command("reply");
         if (await MessageAsync(reply.Ref) is not { } item) return;
+        if (HermesIds.Owns(item.Chat.Id)) { Fail(HermesRefusal("reply")!); return; }
         if (await OptionsAsync(item, "reply to") is not { } options) return;
         var chat = item.Chat;
         if (!options.CanReply) { Fail($"{Service(chat)} can't reply to this message."); return; }
@@ -314,6 +324,7 @@ public sealed partial class ConsoleSessionViewModel
     private async Task ChatActAsync(string verb, string typed, string rest)
     {
         if (Named(typed) is not { } target || target.Members.Count == 0) return;
+        if (IsHermes(target) && HermesRefusal(verb) is { } notHermes) { Fail(notHermes); return; }
         var row = RowOf(target);
         var provider = string.Join("|", target.Networks.Select(ConsoleLineFormatter.Provider).Distinct());
         if (provider.Length == 0) provider = "unknown";
@@ -379,6 +390,7 @@ public sealed partial class ConsoleSessionViewModel
         if (message)
         {
             if (await MessageAsync(typed) is not { } item) return;
+            if (HermesIds.Owns(item.Chat.Id)) { Fail(HermesRefusal(act.Verb)!); return; }
             if (await OptionsAsync(item, act.Verb == "unsend" ? "unsend" : "delete") is not { } options) return;
             var service = Service(item.Chat);
             bool everyone;
@@ -403,6 +415,7 @@ public sealed partial class ConsoleSessionViewModel
         else
         {
             if (Named(typed) is not { } target || target.Members.Count == 0) return;
+            if (IsHermes(target)) { Fail(HermesRefusal("delete_chat")!); return; }
             var row = RowOf(target);
             string? asked;
             try { asked = host.DeleteChatQuestion(row); }

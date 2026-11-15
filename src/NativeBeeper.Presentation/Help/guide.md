@@ -6,12 +6,13 @@ Everything Message Link does, from the first sign-in to the last keyboard shortc
 
 ## 1. Getting started {#basics}
 
-**Message Link** is a native Windows 11 app that puts your texts and chats in one inbox. It connects directly to four services:
+**Message Link** is a native Windows 11 app that puts your texts and chats in one inbox. It connects directly to four services, and to Hermes through a Message Link Server:
 
 - **Google Messages**: your Android phone's texts, MMS and RCS chats.
 - **Messenger**: your Facebook Messenger chats, including end-to-end encrypted ones.
 - **Google Voice**: texts, call history and voicemail, for as many Voice numbers as you add.
 - **Instagram**: your direct messages.
+- **Hermes**: a conversation with each of your Hermes Agent profiles.
 
 It is a real Windows app, not a web page wrapped in a window. A browser window appears only when a service asks you to sign in. It follows Windows' own settings: animations switch off with Windows' *Animation effects*, high contrast uses your system colors, and every button has a name for screen readers.
 
@@ -33,6 +34,7 @@ Open **Settings** (<kbd>Ctrl+,</kbd>). It opens on **Accounts**, where each serv
 - **Messenger**: choose **Connect** and sign in to Facebook in the window that opens, then choose **Done**. Encrypted conversations turn on by themselves after a new sign-in.
 - **Instagram**: choose **Connect** and sign in with your Instagram username and password. *Log in with Facebook* isn't supported.
 - **Google Voice**: choose **Add Google Voice account** and sign in at voice.google.com. Add more numbers with **Add another Google Voice account**; each signs in separately.
+- **Hermes**: on your Message Link Server's page, enter the address of Hermes's API server and each profile's API key. There's no sign-in. See [Hermes](#service-hermes).
 
 On a PC that uses a Message Link Server, you do this on the server's page instead; see [Signing in on the server](#server-sign-in).
 
@@ -656,7 +658,7 @@ The chat console is Message Link in a terminal: every service's messages as one 
 
 Opening a conversation, the tour and pausing notifications are in the Message Link app.
 
-> **Safe:** Only four things send: plain text you type, `/r`, `/reply` and `/w`. They go through the same careful path as the message box. A send is never chained, piped, aliased or repeated by `!!`, and the console never shows you as typing. Once its line has scrolled, a send's outcome is printed on a line of its own: "sent", or a note when it was not sent or its outcome is unknown. Nothing is sent again by itself.
+> **Safe:** Only four things send: plain text you type, `/r`, `/reply` and `/w`. They go through the same careful path as the message box. A send is never chained, piped, aliased or repeated by `!!`, and the console never shows you as typing. Once its line has scrolled, a send's outcome is printed on a line of its own: "sent", or a note when it was not sent or its outcome is unknown. Nothing is sent again by itself, except a repeat you set up with `/repeat`, which the server sends to Hermes at its times until you cancel it.
 
 > **Real people see these:** `/react`, `/like`, `/unreact`, `/reply`, `/edit`, `/unsend` and `/delete` act on real conversations: a reaction, a reply or an edit is seen by everyone in the conversation, and a delete changes your account and can't be undone. Each runs only when you type it on a line of its own, never from a chain, a pipe, an alias or `!!`, and never twice by itself.
 
@@ -672,13 +674,17 @@ Opening a conversation, the tour and pausing notifications are in the Message Li
 |---|---|
 | plain text | Sends to the person the prompt shows |
 | `/r text` | Replies to whoever wrote last. The recipient is fixed the moment you type "/r ", so a new arrival can't steal your reply. `/r` alone makes them the target |
-| `/w name text` | Messages someone (also `/msg`, `/query`). `/w name` alone makes them the target. Add `@google`, `@messenger`, `@instagram`, `@voice` or `@voice:label` to choose a service; quote names with spaces |
+| `/w name text` | Messages someone (also `/msg`, `/query`). `/w name` alone makes them the target. Add `@google`, `@messenger`, `@voice`, `@voice:label`, `@instagram` or `@hermes` to choose a service; quote names with spaces |
 | `/to name` | Chooses who plain text goes to, without sending; `/to off` clears it |
 | `/read name` | Marks a conversation read on the service |
 | `/mute name`, `/unmute name` | Mutes in Message Link |
 | `/reply m3 text` | Replies quoting a message, in that message's conversation; `/reply text` alone is `/r` |
 | `/react m3 👍`, `/like m3`, `/unreact m3` | Reacts to a message (or by name: `/react m3 heart`), likes it with the service's own like (👍, or ❤️ on Instagram), or takes your reaction back |
 | `/edit m3 text`, `/unsend m3` | Changes the words of a message you sent, or removes it for everyone, where the service can |
+| `/new` | In a Hermes conversation: starts a new conversation. Hermes doesn't see what was said before; the earlier messages stay |
+| `/repeat weekdays 7:00 Morning brief` | In a Hermes conversation, on a server: asks Hermes the same thing on those days at that time, in the server's time zone. Days are `daily`, `weekdays`, `weekends` or days such as `mon,wed,fri`; the time is `7:00`, `19:30` or `7:30pm`. `/repeat` alone lists the conversation's repeats, numbered; `/repeat cancel 2` stops one |
+
+In a Hermes conversation, a dim **Scheduled:** line is a prompt a repeat sent, and the status line says what Hermes is doing while it works. Replies to a message, reactions, edits and removing messages aren't offered there.
 
 To send a line that starts with a slash, start it with `//`; one that starts with `!`, start it with `\!`.
 
@@ -791,6 +797,7 @@ Each service's card has a row for each of its accounts, in the same way for ever
 - **Messenger**: **Connect**, **Reconnect**, **Refresh** and **Sign out**. Encrypted conversations turn on by themselves when you sign in, and the card mentions them only if something is wrong. While they're on but their connection isn't, it reads **Connecting**, **Not connected**, **Removed** (Facebook no longer lists this PC) or **Keys missing** (this PC's encrypted-conversation keys are gone; Message Link never adds a Messenger device by itself, so the button to turn encrypted conversations on comes back for you to press), with a line saying what to do. After **Sign out** it reads **Off**: the keys stay, so signing in again uses the same device.
 - **Instagram**: Connect, Reconnect, Refresh and Sign out.
 - **Google Voice**: **Add Google Voice account**, then a row per number with its status and its own **Sign out**.
+- **Hermes**: a row per profile with its status: **Connected**, **Checking**, **Can't reach Hermes**, **Key rejected** or **No such profile**. Hermes is set up on the server's page, where its address and each profile's API key are entered and changed.
 - **Message Link Server** is the first card. Choosing it opens **Connections › Server**, which connects Message Link to a Message Link Server you run yourself; on a PC that already uses one, the card shows the server's address and how it stands. Each account's card opens that service on the server's page in your browser, where accounts are connected and removed. See [Using a Message Link Server](#messages-server).
 - **Contacts** (on a PC that uses a Message Link Server) says which phone saves the people you add with **Add to contacts**, and into which Google account, or that none does yet: turn on **Save contacts from your PC** in Message Link's Settings on your phone.
 
@@ -1006,24 +1013,24 @@ Everything is in `%LOCALAPPDATA%\Message Link` on your PC. Uninstalling asks whe
 
 ### At a glance {#capability-table}
 
-| | Google Messages | Messenger | Google Voice | Instagram |
-|---|---|---|---|---|
-| Text | Yes | Yes | Yes | Yes (up to 8,192 characters) |
-| Photos, GIFs, files | Yes; each photo is its own message | Yes, with albums | Photos only, up to 2 MB (larger ones are shrunk) | Photos; files and video up to 25 MB |
-| Voice messages | Send and play | Send and play | No | Play only |
-| Replies | RCS chats | Yes | No | Yes |
-| Reactions | Yes | Yes (one each) | No | Yes (six emoji) |
-| Edit | No | Yes | No | Your own text |
-| Unsend | No (delete for me only) | Yes | No | Yes (for everyone only) |
-| Read receipts | RCS only | Yes | No ("Sent") | Yes |
-| "New messages" line | No | Yes | No | Yes |
-| Typing | Yes | Yes | No | Yes |
-| New groups | Up to 20 others | Up to 50, not encrypted | No | Up to 32 |
-| Archive | On the service | On the service | On the service | This PC only |
-| Delete a conversation | Yes | Yes | Yes | No |
-| Calls and voicemail | No | No | View, play, save | No |
-| Accounts | One phone | One | Many numbers | One |
-| New messages arrive | At once (phone online) | At once | At once | Within about 20 seconds |
+| | Google Messages | Messenger | Google Voice | Instagram | Hermes |
+|---|---|---|---|---|---|
+| Text | Yes | Yes | Yes | Yes (up to 8,192 characters) | Yes |
+| Photos, GIFs, files | Yes; each photo is its own message | Yes, with albums | Photos only, up to 2 MB (larger ones are shrunk) | Photos; files and video up to 25 MB | Pictures only |
+| Voice messages | Send and play | Send and play | No | Play only | No |
+| Replies | RCS chats | Yes | No | Yes | No |
+| Reactions | Yes | Yes (one each) | No | Yes (six emoji) | No |
+| Edit | No | Yes | No | Your own text | No |
+| Unsend | No (delete for me only) | Yes | No | Yes (for everyone only) | No |
+| Read receipts | RCS only | Yes | No ("Sent") | Yes | No |
+| "New messages" line | No | Yes | No | Yes | No |
+| Typing | Yes | Yes | No | Yes | What Hermes is doing |
+| New groups | Up to 20 others | Up to 50, not encrypted | No | Up to 32 | No |
+| Archive | On the service | On the service | On the service | This PC only | No |
+| Delete a conversation | Yes | Yes | Yes | No | No (New conversation starts over) |
+| Calls and voicemail | No | No | View, play, save | No | No |
+| Accounts | One phone | One | Many numbers | One | One conversation per profile |
+| New messages arrive | At once (phone online) | At once | At once | Within about 20 seconds | As Hermes writes them |
 
 Everywhere: Message Link doesn't place or answer calls, and can rename a group or change its members only in Messenger's ordinary groups. Search can't jump to a result older than a conversation's newest 1,000 messages on Instagram or Google Voice, or in a Google Messages conversation that's still being indexed, though it still finds it. Pins, mutes, labels, unread marks, reminders and names you give conversations stay in Message Link and change nothing in the services or their own apps; devices that use the same server share them. A conversation muted in Messenger's own app shows muted here too, and unmuting it here leaves it muted there.
 
@@ -1053,3 +1060,10 @@ Everywhere: Message Link doesn't place or answer calls, and can rename a group o
 - **Works**: text, photos, files and video, replies, six reactions, editing your own text, unsend for everyone, read receipts, typing in inbox chats, a "New messages" line, received voice messages, GIFs and stickers, people search, new chats (sending a first message where none exists) and groups up to 32.
 - **Doesn't**: message requests (not shown at all: open Instagram to see or accept one, since replying accepts it), archiving on Instagram (archive hides it on this PC), deleting a conversation, taking a chat out of spam, going to a quoted message that isn't loaded yet (scroll up to load it), playing shared reels (they show a preview and a link), recording voice messages, or showing an encryption lock. Spam and requests are never marked read.
 - **Timing**: new messages take up to about 20 seconds, about a minute while Message Link is hidden or the PC is locked, and changes in older conversations up to ten minutes. Nothing that arrived while Message Link was closed is announced as a notification.
+
+### Hermes {#service-hermes}
+
+- **Needs** a Message Link Server that can reach Hermes Agent's API server, and an API key for each Hermes profile you want to talk to. Both are set up on the server's page; there's no sign-in.
+- **Works**: one conversation for each profile, named after the model Hermes uses (or **Hermes**). Replies appear as Hermes writes them, and while it works, the typing line says what it is doing, such as the tool it is using. You can send pictures. **New conversation** starts Hermes again without what was said before; the earlier messages stay. **Repeats** ask Hermes the same thing on a schedule, such as "Weekdays at 7:00, ask: Morning brief": the server sends it at that time, in its own time zone, and the answer arrives as a notification.
+- **Doesn't**: files other than pictures, replying to a message, reactions, editing or removing messages, archiving, deleting the conversation, or Hermes's own scheduled jobs delivering into Message Link (use a repeat). Hermes never reads or sends in your other conversations: it gets only what you type or send in its own conversation, and it can't be a forward target or merged with another conversation.
+- **When it can't answer**: a line in the conversation says so, such as "Hermes isn't reachable." or that it refused the profile's API key, which you change on the server's page.

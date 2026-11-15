@@ -44,7 +44,9 @@ public sealed record ScopeState(string Scope, bool Connected, bool Configured, b
 /// client says in Settings that the server should be reinstalled. False (a host from before the flag, or one with no such Chrome) says nothing.</param>
 public sealed record HostLimits(bool HasLocalActionOptions = false, int MaxFirstMessageLength = 0, int GroupNameMaximum = 0, int AddMaximum = 0, int BatchItemLimit = 0,
     bool GoogleAbsent = false, bool VoiceAbsent = false, bool InstagramAbsent = false, bool UnarchivesChats = false, bool FiresScheduled = false,
-    bool ChromeOutOfDate = false);
+    bool ChromeOutOfDate = false,
+    // Protocol 31: this host keeps and fires repeating sends (repeats.*), Hermes threads only. False: none are offered.
+    bool Repeats = false);
 
 /// <summary>Typing, in aggregate: the flags <c>ITypingService.CanReceive</c> and <c>CanSend</c> answer, which <see cref="TypingProxy"/> reads.</summary>
 public sealed record TypingState(bool CanReceive = false, bool CanSend = false);
@@ -67,7 +69,9 @@ public sealed record AccountRevisions(int Messenger = 0, int Instagram = 0, int 
 /// </param>
 public sealed record HostState(IReadOnlyList<ScopeState> Scopes, MessengerAccountState Messenger, InstagramAccountState Instagram,
     GoogleMessagesAccountState Google, IReadOnlyList<GoogleVoiceAccountState> Voice, IReadOnlyList<string> VoiceKnownKeys, HostLimits Limits,
-    TypingState Typing, AccountRevisions Revisions, HostIdentity? Identity = null);
+    TypingState Typing, AccountRevisions Revisions, HostIdentity? Identity = null,
+    // Protocol 31: Hermes, when the host runs it: the address and each profile's name, title and state. Never a key. Appended.
+    HermesAccountState? Hermes = null);
 
 /// <summary>
 /// Which connection a conversation id or an attachment belongs to, read from the id alone: the one prefix convention the routers
@@ -80,6 +84,7 @@ public static class ProviderScopes
     public const string Google = "google-direct:";
     public const string Messenger = "messenger:";
     public const string Instagram = "instagram:";
+    public const string Hermes = HermesIds.Scope;
     public const string VoicePrefix = "gvoice:";
 
     private const string GoogleMedia = "google-media:", MessengerMedia = "messenger-media:", InstagramMedia = "instagram-media:", VoiceMedia = "gvoice-media:";
@@ -98,6 +103,7 @@ public static class ProviderScopes
             var service = chatId.StartsWith(Instagram, StringComparison.Ordinal) ? Instagram : chatId.StartsWith(Messenger, StringComparison.Ordinal) ? Messenger : chatId.StartsWith(Google, StringComparison.Ordinal) ? Google : null;
             return service is null ? null : new AccountNamespace(slot).Qualify(service);
         }
+        if (chatId.StartsWith(Hermes, StringComparison.Ordinal)) return Hermes;
         if (chatId.StartsWith(Instagram, StringComparison.Ordinal)) return Instagram;
         if (chatId.StartsWith(VoicePrefix, StringComparison.Ordinal)) return VoiceKeyOf(chatId, VoicePrefix) is { } key ? Voice(key) : null;
         return chatId.StartsWith(Messenger, StringComparison.Ordinal) ? Messenger : Google;
@@ -111,6 +117,7 @@ public static class ProviderScopes
     public static string? OfAttachment(MessageAttachment attachment)
     {
         if (attachment.Id is { } id && id.StartsWith(VoiceMedia, StringComparison.Ordinal)) return VoiceKeyOf(id, VoiceMedia) is { } key ? Voice(key) : null;
+        if (Has(attachment, HermesIds.MediaPrefix)) return Hermes;
         if (Has(attachment, InstagramMedia)) return MediaScope(attachment, InstagramMedia, Instagram);
         if (Has(attachment, MessengerMedia)) return MediaScope(attachment, MessengerMedia, Messenger);
         return attachment.Id?.StartsWith(GoogleMedia, StringComparison.Ordinal) == true ? MediaScope(attachment, GoogleMedia, Google) : null;
@@ -129,6 +136,7 @@ public static class ProviderScopes
         Google => GoogleMedia + "probe",
         Messenger => MessengerMedia + "probe",
         Instagram => InstagramMedia + "probe",
+        Hermes => HermesIds.MediaPrefix + "probe",
         _ => VoiceMedia + scope[VoicePrefix.Length..] + "probe",
     };
 

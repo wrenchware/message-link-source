@@ -37,7 +37,7 @@ public abstract record ConsoleCommand
     public sealed record Tool(string Name, string Rest) : ConsoleCommand;
     /// <summary>
     /// A command that acts on a conversation or a message, or reads a conversation's messages: archive, unarchive, pin,
-    /// unpin, unread, delete, unsend, react, unreact, like, edit, copy, save, remind, label, unlabel, snooze and msgs.
+    /// unpin, unread, delete, unsend, react, unreact, like, edit, copy, save, remind, label, unlabel, snooze, msgs, and Hermes's new and repeat.
     /// Verb is the catalogue's word. Ref names the conversation or message as typed (quotes kept, so a name keeps its
     /// spaces); null when none was typed. Rest is what follows it: a reaction, text, a time, a label or a count.
     /// Confirmed: the line ended in "yes", the second step of /delete and /unsend.
@@ -139,6 +139,10 @@ public static class ConsoleCommandParser
                     return new ConsoleCommand.Act("msgs", rest[..space].Trim(), tail);
                 return new ConsoleCommand.Act("msgs", rest);
             }
+            case "new":
+                return rest.Length == 0 ? new ConsoleCommand.Act("new", null) : new ConsoleCommand.Invalid("Use /new on its own, in a Hermes conversation.", "new");
+            case "repeat" or "repeats":
+                return new ConsoleCommand.Act("repeat", null, rest);
             case "grep":
                 return rest.Length == 0 ? new ConsoleCommand.Invalid("Type what to look for in the scroll: /grep words", "grep") : new ConsoleCommand.Tool("grep", rest);
             case "w" or "msg" or "query":
@@ -334,7 +338,7 @@ public static class ConsoleCommandParser
     }
 
     private static ConsoleCommand.Invalid NoService(string word) =>
-        new($"There's no service called “{word}”. Use @google, @messenger, @instagram or @voice.", "w");
+        new($"There's no service called “{word}”. Use @google, @messenger, @voice, @instagram or @hermes.", "w");
 
     /// <summary>A name as typed after a command, split from a trailing @service: "\"Alex Smith\"@fb", "Alex@ig", "Alex".
     /// The name comes back unquoted; the service word is null when none was given or it names no service.</summary>

@@ -171,6 +171,7 @@ internal sealed class NetworkHost : IAsyncDisposable
             page.PasswordGrace = options.PasswordGrace;
             page.DesktopSignIn = options.DesktopSignIn;
             page.DesktopAccountSignIn = options.DesktopAccountSignIn;
+            page.Hermes = options.Hermes;
         }
         devices.Revoked += EndDevice;
         devices.Restored = options.Restored;
@@ -235,7 +236,7 @@ internal sealed class NetworkHost : IAsyncDisposable
     /// <see cref="NetworkHostOptions"/>).
     /// </summary>
     public static Task<NetworkHost> StartAsync(ProtocolHost host, NetworkHostOptions options, CancellationToken cancellationToken = default) =>
-        StartAsync(host.Services, host.Journal, host.Version, options, cancellationToken);
+        StartAsync(host.Services, host.Journal, host.Version, options.Hermes is null && host.HermesSetup is { } hermes ? options with { Hermes = hermes } : options, cancellationToken);
 
     /// <summary>The same, over services and a journal given directly (the harness serves fakes this way).</summary>
     public static async Task<NetworkHost> StartAsync(ProtocolServices services, OperationJournal journal, string version, NetworkHostOptions options,

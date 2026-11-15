@@ -77,9 +77,9 @@ internal sealed partial class HostStartup : IDisposable
         collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<HostClientState>());
         collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<HostClientState>());
         collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading)));
+            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
         collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading)));
+            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
         // The avatar reader AddBackends registers reads chats through the port the window decorates; here nothing decorates it.
         collection.AddSingleton<IChatReader>(sp => sp.GetRequiredService<MessagingRouter>());
         // The renewal's browser is WebView2 on the shell's STA thread, the app's own code (NativeBeeper.Windows.Browser). Building it loads nothing:
@@ -100,7 +100,7 @@ internal sealed partial class HostStartup : IDisposable
         var voice = services.GetRequiredService<GoogleVoiceBackend>();
         step.Took("voice");
         var feed = new GatedRealtimeFeed(new CompositeRealtimeFeed(() => MessagingRouter.GoogleMessagesExpected,
-            ("google-direct:", google), ("messenger:", messenger), ("gvoice:", voice), ("instagram:", instagram)));
+            ("google-direct:", google), ("messenger:", messenger), ("gvoice:", voice), ("instagram:", instagram), (HermesIds.Scope, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
         // The host restores its own accounts only with --restore. The slots exist from here, before the pipe opens, so a client that asks for a restore
         // ahead of the host's own begins waits for it (RestoreOnce).
         var restores = restore ? RestoreOnce.ForAll() : RestoreOnce.None;
@@ -140,7 +140,8 @@ internal sealed partial class HostStartup : IDisposable
             // Every conversation kept whole (SWITCHBOARD.md stage 8, protocol 24), in the server's own folder: the app's in-process host keeps none.
             WholeHistory: new NativeBeeper.Storage.HistoryDatabase(AppPaths.Combine("Server", "history.db"), protector),
             // Its status, accounts and their removal (protocol 20), its logs by name for the page (protocol 18), and its backup (protocol 26), as the Linux host's.
-            Admin: admin, Logs: new HostLogFiles(ServerLogs.Paths(AppPaths.DataRoot)), Backup: backup, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: services.GetRequiredService<IHelperCellUnprotector>()));
+            Admin: admin, Logs: new HostLogFiles(ServerLogs.Paths(AppPaths.DataRoot)), Backup: backup, Accounts: services.GetRequiredService<ProviderAccounts>(), HelperCells: services.GetRequiredService<IHelperCellUnprotector>(),
+            Hermes: services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>()));
         built = host;
         backup.Changed += status => host.Services.Events?.AppendSignal(new AccountSignal(AccountSignals.Backup, !status.Stale));
         backup.CurrentKey = shared.Space.CurrentKeyAsync;

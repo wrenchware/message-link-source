@@ -190,6 +190,8 @@ public static class NewChatDirectory
         foreach (var chat in chats)
         {
             if (chat.Type == "group" || chat.IsArchived || chat.IsSpam || chat.MergedIntoChatId is not null) continue;
+            // Hermes is nobody to start a conversation with or put in a group (the owner's privacy line, 2026-11-14).
+            if (HermesThreads.Is(chat)) continue;
             if (chat.Participants.FirstOrDefault(person => person.IsSelf != true) is not { } person) continue;
             if (string.IsNullOrEmpty(person.Id)) continue;
             var name = string.IsNullOrWhiteSpace(person.DisplayName) ? chat.Title : person.DisplayName;

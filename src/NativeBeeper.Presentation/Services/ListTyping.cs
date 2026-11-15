@@ -88,7 +88,9 @@ public sealed class ListTyping(Func<string, string>? displayId = null, Func<stri
         var people = row.Sources.Values.SelectMany(list => list).DistinctBy(person => person.UserId).ToArray();
         if (people.Length > 0)
         {
-            row.Text = Words(people.Select(person => person.DisplayName).ToArray(), isGroup?.Invoke(id) == true);
+            // A participant's status (Hermes: the tool it is using) says more than "typing…".
+            row.Text = people.Select(person => person.Status?.Trim()).FirstOrDefault(status => !string.IsNullOrEmpty(status))
+                ?? Words(people.Select(person => person.DisplayName).ToArray(), isGroup?.Invoke(id) == true);
             row.LingerUntil = null;
         }
         else if (row.Text is null || row.Arrived) { rows.Remove(id); row.Text = null; }

@@ -9,7 +9,7 @@ using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.App.Services;
 
-// The four providers behind the routers that present them as one. A host registers what it supplies itself first
+// The five providers behind the routers that present them as one. A host registers what it supplies itself first
 // (IStateProtector, IPhotoReencoder, IGoogleBrowser, IAppPresence, IHelperCellUnprotector, the Storage stores; and, if it
 // can play video, IVideoFrameExtractor, without which a video its network sent no still for keeps its play button) and
 // what the routers read from Presentation (ComposerActivity, PrivateReading, SavedPhotos).
@@ -45,6 +45,9 @@ public static class BackendServices
         collection.AddSingleton<IMessengerAccount, MessengerAccount>();
         collection.AddSingleton<InstagramBackend>();
         collection.AddSingleton<IInstagramAccount, InstagramAccountLifecycle>();
+        collection.AddSingleton(sp => new NativeBeeper.App.Services.Hermes.HermesBackend(sp.GetRequiredService<IStateProtector>()));
+        collection.AddSingleton<IHermesAccount>(sp => sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>());
+        collection.AddSingleton<IHermesPrompts>(sp => sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>());
         collection.AddSingleton<ProviderAccounts>();
         collection.AddSingleton<MessagingRouter>();
         collection.AddSingleton<DirectoryRouter>();

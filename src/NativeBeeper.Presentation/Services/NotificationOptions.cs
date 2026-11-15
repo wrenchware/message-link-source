@@ -32,7 +32,7 @@ public sealed record NotificationOptions(IReadOnlySet<string> Off, IReadOnlyDict
     public static string VoiceKey(string accountId) => VoicePrefix + NotificationIdentity.Hash(accountId);
 
     // Only these are ever saved or loaded, which is what keeps a number or an id out of the file.
-    public static bool IsValidKey(string? key) => key is "Google Messages" or "Messenger" or "Instagram" ||
+    public static bool IsValidKey(string? key) => key is "Google Messages" or "Messenger" or "Instagram" or "Hermes" ||
         key is not null && key.Length == VoicePrefix.Length + 64 && key.StartsWith(VoicePrefix, StringComparison.Ordinal) &&
         key.AsSpan(VoicePrefix.Length).IndexOfAnyExcept("0123456789ABCDEF") < 0;
 

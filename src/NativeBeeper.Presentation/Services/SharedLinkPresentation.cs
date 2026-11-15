@@ -173,10 +173,7 @@ public static class SharedLinkPresentation
     // conversation id's prefix is the fallback, which cannot tell two accounts apart and calls anything it does not
     // recognise Google Messages.
     public static string Service(string chatId, string? source) =>
-        !string.IsNullOrWhiteSpace(source) ? source.Trim() :
-        chatId.StartsWith("instagram:", StringComparison.Ordinal) ? "Instagram" :
-        chatId.StartsWith("messenger:", StringComparison.Ordinal) ? "Messenger" :
-        chatId.StartsWith("gvoice:", StringComparison.Ordinal) ? "Google Voice" : "Google Messages";
+        !string.IsNullOrWhiteSpace(source) ? source.Trim() : ServiceScopes.Name(chatId);
 
     public static string Detail(DateTimeOffset at, string service) => $"{at.ToLocalTime():g} · {service}";
 }

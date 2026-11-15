@@ -222,6 +222,8 @@ public static class SharedCategories
     public const string Saved = "saved";
     /// <summary>A custom avatar (slice 8): <c>avatar-v2:&lt;H(profile, "chat:" + id | "contact:" + network + ":" + person)&gt;</c>, a 256 px picture or the choice to use the provider's (LocalAvatarRows).</summary>
     public const string Avatar = "avatar-v2";
+    /// <summary>A repeating scheduled send (protocol 31): <c>repeat:&lt;H(profile, id)&gt;</c>, one <c>RepeatingSend</c> a row, written by the host alone (HostRepeats). Hermes threads only.</summary>
+    public const string Repeat = "repeat";
 
     public static IReadOnlyList<SharedCategory> All { get; } =
     [
@@ -259,6 +261,8 @@ public static class SharedCategories
         // avatars are last writer wins; one over 64 KiB comes by its size and is read with state.get, which the replica does for any row.
         new(Saved, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.SharedSaved),
         new(Avatar, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.SharedSaved),
+        // Protocol 31. The server's repeats, written by it alone like the scheduled sends; a client changes them only through repeats.create and repeats.cancel.
+        new(Repeat, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.Hermes, HostOwned: true),
     ];
 
     /// <summary>

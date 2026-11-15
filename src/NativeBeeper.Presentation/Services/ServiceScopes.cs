@@ -7,9 +7,10 @@ namespace NativeBeeper.Presentation.Services;
 public static class ServiceScopes
 {
     /// <summary>The service's name for a scope or a conversation id. Anything unrecognised is Google Messages, as the
-    /// router treats it.</summary>
+    /// router treats it; a Hermes id never is, since the router gives it to Hermes alone.</summary>
     public static string Name(string scopeOrChatId) =>
-        scopeOrChatId.StartsWith("gvoice:", StringComparison.Ordinal) ? "Google Voice"
+        scopeOrChatId.StartsWith(NativeBeeper.Core.Services.HermesIds.Scope, StringComparison.Ordinal) ? NativeBeeper.Core.Services.HermesIds.Network
+        : scopeOrChatId.StartsWith("gvoice:", StringComparison.Ordinal) ? "Google Voice"
         : scopeOrChatId.StartsWith("messenger:", StringComparison.Ordinal) ? "Messenger"
         : scopeOrChatId.StartsWith("instagram:", StringComparison.Ordinal) ? "Instagram" : "Google Messages";
 
@@ -17,7 +18,7 @@ public static class ServiceScopes
     public static string? Scope(string? id)
     {
         if (id is null) return null;
-        foreach (var prefix in new[] { "google-direct:", "messenger:", "instagram:" })
+        foreach (var prefix in new[] { "google-direct:", "messenger:", "instagram:", NativeBeeper.Core.Services.HermesIds.Scope })
             if (id.StartsWith(prefix, StringComparison.Ordinal)) return prefix;
         if (!id.StartsWith("gvoice:", StringComparison.Ordinal)) return null;
         var end = id.IndexOf(':', 7);

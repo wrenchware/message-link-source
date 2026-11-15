@@ -138,6 +138,12 @@ internal sealed record NetworkHostOptions(string DataFolder, IStateProtector Pro
     public Func<string, bool>? DesktopSignIn { get; init; }
     public Func<string, string?, Func<bool>, Task<bool>>? DesktopAccountSignIn { get; init; }
 
+    /// <summary>
+    /// Hermes as the page sets it up (its address and each profile's key): the host's own backend, which its clients may not configure on a server. Null shows no
+    /// Hermes on the page. A host started from a <c>ProtocolHost</c> takes the one it runs.
+    /// </summary>
+    internal IHermesAccount? Hermes { get; init; }
+
     // A record's own text prints every member, the password with them: this one names only what is safe to see.
     public override string ToString() => $"NetworkHostOptions {{ BindAddress = {BindAddress}, Port = {Port}, Page = {(PagePassword is null ? "off" : "set")}, Relay = {(RelaySocket is null ? "off" : "on")} }}";
 

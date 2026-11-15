@@ -8,7 +8,8 @@ public sealed record HostStatePorts(IProviderConnectionState Connections, IMessa
     IAttachmentBatchBackend Batches, IMessageActions Actions, IFirstMessageStarter FirstMessage, IGroupManagement Groups, IMessengerAccount Messenger,
     IInstagramAccount Instagram, IGoogleMessagesAccount Google, IGoogleVoiceAccounts Voice, ITypingService? Typing = null, IHostIdentity? Identity = null,
     bool GoogleAbsent = false, bool VoiceAbsent = false, bool InstagramAbsent = false, bool UnarchivesChats = false, bool FiresScheduled = false,
-    Func<bool>? ChromeOutOfDate = null, Func<IReadOnlyList<string>>? AdditionalScopes = null);
+    Func<bool>? ChromeOutOfDate = null, Func<IReadOnlyList<string>>? AdditionalScopes = null,
+    IHermesAccount? Hermes = null, bool Repeats = false);
 
 /// <summary>
 /// Reads a <see cref="HostState"/> from the real ports. It asks the ports themselves, not a copy of their rules, so the state says
@@ -24,12 +25,14 @@ public sealed class HostStateBuilder(HostStatePorts ports, int batchItemLimit)
         // Google, Messenger and Instagram always; one scope per Voice account the host knows (listed or saved), in a fixed order.
         var keys = ports.Voice.KnownAccountKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var scopes = new List<ScopeState> { Scope(ProviderScopes.Google), Scope(ProviderScopes.Messenger), Scope(ProviderScopes.Instagram) };
+        // Hermes's scope only where it runs: a client then knows a hermes: id by its own state, not Google's.
+        if (ports.Hermes is not null) scopes.Add(Scope(ProviderScopes.Hermes));
         scopes.AddRange((ports.AdditionalScopes?.Invoke() ?? []).Select(Scope));
         scopes.AddRange(keys.Select(key => Scope(ProviderScopes.Voice(key))));
         return new HostState(scopes, ports.Messenger.State, ports.Instagram.State, ports.Google.State, [.. ports.Voice.Accounts], keys,
             new HostLimits(ports.Actions.HasLocalActionOptions, ports.FirstMessage.MaxFirstMessageLength, ports.Groups.GroupNameMaximum, ports.Groups.AddMaximum, batchItemLimit,
-                ports.GoogleAbsent, ports.VoiceAbsent, ports.InstagramAbsent, ports.UnarchivesChats, ports.FiresScheduled, ports.ChromeOutOfDate?.Invoke() == true),
-            new TypingState(ports.Typing?.CanReceive ?? false, ports.Typing?.CanSend ?? false), new AccountRevisions(), Identity());
+                ports.GoogleAbsent, ports.VoiceAbsent, ports.InstagramAbsent, ports.UnarchivesChats, ports.FiresScheduled, ports.ChromeOutOfDate?.Invoke() == true, ports.Repeats),
+            new TypingState(ports.Typing?.CanReceive ?? false, ports.Typing?.CanSend ?? false), new AccountRevisions(), Identity(), ports.Hermes?.State);
     }
 
     // Absent rather than failed when it cannot be read: a client then keeps the identity it last knew, and the next look tries again. The

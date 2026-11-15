@@ -273,7 +273,7 @@ internal sealed partial class ServerPage
 
     /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
     public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/details" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
-        or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path);
+        or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path) || IsHermesPath(path);
 
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
     public const string LogoPath = "/logo.png";
@@ -341,7 +341,7 @@ internal sealed partial class ServerPage
             }
             // The notifications form alone carries files.
             // The restore's review of the devices, with a box for each, is larger than a form of one button.
-            var most = path == "/push" && session is not null ? MaxUpload : IsBackupPath(path) && session is not null ? MaxBackupForm : MaxBody;
+            var most = path == "/push" && session is not null ? MaxUpload : IsBackupPath(path) && session is not null ? MaxBackupForm : IsHermesPath(path) && session is not null ? MaxHermesForm : MaxBody;
             if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = most;
             if (!request.HasFormContentType || request.ContentLength is not { } length || length < 0 || length > most)
             {
@@ -507,6 +507,12 @@ internal sealed partial class ServerPage
                 await ResetAsync(context, form, token).ConfigureAwait(false);
                 return;
             case "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset":
+                Redirect(response, "/");
+                return;
+            case "/hermes" when Hermes is not null:
+                await HermesAsync(context, form, token).ConfigureAwait(false);
+                return;
+            case "/hermes":
                 Redirect(response, "/");
                 return;
             default:
@@ -969,6 +975,7 @@ internal sealed partial class ServerPage
         return running;
     }
 
+    // Hermes is not here: its thread lives on this server, so there is no service's copy to check it against (ConversationHistory leaves it out).
     private static readonly string[] MirrorOrder = ["google-direct", "messenger", "gvoice", "instagram"];
 
     private static string Service(string service) => service switch
@@ -976,7 +983,9 @@ internal sealed partial class ServerPage
         "google-direct" => "Google Messages",
         "messenger" => "Messenger",
         "instagram" => "Instagram",
-        _ => "Google Voice",
+        "hermes" => "Hermes",
+        _ when service.StartsWith("gvoice", StringComparison.Ordinal) => "Google Voice",
+        _ => "Another service",
     };
 
     // ---- Words and HTML ----
@@ -1122,7 +1131,7 @@ internal sealed partial class ServerPage
         var watch = nav is not null && response.Headers.ContentSecurityPolicy.ToString().Contains(JoinScriptHash, StringComparison.Ordinal) ? JoinAsk : "";
         var html = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
-            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
+            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}{HermesStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
             + $"<header class=\"top\">{logo}<h1>{crumbs}</h1></header><main>{watch}{WithoutPasswordAgain(context, body)}</main></div></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }
@@ -1131,7 +1140,7 @@ internal sealed partial class ServerPage
         PageAsync(context, status, status >= 500 ? "Something went wrong" : "That didn't work", Para(text) + "<p><a href=\"/\">Back to the server's page</a></p>");
 
     // The places on the page a link may name (`/?section=storage`). Only these exact words are taken, so a link can neither redirect elsewhere nor put anything into a page.
-    private static readonly string[] Sections = ["accounts", "storage", "backups", JoinSection, ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram];
+    private static readonly string[] Sections = ["accounts", "storage", "backups", JoinSection, ServerAccountProviders.GoogleMessages, ServerAccountProviders.Messenger, ServerAccountProviders.GoogleVoice, ServerAccountProviders.Instagram, HermesSection];
 
     internal static string? Section(string? name) => Sections.FirstOrDefault(known => known == name);
 
@@ -1142,6 +1151,7 @@ internal sealed partial class ServerPage
         "backups" => "/manage/backups",
         JoinSection => JoinReviewPath,
         "accounts" => "/#accounts",
+        HermesSection => "/manage/hermes",
         // A service: its line, open (ServerPage.Home.cs).
         _ => "/?open=" + section + "#row-" + section,
     };

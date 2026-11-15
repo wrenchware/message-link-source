@@ -95,12 +95,13 @@ internal sealed partial class ServerPage
         "backup_password" => "The backup password is set. Keep it safe: without it the backups can't be read.",
         "desktop_sign_in" => "The sign-in opened in Message Link on this PC.",
         "desktop_sign_in_failed" => "Message Link couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
+        "hermes_saved" => "Hermes is saved. Each profile is checked now.",
         _ => TailnetNotice(done),
     };
 
     // ---- The pages under /manage ----
 
-    private static bool IsManagePath(string? path) => path is "/manage/notifications" or "/manage/tailscale" or "/manage/tailscale/about" or "/manage/backups" or "/manage/storage" or "/manage/sync";
+    private static bool IsManagePath(string? path) => path is "/manage/notifications" or "/manage/tailscale" or "/manage/tailscale/about" or "/manage/backups" or "/manage/storage" or "/manage/sync" or "/manage/hermes";
 
     private async Task ManageAsync(HttpContext context, string path, string token)
     {
@@ -139,6 +140,10 @@ internal sealed partial class ServerPage
             case "/manage/sync" when history is not null:
                 title = "Sync check";
                 if (await CopiesCardAsync(card, token, context.RequestAborted).ConfigureAwait(false)) refresh = 5;
+                break;
+            case "/manage/hermes" when Hermes is not null:
+                title = "Hermes";
+                if (HermesCard(card)) refresh = 5;
                 break;
             default:
                 Redirect(context.Response, "/");
@@ -310,6 +315,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         // Only said when something is wrong: a running sandbox, or one turned off by whoever installed the server, is nothing a person needs to read.
         if (status?.ChromeSandbox is ChromeSandboxWords.Inactive)
             rows.Append(Row("Google Chrome", "Its sandbox isn't working, so the pages it opens aren't kept apart from the rest of the server.", null, null));
+        HermesAttention(rows);
         if (rows.Length == 0) return;
         body.Append("<section class=\"sec\" id=\"attention\"><div class=\"sh\"><h2 class=\"warn\">Needs attention</h2></div><div class=\"box alert\">").Append(rows).Append("</div></section>");
     }
@@ -338,6 +344,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
                     body.Append(offered
                         ? Row(name, "Not set up", null, "<a class=\"button quiet\" href=\"" + SignInHref(service) + "\" aria-label=\"" + Html("Connect: " + name) + "\">Connect</a>", Icon(provider), id: "row-" + provider)
                         : Row(name, under, "Not connected", Act(""), Icon(provider), id: "row-" + provider));
+                    if (provider == ServerAccountProviders.Instagram) HermesLine(body);
                     continue;
                 }
                 // Where a link to the service lands (SectionPath), when its accounts' own lines are named by their keys.
@@ -355,8 +362,11 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
                     else items.Add(MenuNote(provider == ServerAccountProviders.GoogleMessages ? UnpairGoogle : "An account being moved between this server and a PC can't be removed until the move finishes."));
                     body.Append(Row(name, Who(account), Word(account.State), Act(Menu("Manage " + AccountLabel(account), open == id, items)), Icon(provider), account.State == ServerAccountStates.Saved, "row-" + id));
                 }
+                // Hermes after Instagram, before any service a newer server lists.
+                if (provider == ServerAccountProviders.Instagram) HermesLine(body);
             }
         }
+        if (accounts is null) HermesLine(body);
         body.Append("</div>");
         if (accounts is not null && signInServices?.SignIns.OpenOn is { } busy) body.Append(Notice(BusyWords(busy)));
         // The Windows server (10.7) signs in with Messages' native windows on its own desktop; a server with no browser at all says so once.

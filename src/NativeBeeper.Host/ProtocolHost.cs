@@ -61,7 +61,8 @@ internal sealed record ProtocolHostOptions(
     SharedStateStore? SharedState = null, HostUnarchive? IncomingUnarchive = null, SavedPhotos? SavedPhotos = null, HostScheduled? Scheduled = null,
     IRemoteSignInHost? RemoteSignIn = null, Func<bool>? BrowserOutOfDate = null, IRemoteSignInHost? VoiceRemoteSignIn = null,
     IAccountMove? AccountMove = null, IAccountGate? AccountGate = null, IHostLogs? Logs = null, IServerAdmin? Admin = null, IPrivateStateStore? ConversationSyncStore = null,
-    NativeBeeper.Storage.HistoryDatabase? WholeHistory = null, IServerBackup? Backup = null, IRemoteCookieSignInHost? MetaRemoteSignIn = null, ProviderAccounts? Accounts = null, IHelperCellUnprotector? HelperCells = null);
+    NativeBeeper.Storage.HistoryDatabase? WholeHistory = null, IServerBackup? Backup = null, IRemoteCookieSignInHost? MetaRemoteSignIn = null, ProviderAccounts? Accounts = null, IHelperCellUnprotector? HelperCells = null,
+    NativeBeeper.App.Services.Hermes.HermesBackend? Hermes = null);
 
 /// <summary>
 /// The ports a host serves in place of the providers it does not run (the Linux server: Google Messages, Google Voice and Instagram, SWITCHBOARD.md
@@ -92,6 +93,9 @@ internal sealed class ProtocolHost : IDisposable
 
     private readonly HostScheduledSends? scheduled;
 
+    private HostRepeats? repeats;
+    /// <summary>Hermes as the server's page sets it up: the backend itself, since a server's clients may not (HostHermesAccount). Null where Hermes does not run.</summary>
+    internal IHermesAccount? HermesSetup { get; private init; }
     private ProtocolHost(ProtocolServices services, string version, EventLog eventLog, StatePublisher statePublisher, OperationJournal journal, UploadStore uploads, TypingHub typingHub,
         BackendCaughtUp caughtUp, IHostIdentity? identity, HostScheduledSends? scheduled, HostSavedPhotos? savedPhotos, ConversationHistory? history)
     {
@@ -220,16 +224,24 @@ internal sealed class ProtocolHost : IDisposable
                 history is null ? messaging : history, history is null ? messaging : history, messaging, scheduledIdentity, journal, scheduledOptions, log);
             log("scheduled sends via=host");
         }
+        // Hermes (protocol 31): its account as clients see it. A server takes the address and keys on its own page (CanConfigure false), as every account; an app
+        // running its own services takes them from its Settings. Repeats need the shared state, so only a server keeps them.
+        IHermesAccount? hermesAccount = options.Hermes is { } hermesBackend ? new HostHermesAccount(hermesBackend, canConfigure: options.SharedState is null) : null;
+        HostRepeats? repeats = null;
+        if (options.Hermes is { } prompts && options.SharedState is { } repeatRows && identity is { } repeatIdentity)
+            repeats = new HostRepeats(repeatRows, async cancellationToken => (await repeatIdentity.ReadAsync(cancellationToken).ConfigureAwait(false)).LocalKey, prompts, log: log);
         var builder = new HostStateBuilder(new HostStatePorts(messaging, messaging, messaging, media, media, messaging, directory, directory, messengerAccount,
             instagramAccount, googleAccount, voiceAccounts, options.Typing, identity,
             GoogleAbsent: unavailable?.GoogleAbsent == true, VoiceAbsent: unavailable?.VoiceAbsent == true, InstagramAbsent: unavailable?.Instagram is not null,
             UnarchivesChats: unarchivesChats, FiresScheduled: scheduled is not null,
             ChromeOutOfDate: () => options.RemoteSignIn?.BrowserOutOfDate == true || options.BrowserOutOfDate?.Invoke() == true,
-            AdditionalScopes: accounts is null ? null : () => accounts.Added.Select(ProviderAccounts.Scope).ToArray()),
+            AdditionalScopes: accounts is null ? null : () => accounts.Added.Select(ProviderAccounts.Scope).ToArray(),
+            Hermes: hermesAccount, Repeats: repeats is not null),
             AttachmentBatchRules.ItemLimit);
         var statePublisher = new StatePublisher(eventLog, builder.Build, write: log);
         publisher = statePublisher;
         if (accounts is not null) accounts.Changed += () => statePublisher.Refresh();
+        if (hermesAccount is not null) hermesAccount.Changed += (_, _) => statePublisher.Refresh();
         statePublisher.Attach(messengerAccount, instagramAccount, googleAccount, voiceAccounts);
         var step = new StepClock(log);
         statePublisher.Start();
@@ -262,7 +274,7 @@ internal sealed class ProtocolHost : IDisposable
             Diagnostics: options.Diagnostics,
             HelperRestarts: GateRestarts(unavailable?.HelperRestarts ?? new HostHelperRestarter(google, options.Keeper, options.Messenger, options.Instagram, options.VoiceAccounts, log) { Accounts = accounts }, options.AccountGate), KeptHistory: accounts is not null && options.HelperCells is { } cells ? new ProviderAccountKeptHistory(accounts, options.KeptHistory ?? new MessengerKeptHistory(() => options.Messenger.SelfId is { } self ? MessengerKeptAccount.For(self) : null, options.Messenger.KnownChat, log, cells), cells, log) : options.KeptHistory,
             MediaPreparer: media, IncomingCards: options.IncomingCards, ClientState: options.ClientState, Restores: options.Restores,
-            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: accounts is not null && options.AccountMove is { } move ? new MultipleAccountMove(move, accounts) : options.AccountMove, Logs: options.Logs, Admin: multiAdmin ?? options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, RemoteSignIn: options.RemoteSignIn, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
+            GoogleSignedIn: options.Keeper.SignedIn, AccountMove: accounts is not null && options.AccountMove is { } move ? new MultipleAccountMove(move, accounts) : options.AccountMove, Logs: options.Logs, Admin: multiAdmin ?? options.Admin, Backup: options.Backup, SharedState: options.SharedState, Connections: roster, Scheduled: scheduled, HermesAccount: hermesAccount, Repeats: repeats, RemoteSignIn: options.RemoteSignIn, VoiceRemoteSignIn: options.VoiceRemoteSignIn, MetaRemoteSignIn: options.MetaRemoteSignIn,
             AccountEnded: (account, key) =>
             {
                 savedPhotos?.Ended(account, key);
@@ -286,6 +298,7 @@ internal sealed class ProtocolHost : IDisposable
         // Loaded and started off this thread: a message found sending is carried as interrupted, one whose window passed while the host was down is held, and
         // the rest wait for their time. A start that fails is tried again (HostScheduledSends.StartWithRetryAsync); nothing is sent by a schedule that has not loaded.
         if (scheduled is not null) _ = scheduled.StartWithRetryAsync();
+        repeats?.Start();
 
         // The whole history is kept whether or not a client is connected: its store opens, and the providers' feed runs from now on.
         if (history is not null)
@@ -294,7 +307,7 @@ internal sealed class ProtocolHost : IDisposable
             eventLog.Start();
         }
 
-        return new ProtocolHost(services, options.Version, eventLog, statePublisher, journal, uploads, typingHub, caughtUp, identity, scheduled, savedPhotos, history);
+        return new ProtocolHost(services, options.Version, eventLog, statePublisher, journal, uploads, typingHub, caughtUp, identity, scheduled, savedPhotos, history) { repeats = repeats, HermesSetup = options.Hermes };
     }
 
     /// <summary>Stops publishing state. A transport calls it before it closes its clients, and <see cref="Dispose"/> repeats it harmlessly.</summary>
@@ -304,6 +317,7 @@ internal sealed class ProtocolHost : IDisposable
     {
         // First: nothing starts sending once the host is closing. A message only waiting stays for the next start (the engine's own Stop).
         scheduled?.Dispose();
+        repeats?.Dispose();
         savedPhotos?.Dispose();
         caughtUp.Dispose();
         StatePublisher.Dispose();

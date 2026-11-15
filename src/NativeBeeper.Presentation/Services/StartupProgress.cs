@@ -153,6 +153,7 @@ public sealed class StartupProgress
         "Google Messages" => 0,
         "Messenger" => 1,
         "Instagram" => 2,
+        "Hermes" => 4,
         _ => 3,
     };
 }

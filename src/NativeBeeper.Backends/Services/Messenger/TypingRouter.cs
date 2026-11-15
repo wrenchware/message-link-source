@@ -9,7 +9,8 @@ namespace NativeBeeper.App.Services.Messenger;
 // Typing from every network into the one indicator, and this account's typing out to whichever network owns the
 // conversation.
 internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBackend messenger, InstagramBackend instagram,
-    NativeBeeper.Presentation.Services.ComposerActivity typing, NativeBeeper.Presentation.Services.PrivateReading? reading = null) : ITypingService, IComposerActivitySink
+    NativeBeeper.Presentation.Services.ComposerActivity typing, NativeBeeper.Presentation.Services.PrivateReading? reading = null,
+    NativeBeeper.App.Services.Hermes.HermesBackend? hermes = null) : ITypingService, IComposerActivitySink
 {
     internal ProviderAccounts? Accounts { get; set; }
     private GoogleMessagesBackend Google(string id) => Accounts?.Google(id) ?? google;
@@ -17,7 +18,9 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
     private NativeBeeper.App.Services.Instagram.InstagramBackend InstagramAccount(string id) => Accounts?.Instagram(id) ?? instagram;
     public bool CanReceive => Sources().Any(source => source.CanReceive);
     public bool CanSend => Sources().Any(source => source.CanSend);
-    private IEnumerable<ITypingService> Sources() => Accounts is null ? new ITypingService[] { google, messenger, instagram } : Accounts.Googles.Cast<ITypingService>().Concat(Accounts.Messengers).Concat(Accounts.Instagrams);
+    // Hermes only ever reports its own working line into its threads; nothing is sent to it.
+    private IEnumerable<ITypingService> Sources() => (Accounts is null ? new ITypingService[] { google, messenger, instagram } : Accounts.Googles.Cast<ITypingService>().Concat(Accounts.Messengers).Concat(Accounts.Instagrams))
+        .Concat(hermes is null ? [] : [hermes]);
 
     // Every actual composer edit yields Google history indexing, including edits inside the five-second window
     // where the remote typing notification is deliberately throttled. Both are noted: Google yields its background
