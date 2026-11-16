@@ -37,7 +37,7 @@ namespace NativeBeeper.Host.Network;
 /// same TLS and door, each connection first naming its tailnet device (<see cref="TailnetRelay"/>; one without a good line is dropped, <c>reason=relay</c>).
 /// </para>
 /// </summary>
-internal sealed class NetworkHost : IAsyncDisposable
+internal sealed partial class NetworkHost : IAsyncDisposable
 {
     /// <summary>How long a peer has for TLS, and then for the request head; what a peer holds a place in the door with.</summary>
     public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
@@ -172,6 +172,8 @@ internal sealed class NetworkHost : IAsyncDisposable
             page.DesktopSignIn = options.DesktopSignIn;
             page.DesktopAccountSignIn = options.DesktopAccountSignIn;
             page.Hermes = options.Hermes;
+            page.Reports = options.Reports;
+            page.ListenPort = () => Port;
         }
         devices.Revoked += EndDevice;
         devices.Restored = options.Restored;
@@ -236,7 +238,11 @@ internal sealed class NetworkHost : IAsyncDisposable
     /// <see cref="NetworkHostOptions"/>).
     /// </summary>
     public static Task<NetworkHost> StartAsync(ProtocolHost host, NetworkHostOptions options, CancellationToken cancellationToken = default) =>
-        StartAsync(host.Services, host.Journal, host.Version, options.Hermes is null && host.HermesSetup is { } hermes ? options with { Hermes = hermes } : options, cancellationToken);
+        StartAsync(host.Services, host.Journal, host.Version, options with
+        {
+            Hermes = options.Hermes ?? host.HermesSetup,
+            Reports = options.Reports ?? host.HermesSetup as NativeBeeper.Core.Services.IAgentReports,
+        }, cancellationToken);
 
     /// <summary>The same, over services and a journal given directly (the harness serves fakes this way).</summary>
     public static async Task<NetworkHost> StartAsync(ProtocolServices services, OperationJournal journal, string version, NetworkHostOptions options,
@@ -515,6 +521,12 @@ internal sealed class NetworkHost : IAsyncDisposable
         if (page is not null && ServerPage.Serves(request.Path.Value) && FromTrustedNetwork(context))
         {
             await page.HandleAsync(context, draining).ConfigureAwait(false);
+            return;
+        }
+        // Reports (IAgentReports): their own small HTTP surface, never the socket's.
+        if (request.Path.Value is ReportPath or ReportCheckPath)
+        {
+            await ReportAsync(context).ConfigureAwait(false);
             return;
         }
         // Exactly the one path, compared as written (PathString's own comparison ignores case).

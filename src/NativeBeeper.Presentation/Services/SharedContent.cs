@@ -32,7 +32,7 @@ public static class SharedContent
                 if (actual == kind) result.Add(new(message, attachment, null, attachment.Name ?? (actual == SharedContentKind.Audio ? "Audio" : "Attachment")));
             }
             if (kind != SharedContentKind.Links || string.IsNullOrWhiteSpace(message.Text)) continue;
-            foreach (var run in MessageText.Parse(message.Text))
+            foreach (var run in MessageText.Parse(MessageText.Markup(message)))
                 if (run.Link is { } link && MessageText.IsWeb(link) && links.Add(link.AbsoluteUri)) result.Add(new(message, null, link, link.Host));
         }
         return result;

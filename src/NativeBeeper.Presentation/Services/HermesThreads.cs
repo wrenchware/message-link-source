@@ -26,11 +26,15 @@ public static class HermesThreads
     public static bool Is(string? chatId) => HermesIds.Owns(chatId);
     public static bool Is(ChatSummary? chat) => chat is not null && (HermesIds.Owns(chat.Id) || chat.Network == Network);
 
+    /// <summary>Whether a window shows Hermes at all: only once a profile is set up (on the server's page), so someone who never uses Hermes never
+    /// sees it. Routing still follows whether the host runs Hermes.</summary>
+    public static bool Shown(HermesAccountState? state) => state is { Agents.Count: > 0 };
+
     public static bool TakesPicture(string? mimeType) => mimeType is not null && PictureTypes.Contains(mimeType.ToLowerInvariant());
 
     /// <summary>The outgoing prompt one of the server's repeats sent: drawn as a small label, not a bubble of the person's own.</summary>
     public static bool IsScheduledPrompt(ChatMessage message) => message.Type == "scheduled" && HermesIds.Owns(message.ChatId);
-    public static string ScheduledLabel(string? text) => "Scheduled: " + OneLine(MessageText.PlainText(text ?? ""));
+    public static string ScheduledLabel(string? text) => "Scheduled: " + OneLine(MessageText.PlainText(MessageText.Literal(text ?? "")));
 
     /// <summary>A profile's state in the words Settings shows.</summary>
     public static string StatusWord(string? status) => status switch

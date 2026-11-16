@@ -66,7 +66,7 @@ public sealed class UnifiedSearchViewModel(ISearchBackend searches, IContactBack
                 var rows = matches.Take(MessageLimit).Select(hit =>
                 {
                     var message = hit.Message!;
-                    var body = MessageText.PlainText(message.Text ?? "");
+                    var body = MessageText.PlainText(message);
                     if (string.IsNullOrWhiteSpace(body)) body = message.Attachments.Count > 0 ? "Attachment" : "Message";
                     var who = message.IsOutgoing ? "You: " : hit.Chat.Type == "group" && message.SenderName is { Length: > 0 } sender ? sender + ": " : "";
                     return new UnifiedSearchRow(hit.Chat.Title, who + SearchSnippet.Excerpt(body, text), hit)

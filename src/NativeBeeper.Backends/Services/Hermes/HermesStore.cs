@@ -20,12 +20,28 @@ public sealed record HermesStoredMessage(string Id, DateTimeOffset At, bool Outg
     string Kind = "message",
     // Outgoing: "sent", "failed". Incoming: "streaming" while the reply is still filling in, "done", "interrupted".
     string State = "sent",
-    IReadOnlyList<HermesStoredImage>? Images = null);
+    IReadOnlyList<HermesStoredImage>? Images = null,
+    // A report (IAgentReports): "report", posted with the profile's report token outside a turn; null for everything else. The key and the digest of the
+    // cleaned text are kept for reports only, so a retry within a day is recognised after a restart.
+    string? Origin = null, string? ReportKey = null, string? ReportDigest = null,
+    // A report's place in the thread's own sequence (HermesThread.NextReportSeq): the next turn carries the unanswered ones by it, never by time.
+    long ReportSeq = 0);
 public sealed record HermesStoredImage(string Id, string MimeType, long Size, double? Width = null, double? Height = null);
+
+/// <summary>The report tokens: a row a profile with reports on. Only a token's SHA-256 (hex) is kept, with its one-way log tag.</summary>
+public sealed record HermesReportTokens(IReadOnlyList<HermesReportToken> Rows)
+{
+    public static HermesReportTokens Empty { get; } = new([]);
+}
+/// <summary>One token: the profile whose thread it writes into, the kind of agent behind it ("hermes" today), its hash, tag and when it was made.</summary>
+public sealed record HermesReportToken(string Profile, string Source, string Hash, string Tag, DateTimeOffset Created);
 
 /// <summary>A thread: its Hermes session and its messages.</summary>
 public sealed record HermesThread(string Profile, string SessionId, IReadOnlyList<HermesStoredMessage> Messages, string? Title = null,
-    DateTimeOffset? ReadUpTo = null);
+    DateTimeOffset? ReadUpTo = null,
+    // The last report sequence handed out, and the highest one a turn Hermes took has carried (or a new conversation passed): the reports above it and
+    // at most the snapshot's go with the owner's next message. Absent in older files, so both read as 0.
+    long NextReportSeq = 0, long ReportsAckedThrough = 0);
 
 /// <summary>
 /// Everything Hermes keeps between runs, under the data folder's <c>Hermes</c> folder, each file sealed by the host's protector:
@@ -43,6 +59,11 @@ public sealed class HermesStore(string root, IStateProtector protector)
 
     public async Task<HermesSettings> ReadSettingsAsync() => await ReadAsync<HermesSettings>(SettingsPath) ?? HermesSettings.Empty;
     public Task SaveSettingsAsync(HermesSettings settings) => WriteAsync(SettingsPath, settings);
+
+    // The report tokens' hashes, one a profile with reports on. Not in backups (the Hermes folder isn't): after a restore reports are turned on again.
+    private string ReportsPath => Path.Combine(root, "reports.protected");
+    public async Task<HermesReportTokens> ReadReportTokensAsync() => await ReadAsync<HermesReportTokens>(ReportsPath) ?? HermesReportTokens.Empty;
+    public Task SaveReportTokensAsync(HermesReportTokens tokens) => WriteAsync(ReportsPath, tokens);
 
     public async Task<HermesThread?> ReadThreadAsync(string profile) =>
         HermesClient.ValidProfile(profile) ? await ReadAsync<HermesThread>(ThreadPath(profile)) : null;

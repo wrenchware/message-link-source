@@ -319,7 +319,7 @@ internal sealed partial class ServerPage
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/hermes/reports/off" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath or ReportScriptPath or PluginPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -509,10 +509,13 @@ internal sealed partial class ServerPage
             case "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset":
                 Redirect(response, "/");
                 return;
+            case { } reportsPath when Hermes is not null && Reports is not null && IsReportsPath(reportsPath):
+                await ReportsAsync(context, reportsPath, form, token).ConfigureAwait(false);
+                return;
             case "/hermes" when Hermes is not null:
                 await HermesAsync(context, form, token).ConfigureAwait(false);
                 return;
-            case "/hermes":
+            case "/hermes" or "/hermes/reports" or "/hermes/reports/off" or ReportScriptPath or PluginPath:
                 Redirect(response, "/");
                 return;
             default:

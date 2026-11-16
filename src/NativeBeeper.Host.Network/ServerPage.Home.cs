@@ -96,6 +96,7 @@ internal sealed partial class ServerPage
         "desktop_sign_in" => "The sign-in opened in Message Link on this PC.",
         "desktop_sign_in_failed" => "Message Link couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
         "hermes_saved" => "Hermes is saved. Each profile is checked now.",
+        "reports_off" => "Reports are off. The code no longer works.",
         _ => TailnetNotice(done),
     };
 
@@ -143,7 +144,7 @@ internal sealed partial class ServerPage
                 break;
             case "/manage/hermes" when Hermes is not null:
                 title = "Hermes";
-                if (HermesCard(card)) refresh = 5;
+                if (HermesCard(card, token)) refresh = 5;
                 break;
             default:
                 Redirect(context.Response, "/");

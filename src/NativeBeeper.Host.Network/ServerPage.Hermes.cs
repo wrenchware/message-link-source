@@ -21,7 +21,7 @@ internal sealed partial class ServerPage
     // More rows than a form can usefully hold are not read.
     private const int MaxHermesRows = NativeBeeper.App.Services.Hermes.HermesBackend.MaxProfiles + 2;
 
-    private static bool IsHermesPath(string? path) => path is "/hermes";
+    private static bool IsHermesPath(string? path) => path is "/hermes" || IsReportsPath(path);
 
     // Hermes Agent's own app icon, the sixth picture in the page's sprite (THIRD_PARTY_NOTICES.md).
     private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";
@@ -73,7 +73,7 @@ internal sealed partial class ServerPage
     }
 
     // /manage/hermes: the address and each profile's state, and the way to change them. Whether a profile is still being checked, so the page looks again soon.
-    private bool HermesCard(StringBuilder body)
+    private bool HermesCard(StringBuilder body, string token)
     {
         var state = Hermes!.State;
         body.Append("<section id=\"hermes\"><h2>Hermes</h2>");
@@ -89,6 +89,7 @@ internal sealed partial class ServerPage
         {
             var (name, under) = HermesNames(agent);
             body.Append(Row(name, under, HermesWord(agent.Status), null, warn: HermesWarns(agent.Status)));
+            ReportsRow(body, agent, token);
         }
         body.Append("</div><div class=\"box\">").Append(Row("Change Hermes", "The address, the profiles, their API keys and conversation names.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
             .Append("</div></section>");

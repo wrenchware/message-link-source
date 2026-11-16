@@ -11,7 +11,7 @@ public sealed record SearchResultViewModel(SearchHit Hit)
 {
     public string Title => Hit.Chat.Title;
     public string Detail => Hit.Chat.Network + (Hit.Message is { } m ? $" · {m.SenderName ?? (m.IsOutgoing ? "You" : "Message")} · {m.Timestamp.ToLocalTime():g}" : "");
-    public string Text => MessageText.PlainText((Hit.Message ?? Hit.Chat.Preview) is { IsHidden: false, IsDeleted: false } m ? m.Text ?? "" : "");
+    public string Text => MessageText.PlainText((Hit.Message ?? Hit.Chat.Preview) is { IsHidden: false, IsDeleted: false } m ? MessageText.Markup(m) : "");
     public string Preview => Text.Length > 220 ? Text[..220] + "…" : Text.Length == 0 ? "Attachment or conversation" : Text;
     // The words searched for, so a result can show which of its words matched.
     public string Query { get; init; } = "";

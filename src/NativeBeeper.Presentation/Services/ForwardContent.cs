@@ -31,7 +31,7 @@ public static class ForwardContent
 
     // The words that go with them: the message's text as plain text, or none.
     public static string? Text(ChatMessage message) =>
-        message.IsDeleted || message.IsHidden || string.IsNullOrWhiteSpace(message.Text) ? null : MessageText.PlainText(message.Text);
+        message.IsDeleted || message.IsHidden || string.IsNullOrWhiteSpace(message.Text) ? null : MessageText.PlainText(message);
 
     // What the picture really is, by its first bytes, over what the service called it: a staged photo is sent with this
     // type, and a service told the wrong one can refuse the picture or show it broken. Null when it is not a picture the

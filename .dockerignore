@@ -9,6 +9,8 @@
 !THIRD_PARTY_NOTICES.md
 !src
 !experiments
+# The Hermes report scripts the server's page offers (docker/messages-server/Dockerfile).
+!integrations/hermes-messagelink
 !third_party/mautrix-meta
 # The Google Messages helper's patched library, for docker/messages-server/Dockerfile.
 !third_party/mautrix-gmessages

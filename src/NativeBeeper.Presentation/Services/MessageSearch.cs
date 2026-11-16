@@ -8,7 +8,7 @@ namespace NativeBeeper.Presentation.Services;
 public static class MessageSearch
 {
     public static string SearchableText(ChatMessage message) => string.Join(' ',
-        new[] { MessageText.PlainText(message.Text ?? "") }.Concat(message.Attachments.SelectMany(a =>
+        new[] { MessageText.PlainText(message) }.Concat(message.Attachments.SelectMany(a =>
             new[] { a.Name, a.Caption, a.Description, a.Link }.OfType<string>())));
 
     public static bool WordsMatch(string? text, string query)
@@ -45,7 +45,7 @@ public static class MessageSearch
         SearchContent.All => true,
         SearchContent.Photos => message.Attachments.Any(a => a.Link is null && !a.IsSticker && (a.Type == "img" || a.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)),
         SearchContent.Videos => message.Attachments.Any(a => a.Play || a.Type == "video" || a.MimeType?.StartsWith("video/", StringComparison.OrdinalIgnoreCase) == true),
-        SearchContent.Links => message.Attachments.Any(a => MessageText.WebLink(a.Link ?? "") is not null) || MessageText.Parse(message.Text ?? "").Any(run => run.Link is { } link && MessageText.IsWeb(link)),
+        SearchContent.Links => message.Attachments.Any(a => MessageText.WebLink(a.Link ?? "") is not null) || MessageText.Parse(MessageText.Markup(message)).Any(run => run.Link is { } link && MessageText.IsWeb(link)),
         SearchContent.Files => message.Attachments.Any(a => a.Link is null && a.Type == "file"),
         SearchContent.Audio => message.Attachments.Any(a => a.Type == "audio" || a.IsVoiceNote || a.MimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true),
         SearchContent.Calls => message.CallKind is not null && !IsVoicemail(message),

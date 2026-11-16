@@ -213,7 +213,7 @@ public sealed partial class ConsoleSessionViewModel
         switch (verb)
         {
             case "copy":
-                var words = item.Message.IsDeleted || item.Message.IsHidden ? "" : MessageText.PlainText(item.Message.Text ?? "");
+                var words = item.Message.IsDeleted || item.Message.IsHidden ? "" : MessageText.PlainText(item.Message);
                 if (string.IsNullOrWhiteSpace(words)) { Fail("That message has no words to copy."); return; }
                 try { host.Copy(words); } catch (Exception) { Fail("The clipboard is busy. Try again."); return; }
                 log("console act name=copy provider=" + provider + " outcome=done");

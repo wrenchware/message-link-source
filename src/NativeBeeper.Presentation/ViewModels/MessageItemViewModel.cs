@@ -209,7 +209,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         ContinuesGroup = NativeBeeper.Presentation.Services.ConversationReading.ContinuesGroup(message, previous);
         SenderAvatarUrl = chat.Participants.FirstOrDefault(p => p.Id == message.SenderId)?.AvatarUrl;
         IsLargeEmoji = !message.IsDeleted && !message.IsHidden && message.Attachments.Count == 0 && message.ReplyToId is null &&
-            NativeBeeper.Presentation.Services.EmojiText.IsShortEmojiOnly(NativeBeeper.Presentation.Services.MessageText.PlainText(message.Text ?? ""));
+            NativeBeeper.Presentation.Services.EmojiText.IsShortEmojiOnly(NativeBeeper.Presentation.Services.MessageText.PlainText(message));
         Sender = message.IsOutgoing ? "You" : message.SenderName ?? chat.Participants.FirstOrDefault(p => p.Id == message.SenderId)?.DisplayName ?? "Unknown sender";
         // Scheduled rows sit after today's history; their due time belongs to the footer. Group them as a send of now
         // so Send now neither removes tomorrow's divider nor adds today's date/time header in an old or empty thread.

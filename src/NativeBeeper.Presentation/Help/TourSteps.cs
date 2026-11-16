@@ -19,7 +19,7 @@ public static class TourSteps
     public static readonly IReadOnlyList<TourStep> All =
     [
         new("welcome", "Welcome to Message Link",
-            "Google Messages, Messenger, Google Voice, Instagram and Hermes in one Windows inbox. This two-minute tour shows the things " +
+            "Google Messages, Messenger, Google Voice and Instagram in one Windows inbox. This two-minute tour shows the things " +
             "that are easy to miss. Leave whenever you like: <kbd>F1</kbd> opens the full guide any time.", null, "basics"),
         new("accounts", "Connect your services",
             "**Settings → Connections** connects each one. Google Messages pairs with your phone; Messenger and Instagram sign in " +

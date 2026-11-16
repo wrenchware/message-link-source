@@ -144,6 +144,10 @@ internal sealed record NetworkHostOptions(string DataFolder, IStateProtector Pro
     /// </summary>
     internal IHermesAccount? Hermes { get; init; }
 
+    /// <summary>The report route (<c>/v1/reports</c>): an agent's token puts a message in its own thread. Null serves no reports. A host started from a
+    /// <c>ProtocolHost</c> takes its Hermes backend's.</summary>
+    internal IAgentReports? Reports { get; init; }
+
     // A record's own text prints every member, the password with them: this one names only what is safe to see.
     public override string ToString() => $"NetworkHostOptions {{ BindAddress = {BindAddress}, Port = {Port}, Page = {(PagePassword is null ? "off" : "set")}, Relay = {(RelaySocket is null ? "off" : "on")} }}";
 

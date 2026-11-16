@@ -12,5 +12,5 @@ public static class MetaAiMessages
         message.ChatId.StartsWith("messenger:", StringComparison.Ordinal) && message.SenderId == SenderId &&
         !message.IsOutgoing && !message.IsDeleted && !message.IsHidden &&
         string.IsNullOrWhiteSpace(message.Text) && message.Attachments.Count == 0
-            ? UnavailableReply : message.Text;
+            ? UnavailableReply : message.Text is null ? null : MessageText.Markup(message.ChatId, message.Text);
 }

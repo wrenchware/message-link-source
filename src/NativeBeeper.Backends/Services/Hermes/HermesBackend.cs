@@ -19,7 +19,7 @@ namespace NativeBeeper.App.Services.Hermes;
 /// through the routers for <c>hermes:</c> ids, takes text and pictures, and offers Hermes nothing to call back through. Replying,
 /// reacting, editing, deleting and every directory, group and settings action are refused by name in the routers.
 /// </remarks>
-internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender, IReadStateWriter, IAttachmentBackend, ITypingService,
+internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender, IReadStateWriter, IAttachmentBackend, ITypingService,
     IHermesAccount, IHermesPrompts, IDisposable
 {
     /// <summary>The longest a send waits for Hermes to accept the turn before it answers anyway and lets the reply come when it comes.</summary>
@@ -90,8 +90,13 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         try
         {
             settings = read;
+            reportTokens = await store.ReadReportTokensAsync().ConfigureAwait(false);
+            // Only against settings that loaded with profiles: an unreadable settings file reads as none, and pruning against that would revoke every live token
+            // for good (code review, 2026-11-15). Removing every profile forgets the tokens itself, before the settings are saved.
+            if (settings.Profiles.Count > 0 && reportTokens.Rows.Any(r => !settings.Profiles.Any(p => p.Name == r.Profile)))
+                await ForgetReportTokensAsync([.. reportTokens.Rows.Select(r => r.Profile).Where(name => !settings.Profiles.Any(p => p.Name == name)).Distinct()]).ConfigureAwait(false);
             foreach (var profile in settings.Profiles)
-                if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread) threads[profile.Name] = thread;
+                if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread) threads[profile.Name] = Sequenced(thread);
         }
         finally { gate.Release(); }
         log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}");
@@ -137,6 +142,9 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             foreach (var profile in kept)
                 if (addressChanged || settings.Profiles.FirstOrDefault(p => p.Name == profile.Name)?.Key != profile.Key) statuses.TryRemove(profile.Name, out _);
             foreach (var gone in removed) statuses.TryRemove(gone, out _);
+            // A removed profile's report token goes with it, first: a crash before the settings are saved must not leave a token that the same profile
+            // name added again would bring back (code review, 2026-11-15). Load drops any row whose profile is gone, too.
+            await ForgetReportTokensAsync(removed).ConfigureAwait(false);
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
             var titled = kept.Where(p => settings.Profiles.Any(old => old.Name == p.Name) && (settings.Profiles.First(old => old.Name == p.Name).Title ?? DefaultTitle(p.Name))
                 != (p.Title ?? DefaultTitle(p.Name))).Select(p => p.Name).ToArray();
@@ -148,7 +156,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
                     renamed.Add((HermesIds.Chat(name), [.. held.Messages.Where(m => !m.Outgoing).Select(m => m.Id)]));
             try { Volatile.Read(ref checking)?.Cancel(); } catch (ObjectDisposedException) { }
             foreach (var name in added)
-                if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) ?? NewThread(name);
+                if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) is { } read ? Sequenced(read) : NewThread(name);
         }
         finally { gate.Release(); }
         log($"hermes configured profiles={kept.Count} added={added.Length} removed={removed.Length}");
@@ -172,7 +180,8 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             var thread = Thread(profile);
             var note = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), false, "New conversation", Kind: "note", State: "done");
             noteId = note.Id;
-            threads[profile] = thread with { SessionId = NewSessionId(), Messages = [.. thread.Messages, note], ReadUpTo = note.At };
+            // A new conversation starts from nothing: every report so far counts as answered.
+            threads[profile] = thread with { SessionId = NewSessionId(), Messages = [.. thread.Messages, note], ReadUpTo = note.At, ReportsAckedThrough = thread.NextReportSeq };
             await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
         }
         finally { gate.Release(); }
@@ -308,8 +317,15 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         var setting = settings.Profiles.First(p => p.Name == profile);
         var address = HermesClient.ParseBase(settings.Address) ?? throw new SendException(false, "Hermes isn't set up. Add its address in Settings.");
         string sessionId;
+        TurnReports turn;
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try { sessionId = Thread(profile).SessionId; }
+        try
+        {
+            var thread = Thread(profile);
+            sessionId = thread.SessionId;
+            // The unanswered reports go to Hermes with this message; the thread keeps only what the owner typed (HermesTurnReports).
+            turn = Snapshot(thread, kind, string.IsNullOrEmpty(text) ? null : text);
+        }
         finally { gate.Release(); }
         var outgoing = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), true, string.IsNullOrEmpty(text) ? null : text, kind, "sent",
             images.Count > 0 ? [.. images.Select(i => i.Image)] : null);
@@ -318,7 +334,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         await UpdateAsync(profile, outgoing).ConfigureAwait(false);
         // The turn outlives the caller: the reply streams in after the send has answered.
         var generation = Volatile.Read(ref this.generation);
-        _ = Task.Run(() => TurnAsync(profile, chatId, address, setting.Key, sessionId, outgoing, [.. images.Select(i => i.DataUrl)], accepted, generation));
+        _ = Task.Run(() => TurnAsync(profile, chatId, address, setting.Key, sessionId, outgoing, turn, [.. images.Select(i => i.DataUrl)], accepted, generation));
         try { await Task.WhenAny(accepted.Task, Task.Delay(AcceptWait, clock, cancellationToken)).ConfigureAwait(false); }
         finally
         {
@@ -346,7 +362,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         finally { gate.Release(); }
     }
 
-    private async Task TurnAsync(string profile, string chatId, Uri address, string key, string sessionId, HermesStoredMessage outgoing,
+    private async Task TurnAsync(string profile, string chatId, Uri address, string key, string sessionId, HermesStoredMessage outgoing, TurnReports turn,
         IReadOnlyList<string> images, TaskCompletionSource<Exception?> accepted, int generation)
     {
         Interlocked.Increment(ref turnsRunning);
@@ -354,7 +370,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         HttpResponseMessage? response = null;
         try
         {
-            try { response = await client.OpenAsync(address, profile, key, sessionId, outgoing.Text, images, stop.Token).ConfigureAwait(false); }
+            try { response = await client.OpenAsync(address, profile, key, sessionId, turn.Prompt, images, stop.Token).ConfigureAwait(false); }
             catch (HermesException failure) when (failure.Failure == HermesFailure.Unknown)
             {
                 // The request may have reached Hermes, and a turn can run tools: the message stays, said as uncertain, and is never sent again.
@@ -381,7 +397,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             accepted.TrySetResult(null);
             realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [outgoing.Id], false, clock.GetUtcNow()));
             realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
-            await StreamReplyAsync(profile, chatId, response, started, outgoing).ConfigureAwait(false);
+            await StreamReplyAsync(profile, chatId, response, started, outgoing, turn.Through).ConfigureAwait(false);
         }
         catch (Exception failure) when (failure is not OperationCanceledException || !stop.IsCancellationRequested)
         {
@@ -405,14 +421,24 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
         await NoteAsync(profile, chatId, "Hermes stopped answering. Your message may not have reached it.").ConfigureAwait(false);
     }
 
-    private async Task StreamReplyAsync(string profile, string chatId, HttpResponseMessage response, long started, HermesStoredMessage outgoing)
+    private async Task StreamReplyAsync(string profile, string chatId, HttpResponseMessage response, long started, HermesStoredMessage outgoing, long? reportsThrough)
     {
         var kind = outgoing.Kind;
-        await StreamReplyCoreAsync(profile, chatId, response, started, kind, outgoing).ConfigureAwait(false);
+        await StreamReplyCoreAsync(profile, chatId, response, started, kind, outgoing, reportsThrough).ConfigureAwait(false);
     }
 
-    private async Task StreamReplyCoreAsync(string profile, string chatId, HttpResponseMessage response, long started, string kind, HermesStoredMessage outgoing)
+    // `reportsThrough`: the reports this turn carried count as answered on the stream's first evidence that Hermes took it (content, tool progress or a
+    // finished reply). The send's own answer is no evidence: it comes after AcceptWait whether Hermes confirmed or not. A refusal in the stream, a failure
+    // before any such event or an uncertain end answers nothing, so the next message carries them again.
+    private async Task StreamReplyCoreAsync(string profile, string chatId, HttpResponseMessage response, long started, string kind, HermesStoredMessage outgoing,
+        long? reportsThrough = null)
     {
+        async Task TookAsync()
+        {
+            if (reportsThrough is not { } through) return;
+            reportsThrough = null;
+            await AnsweredAsync(profile, through).ConfigureAwait(false);
+        }
         HermesStoredMessage? reply = null;
         var words = new System.Text.StringBuilder();
         var shownAt = 0L;
@@ -424,9 +450,11 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             switch (piece)
             {
                 case HermesProgress progress:
+                    await TookAsync().ConfigureAwait(false);
                     Typing(chatId, progress.Status.Length > 0 ? progress.Status : null, stopped: false);
                     break;
                 case HermesDelta delta:
+                    await TookAsync().ConfigureAwait(false);
                     words.Append(delta.Text);
                     var now = clock.GetTimestamp();
                     if (reply is null)
@@ -451,6 +479,7 @@ internal sealed class HermesBackend : IChatReader, IRealtimeFeed, IMessageSender
             }
         }
         var complete = finish is "stop" or "length";
+        if (complete) await TookAsync().ConfigureAwait(false);
         if (reply is not null || words.Length > 0)
         {
             reply = (reply ?? new(NewMessageId(profile), clock.GetUtcNow(), false, null)) with { Text = words.ToString().Trim(), State = complete ? "done" : "interrupted" };

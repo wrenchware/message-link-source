@@ -155,4 +155,16 @@ public static class MessageText
         }
     }
     public static string PlainText(string text) => string.Concat(Parse(text).Select(run => run.Text)).TrimEnd('\n');
+
+    // A Hermes thread holds text as Hermes (or a report posted to it) wrote it: Markdown or plain words, never HTML. Every other body is parsed as HTML, so
+    // a reply or report reading "<a href=...>" would become a link and "&amp;" an ampersand. Its rows are escaped first and shown exactly as typed; a bare
+    // address is still linked, never previewed or opened by itself. Escaping on the way in would not do: Android shows text as it arrives.
+    public static bool IsLiteral(string? chatId) => NativeBeeper.Core.Services.HermesIds.Owns(chatId);
+    public static string Literal(string text) =>
+        text.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal);
+    /// <summary>A message body as <see cref="Parse"/> reads it: literal in a Hermes thread, as sent everywhere else.</summary>
+    public static string Markup(string? chatId, string? text) => text is null ? "" : IsLiteral(chatId) ? Literal(text) : text;
+    public static string Markup(NativeBeeper.Core.Messaging.ChatMessage message) => Markup(message.ChatId, message.Text);
+    /// <summary>A message's words as a copy, a notification, a search result or the console shows them.</summary>
+    public static string PlainText(NativeBeeper.Core.Messaging.ChatMessage message) => PlainText(Markup(message));
 }

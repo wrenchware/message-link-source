@@ -83,6 +83,8 @@ WORKDIR /source
 COPY global.json Directory.Build.props Directory.Build.targets ./
 COPY src/ src/
 COPY experiments/ experiments/
+# The Hermes report scripts, which the server builds in for its page's download (NativeBeeper.Host.Network.csproj).
+COPY integrations/hermes-messagelink/ integrations/hermes-messagelink/
 # Locked: the project lists its Linux runtimes (RuntimeIdentifiers), which is what lets a self-contained restore stay
 # inside its lock file on a Linux SDK.
 RUN dotnet restore src/NativeBeeper.Server.Linux/NativeBeeper.Server.Linux.csproj --locked-mode -p:SelfContained=true

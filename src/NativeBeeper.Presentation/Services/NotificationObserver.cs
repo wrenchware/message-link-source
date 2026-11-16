@@ -200,7 +200,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
             return ReminderOutcome.AlreadyShown;
         var options = preferences.Options;
         var serviceKey = NotificationOptions.ServiceKey(chat);
-        var text = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "Message" : MessageText.PlainText(message.Text);
+        var text = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "Message" : MessageText.PlainText(message);
         var (title, preview) = options.Detail switch
         {
             NotificationDetail.SenderOnly => ("Reminder · " + chat.Title, "A message you saved"),
@@ -401,7 +401,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var record = new NotificationRecord(id, profile, message.ChatId, message.Id, DateTimeOffset.UtcNow, reply, read, GroupId: groupId, SourceScope: sourceScope);
         if (!await store.UpdateAsync(id, prior => prior is null ? (record, true) : (prior, false), token)) return false;
         var title = chat.Type == "group" ? $"{message.SenderName ?? "New message"} · {chat.Title}" : chat.Title;
-        var preview = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "New message" : MessageText.PlainText(message.Text);
+        var preview = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "New message" : MessageText.PlainText(message);
         // A reminder says so on the notification itself, so it is never read as a message that just arrived.
         var kind = attribution is null ? "" : "reminder ";
         // Focus can return while the message and actions resolve.
