@@ -761,9 +761,9 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
     private static string AgentId(string profile) => HermesIds.Chat(profile) + ":agent";
     private static string SelfId(string profile) => HermesIds.Chat(profile) + ":me";
 
-    // "Hermes Agent", or "Hermes Agent - <profile>" for any other profile (owner, 2026-11-15): one name the list sorts together and a person can
-    // rename here. The model Hermes reports stays out of it; a model id read like a code, not a conversation.
-    public static string DefaultTitle(string profile) => profile == HermesClient.DefaultProfile ? "Hermes Agent" : "Hermes Agent - " + profile;
+    // The profile's own name as a conversation's, "Hermes" for the default (HermesThreads.DefaultTitle), which a person can rename here. The model Hermes
+    // reports stays out of it; a model id read like a code, not a conversation.
+    public static string DefaultTitle(string profile) => NativeBeeper.Presentation.Services.HermesThreads.DefaultTitle(profile);
 
     // The name the owner gave the profile on the server's page, else the default (owner, 2026-11-15: a profile name is lowercase with no spaces, which
     // reads poorly as a conversation's). It names the thread and Hermes's side of it, so a rename reaches the messages already there.

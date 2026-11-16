@@ -39,16 +39,27 @@ public static class HermesThreads
     /// <summary>A profile's state in the words Settings shows.</summary>
     public static string StatusWord(string? status) => status switch
     {
-        "connected" => "Connected",
+        "connected" => "Ready",
         "unreachable" => "Can't reach Hermes",
-        "key_rejected" => "Key rejected",
-        "no_profile" => "No such profile",
+        "key_rejected" => "Wrong API key",
+        "no_profile" => "Not found in Hermes",
         _ => "Checking",
     };
 
-    /// <summary>The name a profile goes by: the title its host gives, else "Hermes Agent", or "Hermes Agent - &lt;profile&gt;" for any other profile.</summary>
-    public static string Title(HermesAgentState agent) =>
-        agent.Title is { Length: > 0 } title ? title : agent.Name == "default" ? "Hermes Agent" : "Hermes Agent - " + agent.Name;
+    /// <summary>The name a profile goes by: the title its host gives, else <see cref="DefaultTitle"/>.</summary>
+    public static string Title(HermesAgentState agent) => agent.Title is { Length: > 0 } title ? title : DefaultTitle(agent.Name);
+
+    /// <summary>
+    /// A profile's name made a conversation's (owner, 2026-11-16: an assistant called "Oracle", not "Hermes Agent - oracle"): "Hermes" for the default
+    /// profile, else the profile's name with its dashes and underscores as spaces and a capital first letter, so research-bot is "Research bot". The
+    /// server's backend names threads by this too, so every client says the same.
+    /// </summary>
+    public static string DefaultTitle(string profile)
+    {
+        if (profile == "default") return "Hermes";
+        var words = profile.Replace('-', ' ').Replace('_', ' ').Trim();
+        return words.Length == 0 ? profile : char.ToUpperInvariant(words[0]) + words[1..];
+    }
 
     /// <summary>
     /// What the conversation says while someone is typing. A participant's status (Hermes: the tool it is using) is said in place of the typing

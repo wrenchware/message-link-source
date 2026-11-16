@@ -39,7 +39,7 @@ profile's folder and with Hermes's own Python. Then, inside the profile:
    `MESSAGELINK_CODE` in its `.env`, enables the plugin, and adds the two settings below to `config.yaml`, keeping its
    comments. If `config.yaml` is laid out in a way it can't edit with certainty, it changes nothing and prints the
    lines to add by hand.
-4. It checks the new code once and ends with "Reports are on for" and the profile's name.
+4. It checks the new code once and ends with "Done.", the profile's name and "can now message you first."
 
 Hermes reads a profile's changed `.env` and `config.yaml` by itself within about 30 seconds. The `default` profile is
 the exception: restart Hermes once. Run the command again, from **New code…**, to replace the code; nothing else

@@ -31,10 +31,11 @@ internal sealed partial class ServerPage
     {
         var reports = Reports!;
         var name = HermesNames(agent).Name;
-        var title = "Set up reports";
+        var title = state.On ? "Set up " + name + " again" : "Let " + name + " message you first";
         string Ask(string? problem) => AskBody("/hermes/reports", token,
-            (state.On ? "A new command for " + name + ". It makes a new code where Hermes runs, and the current code stops working once it does. " : "Reports for " + name + ". ")
-            + "The server's password is asked for again because the command lets Hermes post to this conversation.", "Show the command", problem,
+            (state.On ? "A new setup command for " + name + ". Once it runs, the earlier setup stops working. "
+                : name + " can start a conversation when a task finishes or needs your answer. You run one command where Hermes runs. ")
+            + "Enter the server's password again, since this lets Hermes send messages to this conversation.", "Show the command", problem,
             before: "<input type=\"hidden\" name=\"profile\" value=\"" + Html(profile) + "\">");
         if (form is null)
         {
@@ -107,7 +108,7 @@ internal sealed partial class ServerPage
         return new StringBuilder("<section>").Append(Para(where))
             .Append("<div id=\"setup-command\"><p class=\"copy block line\">").Append(Html(command)).Append("</p>")
             .Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(command)).Append("\">Copy</button></p>")
-            .Append(Para("It works once, within " + (int)AgentReportRules.SetupLifetime.TotalMinutes + " minutes. It puts the report script and the Message Link plugin in the profile, and makes a code that only Hermes keeps."))
+            .Append(Para("It works once, within " + (int)AgentReportRules.SetupLifetime.TotalMinutes + " minutes. It adds the Message Link plugin to Hermes and makes a code that only Hermes keeps."))
             .Append("</div>")
             .Append("<div class=\"box\" id=\"setup\" data-profile=\"").Append(Html(profile)).Append("\" data-id=\"").Append(Html(id)).Append("\">")
             .Append(Row("Waiting for the command", "This page shows the result when the command is done.", null, null, id: "setup-state"))
@@ -154,9 +155,9 @@ fetch('/hermes/reports/setup?profile='+encodeURIComponent(box.getAttribute('data
 .then(function(r){if(r.status===404)return {state:'expired'};if(!r.ok)throw r.status;return r.json()}).then(function(d){fails=0;
 if(d.state==='waiting'){setTimeout(tick,2000);return}
 if(cmd)cmd.remove();
-if(d.state==='done'){show('Reports are on','Hermes reaches this server at '+d.address+'. Set up '+d.at+(d.from?' from '+d.from:'')+'.');if(off)off.hidden=false}
+if(d.state==='done'){show('Turned on','Hermes reaches this server at '+d.address+'. Set up '+d.at+(d.from?' from '+d.from:'')+'.');if(off)off.hidden=false}
 else if(d.state==='replaced')show('A newer command replaced this one','Use the newest command, or make another.');
-else show('This command has expired','Make a new one to set up reports.')})
+else show('This command has expired','Make a new one to try again.')})
 .catch(function(){fails++;setTimeout(tick,Math.min(30000,2000*Math.pow(2,fails)))})}
 tick();
 })();

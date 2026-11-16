@@ -886,7 +886,7 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
         say("Restart Hermes once so the default profile reads its new settings.")
     else:
         say("Hermes reads the new settings by itself within about 30 seconds.")
-    say("Reports are on for %s." % profile)
+    say("Done. %s can now message you first." % profile)
 
 
 def configure(config_path):

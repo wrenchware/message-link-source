@@ -14,7 +14,8 @@ internal sealed partial class ServerPage
 {
     // The logo and the services' marks, as Settings on the PC shows them, in one picture the page draws parts of. It has to be one: the door takes two connections from an address at
     // a time and drops the rest unread (MaxPendingPerAddress), and every answer here closes its connection, so a browser asking for five pictures at once got two per reload.
-    // Nothing of the server's, so like the logo it needs no sign-in.
+    // Nothing of the server's, so like the logo it needs no sign-in. Its pictures are stacked square, and the page's `.ic` rule names how many (600% for six) once, for
+    // every size: the logo's own sizes kept the five-picture height after Hermes's mark made six, which squashed it with the next picture's top showing under it.
     internal const string PicturesPath = "/page-pictures.png";
 
     private static readonly Lazy<byte[]> Pictures = new(() => Picture("server-page-pictures.png"));
@@ -95,8 +96,8 @@ internal sealed partial class ServerPage
         "backup_password" => "The backup password is set. Keep it safe: without it the backups can't be read.",
         "desktop_sign_in" => "The sign-in opened in Message Link on this PC.",
         "desktop_sign_in_failed" => "Message Link couldn't be opened on this PC to sign in. Open it from the Start menu and connect the account in Settings.",
-        "hermes_saved" => "Hermes is saved. Each profile is checked now.",
-        "reports_off" => "Reports are off. The code no longer works.",
+        "hermes_saved" => "Saved. Each assistant is checked now.",
+        "reports_off" => "Turned off. That assistant can no longer message you first.",
         _ => TailnetNotice(done),
     };
 

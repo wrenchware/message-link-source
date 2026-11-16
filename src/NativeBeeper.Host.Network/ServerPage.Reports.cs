@@ -34,30 +34,33 @@ internal sealed partial class ServerPage
 
     private const string ReportsIntro = "Hermes uses this code to send messages to this conversation. Anyone with it can do the same, so keep it in Hermes only.";
 
-    // The profile's Reports line, set in under its own line in the profile's box (HermesCard): New code and Turn off behind its menu, as a device's are.
+    // The assistant's "can message you first" line (reports), set in under its own line in its box (HermesCard): Set up again and Turn off behind its menu,
+    // as a device's are. Where a setup came from stays on the line until the first message: the one-time code can be raced, and this is where that shows.
     private void ReportsRow(StringBuilder body, HermesAgentState agent, string token)
     {
         if (Reports?.ReportsState.FirstOrDefault(r => r.Profile == agent.Name) is not { } state) return;
         var ask = "/hermes/reports?profile=" + Uri.EscapeDataString(agent.Name);
+        var name = HermesNames(agent).Name;
         if (!state.On)
         {
-            body.Append(Row("Reports", "Let Hermes post to this conversation when a job is done or something needs you.", "Off",
-                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">Set up…</a>", kind: "sub"));
+            body.Append(Row(FirstLine, name + " can start a conversation when a task finishes or needs your answer.", "Off",
+                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\" aria-label=\"" + Html("Allow " + name + " to message you first") + "\">Allow…</a>", kind: "sub"));
             return;
         }
         var under = state.LastRefusal == "address"
-            ? (state.LastRefusalAt is { } at ? "Last report refused " + Ago(at) + "." : "Last report refused.") + " It didn't come from the home network."
-            : state.LastReportAt is { } last && last >= (state.Since ?? DateTimeOffset.MinValue) ? "Last report " + Ago(last) + "."
-            : state.SetupFrom is { Length: > 0 } from && state.Since is { } since ? "Set up " + Ago(since) + " from " + from + ". No reports yet."
-            : "No reports since this code was made.";
-        var name = HermesNames(agent).Name;
-        body.Append(Row("Reports", under, "On", Act(Menu("Manage reports for " + name, false, [Item(Html(ask), "New code…", "New report code for " + name), TurnOffForm(token, agent.Name, name, "item danger")])),
+            ? (state.LastRefusalAt is { } at ? "A message was refused " + Ago(at) + "." : "A message was refused.") + " It didn't come from your home network."
+            : state.LastReportAt is { } last && last >= (state.Since ?? DateTimeOffset.MinValue) ? "Last message " + Ago(last) + "."
+            : state.SetupFrom is { Length: > 0 } from && state.Since is { } since ? "Turned on " + Ago(since) + " from " + from + ". " + name + " hasn't messaged you yet."
+            : name + " hasn't messaged you yet.";
+        body.Append(Row(FirstLine, under, "On", Act(Menu("Manage messages from " + name, false, [Item(Html(ask), "Set up again…", "Set up " + name + " again"), TurnOffForm(token, agent.Name, name, "item danger")])),
             warn: state.LastRefusal is not null, kind: "sub"));
     }
 
+    private const string FirstLine = "Can message you first";
+
     private static string TurnOffForm(string token, string profile, string name, string style, string id = "") =>
         "<form method=\"post\" action=\"/hermes/reports/off\"" + (id.Length > 0 ? " id=\"" + id + "\" hidden" : "") + "><input type=\"hidden\" name=\"form\" value=\"" + Html(token)
-        + "\"><input type=\"hidden\" name=\"profile\" value=\"" + Html(profile) + "\"><button type=\"submit\" class=\"" + style + "\" aria-label=\"" + Html("Turn off reports for " + name)
+        + "\"><input type=\"hidden\" name=\"profile\" value=\"" + Html(profile) + "\"><button type=\"submit\" class=\"" + style + "\" aria-label=\"" + Html("Stop " + name + " messaging you first")
         + "\">Turn off</button></form>";
 
     private async Task ReportsAsync(HttpContext context, string path, IFormCollection? form, string token)
@@ -97,7 +100,7 @@ internal sealed partial class ServerPage
             await SetupAsync(context, form, token, profile, state, agent).ConfigureAwait(false);
             return;
         }
-        var title = "Set up reports by hand";
+        var title = "Set up by hand";
         // The Windows server listens on this PC only (ServerNetwork) and reports never come through Tailscale, so its code always names 127.0.0.1 and the
         // listener's own port, whatever address the page was opened by (a tailnet name would make a code every report to is refused). Elsewhere a new code
         // starts from the address the current one names: the page's own address is how a browser reaches the server, which for Hermes in a container beside it
@@ -132,13 +135,13 @@ internal sealed partial class ServerPage
         catch (Exception failure) when (failure is ArgumentException or IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
         {
             log($"server page reports outcome=failed type={failure.GetType().Name}");
-            await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("The server couldn't turn on reports. Try again.")).ConfigureAwait(false);
+            await PageAsync(context, StatusCodes.Status500InternalServerError, title, Ask("The server couldn't turn this on. Try again.")).ConfigureAwait(false);
             return;
         }
         log("server page reports outcome=issued");
         var code = AgentReportCode.Build(url, fingerprint(), issued);
         context.Response.Headers.CacheControl = "no-store";
-        await PageAsync(context, StatusCodes.Status200OK, "Reports are on", ReportsCodeBody(code)).ConfigureAwait(false);
+        await PageAsync(context, StatusCodes.Status200OK, "Turned on", ReportsCodeBody(code)).ConfigureAwait(false);
     }
 
     // The code, once, with what to do with it in Hermes. Copy is data-copy-code, which the script on every signed-in page handles (JoinScript); data-copy is

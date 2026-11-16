@@ -993,11 +993,16 @@ internal sealed partial class ServerPage
 
     // ---- Words and HTML ----
 
+    // Centred on its own, as a sign-in is: the logo and what to do over one card, the bar above left out (LoginStyle).
     private static string SignInBody(string? problem, string? section = null) =>
-        "<section>" + (problem is null ? "" : Notice(problem))
-        + "<form method=\"post\" action=\"/login\">" + (section is null ? "" : "<input type=\"hidden\" name=\"section\" value=\"" + section + "\">") + "<label for=\"password\">Password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>"
-        + "<button type=\"submit\">Sign in</button></form>"
-        + "<p class=\"quiet\">The password chosen when this server was installed. Changing it signs every browser out.</p></section>";
+        "<div class=\"login\"><span class=\"ic logo\" aria-hidden=\"true\"></span><h1>Sign in to " + SiteName + "</h1><p class=\"quiet\">Enter the password chosen when this server was installed.</p>"
+        + (problem is null ? "" : Notice(problem))
+        + "<form class=\"box\" method=\"post\" action=\"/login\">" + (section is null ? "" : "<input type=\"hidden\" name=\"section\" value=\"" + section + "\">") + "<label for=\"password\">Password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus>"
+        + "<button type=\"submit\">Sign in</button></form></div>";
+
+    private const string LoginStyle = "body:has(.login) header.top{display:none}body:has(.login) main{min-height:100vh;max-width:none;display:flex;align-items:center;justify-content:center;padding:24px 16px 12vh}"
+        + ".login{width:100%;max-width:360px;text-align:center}.login .ic.logo{width:56px;height:56px;margin:0 auto 18px}.login h1{font-size:20px;font-weight:600;color:var(--fg);white-space:normal;overflow:visible;margin:0 0 6px}.login>p.quiet{margin:0 0 24px;text-wrap:balance}"
+        + ".login .notice{text-align:left;margin:0 0 16px}.login form{text-align:left;padding:20px;margin:0}.login input{max-width:none}.login button{width:100%;padding:7px 12px}";
 
     private static string Provider(string provider) => provider switch
     {
@@ -1057,7 +1062,7 @@ internal sealed partial class ServerPage
         // The frame: the side list (once signed in), the bar saying where you are, and the page under it.
         + "@font-face{font-family:'Inter Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url(/page-font.woff2) format('woff2-variations');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}"
         + "*{box-sizing:border-box}[hidden]{display:none!important}html{background:var(--bg)}body{margin:0;min-height:100vh;font:14px/1.45 'Inter Variable','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;font-feature-settings:normal;color:var(--fg);-webkit-font-smoothing:antialiased}body.framed{display:flex;align-items:flex-start}.pane{flex:1;min-width:0}"
-        + ".side{position:sticky;top:0;flex:none;width:232px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;background:var(--side);border-right:1px solid var(--sideline);padding:12px 10px}.brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 10px 18px;color:var(--fg);font-weight:600;text-decoration:none}.brand .ic.logo{width:40px;height:40px;background-size:40px 200px}"
+        + ".side{position:sticky;top:0;flex:none;width:232px;height:100vh;overflow-y:auto;display:flex;flex-direction:column;background:var(--side);border-right:1px solid var(--sideline);padding:12px 10px}.brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 10px 18px;color:var(--fg);font-weight:600;text-decoration:none}.brand .ic.logo{width:40px;height:40px}"
         + ".side nav{display:flex;flex-direction:column;gap:2px}.side nav a,.side .out button{display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border:0;border-radius:7px;background:none;color:var(--soft);font:inherit;font-weight:400;text-align:left;text-decoration:none;cursor:pointer}"
         + ".side nav a:hover,.side .out button:hover{background:var(--here);color:var(--fg);filter:none}.side nav a.here{background:var(--here);color:var(--fg);font-weight:600}.side svg{flex:none;color:var(--muted)}.side a.here svg,.side a:hover svg,.side button:hover svg{color:var(--fg)}"
         + ".grp{margin:18px 10px 4px;font-size:12px;font-weight:500;color:var(--faint)}.side form.out{margin:auto 0 0;padding-top:12px}"
@@ -1074,7 +1079,7 @@ internal sealed partial class ServerPage
         + ".sec a:not(.button):not(.go):not(.item),.row a:not(.button):not(.item),button.link{color:var(--soft);font:inherit;font-size:13px;text-decoration:underline;text-decoration-color:var(--fieldline);text-underline-offset:3px;white-space:nowrap;background:none;border:0;padding:0;cursor:pointer}.sec a:not(.button):not(.go):not(.item):hover,.row a:not(.button):not(.item):hover,button.link:hover{color:var(--fg);background:none}"
         + "a.go{color:var(--fg);text-decoration:none}a.go:hover{background:var(--rowhover)}a.go:hover .chev{border-color:var(--soft)}a.go[aria-expanded=true] .chev{transform:rotate(135deg)}form.plain{display:inline;margin:0}"
         + ".more{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 16px 12px 54px;margin:0}.more.flat{padding-left:16px}.hint{color:var(--muted);font-size:13px;margin:8px 2px 0}.more .hint{margin:0}.more .copy{overflow-wrap:anywhere;color:var(--muted)}.more details{width:100%;margin:0}.more details p{margin:6px 0}.more pre{margin:6px 0 8px}"
-        + ".ic{width:24px;height:24px;flex:none;display:block;background:url(/page-pictures.png) no-repeat;background-size:24px 144px}.ic.logo{width:22px;height:22px;background-size:22px 132px}.ic.gm{background-position:0 -24px}.ic.me{background-position:0 -48px}.ic.gv{background-position:0 -72px}.ic.ig{background-position:0 -96px}.ic.hm{background-position:0 -120px}"
+        + ".ic{width:24px;height:24px;flex:none;display:block;background:url(/page-pictures.png) no-repeat;background-size:100% 600%}.ic.logo{width:22px;height:22px}.ic.gm{background-position:0 -24px}.ic.me{background-position:0 -48px}.ic.gv{background-position:0 -72px}.ic.ig{background-position:0 -96px}.ic.hm{background-position:0 -120px}"
         + "a.go:focus{outline:none}a.go:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}:focus-visible{outline:2px solid var(--acc);outline-offset:2px}"
         // Everything else: the cards of the pages under /manage, the forms and the steps of setting up.
         + "section{background:var(--box);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 20px}section.attention{background:var(--warnbg);border-color:var(--warnline)}section>:last-child{margin-bottom:0}"
@@ -1108,7 +1113,7 @@ internal sealed partial class ServerPage
         + ".g small.copy{margin-top:4px;font-size:12px;color:var(--soft);overflow-wrap:anywhere}"
         // A narrow window: the side list becomes a strip across the top that scrolls sideways.
         + "@media(max-width:760px){body.framed{display:block}.side{position:static;width:auto;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px;border-right:0;border-bottom:1px solid var(--sideline);padding:6px 10px}"
-        + ".brand{flex:1;flex-direction:row;padding:6px 8px}.brand .ic.logo{width:22px;height:22px;background-size:22px 110px}.side form.out{margin:0;padding:0}.side .out button{width:auto}.side nav{order:3;width:100%;flex-direction:row;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}.side nav a{flex:none;width:auto;white-space:nowrap}.grp{display:none}"
+        + ".brand{flex:1;flex-direction:row;padding:6px 8px}.brand .ic.logo{width:22px;height:22px}.side form.out{margin:0;padding:0}.side .out button{width:auto}.side nav{order:3;width:100%;flex-direction:row;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}.side nav a{flex:none;width:auto;white-space:nowrap}.grp{display:none}"
         + "header.top{position:static;padding:0 16px;min-height:46px}main{padding:20px 14px 40px}.more{padding-left:16px}ul.rows li{flex-wrap:wrap}.row:has(.acts){flex-wrap:wrap}.acts{margin-left:auto}}";
 
     private const string SiteName = "Message Link Server";
@@ -1134,7 +1139,7 @@ internal sealed partial class ServerPage
         var watch = nav is not null && response.Headers.ContentSecurityPolicy.ToString().Contains(JoinScriptHash, StringComparison.Ordinal) ? JoinAsk : "";
         var html = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
             + (refresh is { } seconds ? $"<meta http-equiv=\"refresh\" content=\"{seconds};url={Html(refreshTo)}\">" : "")
-            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}{HermesStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
+            + $"<link rel=\"icon\" href=\"{LogoPath}\"><title>{Html(whole)}</title><style>{Style}{SetupStyle}{HermesStyle}{LoginStyle}</style></head><body class=\"{(nav is null ? "solo" : "framed")}\">{nav}<div class=\"pane\">"
             + $"<header class=\"top\">{logo}<h1>{crumbs}</h1></header><main>{watch}{WithoutPasswordAgain(context, body)}</main></div></body></html>";
         return response.WriteAsync(html, Encoding.UTF8, context.RequestAborted);
     }

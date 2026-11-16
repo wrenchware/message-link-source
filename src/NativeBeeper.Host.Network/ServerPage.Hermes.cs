@@ -26,8 +26,20 @@ internal sealed partial class ServerPage
     // Hermes Agent's own app icon, the sixth picture in the page's sprite (THIRD_PARTY_NOTICES.md).
     private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";
 
-    private const string HermesStyle = "fieldset.hp{border:1px solid var(--line);border-radius:12px;padding:12px 16px 2px;margin:0 0 14px}"
-        + "fieldset.hp legend{padding:0 6px;font-weight:600}label.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0 0 12px}label.check input{margin:0}"
+    private const string HermesStyle =
+        // The form: titled cards as the status pages have. Where Hermes runs, with how to set it up by hand folded under it.
+        "form.hermes>.sec{margin:0 0 24px}form.hermes>.lead{color:var(--soft);margin:0 2px 20px}.hf{padding:14px 16px}.hf input{max-width:420px;margin:0}.hf .hint{margin:6px 0 0}"
+        + "details.how{margin:0;padding:0 16px}details.how>summary{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--soft);font-size:13px;list-style:none}details.how>summary::-webkit-details-marker{display:none}"
+        + "details.how>summary:hover{color:var(--fg)}details.how>summary .chev{transform:rotate(45deg);margin-left:auto}details.how[open]>summary .chev{transform:rotate(135deg)}details.how ol.steps{margin:0 0 14px}"
+        // The profiles: one line each under the columns' names, the name of a saved one as text (its key is kept under it), a blank line to add one.
+        + ".hgrid{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr) 84px;gap:10px;align-items:center;padding:10px 16px}.hgrid.hhead{padding:9px 16px;font-size:12.5px;font-weight:500;color:var(--muted)}"
+        + ".hgrid input{max-width:none;margin:0}.hgrid .pn{font-weight:600;overflow-wrap:anywhere}.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}"
+        // Remove: a checkbox drawn as a quiet button; ticked, it reads as pressed and the line fades until Save.
+        + "label.rm{justify-self:end;margin:0;padding:3px 10px;font-size:12.5px;font-weight:500;line-height:20px;border:1px solid var(--fieldline);border-radius:7px;background:var(--field);color:var(--soft);cursor:pointer;white-space:nowrap}"
+        + "label.rm:hover{background:var(--fieldhover);color:var(--fg)}label.rm:has(:focus-visible){outline:2px solid var(--acc);outline-offset:2px}label.rm:has(:checked){color:var(--danger-ink);border-color:var(--danger-ink)}"
+        + ".hgrid:has(.rm :checked)>:not(.rm){opacity:.4}.hgrid:has(.rm :checked) .pn{text-decoration:line-through}form.hermes{margin-top:0}form.hermes>input[type=password]{margin-bottom:18px}"
+        + "@media(max-width:640px){.hgrid{grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:12px 16px}.hgrid.hhead{display:none}.hgrid>.f{grid-column:1/-1}.hgrid>.pn{grid-row:1;grid-column:1}.hgrid>.rm{grid-row:1;grid-column:2}"
+        + ".hgrid label.vh{position:static;width:auto;height:auto;overflow:visible;clip:auto;margin:0 0 4px;font-size:13px}}"
         // A profile's Reports line, set in under the profile's name past its picture; the settings apart from the profiles; a menu's item that posts a form.
         + ".row.sub{padding-left:54px;min-height:44px}.row.sub .g{font-weight:500}.box.settings{margin-top:20px}"
         + ".pop form{margin:0}button.item{display:block;width:100%;padding:7px 10px;border:0;border-radius:6px;background:none;color:var(--fg);font:inherit;font-size:13px;font-weight:400;line-height:inherit;text-align:left;white-space:nowrap}"
@@ -36,18 +48,19 @@ internal sealed partial class ServerPage
     // A profile's state in the page's words.
     private static string HermesWord(string status) => status switch
     {
-        "connected" => "Connected",
+        "connected" => "Ready",
         "unreachable" => "Can't reach Hermes",
-        "key_rejected" => "Key rejected",
-        "no_profile" => "No such profile",
+        "key_rejected" => "Wrong API key",
+        "no_profile" => "Not found in Hermes",
         _ => "Checking",
     };
 
     private static bool HermesWarns(string status) => status is "unreachable" or "key_rejected" or "no_profile";
 
-    // What a profile is called on the page, as its thread is titled (the name given here, else Hermes Agent's own), with the profile's name under it.
+    // What an assistant is called on the page, as its thread is titled (the name given here, else the profile's own). The profile's name goes under it only
+    // when it was renamed, since the default name is the profile's.
     private static (string Name, string? Under) HermesNames(HermesAgentState agent) =>
-        (agent.Title is { Length: > 0 } title ? title : NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(agent.Name), "Profile " + agent.Name);
+        HermesGivenTitle(agent) is { Length: > 0 } given ? (given, "Hermes profile " + agent.Name) : (NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(agent.Name), null);
 
     // The name given here, or blank when the thread goes by the default.
     private static string HermesGivenTitle(HermesAgentState agent) =>
@@ -59,11 +72,11 @@ internal sealed partial class ServerPage
         if (Hermes?.State is not { } state) return;
         if (state.Agents.Count == 0)
         {
-            body.Append(Go("Hermes", "Chat with your Hermes agent.", "Not set up", "/manage/hermes", "Hermes", HermesMark, id: "row-" + HermesSection));
+            body.Append(Go("Hermes", "Chat with your Hermes assistants.", "Not set up", "/manage/hermes", "Hermes", HermesMark, id: "row-" + HermesSection));
             return;
         }
         var worst = state.Agents.Select(agent => agent.Status).OrderBy(status => status switch { "key_rejected" => 0, "no_profile" => 1, "unreachable" => 2, "unchecked" => 3, _ => 4 }).First();
-        body.Append(Go("Hermes", state.Agents.Count == 1 ? "1 profile" : $"{state.Agents.Count} profiles", HermesWord(worst), "/manage/hermes", "Hermes", HermesMark,
+        body.Append(Go("Hermes", state.Agents.Count == 1 ? "1 assistant" : $"{state.Agents.Count} assistants", HermesWord(worst), "/manage/hermes", "Hermes", HermesMark,
             warn: HermesWarns(worst), id: "row-" + HermesSection));
     }
 
@@ -72,23 +85,23 @@ internal sealed partial class ServerPage
     {
         if (Hermes?.State is not { } state) return;
         var problem = state.Agents.Any(agent => agent.Status == "key_rejected") ? "Hermes rejected an API key"
-            : state.Agents.Any(agent => agent.Status == "no_profile") ? "Hermes doesn't have a profile added here" : null;
+            : state.Agents.Any(agent => agent.Status == "no_profile") ? "An assistant isn't found in Hermes" : null;
         if (problem is not null) rows.Append(Row(problem, null, null, "<a class=\"button\" href=\"/manage/hermes\">Review</a>", HermesMark));
     }
 
-    // /manage/hermes: the address and each profile's state, and the way to change them. Whether a profile is still being checked, so the page looks again soon.
+    // /manage/hermes: each assistant's state, and the way to change them. Whether a profile is still being checked, so the page looks again soon.
     private bool HermesCard(StringBuilder body, string token)
     {
         var state = Hermes!.State;
-        body.Append("<section id=\"hermes\"><h2>Hermes</h2>");
+        body.Append("<section id=\"hermes\"><h2>Assistants</h2>");
         if (state.Agents.Count == 0)
         {
-            body.Append("<div class=\"box\">").Append(Row("Set up Hermes", "Each Hermes profile becomes a conversation. Hermes gets only what you type or send in it.", "Not set up",
+            body.Append("<div class=\"box\">").Append(Row("Set up Hermes", "Chat with your Hermes assistants in Message Link. Each assistant gets its own conversation.", "Not set up",
                 "<a class=\"button\" href=\"/hermes\">Set up…</a>")).Append("</div></section>");
             return false;
         }
-        // A box for each profile, its Reports line set in under it, so with several profiles each one's lines read as its own; then where Hermes is and the
-        // way to change it.
+        // A box for each assistant, its "can message you first" line set in under it, so with several each one's lines read as its own; then one row to
+        // change them. The address is only in the form (owner, 2026-11-16: the plumbing stays out of the way).
         foreach (var agent in state.Agents)
         {
             var (name, under) = HermesNames(agent);
@@ -96,9 +109,8 @@ internal sealed partial class ServerPage
             ReportsRow(body, agent, token);
             body.Append("</div>");
         }
-        body.Append("<div class=\"box settings\">");
-        if (state.Address is { Length: > 0 } address) body.Append(CopyRow("Address", address));
-        body.Append(Row("Change Hermes", "The address, the profiles, their API keys and conversation names.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
+        body.Append("<div class=\"box settings\">")
+            .Append(Row("Add or change assistants", "Add an assistant, rename one, or change where Hermes runs.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
             .Append("</div></section>");
         return state.Agents.Any(agent => agent.Status == "unchecked");
     }
@@ -108,15 +120,19 @@ internal sealed partial class ServerPage
 
     private string HermesForm(string token, string? problem, string? address, IReadOnlyList<HermesRow> rows)
     {
-        var body = new StringBuilder("<section>");
+        var body = new StringBuilder();
         if (problem is not null) body.Append(Notice(problem));
-        body.Append(Para("Message Link Server reaches Hermes Agent through Hermes's own API server. Each Hermes profile becomes a conversation, and Hermes gets only what you type or send in it."))
-            .Append("<ol class=\"steps\"><li>On the machine that runs Hermes, set <span class=\"copy\">API_SERVER_HOST=0.0.0.0</span> so its API server can be reached from your home network. It listens on port 8642 by default.</li>")
-            .Append("<li>Give each profile its own key with <span class=\"copy\">API_SERVER_KEY</span>, then start Hermes again.</li>")
-            .Append("<li>Enter the address once, such as http://192.168.1.20:8642, then add each profile by name. The profile named default is Hermes's own default profile.</li></ol>")
-            .Append("<form method=\"post\" action=\"/hermes\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
+        body.Append("<form class=\"hermes\" method=\"post\" action=\"/hermes\"><input type=\"hidden\" name=\"form\" value=\"").Append(Html(token)).Append("\">")
+            .Append("<p class=\"lead\">Chat with your Hermes assistants in Message Link. Each assistant gets its own conversation.</p>")
+            .Append("<section class=\"sec\"><div class=\"sh\"><h2>Where Hermes runs</h2></div><div class=\"box\"><div class=\"hf\">")
             .Append("<label for=\"address\">Address</label><input id=\"address\" name=\"address\" type=\"text\" value=\"").Append(Html(address))
-            .Append("\" placeholder=\"http://192.168.1.20:8642\" autocomplete=\"off\" spellcheck=\"false\">");
+            .Append("\" placeholder=\"http://192.168.1.20:8642\" autocomplete=\"off\" spellcheck=\"false\"><p class=\"hint\">Hermes listens on port 8642 by default.</p></div>")
+            // How to make Hermes reachable by hand: folded, as a command will do it one day (ROADMAP.md).
+            .Append("<details class=\"how\"><summary>Set up Hermes yourself<span class=\"chev\" aria-hidden=\"true\"></span></summary>")
+            .Append("<ol class=\"steps\"><li>On the machine that runs Hermes, set <span class=\"copy\">API_SERVER_HOST=0.0.0.0</span> so its API server can be reached from your home network.</li>")
+            .Append("<li>Give each profile its own key with <span class=\"copy\">API_SERVER_KEY</span>, then start Hermes again.</li></ol></details></div></section>")
+            .Append("<section class=\"sec\"><div class=\"sh\"><h2>Assistants</h2></div><div class=\"box\">")
+            .Append("<div class=\"hgrid hhead\" aria-hidden=\"true\"><span>Hermes profile</span><span>Name</span><span>API key</span><span></span></div>");
         var index = 0;
         foreach (var row in rows)
         {
@@ -124,36 +140,44 @@ internal sealed partial class ServerPage
         }
         // A blank row to add one; with nothing set up yet, the first is Hermes's own default profile.
         Profile(index, rows.Count == 0 ? NativeBeeper.App.Services.Hermes.HermesClient.DefaultProfile : "", false, "", existing: false);
-        body.Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
+        body.Append("</div><p class=\"hint\">The Hermes profile named default is Hermes's own.")
+            .Append(rows.Any(row => row.Saved) ? " Leave a saved API key blank to keep it." : "").Append("</p></section>")
+            .Append("<label for=\"password\">Server password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required>")
             .Append("<button type=\"submit\">Save</button><a class=\"cancel\" href=\"/manage/hermes\">Cancel</a></form>");
-        return body.Append("</section>").ToString();
+        return body.ToString();
 
+        // One line of the table. A saved profile's name is its identity (its key is kept under it), so it shows as text; a typed one that isn't saved stays a field.
+        // On a narrow screen the line stacks and each field's label shows.
         void Profile(int i, string name, bool saved, string title, bool existing)
         {
-            body.Append("<fieldset class=\"hp\"><legend>").Append(existing ? "Profile" : "Add a profile").Append("</legend>")
-                .Append("<label for=\"name-").Append(i).Append("\">Profile name</label><input id=\"name-").Append(i).Append("\" name=\"name-").Append(i)
-                .Append("\" type=\"text\" value=\"").Append(Html(name)).Append("\" autocomplete=\"off\" spellcheck=\"false\">")
-                .Append("<label for=\"key-").Append(i).Append("\">API key</label><input id=\"key-").Append(i).Append("\" name=\"key-").Append(i)
-                // new-password: a browser must not offer the page's own password here.
-                .Append("\" type=\"password\" autocomplete=\"new-password\"").Append(saved ? " placeholder=\"Saved. Leave blank to keep it.\"" : "").Append('>')
-                // Optional: a profile name is lowercase with no spaces, so the conversation can go by another. Blank keeps Hermes Agent's own name, shown as the placeholder.
-                .Append("<label for=\"title-").Append(i).Append("\">Conversation name (optional)</label><input id=\"title-").Append(i).Append("\" name=\"title-").Append(i)
+            body.Append("<div class=\"hgrid\">");
+            if (saved)
+                body.Append("<div class=\"pn\">").Append(Html(name)).Append("</div><input type=\"hidden\" name=\"name-").Append(i).Append("\" value=\"").Append(Html(name)).Append("\">");
+            else
+                body.Append("<div class=\"f\"><label class=\"vh\" for=\"name-").Append(i).Append("\">Hermes profile</label><input id=\"name-").Append(i).Append("\" name=\"name-").Append(i)
+                    .Append("\" type=\"text\" value=\"").Append(Html(name)).Append('"').Append(existing ? "" : " placeholder=\"Add an assistant\"").Append(" autocomplete=\"off\" spellcheck=\"false\"></div>");
+            // The assistant's name, optional: a profile name is lowercase with no spaces, so the conversation can go by another. Blank keeps the default, shown as the placeholder.
+            body.Append("<div class=\"f\"><label class=\"vh\" for=\"title-").Append(i).Append("\">Name</label><input id=\"title-").Append(i).Append("\" name=\"title-").Append(i)
                 .Append("\" type=\"text\" value=\"").Append(Html(title)).Append("\" maxlength=\"").Append(NativeBeeper.App.Services.Hermes.HermesBackend.MaxTitleLength)
                 .Append("\" autocomplete=\"off\"");
             var profile = name.Trim().ToLowerInvariant();
             if (NativeBeeper.App.Services.Hermes.HermesClient.ValidProfile(profile))
                 body.Append(" placeholder=\"").Append(Html(NativeBeeper.App.Services.Hermes.HermesBackend.DefaultTitle(profile))).Append('"');
-            body.Append('>');
-            if (existing) body.Append("<label class=\"check\"><input type=\"checkbox\" name=\"remove-").Append(i).Append("\" value=\"yes\">Remove this profile</label>");
-            body.Append("</fieldset>");
+            body.Append("></div>")
+                .Append("<div class=\"f\"><label class=\"vh\" for=\"key-").Append(i).Append("\">API key</label><input id=\"key-").Append(i).Append("\" name=\"key-").Append(i)
+                // new-password: a browser must not offer the page's own password here.
+                .Append("\" type=\"password\" autocomplete=\"new-password\"").Append(saved ? " placeholder=\"Saved\"" : "").Append("></div>");
+            if (existing) body.Append("<label class=\"rm\"><input class=\"vh\" type=\"checkbox\" name=\"remove-").Append(i).Append("\" value=\"yes\">Remove</label>");
+            body.Append("</div>");
         }
     }
 
     private async Task HermesAsync(HttpContext context, IFormCollection? form, string token)
     {
-        const string title = "Set up Hermes";
         var hermes = Hermes!;
         var state = hermes.State;
+        // As the card's own line.
+        const string title = "Add or change assistants";
         bool Saved(string name) => state.Agents.Any(agent => agent.Name == name && agent.HasKey);
         if (form is null)
         {
