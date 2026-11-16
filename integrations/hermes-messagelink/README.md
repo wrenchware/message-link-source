@@ -51,6 +51,9 @@ long-job | tail -n 20 | ml-report
 ml-report --key nightly-2026-11-15 "Nightly build passed."
 ```
 
+A no-agent scheduled job runs a script file and takes no arguments for it, so put the `ml-report` call in a small
+script of its own and give the job that script.
+
 If the profile's terminal runs over SSH, use the Message Link plugin for Hermes instead, which keeps the code inside
 Hermes.
 
