@@ -1,3 +1,5 @@
+using NativeBeeper.Presentation.ViewModels;
+
 namespace NativeBeeper.Presentation.Services;
 
 public static class ComposeTransport
@@ -11,18 +13,20 @@ public static class ComposeTransport
         "SMS/MMS" => "SMS/MMS",
         _ => ""
     };
-    // With a photo attached the text is its caption; the route still shows when there is one.
-    public static string Placeholder(string label, bool attachment) => attachment
-        ? label.Length == 0 ? "Add a caption" : "Add a caption · " + label
-        : Placeholder(label);
-    public static string Placeholder(string label) => label switch
+    // One shape for the empty box everywhere (owner, 2026-11-16): "Message", then the route after a dot where there is one
+    // ("Message · RCS"). With a photo attached the text is its caption: "Add a caption · RCS".
+    public static string Placeholder(string label, bool attachment) =>
+        (attachment ? "Add a caption" : "Message") + (label.Length == 0 ? "" : " · " + label);
+
+    // A linked conversation's empty box names the route as the service picker does once typing starts
+    // ("Google Messages · RCS", "Messenger"), plus what tells it from another route of the same service: the number,
+    // else the kind ("Messenger · Encrypted") where no RCS or SMS already says it. A photo puts "Add a caption" in front.
+    public static string Placeholder(ConversationMember member, IEnumerable<ConversationMember> routes, string label, bool attachment)
     {
-        "RCS" => "RCS message",
-        "SMS" => "Text message · SMS",
-        "MMS" => "Add a message · MMS",
-        "SMS/MMS" => "Text message · SMS/MMS",
-        _ => "Write a message"
-    };
+        var apart = member.NumberApart(routes) ?? (label.Length > 0 ? null : member.DistinctDetail(routes));
+        var route = string.Join(" · ", new[] { member.DisplayRoute, apart, label.Length > 0 ? label : null }.OfType<string>());
+        return attachment ? "Add a caption · " + route : route;
+    }
     // Outgoing bubble color family. Unrecognized routes stay null and keep the palette color.
     public static string? BubbleFamily(string? transport) => transport switch
     {

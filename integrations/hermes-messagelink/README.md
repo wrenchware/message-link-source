@@ -49,6 +49,11 @@ If Hermes can't reach the server, the command says so. With Hermes and Message L
 put both containers on one user-defined Docker network (not the default bridge): a connection through a published
 port arrives from Docker's own address, which the server refuses.
 
+On Unraid, make the network in a terminal, such as `docker network create messagelink`, and choose it as the network
+of both containers. Give it a name that starts with a letter: Unraid removes a network whose name starts with a number
+when Docker restarts. If Unraid hasn't kept a network made this way before, go to Settings, Docker, stop Docker, set
+**Preserve user defined networks** to **Yes**, and start Docker again.
+
 ## Set up by hand
 
 The command's page has **Set up by hand instead**, which shows a connection code once.
