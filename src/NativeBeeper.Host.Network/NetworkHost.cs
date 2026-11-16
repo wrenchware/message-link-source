@@ -174,6 +174,9 @@ internal sealed partial class NetworkHost : IAsyncDisposable
             page.Hermes = options.Hermes;
             page.Reports = options.Reports;
             page.ListenPort = () => Port;
+            page.PublicKeyPin = ReportInstaller.PublicKeyPin(certificate);
+            // In a container, Hermes in another container on the same network reaches the server by its container name, which the setup command tries.
+            page.InContainer = options.InContainer ?? File.Exists("/.dockerenv");
         }
         devices.Revoked += EndDevice;
         devices.Restored = options.Restored;
@@ -192,6 +195,9 @@ internal sealed partial class NetworkHost : IAsyncDisposable
 
     /// <summary>The certificate's SHA-256 as lowercase hex: what a client pins.</summary>
     public string Fingerprint => NetworkEndpoint.Fingerprint(certificate);
+
+    /// <summary>curl's pin for the certificate's public key, which the reports' setup command carries.</summary>
+    internal string PublicKeyPin => ReportInstaller.PublicKeyPin(certificate);
 
     /// <summary>How many connections are in the door now, and how many were let go unread because it was full.</summary>
     public int Pending => Volatile.Read(ref pending);
@@ -527,6 +533,11 @@ internal sealed partial class NetworkHost : IAsyncDisposable
         if (request.Path.Value is ReportPath or ReportCheckPath)
         {
             await ReportAsync(context).ConfigureAwait(false);
+            return;
+        }
+        if (IsSetupPath(request.Path.Value))
+        {
+            await ReportSetupAsync(context).ConfigureAwait(false);
             return;
         }
         // Exactly the one path, compared as written (PathString's own comparison ignores case).

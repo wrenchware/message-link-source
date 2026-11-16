@@ -1,13 +1,15 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.Host.Network;
 
-// Reports on the server's page (IAgentReports): each Hermes profile's line says whether Hermes may post to its conversation, and turns it on, makes a new code or
-// turns it off. Turning on and a new code ask for the password again and show the connection code once, on the answer to that form and no later page; the server
-// keeps only the token's hash. The scripts Hermes uses to post, and the Hermes plugin, are offered from here too, each as one download.
+// Reports on the server's page (IAgentReports): each Hermes profile's line says whether Hermes may post to its conversation, sets it up, makes a new code or
+// turns it off. Set up and New code ask for the password again and show one command to run where Hermes runs (setup in one command, ServerPage.ReportSetup.cs),
+// whose installer makes the profile's code there; the page then shows the result as it comes. Setting up by hand shows a connection code once, on the answer to
+// its form and no later page. The server keeps only hashes. The scripts Hermes uses to post, and the Hermes plugin, are offered from here too, each as one download.
 internal sealed partial class ServerPage
 {
     /// <summary>The report tokens this page turns on and off (<see cref="NetworkHostOptions.Reports"/>); null shows no Reports line.</summary>
@@ -15,11 +17,12 @@ internal sealed partial class ServerPage
 
     internal const string ReportScriptPath = "/hermes/ml-report.zip";
     internal const string PluginPath = "/hermes/plugin.zip";
+    internal const string ReportCodePath = "/hermes/reports/code";
 
     /// <summary>The port the server's door listens on, once it does (the Windows server's report code names it).</summary>
     internal Func<int>? ListenPort { get; set; }
 
-    private static bool IsReportsPath(string? path) => path is "/hermes/reports" or "/hermes/reports/off" or ReportScriptPath or PluginPath;
+    private static bool IsReportsPath(string? path) => path is "/hermes/reports" or "/hermes/reports/off" or ReportCodePath or SetupWatchPath or ReportScriptPath or PluginPath;
 
     // The files of integrations/hermes-messagelink, embedded under "hermes-messagelink/" (NativeBeeper.Host.Network.csproj), in the ml-report download.
     internal static readonly string[] ReportScriptFiles = ["ml-report", "mlreport_client.py", "SKILL.md", "README.md", "LICENSE"];
@@ -39,19 +42,23 @@ internal sealed partial class ServerPage
         if (!state.On)
         {
             body.Append(Row("Reports", "Let Hermes post to this conversation when a job is done or something needs you.", "Off",
-                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">Turn on…</a>", kind: "sub"));
+                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">Set up…</a>", kind: "sub"));
             return;
         }
         var under = state.LastRefusal == "address"
             ? (state.LastRefusalAt is { } at ? "Last report refused " + Ago(at) + "." : "Last report refused.") + " It didn't come from the home network."
             : state.LastReportAt is { } last && last >= (state.Since ?? DateTimeOffset.MinValue) ? "Last report " + Ago(last) + "."
+            : state.SetupFrom is { Length: > 0 } from && state.Since is { } since ? "Set up " + Ago(since) + " from " + from + ". No reports yet."
             : "No reports since this code was made.";
         var name = HermesNames(agent).Name;
-        var off = "<form method=\"post\" action=\"/hermes/reports/off\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><input type=\"hidden\" name=\"profile\" value=\""
-            + Html(agent.Name) + "\"><button type=\"submit\" class=\"item danger\" aria-label=\"" + Html("Turn off reports for " + name) + "\">Turn off</button></form>";
-        body.Append(Row("Reports", under, "On", Act(Menu("Manage reports for " + name, false, [Item(Html(ask), "New code…", "New report code for " + name), off])),
+        body.Append(Row("Reports", under, "On", Act(Menu("Manage reports for " + name, false, [Item(Html(ask), "New code…", "New report code for " + name), TurnOffForm(token, agent.Name, name, "item danger")])),
             warn: state.LastRefusal is not null, kind: "sub"));
     }
+
+    private static string TurnOffForm(string token, string profile, string name, string style, string id = "") =>
+        "<form method=\"post\" action=\"/hermes/reports/off\"" + (id.Length > 0 ? " id=\"" + id + "\" hidden" : "") + "><input type=\"hidden\" name=\"form\" value=\"" + Html(token)
+        + "\"><input type=\"hidden\" name=\"profile\" value=\"" + Html(profile) + "\"><button type=\"submit\" class=\"" + style + "\" aria-label=\"" + Html("Turn off reports for " + name)
+        + "\">Turn off</button></form>";
 
     private async Task ReportsAsync(HttpContext context, string path, IFormCollection? form, string token)
     {
@@ -69,7 +76,13 @@ internal sealed partial class ServerPage
         var profile = (form is null ? context.Request.Query["profile"] : form["profile"]).ToString();
         if (reports.ReportsState.FirstOrDefault(r => r.Profile == profile) is not { } state || Hermes!.State.Agents.FirstOrDefault(a => a.Name == profile) is not { } agent)
         {
-            Redirect(context.Response, "/manage/hermes");
+            if (path == SetupWatchPath) context.Response.StatusCode = StatusCodes.Status404NotFound;
+            else Redirect(context.Response, "/manage/hermes");
+            return;
+        }
+        if (path == SetupWatchPath)
+        {
+            await SetupWatchAsync(context, profile).ConfigureAwait(false);
             return;
         }
         if (path == "/hermes/reports/off")
@@ -79,7 +92,12 @@ internal sealed partial class ServerPage
             Redirect(context.Response, "/manage/hermes?done=reports_off");
             return;
         }
-        var title = state.On ? "New report code" : "Turn on reports";
+        if (path == "/hermes/reports")
+        {
+            await SetupAsync(context, form, token, profile, state, agent).ConfigureAwait(false);
+            return;
+        }
+        var title = "Set up reports by hand";
         // The Windows server listens on this PC only (ServerNetwork) and reports never come through Tailscale, so its code always names 127.0.0.1 and the
         // listener's own port, whatever address the page was opened by (a tailnet name would make a code every report to is refused). Elsewhere a new code
         // starts from the address the current one names: the page's own address is how a browser reaches the server, which for Hermes in a container beside it
@@ -89,14 +107,14 @@ internal sealed partial class ServerPage
             : state.Address is { Length: > 0 } kept ? kept : Address(context.Request);
         string Ask(string? problem)
         {
-            var intro = (state.On ? "A new code for " : "Reports for ") + HermesNames(agent).Name + ". " + ReportsIntro + (state.On ? " The current code stops working." : "");
+            var intro = "A connection code for " + HermesNames(agent).Name + ", to put in Hermes yourself. " + ReportsIntro + (state.On ? " The current code stops working." : "");
             var field = "<label for=\"address\">Address Hermes reaches this server at</label><input id=\"address\" name=\"address\" type=\"text\" value=\"" + Html(typed)
                 + "\" autocomplete=\"off\" spellcheck=\"false\"><p class=\"hint\">" + (DesktopTrust
                 ? "This PC's server takes reports only from Hermes running on this PC."
                 : "Such as 192.168.1.20:8787. With Hermes in a Docker container on the same machine, use this server's container name on a shared Docker network, "
                     + "such as messages-server:8787, not a published port.") + "</p>"
                 + "<input type=\"hidden\" name=\"profile\" value=\"" + Html(profile) + "\">";
-            return AskBody("/hermes/reports", token, intro, state.On ? "Make a new code" : "Turn on", problem, before: field);
+            return AskBody(ReportCodePath, token, intro, "Show the code", problem, before: field);
         }
         if (form is null)
         {
@@ -131,8 +149,8 @@ internal sealed partial class ServerPage
         .Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(code)).Append("\">Copy</button></p>")
         .Append("<h3>Set up Hermes</h3><ol class=\"steps\">")
         .Append("<li><a href=\"").Append(ReportScriptPath).Append("\">Download ml-report</a> and put its files in the profile's scripts folder, <span class=\"copy\">$HERMES_HOME/scripts/</span>. Make the folder if there isn't one.</li>")
-        .Append("<li>Add <span class=\"copy\">MESSAGE_LINK_REPORTS=</span> followed by the code to the profile's <span class=\"copy\">.env</span> file.</li>")
-        .Append("<li>Let Hermes's commands see it: add <span class=\"copy\">MESSAGE_LINK_REPORTS</span> to <span class=\"copy\">terminal.env_passthrough</span> in the profile's <span class=\"copy\">config.yaml</span>, or add the included SKILL.md to the profile's skills.</li>")
+        .Append("<li>Add <span class=\"copy\">MESSAGELINK_CODE=</span> followed by the code to the profile's <span class=\"copy\">.env</span> file.</li>")
+        .Append("<li>Let Hermes's commands see it: add <span class=\"copy\">MESSAGELINK_CODE</span> to <span class=\"copy\">terminal.env_passthrough</span> in the profile's <span class=\"copy\">config.yaml</span>, or add the included SKILL.md to the profile's skills.</li>")
         .Append("<li>Run <span class=\"copy\">ml-report check</span> in the profile's terminal. Then <span class=\"copy\">ml-report \"Hello\"</span> posts a message here.</li></ol>")
         .Append("<p>Or use the <a href=\"").Append(PluginPath).Append("\">Message Link plugin for Hermes</a>, which keeps the code inside Hermes and lets scheduled jobs and <span class=\"copy\">hermes send</span> deliver here. ")
         .Append("A profile whose terminal runs over SSH should use the plugin. Its README has the steps.</p>")

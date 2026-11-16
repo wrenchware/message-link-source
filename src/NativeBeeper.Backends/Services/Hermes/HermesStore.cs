@@ -34,8 +34,10 @@ public sealed record HermesReportTokens(IReadOnlyList<HermesReportToken> Rows)
     public static HermesReportTokens Empty { get; } = new([]);
 }
 /// <summary>One token: the profile whose thread it writes into, the kind of agent behind it ("hermes" today), its hash, tag and when it was made, and the
-/// address its code names (host and port; absent in older files), which a new code starts from.</summary>
-public sealed record HermesReportToken(string Profile, string Source, string Hash, string Tag, DateTimeOffset Created, string? Address = null);
+/// address its code names (host and port; absent in older files), which a new code starts from. A token set up in one command also keeps the setup code's
+/// hash and id (so a setup whose answer was lost can finish, even after a restart, and the page can say it is done) and the address the setup came from.</summary>
+public sealed record HermesReportToken(string Profile, string Source, string Hash, string Tag, DateTimeOffset Created, string? Address = null,
+    string? SetupHash = null, string? SetupId = null, string? SetupFrom = null);
 
 /// <summary>A thread: its Hermes session and its messages.</summary>
 public sealed record HermesThread(string Profile, string SessionId, IReadOnlyList<HermesStoredMessage> Messages, string? Title = null,

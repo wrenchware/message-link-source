@@ -7,8 +7,9 @@ v0.23.1.
 
 ## How it works
 
-The Message Link server's page turns reports on for one Hermes profile and shows a connection code once. The code holds
-the server's address, the fingerprint of its certificate and a token for that profile.
+Each Hermes profile has its own connection code, `MESSAGELINK_CODE` in the profile's `.env`, which `ml-report` and the
+plugin both use. The code holds the server's address, the fingerprint of its certificate and a token for that profile.
+The setup command makes it inside the profile (below); setting up by hand, the server's page shows it once.
 
 - `ml-report` connects over HTTPS and checks the server's certificate against the fingerprint before it sends anything.
 - It posts the text to `/v1/reports` with the token as a bearer token. `GET /v1/reports/check` tests a code.
@@ -19,15 +20,48 @@ Exit codes: 0 delivered (or already delivered), 1 refused or failed, 2 setup pro
 the certificate doesn't match, or the server can't be reached). The reason is printed on standard error. Neither the
 code nor the token is ever printed.
 
-## Set up
+## Set up in one command
+
+On the Message Link server's page, open Hermes, select **Set up…** on the profile's Reports line and enter the server's
+password. The page shows one command. Run it on the computer that runs Hermes: if Hermes runs in Docker, run it there,
+not inside the container. On a PC that runs its own Message Link Server, the command is for PowerShell on that PC.
+
+The command works once, within 10 minutes. It downloads the installer over a connection pinned to the server's key,
+checks the installer's SHA-256 against the one in the command, and only then runs it. With Hermes in Docker, it finds
+the Hermes container (and asks which one if there are several) and runs the rest inside it, as the owner of the
+profile's folder and with Hermes's own Python. Then, inside the profile:
+
+1. It finds an address where Hermes reaches the server: the one the profile's current code names, the server's
+   container name on a Docker network both containers share, then the address the page was opened at.
+2. It makes the profile's report token there and sends the server only its hash. The token never leaves Hermes, and
+   the command can't be used again.
+3. It puts `ml-report`, `mlreport_client.py`, `SKILL.md` and the `messagelink` plugin in the profile, sets
+   `MESSAGELINK_CODE` in its `.env`, enables the plugin, and adds the two settings below to `config.yaml`, keeping its
+   comments. If `config.yaml` is laid out in a way it can't edit with certainty, it changes nothing and prints the
+   lines to add by hand.
+4. It checks the new code once and ends with "Reports are on for" and the profile's name.
+
+Hermes reads a profile's changed `.env` and `config.yaml` by itself within about 30 seconds. The `default` profile is
+the exception: restart Hermes once. Run the command again, from **New code…**, to replace the code; nothing else
+changes.
+
+If Hermes can't reach the server, the command says so. With Hermes and Message Link in Docker on the same computer,
+put both containers on one user-defined Docker network (not the default bridge): a connection through a published
+port arrives from Docker's own address, which the server refuses.
+
+## Set up by hand
+
+The command's page has **Set up by hand instead**, which shows a connection code once.
 
 1. Put `ml-report` and `mlreport_client.py` in the profile's `scripts` folder (`$HERMES_HOME/scripts/`), and make
    `ml-report` executable (`chmod +x`).
 2. Add the connection code to the profile's `.env`:
 
    ```
-   MESSAGE_LINK_REPORTS=mlrc1....
+   MESSAGELINK_CODE=mlrc1....
    ```
+
+   `ml-report` still reads the older name, `MESSAGE_LINK_REPORTS`, when `MESSAGELINK_CODE` isn't set.
 
 3. Let commands see it. Hermes removes secrets from the commands it runs, so do one of these:
    - list it under `terminal.env_passthrough` in the profile's `config.yaml`:
@@ -35,7 +69,7 @@ code nor the token is ever printed.
      ```yaml
      terminal:
        env_passthrough:
-         - MESSAGE_LINK_REPORTS
+         - MESSAGELINK_CODE
      ```
 
    - or put `SKILL.md` in the profile's skills folder (`$HERMES_HOME/skills/message-link-reports/SKILL.md`). It
@@ -54,25 +88,25 @@ ml-report --key nightly-2026-11-15 "Nightly build passed."
 A no-agent scheduled job runs a script file and takes no arguments for it, so put the `ml-report` call in a small
 script of its own and give the job that script.
 
-If the profile's terminal runs over SSH, use the Message Link plugin for Hermes instead, which keeps the code inside
-Hermes.
+If the profile's terminal runs over SSH, use the Message Link plugin for Hermes instead, which runs inside Hermes.
 
 ## The Hermes plugin
 
 The `messagelink` plugin lets Hermes itself deliver into Message Link: `hermes send --to messagelink "..."` and
-scheduled jobs with `--deliver messagelink`. The code stays in the profile's settings, where commands can't see it. The
+scheduled jobs with `--deliver messagelink`. The plugin reads the code through Hermes's settings for the profile, not
+from the process environment. (Commands see it only because `ml-report` needs it: `terminal.env_passthrough`.) The
 plugin only sends: chat with Hermes in Message Link as before. Built against Hermes v0.23.1.
 
-Set it up for each profile:
+The setup command sets it up. By hand, for each profile:
 
 1. Download the plugin from the server's page (`/hermes/plugin.zip`) and unzip it in the profile's plugins folder
    (`$HERMES_HOME/plugins/`). Its files go in `plugins/messagelink/`.
 2. Enable it for that profile: `hermes -p <profile> plugins enable messagelink`.
-3. Add the connection code and the home channel to the profile's `.env`:
+3. Add the connection code to the profile's `.env`. The home channel is `home` unless
+   `MESSAGELINK_HOME_CHANNEL` says otherwise.
 
    ```
    MESSAGELINK_CODE=mlrc1....
-   MESSAGELINK_HOME_CHANNEL=home
    ```
 
 4. Keep Hermes's restart notices out of Message Link: add this to the profile's `config.yaml`.
@@ -107,7 +141,8 @@ What to know:
   recognize a repeat, and the plugin never sends a report twice instead. When no answer comes back, or a later part
   of a long message fails, the plugin tells Hermes the message was partly delivered, so a scheduled job doesn't try
   its other way of sending. The job records it as an error, and the report may or may not be in Message Link.
-- Hermes's restart notices ("Gateway online", restarting, shutting down) don't go to Message Link once step 4 is done.
+- Hermes's restart notices ("Gateway online", restarting, shutting down) don't go to Message Link once
+  `gateway_restart_notification: false` is in `config.yaml`.
   The plugin also turns them off when it starts, but Hermes rereads a profile's settings when its `.env` or
   `config.yaml` changes, and that fresh copy has them on again unless `config.yaml` says otherwise. Hermes sends a
   notice again until one succeeds, so the plugin also reports a notice, or a kanban notification sent to this home

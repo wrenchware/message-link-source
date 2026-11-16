@@ -148,6 +148,8 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             foreach (var gone in removed) statuses.TryRemove(gone, out _);
             // A removed profile's report token goes with it, first: a crash before the settings are saved must not leave a token that the same profile
             // name added again would bring back (code review, 2026-11-15). Load drops any row whose profile is gone, too.
+            // Its waiting setup code too, or the profile added again under the same name within ten minutes would take it.
+            foreach (var gone in removed) DropSetupCodes(gone);
             await ForgetReportTokensAsync(removed).ConfigureAwait(false);
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
             var titled = kept.Where(p => settings.Profiles.Any(old => old.Name == p.Name) && (settings.Profiles.First(old => old.Name == p.Name).Title ?? DefaultTitle(p.Name))

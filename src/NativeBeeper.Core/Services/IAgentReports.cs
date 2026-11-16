@@ -34,7 +34,37 @@ public interface IAgentReports
 
     /// <summary>A request with this token was refused before it reached the thread (<c>address</c>: not from the home network), for the page's line.</summary>
     void ReportRefused(byte[] tokenHash, string reason);
+
+    /// <summary>A setup code for <paramref name="profile"/> (setup in one command): works once, for <see cref="AgentReportRules.SetupLifetime"/>, and replaces any
+    /// earlier one for the profile. Answers the code, shown once and never kept (only its hash is), and its id for the page's live view.</summary>
+    AgentSetupIssue IssueSetupCode(string profile);
+
+    /// <summary>Whether a setup code can be used, without using it up: a pending code, or one already used (so a setup whose answer was lost can finish).
+    /// Probes have a small allowance per code.</summary>
+    AgentSetupResult ProbeSetupCode(byte[] codeHash);
+
+    /// <summary>Uses a setup code: the profile's token becomes the one whose hash is <paramref name="tokenHash"/>, made where Hermes runs, with
+    /// <paramref name="address"/> (how Hermes reaches the server) and <paramref name="peer"/> (where the server saw the request come from) kept beside it. The
+    /// same code with the same token's hash again is the same setup, done; with another hash it was already used. Nothing changes unless the token is saved.</summary>
+    Task<AgentSetupResult> RedeemSetupCodeAsync(byte[] codeHash, byte[] tokenHash, string address, string? peer, CancellationToken cancellationToken = default);
+
+    /// <summary>Where the setup code <paramref name="id"/> of <paramref name="profile"/> stands, for the page that shows its command; null for an id not issued.</summary>
+    AgentSetupState? SetupState(string profile, string id);
 }
+
+/// <summary>A setup code as issued: the code (shown once), its one-way id and when it stops working.</summary>
+public sealed record AgentSetupIssue(string Code, string Id, DateTimeOffset Expires);
+
+public enum AgentSetupOutcome { Ready, Done, AlreadyUsed, Unknown, Limited, Unavailable }
+
+/// <summary>What a probe or a use of a setup code came to. <paramref name="Tag"/> is the code's id when it was known.</summary>
+public sealed record AgentSetupResult(AgentSetupOutcome Outcome, TimeSpan? RetryAfter = null, string? Tag = null);
+
+public enum AgentSetupPhase { Waiting, Done, Expired, Replaced }
+
+/// <summary>A setup code's state on the page: waiting until <paramref name="Expires"/>, or done at <paramref name="At"/> with the address Hermes uses and the
+/// address the server saw it come from.</summary>
+public sealed record AgentSetupState(AgentSetupPhase Phase, DateTimeOffset? Expires = null, DateTimeOffset? At = null, string? Address = null, string? From = null);
 
 public enum AgentReportOutcome { Delivered, Duplicate, KeyReused, Unknown, Limited, Unavailable, Ready }
 
@@ -42,28 +72,45 @@ public enum AgentReportOutcome { Delivered, Duplicate, KeyReused, Unknown, Limit
 public sealed record AgentReportResult(AgentReportOutcome Outcome, string? MessageId = null, TimeSpan? RetryAfter = null, string? Tag = null);
 
 /// <summary>One profile's reports: on or off, since when, the last refusal the page should say (<c>address</c>), if any, the address the current code
-/// names, and when the last report arrived.</summary>
+/// names, when the last report arrived, and, for a code set up in one command, the address the setup came from as the server saw it.</summary>
 public sealed record AgentReportsState(string Profile, bool On, DateTimeOffset? Since = null, string? LastRefusal = null, DateTimeOffset? LastRefusalAt = null,
-    string? Address = null, DateTimeOffset? LastReportAt = null);
+    string? Address = null, DateTimeOffset? LastReportAt = null, string? SetupFrom = null);
 
 /// <summary>The wire rules of a report (docs/research/hermes-reports-plan.md, section 5): the token, the text and the idempotency key.</summary>
 public static class AgentReportRules
 {
-    public const string TokenPrefix = "mlr1_";
+    public const string TokenPrefix = "mlr1_", SetupPrefix = "mls1_";
     public const int MaxBodyBytes = 16 * 1024, MaxChars = 8000, MaxKeyLength = 64;
     public static readonly TimeSpan KeyWindow = TimeSpan.FromHours(24);
+    /// <summary>How long a setup code works (setup in one command).</summary>
+    public static readonly TimeSpan SetupLifetime = TimeSpan.FromMinutes(10);
 
     /// <summary>A new token: <c>mlr1_</c> and 32 random bytes as 43 base64url characters.</summary>
     public static string NewToken() => TokenPrefix + Base64Url(RandomNumberGenerator.GetBytes(32));
 
-    public static bool WellFormedToken(string? token) =>
-        token is { Length: 48 } && token.StartsWith(TokenPrefix, StringComparison.Ordinal) && token.AsSpan(TokenPrefix.Length).IndexOfAnyExcept(Base64UrlChars) < 0;
+    public static bool WellFormedToken(string? token) => WellFormed(token, TokenPrefix);
+
+    /// <summary>A new setup code: <c>mls1_</c> and 32 random bytes as 43 base64url characters.</summary>
+    public static string NewSetupCode() => SetupPrefix + Base64Url(RandomNumberGenerator.GetBytes(32));
+
+    public static bool WellFormedSetupCode(string? code) => WellFormed(code, SetupPrefix);
+
+    private static bool WellFormed(string? value, string prefix) =>
+        value is { Length: 48 } && value.StartsWith(prefix, StringComparison.Ordinal) && value.AsSpan(prefix.Length).IndexOfAnyExcept(Base64UrlChars) < 0;
 
     /// <summary>What the server keeps of a token and finds it by: no comparison ever depends on the secret itself.</summary>
     public static byte[] Hash(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));
 
-    /// <summary>A token's one-way tag for logs: 8 hex characters of a second, domain-separated hash.</summary>
-    public static string Tag(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("message-link report tag\n" + token)))[..8];
+    /// <summary>A token's one-way tag for logs: 8 hex characters of a second, domain-separated hash. Made from the token's hash, so a token made where Hermes
+    /// runs, which the server only ever sees hashed, has the same tag on both sides.</summary>
+    public static string Tag(string token) => TagOfHash(Hash(token));
+
+    public static string TagOfHash(byte[] hash) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("message-link report tag\n" + Convert.ToHexStringLower(hash))))[..8];
+
+    /// <summary>A setup code's one-way id, for logs and the page's live view.</summary>
+    public static string SetupTag(byte[] codeHash) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("message-link setup tag\n" + Convert.ToHexStringLower(codeHash))))[..8];
 
     public static bool ValidKey(string? key) =>
         key is { Length: > 0 and <= MaxKeyLength } && key.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');

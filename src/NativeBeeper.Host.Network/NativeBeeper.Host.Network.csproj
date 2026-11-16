@@ -22,6 +22,8 @@
     <EmbeddedResource Include="Assets/inter.woff2" LogicalName="server-page-font.woff2" />
     <!-- The Hermes report scripts and plugin the page offers as downloads (ServerPage.Reports.cs); published with the source under MIT. Not tests/. -->
     <EmbeddedResource Include="../../integrations/hermes-messagelink/*" LogicalName="hermes-messagelink/%(Filename)%(Extension)" />
+    <!-- Reports set up in one command (ServerPage.ReportSetup.cs): the installer the command downloads, with the files above built into it. -->
+    <EmbeddedResource Include="../../integrations/hermes-messagelink/setup/*" LogicalName="hermes-messagelink/setup/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />

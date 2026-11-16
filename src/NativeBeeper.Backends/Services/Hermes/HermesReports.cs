@@ -38,7 +38,7 @@ internal sealed partial class HermesBackend : IAgentReports
                 var row = rows.FirstOrDefault(r => r.Profile == p.Name);
                 var refused = reportRefusals.TryGetValue(p.Name, out var r) ? r : default;
                 return new AgentReportsState(p.Name, row is not null, row?.Created, row is null ? null : refused.Reason, row is null ? null : refused.Reason is null ? null : refused.At,
-                    row?.Address, lastReports.TryGetValue(p.Name, out var last) ? last : null);
+                    row?.Address, lastReports.TryGetValue(p.Name, out var last) ? last : null, row?.SetupFrom);
             })];
         }
     }
@@ -58,6 +58,8 @@ internal sealed partial class HermesBackend : IAgentReports
         try
         {
             if (!Has(profile)) throw new ArgumentException("This Hermes profile isn't set up.");
+            // Under the gate, so a setup command's redemption waiting for it finds its code gone rather than replacing this token.
+            DropSetupCodes(profile);
             var next = new HermesReportTokens([.. reportTokens.Rows.Where(r => r.Profile != profile),
                 new(profile, ReportSource, Convert.ToHexStringLower(AgentReportRules.Hash(token)), tag, clock.GetUtcNow(), string.IsNullOrWhiteSpace(address) ? null : address.Trim())]);
             await store.SaveReportTokensAsync(next).ConfigureAwait(false);
@@ -73,7 +75,12 @@ internal sealed partial class HermesBackend : IAgentReports
     {
         await LoadAsync().ConfigureAwait(false);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try { await ForgetReportTokensAsync([profile]).ConfigureAwait(false); }
+        try
+        {
+            // Under the gate, so a setup command's redemption waiting for it can't turn reports back on.
+            DropSetupCodes(profile);
+            await ForgetReportTokensAsync([profile]).ConfigureAwait(false);
+        }
         finally { gate.Release(); }
         reportRefusals.TryRemove(profile, out _);
         log($"hermes reports off profile={Tag(profile)}");

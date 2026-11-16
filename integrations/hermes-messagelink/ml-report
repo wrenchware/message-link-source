@@ -8,8 +8,8 @@
     ml-report check             test the connection code
     ml-report -- check          send the word "check"
 
-The connection code is read from the MESSAGE_LINK_REPORTS environment variable only, so it never shows in a process
-list. Exit codes: 0 delivered (or already delivered) or check passed; 1 refused or failed; 2 setup problem (the code is
+The connection code is read from the MESSAGELINK_CODE environment variable only (the setting the Hermes plugin uses
+too; the older MESSAGE_LINK_REPORTS is still read when it isn't set), so it never shows in a process list. Exit codes: 0 delivered (or already delivered) or check passed; 1 refused or failed; 2 setup problem (the code is
 missing or malformed, the server's certificate doesn't match, or the server can't be reached).
 """
 
@@ -20,7 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import mlreport_client  # noqa: E402
 
-ENV = "MESSAGE_LINK_REPORTS"
+ENV = "MESSAGELINK_CODE"
+# The setting's name before setup in one command; read when the new one isn't set, so a profile set up by hand keeps working.
+OLD_ENV = "MESSAGE_LINK_REPORTS"
 USAGE = 'usage: ml-report [--key <id>] "text" | ml-report check (text on standard input when none is given)'
 
 
@@ -59,10 +61,10 @@ def main(argv):
             words.append(arg)
         i += 1
 
-    code = os.environ.get(ENV, "")
+    code = os.environ.get(ENV, "") or os.environ.get(OLD_ENV, "")
     if not code.strip():
-        say("%s isn't set. Put the connection code from the server's page in the profile's .env, "
-            "and let commands see it." % ENV)
+        say("%s isn't set. Set up reports from the Message Link server's page, "
+            "or put the connection code in the profile's .env and let commands see it." % ENV)
         return 2
 
     try:

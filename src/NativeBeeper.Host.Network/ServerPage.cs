@@ -319,7 +319,7 @@ internal sealed partial class ServerPage
             await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (!get && !post || get && path is "/logout" or "/hermes/reports/off" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath or ReportScriptPath or PluginPath || IsManagePath(path)))
+        if (!get && !post || get && path is "/logout" or "/hermes/reports/off" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath or ReportScriptPath or PluginPath or SetupWatchPath || IsManagePath(path)))
         {
             await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
             return;
@@ -515,7 +515,7 @@ internal sealed partial class ServerPage
             case "/hermes" when Hermes is not null:
                 await HermesAsync(context, form, token).ConfigureAwait(false);
                 return;
-            case "/hermes" or "/hermes/reports" or "/hermes/reports/off" or ReportScriptPath or PluginPath:
+            case { } hermesPath when IsHermesPath(hermesPath):
                 Redirect(response, "/");
                 return;
             default:
@@ -1172,7 +1172,7 @@ internal sealed partial class ServerPage
     {
         var headers = response.Headers;
         headers.CacheControl = "no-store";
-        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}' '{PageScriptHash}' '{JoinScriptHash}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+        headers.ContentSecurityPolicy = $"default-src 'none'; img-src 'self'; font-src 'self'; style-src 'unsafe-inline'; script-src '{PushScriptHash}' '{PageScriptHash}' '{JoinScriptHash}' '{SetupScriptHash}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
         headers.XFrameOptions = "DENY";
         headers.XContentTypeOptions = "nosniff";
         // same-origin, not no-referrer: under no-referrer a browser sends a form post with Origin: null, which the origin check above refuses (checked in Chromium,

@@ -73,6 +73,12 @@ internal sealed record NetworkHostOptions(string DataFolder, IStateProtector Pro
     /// <summary>Whether an address counts as the home network for the page and asking to join; <see cref="ServerPage.FromHome(System.Net.IPAddress?)"/> unless a check says otherwise.</summary>
     internal Func<System.Net.IPAddress?, bool>? HomeCheck { get; init; }
 
+    /// <summary>Whether the server runs in a container (null: whether <c>/.dockerenv</c> exists), for the addresses the reports' setup command tries.</summary>
+    internal bool? InContainer { get; init; }
+
+    /// <summary>Checks only: whether to close a setup redemption's connection once it is done, without its answer (an answer lost on the way back).</summary>
+    internal Func<bool>? LoseRedeemAnswer { get; init; }
+
     /// <summary>What "Fix it for me" calls Tailscale's API through: the harness's stand-in for it; null for the network.</summary>
     internal HttpMessageHandler? TailscaleHandler { get; init; }
 
