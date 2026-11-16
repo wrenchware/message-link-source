@@ -17,11 +17,16 @@ internal sealed partial class HermesBackend : IAgentReports
     internal static readonly (TimeSpan Window, int Most)[] ReportLimits =
         [(TimeSpan.FromMinutes(1), 6), (TimeSpan.FromHours(1), 30), (TimeSpan.FromDays(1), 200)];
 
+    /// <summary>Checks of a token (<c>GET /v1/reports/check</c>) per profile, in memory: their own allowance, apart from the reports'.</summary>
+    internal static readonly (TimeSpan Window, int Most) CheckLimit = (TimeSpan.FromMinutes(1), 6);
+
     private HermesReportTokens reportTokens = HermesReportTokens.Empty;
     // In memory only: the page's last-refusal line, the once-an-hour "too many" note (a restart may repeat it once), and checks of a token in the last minute.
     private readonly ConcurrentDictionary<string, (string Reason, DateTimeOffset At)> reportRefusals = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> tooManyNoted = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<DateTimeOffset>> reportChecks = new(StringComparer.Ordinal);
+    // When each profile's last report arrived, for the page: the threads are read under the gate only, and the page reads this without it. Seeded at load.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> lastReports = new(StringComparer.Ordinal);
 
     public IReadOnlyList<AgentReportsState> ReportsState
     {
@@ -32,12 +37,19 @@ internal sealed partial class HermesBackend : IAgentReports
             {
                 var row = rows.FirstOrDefault(r => r.Profile == p.Name);
                 var refused = reportRefusals.TryGetValue(p.Name, out var r) ? r : default;
-                return new AgentReportsState(p.Name, row is not null, row?.Created, row is null ? null : refused.Reason, row is null ? null : refused.Reason is null ? null : refused.At);
+                return new AgentReportsState(p.Name, row is not null, row?.Created, row is null ? null : refused.Reason, row is null ? null : refused.Reason is null ? null : refused.At,
+                    row?.Address, lastReports.TryGetValue(p.Name, out var last) ? last : null);
             })];
         }
     }
 
-    public async Task<string> IssueReportTokenAsync(string profile, CancellationToken cancellationToken = default)
+    // Under the gate, at load.
+    private void SeedLastReport(HermesThread thread)
+    {
+        if (thread.Messages.LastOrDefault(m => m.Origin == ReportOrigin) is { } last) lastReports[thread.Profile] = last.At;
+    }
+
+    public async Task<string> IssueReportTokenAsync(string profile, string? address = null, CancellationToken cancellationToken = default)
     {
         await LoadAsync().ConfigureAwait(false);
         var token = AgentReportRules.NewToken();
@@ -47,7 +59,7 @@ internal sealed partial class HermesBackend : IAgentReports
         {
             if (!Has(profile)) throw new ArgumentException("This Hermes profile isn't set up.");
             var next = new HermesReportTokens([.. reportTokens.Rows.Where(r => r.Profile != profile),
-                new(profile, ReportSource, Convert.ToHexStringLower(AgentReportRules.Hash(token)), tag, clock.GetUtcNow())]);
+                new(profile, ReportSource, Convert.ToHexStringLower(AgentReportRules.Hash(token)), tag, clock.GetUtcNow(), string.IsNullOrWhiteSpace(address) ? null : address.Trim())]);
             await store.SaveReportTokensAsync(next).ConfigureAwait(false);
             reportTokens = next;
             reportRefusals.TryRemove(profile, out _);
@@ -98,14 +110,15 @@ internal sealed partial class HermesBackend : IAgentReports
         try
         {
             if (TokenRow(tokenHash) is not { } row) return new(AgentReportOutcome.Unknown);
+            // Checks have a minute's allowance of their own, so the plugin's check at connect or a setup's checks never leave a long message short of reports
+            // (design review, 2026-11-16: two checks could stop a five-part message). Reports never count them.
             var now = clock.GetUtcNow();
-            var minute = ReportLimits[0];
+            var minute = CheckLimit;
             var checks = reportChecks.GetOrAdd(row.Profile, _ => []);
             lock (checks)
             {
                 checks.RemoveAll(at => now - at >= minute.Window);
-                var times = Reports(row.Profile).Where(m => now - m.At < minute.Window).Select(m => m.At).Concat(checks).Order().ToArray();
-                if (times.Length >= minute.Most) return new(AgentReportOutcome.Limited, RetryAfter: Wait(times[^minute.Most], minute.Window, now), Tag: row.Tag);
+                if (checks.Count >= minute.Most) return new(AgentReportOutcome.Limited, RetryAfter: Wait(checks.Order().ToArray()[^minute.Most], minute.Window, now), Tag: row.Tag);
                 checks.Add(now);
             }
             return new(AgentReportOutcome.Ready, Tag: row.Tag);
@@ -131,12 +144,9 @@ internal sealed partial class HermesBackend : IAgentReports
             // A retry after a lost answer: the same key within a day is the same report; with other words it is a mistake, refused.
             if (key is not null && reports.LastOrDefault(m => m.ReportKey == key && now - m.At < AgentReportRules.KeyWindow) is { } earlier)
                 return earlier.ReportDigest == digest ? new(AgentReportOutcome.Duplicate, earlier.Id, Tag: tag) : new(AgentReportOutcome.KeyReused, Tag: tag);
-            var checks = reportChecks.TryGetValue(profile, out var seen) ? seen : [];
             foreach (var (window, most) in ReportLimits)
             {
-                IEnumerable<DateTimeOffset> times = reports.Where(m => now - m.At < window).Select(m => m.At);
-                if (window == ReportLimits[0].Window) lock (checks) times = [.. times.Concat(checks.Where(at => now - at < window))];
-                var ordered = times.Order().ToArray();
+                var ordered = reports.Where(m => now - m.At < window).Select(m => m.At).Order().ToArray();
                 if (ordered.Length < most) continue;
                 var wait = Wait(ordered[^most], window, now);
                 if (wait > retry) retry = wait;
@@ -151,6 +161,7 @@ internal sealed partial class HermesBackend : IAgentReports
                 var next = thread with { Messages = [.. thread.Messages, report], NextReportSeq = seq };
                 await store.SaveThreadAsync(next).ConfigureAwait(false);
                 threads[profile] = next;
+                lastReports[profile] = now;
             }
             else report = null!;
         }

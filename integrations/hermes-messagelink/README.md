@@ -75,7 +75,15 @@ Set it up for each profile:
    MESSAGELINK_HOME_CHANNEL=home
    ```
 
-4. Restart Hermes.
+4. Keep Hermes's restart notices out of Message Link: add this to the profile's `config.yaml`.
+
+   ```yaml
+   messagelink:
+     gateway_restart_notification: false
+   ```
+
+Hermes reads a profile's changed `.env` and `config.yaml` by itself within about 30 seconds, so there's nothing to
+restart. The `default` profile is the exception: it reads its `.env` only when Hermes starts, so restart Hermes once.
 
 Then:
 
@@ -99,10 +107,11 @@ What to know:
   recognize a repeat, and the plugin never sends a report twice instead. When no answer comes back, or a later part
   of a long message fails, the plugin tells Hermes the message was partly delivered, so a scheduled job doesn't try
   its other way of sending. The job records it as an error, and the report may or may not be in Message Link.
-- Hermes's restart notices ("Gateway online", restarting, shutting down) don't go to Message Link: the plugin turns
-  `gateway_restart_notification` off for this platform. Hermes sends a notice again until one succeeds, so the
-  plugin also reports a notice, or a kanban notification sent to this home channel, as sent when no answer came back.
-  Hermes's log says it may not have been delivered.
+- Hermes's restart notices ("Gateway online", restarting, shutting down) don't go to Message Link once step 4 is done.
+  The plugin also turns them off when it starts, but Hermes rereads a profile's settings when its `.env` or
+  `config.yaml` changes, and that fresh copy has them on again unless `config.yaml` says otherwise. Hermes sends a
+  notice again until one succeeds, so the plugin also reports a notice, or a kanban notification sent to this home
+  channel, as sent when no answer came back. Hermes's log says it may not have been delivered.
 - A report refused with nothing stored, such as one over the limit of 6 a minute, may be tried once more by a
   scheduled job's other way of sending, which can't make a duplicate. The plugin itself never retries.
 - Messages are text only. Files attached in Hermes are not sent.

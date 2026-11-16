@@ -31,6 +31,7 @@ internal sealed partial class ServerPage
 
     private const string ReportsIntro = "Hermes uses this code to send messages to this conversation. Anyone with it can do the same, so keep it in Hermes only.";
 
+    // The profile's Reports line, set in under its own line in the profile's box (HermesCard): New code and Turn off behind its menu, as a device's are.
     private void ReportsRow(StringBuilder body, HermesAgentState agent, string token)
     {
         if (Reports?.ReportsState.FirstOrDefault(r => r.Profile == agent.Name) is not { } state) return;
@@ -38,16 +39,18 @@ internal sealed partial class ServerPage
         if (!state.On)
         {
             body.Append(Row("Reports", "Let Hermes post to this conversation when a job is done or something needs you.", "Off",
-                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">Turn on…</a>"));
+                "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">Turn on…</a>", kind: "sub"));
             return;
         }
         var under = state.LastRefusal == "address"
-            ? "Last report refused: it didn't come from the home network." + (state.LastRefusalAt is { } at ? " " + Ago(at) + "." : "")
-            : "Hermes can post to this conversation with its code.";
-        body.Append(Row("Reports", under, "On",
-            "<a class=\"button quiet small\" href=\"" + Html(ask) + "\">New code…</a>"
-            + "<form method=\"post\" action=\"/hermes/reports/off\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><input type=\"hidden\" name=\"profile\" value=\""
-            + Html(agent.Name) + "\"><button type=\"submit\" class=\"quiet small\">Turn off</button></form>", warn: state.LastRefusal is not null));
+            ? (state.LastRefusalAt is { } at ? "Last report refused " + Ago(at) + "." : "Last report refused.") + " It didn't come from the home network."
+            : state.LastReportAt is { } last && last >= (state.Since ?? DateTimeOffset.MinValue) ? "Last report " + Ago(last) + "."
+            : "No reports since this code was made.";
+        var name = HermesNames(agent).Name;
+        var off = "<form method=\"post\" action=\"/hermes/reports/off\"><input type=\"hidden\" name=\"form\" value=\"" + Html(token) + "\"><input type=\"hidden\" name=\"profile\" value=\""
+            + Html(agent.Name) + "\"><button type=\"submit\" class=\"item danger\" aria-label=\"" + Html("Turn off reports for " + name) + "\">Turn off</button></form>";
+        body.Append(Row("Reports", under, "On", Act(Menu("Manage reports for " + name, false, [Item(Html(ask), "New code…", "New report code for " + name), off])),
+            warn: state.LastRefusal is not null, kind: "sub"));
     }
 
     private async Task ReportsAsync(HttpContext context, string path, IFormCollection? form, string token)
@@ -78,8 +81,12 @@ internal sealed partial class ServerPage
         }
         var title = state.On ? "New report code" : "Turn on reports";
         // The Windows server listens on this PC only (ServerNetwork) and reports never come through Tailscale, so its code always names 127.0.0.1 and the
-        // listener's own port, whatever address the page was opened by (a tailnet name would make a code every report to is refused).
-        var typed = form is null ? DesktopTrust && ListenPort?.Invoke() is { } port and > 0 ? "127.0.0.1:" + port : Address(context.Request) : form["address"].ToString().Trim();
+        // listener's own port, whatever address the page was opened by (a tailnet name would make a code every report to is refused). Elsewhere a new code
+        // starts from the address the current one names: the page's own address is how a browser reaches the server, which for Hermes in a container beside it
+        // is the published port, refused as Docker's gateway (live test, 2026-11-16: a new code made that way was refused until the address was typed again).
+        var typed = form is not null ? form["address"].ToString().Trim()
+            : DesktopTrust && ListenPort?.Invoke() is { } port and > 0 ? "127.0.0.1:" + port
+            : state.Address is { Length: > 0 } kept ? kept : Address(context.Request);
         string Ask(string? problem)
         {
             var intro = (state.On ? "A new code for " : "Reports for ") + HermesNames(agent).Name + ". " + ReportsIntro + (state.On ? " The current code stops working." : "");
@@ -103,7 +110,7 @@ internal sealed partial class ServerPage
         }
         if (!await PasswordAgainAsync(context, form, "reports", title, Ask).ConfigureAwait(false)) return;
         string issued;
-        try { issued = await reports.IssueReportTokenAsync(profile, context.RequestAborted).ConfigureAwait(false); }
+        try { issued = await reports.IssueReportTokenAsync(profile, url.Authority, context.RequestAborted).ConfigureAwait(false); }
         catch (Exception failure) when (failure is ArgumentException or IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
         {
             log($"server page reports outcome=failed type={failure.GetType().Name}");
@@ -116,11 +123,12 @@ internal sealed partial class ServerPage
         await PageAsync(context, StatusCodes.Status200OK, "Reports are on", ReportsCodeBody(code)).ConfigureAwait(false);
     }
 
-    // The code, once, with what to do with it in Hermes.
+    // The code, once, with what to do with it in Hermes. Copy is data-copy-code, which the script on every signed-in page handles (JoinScript); data-copy is
+    // handled only by the push page's own script.
     private static string ReportsCodeBody(string code) => new StringBuilder("<section>")
         .Append(Para(ReportsIntro + " This page shows it once."))
         .Append("<p class=\"copy block line\">").Append(Html(code)).Append("</p>")
-        .Append("<p><button type=\"button\" class=\"quiet small\" data-copy=\"").Append(Html(code)).Append("\">Copy</button></p>")
+        .Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(code)).Append("\">Copy</button></p>")
         .Append("<h3>Set up Hermes</h3><ol class=\"steps\">")
         .Append("<li><a href=\"").Append(ReportScriptPath).Append("\">Download ml-report</a> and put its files in the profile's scripts folder, <span class=\"copy\">$HERMES_HOME/scripts/</span>. Make the folder if there isn't one.</li>")
         .Append("<li>Add <span class=\"copy\">MESSAGE_LINK_REPORTS=</span> followed by the code to the profile's <span class=\"copy\">.env</span> file.</li>")

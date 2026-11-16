@@ -33,8 +33,9 @@ public sealed record HermesReportTokens(IReadOnlyList<HermesReportToken> Rows)
 {
     public static HermesReportTokens Empty { get; } = new([]);
 }
-/// <summary>One token: the profile whose thread it writes into, the kind of agent behind it ("hermes" today), its hash, tag and when it was made.</summary>
-public sealed record HermesReportToken(string Profile, string Source, string Hash, string Tag, DateTimeOffset Created);
+/// <summary>One token: the profile whose thread it writes into, the kind of agent behind it ("hermes" today), its hash, tag and when it was made, and the
+/// address its code names (host and port; absent in older files), which a new code starts from.</summary>
+public sealed record HermesReportToken(string Profile, string Source, string Hash, string Tag, DateTimeOffset Created, string? Address = null);
 
 /// <summary>A thread: its Hermes session and its messages.</summary>
 public sealed record HermesThread(string Profile, string SessionId, IReadOnlyList<HermesStoredMessage> Messages, string? Title = null,

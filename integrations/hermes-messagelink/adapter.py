@@ -171,7 +171,9 @@ class MessageLinkAdapter(BasePlatformAdapter):
     def __init__(self, config):
         super().__init__(config, Platform(NAME))
         # No restart, online or shutdown notices into Message Link: Hermes reads this switch on the platform's config
-        # (the same object it built this adapter from) before each one, and replays a notice whose send failed.
+        # (the same object it built this adapter from) before each one, and replays a notice whose send failed. Hermes
+        # builds a fresh config when a profile's .env or config.yaml changes, without making this adapter again, so the
+        # setup also puts messagelink.gateway_restart_notification: false in config.yaml (README, step 4).
         try:
             config.gateway_restart_notification = False
         except AttributeError:

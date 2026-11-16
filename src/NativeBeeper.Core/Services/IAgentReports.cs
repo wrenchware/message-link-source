@@ -15,8 +15,8 @@ public interface IAgentReports
     IReadOnlyList<AgentReportsState> ReportsState { get; }
 
     /// <summary>Turns reports on for <paramref name="profile"/>, or makes a new token for it: the old one stops at once. Answers the token, which is shown
-    /// once and never kept (only its hash is).</summary>
-    Task<string> IssueReportTokenAsync(string profile, CancellationToken cancellationToken = default);
+    /// once and never kept (only its hash is). <paramref name="address"/> is the address the code names (host and port), kept so a new code starts from it.</summary>
+    Task<string> IssueReportTokenAsync(string profile, string? address = null, CancellationToken cancellationToken = default);
 
     /// <summary>Turns reports off for <paramref name="profile"/>: its token stops.</summary>
     Task TurnOffReportsAsync(string profile, CancellationToken cancellationToken = default);
@@ -25,7 +25,8 @@ public interface IAgentReports
     /// before it reads a body.</summary>
     bool KnowsReportToken(byte[] tokenHash);
 
-    /// <summary>Whether <paramref name="tokenHash"/> is a live token (<see cref="AgentReportOutcome.Ready"/>); counts toward the per-minute limit only.</summary>
+    /// <summary>Whether <paramref name="tokenHash"/> is a live token (<see cref="AgentReportOutcome.Ready"/>). Checks have a per-minute limit of their own and
+    /// never use up the reports'.</summary>
     Task<AgentReportResult> CheckReportAsync(byte[] tokenHash, CancellationToken cancellationToken = default);
 
     /// <summary>Puts a report in the token's thread. <paramref name="text"/> is already cleaned (<see cref="AgentReportRules.Clean"/>).</summary>
@@ -40,8 +41,10 @@ public enum AgentReportOutcome { Delivered, Duplicate, KeyReused, Unknown, Limit
 /// <summary>What a report or a check came to. <paramref name="Tag"/> is the token's one-way log tag when the token was known.</summary>
 public sealed record AgentReportResult(AgentReportOutcome Outcome, string? MessageId = null, TimeSpan? RetryAfter = null, string? Tag = null);
 
-/// <summary>One profile's reports: on or off, since when, and the last refusal the page should say (<c>address</c>), if any.</summary>
-public sealed record AgentReportsState(string Profile, bool On, DateTimeOffset? Since = null, string? LastRefusal = null, DateTimeOffset? LastRefusalAt = null);
+/// <summary>One profile's reports: on or off, since when, the last refusal the page should say (<c>address</c>), if any, the address the current code
+/// names, and when the last report arrived.</summary>
+public sealed record AgentReportsState(string Profile, bool On, DateTimeOffset? Since = null, string? LastRefusal = null, DateTimeOffset? LastRefusalAt = null,
+    string? Address = null, DateTimeOffset? LastReportAt = null);
 
 /// <summary>The wire rules of a report (docs/research/hermes-reports-plan.md, section 5): the token, the text and the idempotency key.</summary>
 public static class AgentReportRules

@@ -27,7 +27,11 @@ internal sealed partial class ServerPage
     private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";
 
     private const string HermesStyle = "fieldset.hp{border:1px solid var(--line);border-radius:12px;padding:12px 16px 2px;margin:0 0 14px}"
-        + "fieldset.hp legend{padding:0 6px;font-weight:600}label.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0 0 12px}label.check input{margin:0}";
+        + "fieldset.hp legend{padding:0 6px;font-weight:600}label.check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0 0 12px}label.check input{margin:0}"
+        // A profile's Reports line, set in under the profile's name past its picture; the settings apart from the profiles; a menu's item that posts a form.
+        + ".row.sub{padding-left:54px;min-height:44px}.row.sub .g{font-weight:500}.box.settings{margin-top:20px}"
+        + ".pop form{margin:0}button.item{display:block;width:100%;padding:7px 10px;border:0;border-radius:6px;background:none;color:var(--fg);font:inherit;font-size:13px;font-weight:400;line-height:inherit;text-align:left;white-space:nowrap}"
+        + "button.item:hover{background:var(--fieldhover);border:0}button.item.danger{color:var(--danger-ink)}";
 
     // A profile's state in the page's words.
     private static string HermesWord(string status) => status switch
@@ -83,15 +87,18 @@ internal sealed partial class ServerPage
                 "<a class=\"button\" href=\"/hermes\">Set up…</a>")).Append("</div></section>");
             return false;
         }
-        body.Append("<div class=\"box\">");
-        if (state.Address is { Length: > 0 } address) body.Append(CopyRow("Address", address));
+        // A box for each profile, its Reports line set in under it, so with several profiles each one's lines read as its own; then where Hermes is and the
+        // way to change it.
         foreach (var agent in state.Agents)
         {
             var (name, under) = HermesNames(agent);
-            body.Append(Row(name, under, HermesWord(agent.Status), null, warn: HermesWarns(agent.Status)));
+            body.Append("<div class=\"box\">").Append(Row(name, under, HermesWord(agent.Status), null, HermesMark, warn: HermesWarns(agent.Status)));
             ReportsRow(body, agent, token);
+            body.Append("</div>");
         }
-        body.Append("</div><div class=\"box\">").Append(Row("Change Hermes", "The address, the profiles, their API keys and conversation names.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
+        body.Append("<div class=\"box settings\">");
+        if (state.Address is { Length: > 0 } address) body.Append(CopyRow("Address", address));
+        body.Append(Row("Change Hermes", "The address, the profiles, their API keys and conversation names.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
             .Append("</div></section>");
         return state.Agents.Any(agent => agent.Status == "unchecked");
     }

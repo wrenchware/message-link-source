@@ -159,8 +159,9 @@ internal sealed partial class ServerPage
 
     private sealed record HomeParts(string Body, int Refresh, string RefreshTo);
 
-    private static string Row(string name, string? under, string? value, string? action, string? icon = null, bool warn = false, string? id = null) =>
-        new StringBuilder("<div class=\"row\"").Append(id is null ? "" : " id=\"" + Html(id) + "\"").Append('>').Append(icon ?? "")
+    // `kind` adds a class to the line (`sub`: a line that belongs to the one above it, set in under it).
+    private static string Row(string name, string? under, string? value, string? action, string? icon = null, bool warn = false, string? id = null, string? kind = null) =>
+        new StringBuilder("<div class=\"row").Append(kind is null ? "" : " " + kind).Append('"').Append(id is null ? "" : " id=\"" + Html(id) + "\"").Append('>').Append(icon ?? "")
             .Append("<div class=\"g\">").Append(Html(name)).Append(under is null ? "" : "<small>" + Html(under) + "</small>").Append("</div>")
             .Append(value is null ? "" : warn ? "<span class=\"v warn\"><i class=\"dot wait\"></i>" + Html(value) + "</span>" : "<span class=\"v\">" + Html(value) + "</span>")
             .Append(action ?? "").Append("</div>").ToString();

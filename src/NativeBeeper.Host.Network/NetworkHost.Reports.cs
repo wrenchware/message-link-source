@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -17,7 +18,9 @@ internal sealed partial class NetworkHost
     /// <summary>How long a report's body may take to arrive.</summary>
     internal TimeSpan ReportReadLimit { get; set; } = TimeSpan.FromSeconds(5);
 
-    private int reportsRefused;
+    // Refusals counted by reason (a short fixed set of words), so each kind is logged the first time it happens: with one count for all of them, a token
+    // refusal hid every later address refusal behind it (live test, 2026-11-16).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, StrongBox<int>> reportsRefused = new(StringComparer.Ordinal);
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private async Task ReportAsync(HttpContext context)
@@ -232,7 +235,8 @@ internal sealed partial class NetworkHost
         await response.CompleteAsync().ConfigureAwait(false);
     }
 
-    // An answer with no body. Refusals are logged the first time and then one in a hundred, with the token's tag when it was well formed; never the text or token.
+    // An answer with no body. Refusals are logged the first time of each reason and then one in a hundred of it, with the token's tag when it was well
+    // formed; never the text or token.
     private async Task ReportAnswerAsync(HttpContext context, int status, string outcome, string? reason, string? tag = null)
     {
         if (outcome == "refused" || outcome == "unavailable") ReportLog(reason ?? outcome, tag, outcome);
@@ -245,7 +249,7 @@ internal sealed partial class NetworkHost
 
     private void ReportLog(string reason, string? tag, string outcome = "refused")
     {
-        var count = Interlocked.Increment(ref reportsRefused);
+        var count = Interlocked.Increment(ref reportsRefused.GetOrAdd(outcome + " " + reason, _ => new StrongBox<int>()).Value);
         if (count == 1 || count % 100 == 0)
             log($"hermes report outcome={outcome} reason={reason}{(tag is null ? "" : " tag=" + tag)}{(count == 1 ? "" : $" count={count}")}");
     }

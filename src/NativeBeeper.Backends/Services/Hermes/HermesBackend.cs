@@ -96,7 +96,11 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             if (settings.Profiles.Count > 0 && reportTokens.Rows.Any(r => !settings.Profiles.Any(p => p.Name == r.Profile)))
                 await ForgetReportTokensAsync([.. reportTokens.Rows.Select(r => r.Profile).Where(name => !settings.Profiles.Any(p => p.Name == name)).Distinct()]).ConfigureAwait(false);
             foreach (var profile in settings.Profiles)
-                if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread) threads[profile.Name] = Sequenced(thread);
+                if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread)
+                {
+                    threads[profile.Name] = Sequenced(thread);
+                    SeedLastReport(thread);
+                }
         }
         finally { gate.Release(); }
         log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}");
