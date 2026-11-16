@@ -298,7 +298,7 @@ Pins, mutes, labels, reminders, unread marks and the names and photos you give c
 The emoji button beside Send opens a picker with three tabs.
 
 - **Emoji**: search (<kbd>Enter</kbd> inserts the first match), browse by category, choose a skin tone, and find your 32 most recent under **Recent**. Pick several in a row.
-- **GIF**: appears once you've saved a GIPHY key in [Settings → Messaging](#settings-messaging). Trending GIFs come first; search, then **More GIFs**. A chosen GIF waits like a photo. GIFs over 20 MB are refused.
+- **GIF**: needs a free GIPHY key. Until one is saved, the tab's **Set up** button opens [Settings → Messaging](#settings-messaging) to add it. Trending GIFs come first; search, then **More GIFs**. A chosen GIF waits like a photo. GIFs over 20 MB are refused.
 - **Replies**: your quick replies. Choosing one puts its text in the box at the cursor; it **never sends by itself**. **Manage quick replies…** (or **Quick replies…** in Commands) keeps up to 50, each with a name of up to 40 characters and up to 2,000 characters of text.
 
 ### Send later {#send-later}
@@ -872,7 +872,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 | **Undo send** | Off, 5 seconds or 10 seconds to take a message back. See [Undo send](#undo-send) | Off |
 | **New texts** | Which service New chat uses for phone numbers when it searches all services. Shown when Google Messages and Google Voice are both connected. See [New chats](#new-chats-and-groups) | Google Messages |
 | **Private reading** | Per service: read without sending read receipts or typing. See [Private reading](#private-reading) | Off |
-| **GIF search** | Saves your free GIPHY key, which turns on the GIF tab, and removes it again | Off |
+| **GIF search** | Saves your free GIPHY key, which turns on GIF search, and removes it again | Off |
 
 ### Appearance {#settings-appearance}
 
