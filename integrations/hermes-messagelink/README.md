@@ -39,11 +39,13 @@ profile's folder and with Hermes's own Python. Then, inside the profile:
    `MESSAGELINK_CODE` in its `.env`, enables the plugin, and adds the two settings below to `config.yaml`, keeping its
    comments. If `config.yaml` is laid out in a way it can't edit with certainty, it changes nothing and prints the
    lines to add by hand.
-4. It checks the new code once and ends with "Done.", the profile's name and "can now message you first."
+4. It checks the new code once.
+5. It restarts Hermes, which every profile shares, and ends with "Done.", the profile's name and "can now message you
+   first." In Docker the container keeps running. If a chat or job is running in Hermes, Hermes refuses the restart.
+   The setup is still done, and the command says to restart Hermes when nothing is running.
 
-Hermes reads a profile's changed `.env` and `config.yaml` by itself within about 30 seconds. The `default` profile is
-the exception: restart Hermes once. Run the command again, from **New code…**, to replace the code; nothing else
-changes.
+Hermes needs that restart once. Until then, commands in a profile that ran one before setup can't see
+`MESSAGELINK_CODE`. Run the command again, from **New code…**, to replace the code; nothing else changes.
 
 If Hermes can't reach the server, the command says so. With Hermes and Message Link in Docker on the same computer,
 put both containers on one user-defined Docker network (not the default bridge): a connection through a published
@@ -76,6 +78,9 @@ The command's page has **Set up by hand instead**, which shows a connection code
        env_passthrough:
          - MESSAGELINK_CODE
      ```
+
+     Then restart Hermes once (`hermes gateway restart --all`, or restart its container). Hermes keeps the list it
+     read first until it restarts.
 
    - or put `SKILL.md` in the profile's skills folder (`$HERMES_HOME/skills/message-link-reports/SKILL.md`). It
      declares the variable, which Hermes passes to commands while the skill is loaded.
@@ -121,8 +126,8 @@ The setup command sets it up. By hand, for each profile:
      gateway_restart_notification: false
    ```
 
-Hermes reads a profile's changed `.env` and `config.yaml` by itself within about 30 seconds, so there's nothing to
-restart. The `default` profile is the exception: it reads its `.env` only when Hermes starts, so restart Hermes once.
+5. Restart Hermes once, so it loads the plugin with these settings: `hermes gateway restart --all`, or restart its
+   container.
 
 Then:
 

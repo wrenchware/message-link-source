@@ -20,6 +20,7 @@ What it does, in order, stopping at the first problem:
 4. Puts ml-report, its skill and the messagelink plugin in the profile, sets ``MESSAGELINK_CODE`` in its ``.env``,
    enables the plugin, lets commands see the code and turns Hermes's restart notices off for Message Link in
    ``config.yaml`` (keeping its comments), then checks the new code once.
+5. Restarts Hermes's gateway, which commands need before they see the code, unless a chat or job is running in it.
 
 Running it again with a new setup code replaces the code and changes nothing else. Standard library only.
 """
@@ -650,6 +651,29 @@ def enable_plugin(hermes, profile):
                    (":\n  " + "\n  ".join(said)) if said else "."))
 
 
+def restart_hermes(hermes):
+    """Restarts Hermes's gateway, so commands see the code; whether it restarted.
+
+    Hermes (v0.23.1, tools/env_passthrough.py) reads a profile's terminal.env_passthrough once per process and keeps
+    it: a profile that ran a command before setup never passes MESSAGELINK_CODE to ml-report until the gateway
+    restarts. No reload clears that list. ``--all`` restarts the one host gateway that serves every profile when
+    Hermes multiplexes them (in Docker, through s6, without stopping the container). Without ``--yes``, Hermes refuses
+    while a chat or job is running, so nothing is interrupted. ``--detach`` keeps a gateway with no service manager
+    from starting in this process."""
+    args = [hermes, "-p", "default", "gateway", "restart", "--all", "--detach"]
+    try:
+        result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                timeout=180)
+    except (OSError, subprocess.SubprocessError) as error:
+        say("Hermes didn't restart (%s)." % type(error).__name__)
+        return False
+    if result.returncode != 0:
+        said = [line.strip() for line in result.stdout.decode("utf-8", "replace").strip().splitlines() if line.strip()]
+        say("Hermes didn't restart (exit %d)%s" % (result.returncode, (":\n  " + "\n  ".join(said[:6])) if said else "."))
+        return False
+    return True
+
+
 # ---- The steps ----
 
 
@@ -882,11 +906,13 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
         os.unlink(pending)
     except OSError:
         pass
-    if profile == "default":
-        say("Restart Hermes once so the default profile reads its new settings.")
+    say("Restarting Hermes so %s can use the new settings." % profile)
+    if restart_hermes(hermes):
+        say("Hermes restarted.")
+        say("Done. %s can now message you first." % profile)
     else:
-        say("Hermes reads the new settings by itself within about 30 seconds.")
-    say("Done. %s can now message you first." % profile)
+        say("Setup is done. Restart Hermes when nothing is running in it, or restart its container. Until then, %s "
+            "can't message you first." % profile)
 
 
 def configure(config_path):
