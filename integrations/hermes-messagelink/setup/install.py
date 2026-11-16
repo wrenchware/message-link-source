@@ -17,8 +17,9 @@ What it does, in order, stopping at the first problem:
 2. Tries each address (the one the profile's current code names first) until the server answers from one.
 3. Makes the profile's report token here and sends the server only its hash, with the address that worked. The token
    never travels; the setup code is then used up.
-4. Puts ml-report, its skill and the messagelink plugin in the profile, sets ``MESSAGELINK_CODE`` in its ``.env``,
-   enables the plugin, lets commands see the code and turns Hermes's restart notices off for Message Link in
+4. Puts ml-report, its skill and the messagelink plugin in the profile, sets the code in its ``.env`` (as
+   ``MESSAGELINK_CODE`` for the plugin and ``MESSAGE_LINK_REPORTS`` for commands), enables the plugin, lets commands
+   see the code and turns Hermes's restart notices off for Message Link in
    ``config.yaml`` (keeping its comments), then checks the new code once.
 5. Restarts Hermes's gateway, which commands need before they see the code, unless a chat or job is running in it.
 
@@ -47,9 +48,11 @@ import zipfile
 BUNDLE = None
 
 SETUP_ENV = "MLSETUP"
+# The same code under two names. The plugin's manifest declares CODE_ENV as a password, so Hermes counts it as a
+# platform secret and never passes it to commands (local_env_policy._home_adapter_secret_env, v0.23.1). Commands, and
+# so ml-report, get COMMAND_ENV through terminal.env_passthrough instead.
 CODE_ENV = "MESSAGELINK_CODE"
-# The setting's name before setup in one command: replaced in .env, and still read by ml-report.
-OLD_CODE_ENV = "MESSAGE_LINK_REPORTS"
+COMMAND_ENV = "MESSAGE_LINK_REPORTS"
 PROBE_PATH = "/v1/reports/setup/probe"
 REDEEM_PATH = "/v1/reports/setup/redeem"
 CHECK_PATH = "/v1/reports/check"
@@ -260,7 +263,7 @@ def private_mode(path):
 
 # A dotenv assignment, as python-dotenv (Hermes's reader) takes it: optional export, a name, =, the value.
 _ASSIGN = re.compile(r"[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_.]*)[ \t]*=[ \t]*(.*)$")
-OURS = (CODE_ENV, OLD_CODE_ENV)
+OURS = (CODE_ENV, COMMAND_ENV)
 
 
 def _closes(text, quote, start):
@@ -299,14 +302,15 @@ def env_lines(text):
         lines.append((line, match.group(1), opens))
     if quote:
         raise Stop(".env has a quoted value that isn't closed, so nothing was changed.", 2)
-    if any(name in OURS and opens for _, name, opens in lines):
-        raise Stop(".env has a %s value over several lines, so nothing was changed. Remove it, then run the command "
-                   "again." % CODE_ENV, 2)
+    for _, name, opens in lines:
+        if name in OURS and opens:
+            raise Stop(".env has a %s value over several lines, so nothing was changed. Remove it, then run the "
+                       "command again." % name, 2)
     return lines
 
 
 def env_code(text):
-    """The connection code the profile's .env holds now (the new name first), or None."""
+    """The connection code the profile's .env holds now (the plugin's name first), or None."""
     found = {}
     for line, name, _ in env_lines(text):
         if name in OURS:
@@ -314,7 +318,7 @@ def env_code(text):
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
                 value = value[1:-1]
             found[name] = value
-    return found.get(CODE_ENV) or found.get(OLD_CODE_ENV)
+    return found.get(CODE_ENV) or found.get(COMMAND_ENV)
 
 
 def code_address(code):
@@ -331,12 +335,12 @@ def code_address(code):
 
 
 def env_with_code(text, code):
-    """.env with this code under the one name, every other byte of every other line as it was."""
+    """.env with this code under both names, every other byte of every other line as it was."""
     newline = "\r\n" if text and "\r\n" in text else "\n"
     lines = [line for line, name, _ in env_lines(text) if name not in OURS]
     while lines and not lines[-1].strip():
         lines.pop()
-    lines.append("%s=%s" % (CODE_ENV, code))
+    lines += ["%s=%s" % (name, code) for name in OURS]
     return newline.join(lines) + newline
 
 
@@ -493,9 +497,10 @@ def plan_config(text, newline):
             lines.append("")
         lines.extend(block)
 
-    # terminal.env_passthrough gets MESSAGELINK_CODE.
+    # terminal.env_passthrough gets MESSAGE_LINK_REPORTS, and loses MESSAGELINK_CODE: an earlier setup listed it, and
+    # Hermes refuses it there (a platform secret), with a warning in its log.
     if "terminal" not in keys:
-        add_block(["terminal:", " " * unit + "env_passthrough:", " " * unit * 2 + "- " + CODE_ENV])
+        add_block(["terminal:", " " * unit + "env_passthrough:", " " * unit * 2 + "- " + COMMAND_ENV])
         changes.append("passthrough")
     else:
         start = keys["terminal"]
@@ -505,7 +510,7 @@ def plan_config(text, newline):
         if indent is None:
             indent = unit
         if "env_passthrough" not in children:
-            lines[start + 1:start + 1] = [" " * indent + "env_passthrough:", " " * (indent + unit) + "- " + CODE_ENV]
+            lines[start + 1:start + 1] = [" " * indent + "env_passthrough:", " " * (indent + unit) + "- " + COMMAND_ENV]
             changes.append("passthrough")
         else:
             at = children["env_passthrough"]
@@ -518,8 +523,11 @@ def plan_config(text, newline):
                 names = [_scalar_name(item) for item in items]
                 if any(name is None for name in names):
                     raise Ambiguous("terminal.env_passthrough holds something other than names")
-                if CODE_ENV not in names:
-                    lines[at] = " " * indent + "env_passthrough: [" + ", ".join(items + [CODE_ENV]) + "]" + comment
+                kept = [item for item, name in zip(items, names) if name != CODE_ENV]
+                if COMMAND_ENV not in names:
+                    kept.append(COMMAND_ENV)
+                if kept != items:
+                    lines[at] = " " * indent + "env_passthrough: [" + ", ".join(kept) + "]" + comment
                     changes.append("passthrough")
             elif value:
                 raise Ambiguous("terminal.env_passthrough isn't a list")
@@ -528,6 +536,7 @@ def plan_config(text, newline):
                 item_indent = None
                 last = at
                 names = []
+                stale = []
                 for index in range(at + 1, end):
                     line = lines[index]
                     if not _content(line):
@@ -543,9 +552,16 @@ def plan_config(text, newline):
                     if name is None:
                         raise Ambiguous("terminal.env_passthrough holds something other than names")
                     names.append(name)
+                    if name == CODE_ENV:
+                        stale.append(index)
                     last = index
-                if CODE_ENV not in names:
-                    lines.insert(last + 1, " " * (item_indent if item_indent is not None else indent + unit) + "- " + CODE_ENV)
+                if COMMAND_ENV not in names:
+                    lines.insert(last + 1, " " * (item_indent if item_indent is not None else indent + unit) + "- " + COMMAND_ENV)
+                    changes.append("passthrough")
+                # After the insert, which comes below every item: these indexes are still the items'.
+                for index in reversed(stale):
+                    del lines[index]
+                if stale and "passthrough" not in changes:
                     changes.append("passthrough")
 
     # messagelink.gateway_restart_notification: false.
@@ -592,9 +608,9 @@ def verify_with_yaml(before, after):
         raise Ambiguous("it isn't a mapping of settings")
     expected = json.loads(json.dumps(old, default=str))
     terminal = expected.get("terminal") or {}
-    passthrough = list(terminal.get("env_passthrough") or [])
-    if CODE_ENV not in passthrough:
-        passthrough.append(CODE_ENV)
+    passthrough = [name for name in terminal.get("env_passthrough") or [] if name != CODE_ENV]
+    if COMMAND_ENV not in passthrough:
+        passthrough.append(COMMAND_ENV)
     terminal["env_passthrough"] = passthrough
     expected["terminal"] = terminal
     messagelink = expected.get("messagelink") or {}
@@ -613,9 +629,10 @@ def config_edit(path):
         if changes:
             verify_with_yaml(text or "", new)
     except Ambiguous as reason:
-        raise Stop("config.yaml wasn't changed: %s. Add these to it by hand, then run the command again:\n"
+        raise Stop("config.yaml wasn't changed: %s. Add these to it by hand (and take %s out of env_passthrough), "
+                   "then run the command again:\n"
                    "  terminal:\n    env_passthrough:\n      - %s\n"
-                   "  messagelink:\n    gateway_restart_notification: false" % (reason, CODE_ENV), 2) from None
+                   "  messagelink:\n    gateway_restart_notification: false" % (reason, CODE_ENV, COMMAND_ENV), 2) from None
     return (new if changes else None), changes, text
 
 
@@ -655,11 +672,15 @@ def restart_hermes(hermes):
     """Restarts Hermes's gateway, so commands see the code; whether it restarted.
 
     Hermes (v0.23.1, tools/env_passthrough.py) reads a profile's terminal.env_passthrough once per process and keeps
-    it: a profile that ran a command before setup never passes MESSAGELINK_CODE to ml-report until the gateway
+    it: a profile that ran a command before setup never passes MESSAGE_LINK_REPORTS to ml-report until the gateway
     restarts. No reload clears that list. ``--all`` restarts the one host gateway that serves every profile when
     Hermes multiplexes them (in Docker, through s6, without stopping the container). Without ``--yes``, Hermes refuses
     while a chat or job is running, so nothing is interrupted. ``--detach`` keeps a gateway with no service manager
-    from starting in this process."""
+    from starting in this process.
+
+    Hermes's own words are never shown: its refusal names the running work (a task's goal, a scheduled job's name).
+    Under s6 it reports a gateway it couldn't restart, or none registered, on a line marked U+2717 and still exits 0,
+    so that mark anywhere counts as not restarted."""
     args = [hermes, "-p", "default", "gateway", "restart", "--all", "--detach"]
     try:
         result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -667,9 +688,12 @@ def restart_hermes(hermes):
     except (OSError, subprocess.SubprocessError) as error:
         say("Hermes didn't restart (%s)." % type(error).__name__)
         return False
-    if result.returncode != 0:
-        said = [line.strip() for line in result.stdout.decode("utf-8", "replace").strip().splitlines() if line.strip()]
-        say("Hermes didn't restart (exit %d)%s" % (result.returncode, (":\n  " + "\n  ".join(said[:6])) if said else "."))
+    said = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout.decode("utf-8", "replace"))
+    if "Refusing to restart the gateway" in said:
+        say("Hermes didn't restart: a chat or job is running in it.")
+        return False
+    if result.returncode != 0 or chr(0x2717) in said:
+        say("Hermes didn't restart (exit %d)." % result.returncode)
         return False
     return True
 
@@ -883,7 +907,7 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
 
         write_atomic(env_path, env_with_code(read_text(env_path), build_code(address, pin, token)).encode("utf-8"),
                      private_mode(env_path))
-        say(".env: %s set." % CODE_ENV)
+        say(".env: %s and %s set." % OURS)
 
         # The settings go in before the plugin is enabled, so it never runs without the restart notices off; enabling
         # may write config.yaml itself, so they are checked again after it.
@@ -891,7 +915,7 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
         enable_plugin(hermes, profile)
         say("Plugin enabled.")
         settled = configure(config_path) or settled
-        say("config.yaml: " + ("commands can see %s, and Hermes's restart notices stay out of Message Link." % CODE_ENV
+        say("config.yaml: " + ("commands can see %s, and Hermes's restart notices stay out of Message Link." % COMMAND_ENV
                                if settled else "already set."))
 
         check(address, pin, token)

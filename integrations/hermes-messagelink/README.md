@@ -7,8 +7,10 @@ v0.23.1.
 
 ## How it works
 
-Each Hermes profile has its own connection code, `MESSAGELINK_CODE` in the profile's `.env`, which `ml-report` and the
-plugin both use. The code holds the server's address, the fingerprint of its certificate and a token for that profile.
+Each Hermes profile has its own connection code, kept in the profile's `.env` under two names with the same value:
+`MESSAGE_LINK_REPORTS` for `ml-report`, and `MESSAGELINK_CODE` for the plugin. The plugin declares `MESSAGELINK_CODE`
+as its password, so Hermes treats it as a platform secret and never passes it to commands; commands get
+`MESSAGE_LINK_REPORTS` instead. The code holds the server's address, the fingerprint of its certificate and a token for that profile.
 The setup command makes it inside the profile (below); setting up by hand, the server's page shows it once.
 
 - `ml-report` connects over HTTPS and checks the server's certificate against the fingerprint before it sends anything.
@@ -36,7 +38,7 @@ profile's folder and with Hermes's own Python. Then, inside the profile:
 2. It makes the profile's report token there and sends the server only its hash. The token never leaves Hermes, and
    the command can't be used again.
 3. It puts `ml-report`, `mlreport_client.py`, `SKILL.md` and the `messagelink` plugin in the profile, sets
-   `MESSAGELINK_CODE` in its `.env`, enables the plugin, and adds the two settings below to `config.yaml`, keeping its
+   the code in its `.env` under both names, enables the plugin, and adds the two settings below to `config.yaml`, keeping its
    comments. If `config.yaml` is laid out in a way it can't edit with certainty, it changes nothing and prints the
    lines to add by hand.
 4. It checks the new code once.
@@ -45,7 +47,9 @@ profile's folder and with Hermes's own Python. Then, inside the profile:
    The setup is still done, and the command says to restart Hermes when nothing is running.
 
 Hermes needs that restart once. Until then, commands in a profile that ran one before setup can't see
-`MESSAGELINK_CODE`. Run the command again, from **New code…**, to replace the code; nothing else changes.
+`MESSAGE_LINK_REPORTS`. Run the command again, from **New code…**, to replace the code; nothing else changes. A
+profile set up before both names existed gets `MESSAGE_LINK_REPORTS` that way, and `MESSAGELINK_CODE` comes out of
+its `env_passthrough`, where Hermes refuses it.
 
 If Hermes can't reach the server, the command says so. With Hermes and Message Link in Docker on the same computer,
 put both containers on one user-defined Docker network (not the default bridge): a connection through a published
@@ -65,10 +69,11 @@ The command's page has **Set up by hand instead**, which shows a connection code
 2. Add the connection code to the profile's `.env`:
 
    ```
-   MESSAGELINK_CODE=mlrc1....
+   MESSAGE_LINK_REPORTS=mlrc1....
    ```
 
-   `ml-report` still reads the older name, `MESSAGE_LINK_REPORTS`, when `MESSAGELINK_CODE` isn't set.
+   `ml-report` also reads `MESSAGELINK_CODE`, the plugin's name for it, when `MESSAGE_LINK_REPORTS` isn't set. In a
+   profile with the plugin, Hermes never passes that name to commands.
 
 3. Let commands see it. Hermes removes secrets from the commands it runs, so do one of these:
    - list it under `terminal.env_passthrough` in the profile's `config.yaml`:
@@ -76,7 +81,7 @@ The command's page has **Set up by hand instead**, which shows a connection code
      ```yaml
      terminal:
        env_passthrough:
-         - MESSAGELINK_CODE
+         - MESSAGE_LINK_REPORTS
      ```
 
      Then restart Hermes once (`hermes gateway restart --all`, or restart its container). Hermes keeps the list it
@@ -104,7 +109,8 @@ If the profile's terminal runs over SSH, use the Message Link plugin for Hermes 
 
 The `messagelink` plugin lets Hermes itself deliver into Message Link: `hermes send --to messagelink "..."` and
 scheduled jobs with `--deliver messagelink`. The plugin reads the code through Hermes's settings for the profile, not
-from the process environment. (Commands see it only because `ml-report` needs it: `terminal.env_passthrough`.) The
+from the process environment, and Hermes keeps it from commands. (Commands get the same code as
+`MESSAGE_LINK_REPORTS`, for `ml-report`.) The
 plugin only sends: chat with Hermes in Message Link as before. Built against Hermes v0.23.1.
 
 The setup command sets it up. By hand, for each profile:
@@ -112,8 +118,8 @@ The setup command sets it up. By hand, for each profile:
 1. Download the plugin from the server's page (`/hermes/plugin.zip`) and unzip it in the profile's plugins folder
    (`$HERMES_HOME/plugins/`). Its files go in `plugins/messagelink/`.
 2. Enable it for that profile: `hermes -p <profile> plugins enable messagelink`.
-3. Add the connection code to the profile's `.env`. The home channel is `home` unless
-   `MESSAGELINK_HOME_CHANNEL` says otherwise.
+3. Add the connection code to the profile's `.env` (with `ml-report` too, the same code under both names). The home
+   channel is `home` unless `MESSAGELINK_HOME_CHANNEL` says otherwise.
 
    ```
    MESSAGELINK_CODE=mlrc1....

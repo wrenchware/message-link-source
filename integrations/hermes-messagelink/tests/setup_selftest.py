@@ -28,6 +28,11 @@ SPEC.loader.exec_module(setup)
 CODE = "mlrc1.eyJ2IjoxfQ"
 
 
+def both(newline="\n"):
+    """The code's two lines at the end of .env: the plugin's name, then the one commands get."""
+    return "MESSAGELINK_CODE=%s%sMESSAGE_LINK_REPORTS=%s%s" % (CODE, newline, CODE, newline)
+
+
 def plan(text):
     return setup.plan_config(text, "\n")
 
@@ -35,26 +40,26 @@ def plan(text):
 class EnvFile(unittest.TestCase):
     def test_only_the_codes_lines_change(self):
         text = "A=1\n  export   MESSAGELINK_CODE =  old\nMESSAGE_LINK_REPORTS='older'\n# MESSAGELINK_CODE=comment\nB=2"
-        self.assertEqual(setup.env_with_code(text, CODE), "A=1\n# MESSAGELINK_CODE=comment\nB=2\nMESSAGELINK_CODE=%s\n" % CODE)
+        self.assertEqual(setup.env_with_code(text, CODE), "A=1\n# MESSAGELINK_CODE=comment\nB=2\n" + both())
 
     def test_crlf_and_no_final_newline_are_kept(self):
-        self.assertEqual(setup.env_with_code("A=1\r\nB=2", CODE), "A=1\r\nB=2\r\nMESSAGELINK_CODE=%s\r\n" % CODE)
+        self.assertEqual(setup.env_with_code("A=1\r\nB=2", CODE), "A=1\r\nB=2\r\n" + both("\r\n"))
 
     def test_a_quoted_value_over_several_lines_is_left_whole(self):
         text = 'KEY="line one\nMESSAGELINK_CODE=not a setting\nlast"\nC=3\n'
-        self.assertEqual(setup.env_with_code(text, CODE), text + "MESSAGELINK_CODE=%s\n" % CODE)
+        self.assertEqual(setup.env_with_code(text, CODE), text + both())
         self.assertIsNone(setup.env_code(text))
 
     def test_an_escaped_quote_does_not_end_a_value(self):
         # As python-dotenv reads them: in either kind of quotes, a backslash takes the next character into the value.
         for text in ('KEY="a \\" b\nMESSAGELINK_CODE=inside"\n', "KEY='a \\' b\nMESSAGELINK_CODE=inside'\n"):
             with self.subTest(text):
-                self.assertEqual(setup.env_with_code(text, CODE), text + "MESSAGELINK_CODE=%s\n" % CODE)
+                self.assertEqual(setup.env_with_code(text, CODE), text + both())
                 self.assertIsNone(setup.env_code(text))
         # An escaped backslash, then the closing quote: the next line is a setting of its own.
         for text in ('KEY="a \\\\"\nMESSAGELINK_CODE=old\n', "KEY='a \\\\'\nMESSAGELINK_CODE=old\n"):
             with self.subTest(text):
-                self.assertEqual(setup.env_with_code(text, CODE), text.replace("MESSAGELINK_CODE=old", "MESSAGELINK_CODE=%s" % CODE))
+                self.assertEqual(setup.env_with_code(text, CODE), text.replace("MESSAGELINK_CODE=old\n", both()))
                 self.assertEqual(setup.env_code(text), "old")
 
     def test_the_scanner_reads_as_python_dotenv_does(self):
@@ -83,14 +88,28 @@ class ConfigFile(unittest.TestCase):
         text = ("# top\nterminal:\n  backend: local  # here\n  env_passthrough:\n    - GITHUB_TOKEN  # git\n"
                 "# between\nmessagelink:\n  gateway_restart_notification: true  # was on\n")
         new, changes = plan(text)
-        self.assertEqual(new, text.replace("    - GITHUB_TOKEN  # git\n", "    - GITHUB_TOKEN  # git\n    - MESSAGELINK_CODE\n")
+        self.assertEqual(new, text.replace("    - GITHUB_TOKEN  # git\n", "    - GITHUB_TOKEN  # git\n    - MESSAGE_LINK_REPORTS\n")
                          .replace("notification: true  # was on", "notification: false  # was on"))
         self.assertEqual(changes, ["passthrough", "notices"])
         self.assertEqual(plan(new)[1], [])
 
     def test_a_flow_list_and_a_list_at_its_keys_indentation(self):
-        self.assertIn("env_passthrough: [A, 'B', MESSAGELINK_CODE]  # c", plan("terminal:\n  env_passthrough: [A, 'B']  # c\n")[0])
-        self.assertIn("  - A\n  - MESSAGELINK_CODE\n", plan("terminal:\n  env_passthrough:\n  - A\n  backend: x\n")[0])
+        self.assertIn("env_passthrough: [A, 'B', MESSAGE_LINK_REPORTS]  # c", plan("terminal:\n  env_passthrough: [A, 'B']  # c\n")[0])
+        self.assertIn("  - A\n  - MESSAGE_LINK_REPORTS\n", plan("terminal:\n  env_passthrough:\n  - A\n  backend: x\n")[0])
+
+    def test_an_earlier_setups_passthrough_name_is_taken_out(self):
+        # Hermes refuses MESSAGELINK_CODE in env_passthrough (the plugin's platform secret), so an earlier setup's entry
+        # goes, in either kind of list, and the plugin's own name never comes back.
+        new, changes = plan("terminal:\n  env_passthrough:\n    - MESSAGELINK_CODE  # reports\n    - A\n")
+        self.assertEqual(new.split("messagelink:")[0], "terminal:\n  env_passthrough:\n    - A\n    - MESSAGE_LINK_REPORTS\n\n")
+        self.assertEqual(changes, ["passthrough", "notices"])
+        self.assertEqual(plan(new)[1], [])
+        self.assertEqual(plan("terminal:\n  env_passthrough:\n    - MESSAGELINK_CODE\n")[0].split("messagelink:")[0],
+                         "terminal:\n  env_passthrough:\n    - MESSAGE_LINK_REPORTS\n\n")
+        self.assertIn("env_passthrough: [A, MESSAGE_LINK_REPORTS]", plan("terminal:\n  env_passthrough: [MESSAGELINK_CODE, A]\n")[0])
+        done = plan("terminal:\n  env_passthrough:\n    - MESSAGE_LINK_REPORTS\n    - MESSAGELINK_CODE\n")
+        self.assertEqual(done[0].split("messagelink:")[0], "terminal:\n  env_passthrough:\n    - MESSAGE_LINK_REPORTS\n\n")
+        self.assertIn("passthrough", done[1])
 
     def test_what_it_cannot_read_with_certainty_is_refused(self):
         for name, text in [

@@ -1,14 +1,14 @@
 ---
 name: message-link-reports
 description: Send the owner a report in Message Link when a long task finishes or something needs them.
-version: 1.1.0
+version: 1.2.0
 metadata:
   hermes:
     tags: [message-link, notifications]
     category: productivity
     requires_toolsets: [terminal]
 required_environment_variables:
-  - name: MESSAGELINK_CODE
+  - name: MESSAGE_LINK_REPORTS
     prompt: Message Link connection code
     help: Set up reports for this profile from the Message Link server's page, which puts the code in the profile's .env.
     required_for: sending reports

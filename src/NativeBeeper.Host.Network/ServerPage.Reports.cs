@@ -152,8 +152,9 @@ internal sealed partial class ServerPage
         .Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(code)).Append("\">Copy</button></p>")
         .Append("<h3>Set up Hermes</h3><ol class=\"steps\">")
         .Append("<li><a href=\"").Append(ReportScriptPath).Append("\">Download ml-report</a> and put its files in the profile's scripts folder, <span class=\"copy\">$HERMES_HOME/scripts/</span>. Make the folder if there isn't one.</li>")
-        .Append("<li>Add <span class=\"copy\">MESSAGELINK_CODE=</span> followed by the code to the profile's <span class=\"copy\">.env</span> file.</li>")
-        .Append("<li>Let Hermes's commands see it: add <span class=\"copy\">MESSAGELINK_CODE</span> to <span class=\"copy\">terminal.env_passthrough</span> in the profile's <span class=\"copy\">config.yaml</span>, or add the included SKILL.md to the profile's skills.</li>")
+        // MESSAGE_LINK_REPORTS, not the plugin's MESSAGELINK_CODE: Hermes keeps a platform plugin's password from commands (PROVIDERS.md, Hermes).
+        .Append("<li>Add <span class=\"copy\">MESSAGE_LINK_REPORTS=</span> followed by the code to the profile's <span class=\"copy\">.env</span> file.</li>")
+        .Append("<li>Let Hermes's commands see it: add <span class=\"copy\">MESSAGE_LINK_REPORTS</span> to <span class=\"copy\">terminal.env_passthrough</span> in the profile's <span class=\"copy\">config.yaml</span>, then restart Hermes once. Or add the included SKILL.md to the profile's skills.</li>")
         .Append("<li>Run <span class=\"copy\">ml-report check</span> in the profile's terminal. Then <span class=\"copy\">ml-report \"Hello\"</span> posts a message here.</li></ol>")
         .Append("<p>Or use the <a href=\"").Append(PluginPath).Append("\">Message Link plugin for Hermes</a>, which keeps the code inside Hermes and lets scheduled jobs and <span class=\"copy\">hermes send</span> deliver here. ")
         .Append("A profile whose terminal runs over SSH should use the plugin. Its README has the steps.</p>")
