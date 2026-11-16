@@ -117,6 +117,14 @@ public sealed class HermesClient(HttpClient http)
         return response;
     }
 
+    /// <summary>
+    /// The session id a reply came back under, when it is one we could send again. Hermes echoes the id it used, so one unlike the id sent means Hermes
+    /// moved the conversation (a compaction with <c>compression.in_place: false</c> continues in a new session, as the docs' sessions page describes).
+    /// </summary>
+    public static string? SessionOf(HttpResponseMessage response) =>
+        response.Headers.TryGetValues(SessionHeader, out var values) && values.FirstOrDefault() is { Length: > 0 and <= 128 } id
+            && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.' or ':') ? id : null;
+
     /// <summary>The events of a reply <see cref="OpenAsync"/> opened. Ends with one <see cref="HermesFinished"/>, <c>interrupted</c> when the stream was cut off.</summary>
     public static async IAsyncEnumerable<HermesStreamEvent> ReadAsync(HttpResponseMessage response, [EnumeratorCancellation] CancellationToken cancellationToken)
     {

@@ -399,6 +399,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                 return;
             }
             Saw(profile, null, generation: generation);
+            if (HermesClient.SessionOf(response) is { } echoed && echoed != sessionId) await MovedAsync(profile, sessionId, echoed).ConfigureAwait(false);
             // Kept from the start (SendAsync); accepted now.
             accepted.TrySetResult(null);
             realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [outgoing.Id], false, clock.GetUtcNow()));
@@ -418,6 +419,22 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             Interlocked.Decrement(ref turnsRunning);
             Typing(chatId, null, stopped: true);
         }
+    }
+
+    // Hermes answered under another session id than the one sent: it moved the conversation, so the next turn follows it. Not when the thread started
+    // over while this turn ran: the new conversation's id wins.
+    private async Task MovedAsync(string profile, string sent, string echoed)
+    {
+        await gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var thread = Thread(profile);
+            if (thread.SessionId != sent) return;
+            threads[profile] = thread with { SessionId = echoed };
+            await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
+        log($"hermes session_moved profile={Tag(profile)}");
     }
 
     private async Task UncertainAsync(string profile, string chatId, HermesStoredMessage outgoing)
@@ -484,8 +501,9 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                     break;
             }
         }
-        var complete = finish is "stop" or "length";
-        if (complete) await TookAsync().ConfigureAwait(false);
+        // A reply that reached the model's output limit ("length") was taken but is not whole: kept, and the thread says it was cut off.
+        var complete = finish == "stop";
+        if (finish is "stop" or "length") await TookAsync().ConfigureAwait(false);
         if (reply is not null || words.Length > 0)
         {
             reply = (reply ?? new(NewMessageId(profile), clock.GetUtcNow(), false, null)) with { Text = words.ToString().Trim(), State = complete ? "done" : "interrupted" };
@@ -506,6 +524,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             await NoteAsync(profile, chatId, finish switch
             {
                 "cancelled" => "Hermes stopped this reply.",
+                "length" => "Hermes's reply was cut off at the model's length limit.",
                 "error" when error == "admission_conflict" => "Hermes was busy with another message in this conversation. Send it again.",
                 "error" => "Hermes couldn't finish its reply.",
                 _ => reply is null ? "Hermes stopped answering before it replied." : "Hermes stopped before finishing its reply.",

@@ -391,7 +391,7 @@ Saved files are marked as coming from the internet, as a browser marks a downloa
 
 ## 8. Working with a message {#message-actions}
 
-Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when there are photos), **More actions** (⋯) and the time. Right-click a message, or choose ⋯, for its menu. Items appear only where they apply:
+Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when there are photos), **More actions** (⋯) and the time (point at it for the full date and service; a very narrow window leaves it out). Right-click a message, or choose ⋯, for its menu. Items appear only where they apply:
 
 | Item | What it does |
 |---|---|
@@ -432,7 +432,7 @@ Hover a message for a small toolbar: **Reply**, **React**, **Save photo** (when 
 
 ### Layout {#layout}
 
-- Messages are grouped by sender under a day divider ("Today", or the date), with a time above them after ten quiet minutes. In groups each sender's name shows. Hover any message for its time and status.
+- Messages are grouped by sender under a day divider ("Today", or the date), with a time above them after ten quiet minutes. In groups each sender's name shows. Hover any message for its time, and point at the time for the full date.
 - While you scroll, a **date pill** shows at the top and fades when you stop.
 - On Messenger and Instagram, a **New messages** line marks where you stopped reading when you opened the conversation. It disappears once you send. Google Messages and Voice don't say where you stopped, so they can't have one.
 - Links and email addresses are clickable; hover a link for its full address. Message text can be selected and copied.
