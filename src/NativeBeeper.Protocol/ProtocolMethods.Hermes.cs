@@ -10,6 +10,8 @@ namespace NativeBeeper.Protocol;
 //                                   parameters: the journal keeps a hash, never the parameters.
 //   accounts.hermes.newConversation a Hermes thread starts over on a fresh Hermes session; the scrollback stays.
 //   repeats.create / repeats.cancel a repeating scheduled send, Hermes threads only (HostRepeats). The rows are the host's own (repeat:).
+//   accounts.hermes.answerApproval  (protocol 32) approves once or denies a command Hermes holds for approval, named by its message in the thread. Never
+//                                   retried: the server reports how the request stands, and a person answers again only while it still waits.
 //
 // The owner's privacy line (2026-11-14): nothing here carries another conversation's content to Hermes, and nothing lets Hermes send anywhere.
 public static partial class ProtocolMethods
@@ -18,11 +20,13 @@ public static partial class ProtocolMethods
     public const string AccountsHermesNewConversation = "accounts.hermes.newConversation";
     public const string RepeatsCreate = "repeats.create";
     public const string RepeatsCancel = "repeats.cancel";
+    public const string AccountsHermesAnswerApproval = "accounts.hermes.answerApproval";
 
     private static Entry[] HermesEntries() =>
     [
         new(AccountsHermesConfigure, "IHermesAccount.ConfigureAsync", typeof(HermesConfigureParams), typeof(Done), true),
         new(AccountsHermesNewConversation, "IHermesAccount.NewConversationAsync", typeof(HermesChatParams), typeof(Done), true),
+        new(AccountsHermesAnswerApproval, "IHermesAccount.AnswerApprovalAsync", typeof(HermesApprovalParams), typeof(HermesApprovalAnswer), true),
         new(RepeatsCreate, "IRepeatCommands.CreateAsync", typeof(RepeatCreateParams), typeof(RepeatAnswer), true),
         new(RepeatsCancel, "IRepeatCommands.CancelAsync", typeof(RepeatCancelParams), typeof(RepeatAnswer), true),
     ];
@@ -30,6 +34,10 @@ public static partial class ProtocolMethods
 
 public sealed record HermesConfigureParams(string ClientOpId, string? Address, IReadOnlyList<HermesProfileInput> Profiles) : MutationParams(ClientOpId);
 public sealed record HermesChatParams(string ClientOpId, string ChatId) : MutationParams(ClientOpId);
+/// <summary>An answer to the approval request <paramref name="MessageId"/> in a Hermes thread: approve runs the command once; false denies it.</summary>
+public sealed record HermesApprovalParams(string ClientOpId, string ChatId, string MessageId, bool Approve) : MutationParams(ClientOpId);
+/// <summary>How the request stands after the answer: one of <see cref="NativeBeeper.Core.Messaging.AgentApprovalStates"/>.</summary>
+public sealed record HermesApprovalAnswer(string State);
 
 /// <summary>A new repeat: the prompt, the weekdays (bit 0 Sunday) and the minute after local midnight, in the server's own time zone.</summary>
 public sealed record RepeatCreateParams(string ClientOpId, string ChatId, string Text, int Days, int Minute) : MutationParams(ClientOpId);
@@ -73,4 +81,7 @@ public sealed class HermesAccountProxy(ProtocolClient client, HostStateCache cac
         AccountWire.MutateAsync<HermesConfigureParams, Done>(client, ProtocolMethods.AccountsHermesConfigure, new(AccountWire.OperationId(), address, profiles), cancellationToken);
     public Task NewConversationAsync(string chatId, CancellationToken cancellationToken = default) =>
         AccountWire.MutateAsync<HermesChatParams, Done>(client, ProtocolMethods.AccountsHermesNewConversation, new(AccountWire.OperationId(), chatId), cancellationToken);
+    public async Task<string> AnswerApprovalAsync(string chatId, string messageId, bool approve, CancellationToken cancellationToken = default) =>
+        (await AccountWire.MutateAsync<HermesApprovalParams, HermesApprovalAnswer>(client, ProtocolMethods.AccountsHermesAnswerApproval,
+            new(AccountWire.OperationId(), chatId, messageId, approve), cancellationToken).ConfigureAwait(false)).State;
 }

@@ -25,7 +25,10 @@ public sealed record HermesStoredMessage(string Id, DateTimeOffset At, bool Outg
     // cleaned text are kept for reports only, so a retry within a day is recognised after a restart.
     string? Origin = null, string? ReportKey = null, string? ReportDigest = null,
     // A report's place in the thread's own sequence (HermesThread.NextReportSeq): the next turn carries the unanswered ones by it, never by time.
-    long ReportSeq = 0);
+    long ReportSeq = 0,
+    // Kind "approval": the command Hermes holds and how the request stands. What it takes to answer it (the run and request ids) is kept in memory only,
+    // since Hermes stops waiting when the turn's stream ends; a request still pending at load is closed.
+    NativeBeeper.Core.Messaging.AgentApproval? Approval = null);
 public sealed record HermesStoredImage(string Id, string MimeType, long Size, double? Width = null, double? Height = null);
 
 /// <summary>The report tokens: a row a profile with reports on. Only a token's SHA-256 (hex) is kept, with its one-way log tag.</summary>

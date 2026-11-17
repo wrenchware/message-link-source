@@ -43,6 +43,14 @@ public sealed record HermesDelta(string Text) : HermesStreamEvent;
 public sealed record HermesProgress(string Status) : HermesStreamEvent;
 /// <summary>The reply ended: <c>stop</c>, <c>length</c>, <c>cancelled</c> or <c>error</c> (with Hermes's error code when it gave one).</summary>
 public sealed record HermesFinished(string Reason, string? Error = null) : HermesStreamEvent;
+/// <summary>
+/// Hermes holds a command for approval and waits (<c>approval.request</c>): answered at <c>runs/{RunId}/approval</c> with <see cref="RequestId"/> and, when
+/// Hermes gave one, <see cref="Generation"/>. <see cref="Command"/> and <see cref="Description"/> are Hermes's words with its secrets already redacted;
+/// <see cref="Wait"/> is how long Hermes said it waits (null: it didn't say, as under session authority for an API turn); <see cref="Advised"/>: Hermes's own
+/// safety check advised against it. <see cref="Cut"/>: the command was longer than is kept, so it may only be denied: approving would run what nobody saw.
+/// </summary>
+public sealed record HermesApprovalRequest(string RunId, string RequestId, long? Generation, string Command, string? Description, TimeSpan? Wait, bool Advised,
+    bool Cut = false) : HermesStreamEvent;
 
 /// <summary>
 /// Hermes Agent's chat-completions API server, as PROVIDERS.md (Hermes) records it: each profile at its own route on one
@@ -115,6 +123,43 @@ public sealed class HermesClient(HttpClient http)
         try { await ThrowUnlessOkAsync(response, cancellationToken).ConfigureAwait(false); }
         catch { response.Dispose(); throw; }
         return response;
+    }
+
+    /// <summary>
+    /// Answers a held command (<see cref="HermesApprovalRequest"/>): <c>once</c> or <c>deny</c>, never <c>session</c> or <c>always</c>. True when this answer settled
+    /// it; false when Hermes had stopped waiting (answered elsewhere, timed out, or the turn ended). Throws <see cref="HermesException"/> otherwise, with
+    /// <see cref="HermesFailure.Unknown"/> when the answer may have reached Hermes.
+    /// </summary>
+    public async Task<bool> AnswerApprovalAsync(Uri baseAddress, string profile, string key, HermesApprovalRequest held, bool approve, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, Route(baseAddress, profile, "runs/" + Uri.EscapeDataString(held.RunId) + "/approval"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        request.Content = new StringContent(ApprovalBody(held, approve), Encoding.UTF8, "application/json");
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
+        // 409: no longer pending (approval_not_pending, approval_not_active, stale_generation); 404: the run is gone. Both say Hermes stopped waiting.
+        if (response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.NotFound) return false;
+        await ThrowUnlessOkAsync(response, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var root = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)) as JsonObject;
+            // Two shapes: {"resolved": n} without session authority, {"status": "resolved" | "already_resolved"} with it.
+            if (root?["status"] is JsonValue status && status.TryGetValue<string>(out var word)) return word == "resolved";
+            if (root?["resolved"] is JsonValue count && count.TryGetValue<int>(out var resolved)) return resolved > 0;
+            throw new HermesException(HermesFailure.ServerError, "approval_shape");
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
+        {
+            throw new HermesException(HermesFailure.ServerError, "approval_shape");
+        }
+    }
+
+    // Exactly the fields Hermes's session authority accepts (request_id, execution_generation, choice): it refuses any other set.
+    internal static string ApprovalBody(HermesApprovalRequest held, bool approve)
+    {
+        var body = new JsonObject { ["request_id"] = held.RequestId };
+        if (held.Generation is { } generation) body["execution_generation"] = generation;
+        body["choice"] = approve ? "once" : "deny";
+        return body.ToJsonString();
     }
 
     /// <summary>
@@ -201,6 +246,7 @@ public sealed class HermesClient(HttpClient http)
         if (eventName is { Length: > 0 } && eventName != "message")
         {
             if (eventName == "hermes.tool.progress" && ProgressWords(json) is { } status) yield return new HermesProgress(status);
+            else if (eventName == "approval.request" && Approval(json) is { } held) yield return held;
             yield break;
         }
         var choice = (json["choices"] as JsonArray)?.FirstOrDefault() as JsonObject;
@@ -222,6 +268,28 @@ public sealed class HermesClient(HttpClient http)
         return Short(label is { Length: > 0 } ? $"Using {tool}: {label}" : $"Using {tool}");
     }
 
+    internal const int MaxCommandLength = 64_000, MaxDescriptionLength = 1_000;
+
+    // approval.request, as Hermes's API server writes it (gateway/platforms/api_server.py, _approval_request_event; read in v0.22.7 and v0.23.1):
+    // {"command", "description", "pattern_key(s)", "request_id", "timeout_s", "smart_denied"?, "event", "run_id", "timestamp", "session_id", "choices"},
+    // with "execution_generation" under session authority. Without a run and request id it can't be answered, so it is not shown.
+    private static HermesApprovalRequest? Approval(JsonObject json)
+    {
+        if (Id(Text(json["run_id"])) is not { } run || Id(Text(json["request_id"])) is not { } request) return null;
+        long? generation = json["execution_generation"] is JsonValue g && g.TryGetValue<long>(out var number) ? number : null;
+        var command = Text(json["command"]) ?? "";
+        var cut = command.Length > MaxCommandLength;
+        if (cut) command = command[..MaxCommandLength] + "…";
+        var description = Text(json["description"]) is { Length: > 0 } said ? said.Length > MaxDescriptionLength ? said[..MaxDescriptionLength] + "…" : said : null;
+        TimeSpan? wait = json["timeout_s"] is JsonValue t && t.TryGetValue<double>(out var seconds) && double.IsFinite(seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(Math.Min(seconds, TimeSpan.FromDays(1).TotalSeconds)) : null;
+        var advised = json["smart_denied"] is JsonValue s && s.TryGetValue<bool>(out var denied) && denied;
+        return new(run, request, generation, command, description, wait, advised, cut);
+    }
+
+    // A run or request id goes into a route and a body: Hermes's own shapes only (chatcmpl-…, run_…, hex), nothing that could be a path.
+    private static string? Id(string? value) => value is { Length: > 0 and <= 256 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or ':') ? value : null;
+
     private static string Short(string words)
     {
         var line = words.ReplaceLineEndings(" ").Trim();
@@ -236,6 +304,7 @@ public sealed class HermesClient(HttpClient http)
     {
         "admission_conflict", "unsupported_content_type", "gateway_auth_failed", "gateway_auth_error", "permission_denied", "iteration_budget_exhausted",
         "invalid_params", "not_found", "runtime_draining", "storage_unavailable", "idempotency_key_conflict", "unknown_execution", "stale_generation",
+        "approval_not_pending", "approval_not_active", "invalid_approval_choice", "invalid_approval_request", "invalid_approval_scope", "approval_request_required",
     };
     internal static string? Known(string? value) => value is not null && KnownCodes.Contains(value) ? value : null;
 

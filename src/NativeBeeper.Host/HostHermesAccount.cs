@@ -17,4 +17,7 @@ internal sealed class HostHermesAccount(IHermesAccount backend, bool canConfigur
     public Task ConfigureAsync(string? address, IReadOnlyList<HermesProfileInput> profiles, CancellationToken cancellationToken = default) =>
         canConfigure ? backend.ConfigureAsync(address, profiles, cancellationToken) : throw new NotSupportedException();
     public Task NewConversationAsync(string chatId, CancellationToken cancellationToken = default) => backend.NewConversationAsync(chatId, cancellationToken);
+    // Any of the owner's devices may answer: the request is in a thread every one of them shows.
+    public Task<string> AnswerApprovalAsync(string chatId, string messageId, bool approve, CancellationToken cancellationToken = default) =>
+        backend.AnswerApprovalAsync(chatId, messageId, approve, cancellationToken);
 }

@@ -86,6 +86,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
     private async Task LoadCoreAsync()
     {
         var read = await store.ReadSettingsAsync().ConfigureAwait(false);
+        var closed = new List<string>();
         await gate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -98,12 +99,15 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             foreach (var profile in settings.Profiles)
                 if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread)
                 {
-                    threads[profile.Name] = Sequenced(thread);
+                    var before = closed.Count;
+                    threads[profile.Name] = Sequenced(CloseStale(thread, closed));
+                    if (closed.Count > before) await store.SaveThreadAsync(threads[profile.Name]).ConfigureAwait(false);
                     SeedLastReport(thread);
                 }
         }
         finally { gate.Release(); }
-        log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}");
+        log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}" + (closed.Count > 0 ? $" approvals_closed={closed.Count}" : ""));
+        foreach (var id in closed) realtime.TryWrite(new(RealtimeKind.MessageChanged, HermesIds.Chat(HermesIds.ProfileOf(id)!), [id], false, clock.GetUtcNow()));
     }
 
     // ---- IHermesAccount ----
@@ -162,7 +166,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                     renamed.Add((HermesIds.Chat(name), [.. held.Messages.Where(m => !m.Outgoing).Select(m => m.Id)]));
             try { Volatile.Read(ref checking)?.Cancel(); } catch (ObjectDisposedException) { }
             foreach (var name in added)
-                if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) is { } read ? Sequenced(read) : NewThread(name);
+                if (!threads.ContainsKey(name)) threads[name] = await store.ReadThreadAsync(name).ConfigureAwait(false) is { } read ? Sequenced(CloseStale(read, [])) : NewThread(name);
         }
         finally { gate.Release(); }
         log($"hermes configured profiles={kept.Count} added={added.Length} removed={removed.Length}");
@@ -465,42 +469,64 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         HermesStoredMessage? reply = null;
         var words = new System.Text.StringBuilder();
         var shownAt = 0L;
+        var chars = 0;
         string finish = "interrupted";
         string? error = null;
+        var approvals = new List<Held>();
         Typing(chatId, null, stopped: false);
-        await foreach (var piece in HermesClient.ReadAsync(response, stop.Token).ConfigureAwait(false))
+        try
         {
-            switch (piece)
+            await foreach (var piece in HermesClient.ReadAsync(response, stop.Token).ConfigureAwait(false))
             {
-                case HermesProgress progress:
-                    await TookAsync().ConfigureAwait(false);
-                    Typing(chatId, progress.Status.Length > 0 ? progress.Status : null, stopped: false);
-                    break;
-                case HermesDelta delta:
-                    await TookAsync().ConfigureAwait(false);
-                    words.Append(delta.Text);
-                    var now = clock.GetTimestamp();
-                    if (reply is null)
-                    {
-                        reply = new(NewMessageId(profile), clock.GetUtcNow(), false, words.ToString().TrimStart(), State: "streaming");
-                        await UpdateAsync(profile, reply, save: false).ConfigureAwait(false);
-                        realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], false, clock.GetUtcNow()));
-                        shownAt = now;
-                    }
-                    else if (clock.GetElapsedTime(shownAt, now) >= FillEvery)
-                    {
-                        reply = reply with { Text = words.ToString().TrimStart() };
-                        await UpdateAsync(profile, reply, save: false).ConfigureAwait(false);
-                        realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], false, clock.GetUtcNow()));
-                        shownAt = now;
-                    }
-                    Typing(chatId, null, stopped: true);
-                    break;
-                case HermesFinished end:
-                    finish = end.Reason; error = end.Error;
-                    break;
+                switch (piece)
+                {
+                    case HermesProgress progress:
+                        await TookAsync().ConfigureAwait(false);
+                        // Hermes's tool line never replaces the wait for an answer: the tool it names is the one waiting.
+                        if (!approvals.Any(a => held.ContainsKey(a.MessageId))) Typing(chatId, progress.Status.Length > 0 ? progress.Status : null, stopped: false);
+                        break;
+                    case HermesApprovalRequest request:
+                        await TookAsync().ConfigureAwait(false);
+                        // What Hermes said before it asked stays above the request, whole; what it says after (the command's outcome) starts a reply below it.
+                        if (reply is not null)
+                        {
+                            reply = reply with { Text = words.ToString().Trim(), State = "done" };
+                            await UpdateAsync(profile, reply).ConfigureAwait(false);
+                            realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], false, clock.GetUtcNow()));
+                            chars += words.Length;
+                            reply = null;
+                            words.Clear();
+                        }
+                        approvals.Add(await HoldAsync(profile, chatId, request).ConfigureAwait(false));
+                        break;
+                    case HermesDelta delta:
+                        await TookAsync().ConfigureAwait(false);
+                        words.Append(delta.Text);
+                        var now = clock.GetTimestamp();
+                        if (reply is null)
+                        {
+                            reply = new(NewMessageId(profile), clock.GetUtcNow(), false, words.ToString().TrimStart(), State: "streaming");
+                            await UpdateAsync(profile, reply, save: false).ConfigureAwait(false);
+                            realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], false, clock.GetUtcNow()));
+                            shownAt = now;
+                        }
+                        else if (clock.GetElapsedTime(shownAt, now) >= FillEvery)
+                        {
+                            reply = reply with { Text = words.ToString().TrimStart() };
+                            await UpdateAsync(profile, reply, save: false).ConfigureAwait(false);
+                            realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], false, clock.GetUtcNow()));
+                            shownAt = now;
+                        }
+                        Typing(chatId, null, stopped: true);
+                        break;
+                    case HermesFinished end:
+                        finish = end.Reason; error = end.Error;
+                        break;
+                }
             }
         }
+        finally { await TurnEndedAsync(approvals).ConfigureAwait(false); }
+        chars += words.Length;
         // A reply that reached the model's output limit ("length") was taken but is not whole: kept, and the thread says it was cut off.
         var complete = finish == "stop";
         if (finish is "stop" or "length") await TookAsync().ConfigureAwait(false);
@@ -512,7 +538,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [reply.Id], true, clock.GetUtcNow()));
             realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
         }
-        log($"hermes reply outcome={finish} kind={kind} profile={Tag(profile)} chars={words.Length} ms={(long)clock.GetElapsedTime(started).TotalMilliseconds}"
+        log($"hermes reply outcome={finish} kind={kind} profile={Tag(profile)} chars={chars} ms={(long)clock.GetElapsedTime(started).TotalMilliseconds}"
             + (error is null ? "" : $" code={error}"));
         if (finish == "error" && error == "admission_conflict")
         {
@@ -797,7 +823,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         var thread = Thread(profile);
         var title = Title(profile);
         var last = thread.Messages.LastOrDefault();
-        var unread = thread.Messages.Count(m => !m.Outgoing && m.Kind == "message" && m.State != "streaming" && (thread.ReadUpTo is null || m.At > thread.ReadUpTo));
+        var unread = thread.Messages.Count(m => !m.Outgoing && m.Kind is "message" or "approval" && m.State != "streaming" && (thread.ReadUpTo is null || m.At > thread.ReadUpTo));
         var chatId = HermesIds.Chat(profile);
         return new(chatId, chatId + ":account", title, HermesIds.Network, "single", last?.At, unread, false, false, false, false, null,
             last is null ? null : Map(profile, last), [], null, null,
@@ -810,13 +836,13 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         var chatId = HermesIds.Chat(profile);
         var attachments = (message.Images ?? []).Select(image => new MessageAttachment(null, "img", image.MimeType, image.Size, false,
             image.MimeType == "image/gif", false, HermesIds.MediaPrefix + image.Id, HermesIds.MediaPrefix + image.Id, image.Width, image.Height)).ToArray();
-        var type = message.Kind switch { "note" => "system", "scheduled" => "scheduled", _ => attachments.Length > 0 ? "img" : null };
+        var type = message.Kind switch { "note" => "system", "scheduled" => "scheduled", "approval" => "approval", _ => attachments.Length > 0 ? "img" : null };
         // The shared words every client reads: SUCCESS is Sent, FAILED is Failed.
         var sendState = !message.Outgoing ? null : message.State switch { "failed" => "FAILED", "unknown" => null, _ => "SUCCESS" };
         return new(message.Id, chatId, message.Outgoing ? SelfId(profile) : AgentId(profile),
             message.Outgoing ? null : Title(profile),
             message.At, message.At.UtcTicks.ToString("D19"), message.Text, type, message.Outgoing, false, false, null, null, attachments, [],
-            new MessageDelivery(sendState, null, null, null, new Dictionary<string, bool?>()));
+            new MessageDelivery(sendState, null, null, null, new Dictionary<string, bool?>()), Approval: message.Kind == "approval" ? message.Approval : null);
     }
 
     /// <summary>A short one-way tag for a profile in the logs: never its name.</summary>

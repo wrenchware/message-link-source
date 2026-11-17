@@ -55,6 +55,12 @@ public interface IHermesAccount
     Task ConfigureAsync(string? address, IReadOnlyList<HermesProfileInput> profiles, CancellationToken cancellationToken = default);
     /// <summary>Starts the thread over on a fresh Hermes session. The scrollback stays; a line marks where the new conversation begins.</summary>
     Task NewConversationAsync(string chatId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Answers a request Hermes is holding (the thread's approval message, <see cref="NativeBeeper.Core.Messaging.ChatMessage.Approval"/>): approve runs it once,
+    /// anything else denies it. Never "for this session" or "always": those reach past the one command shown. Answers how the request stands afterwards
+    /// (<see cref="NativeBeeper.Core.Messaging.AgentApprovalStates"/>); throws <see cref="ArgumentException"/> with a sentence for a person when it can't be sent.
+    /// </summary>
+    Task<string> AnswerApprovalAsync(string chatId, string messageId, bool approve, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The server's repeats (<c>HostRepeats</c>) send their prompt this way, so the thread shows it as a small "Scheduled" label.</summary>

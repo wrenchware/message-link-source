@@ -66,6 +66,12 @@ public sealed record ConsoleActionResult(ConsoleActionOutcome Outcome, string? M
     public static Task<ConsoleActionResult> NotHere => Task.FromResult(Unavailable);
 }
 
+/// <summary>How an answer to a held command ended: the request's state (NativeBeeper.Core.Messaging.AgentApprovalStates) when the server said, its words when it refused.</summary>
+public sealed record ConsoleApprovalResult(ConsoleActionOutcome Outcome, string? State = null, string? Message = null)
+{
+    public static readonly ConsoleApprovalResult Unavailable = new(ConsoleActionOutcome.Unavailable);
+}
+
 /// <summary>How a repeat the console asked for ended, with the server's words when it refused, and when the repeat next fires.</summary>
 public sealed record ConsoleRepeatResult(ConsoleActionOutcome Outcome, string? Message = null, DateTimeOffset? NextDue = null)
 {
@@ -171,6 +177,9 @@ public interface IConsoleHost
     Task<ConsoleRepeatResult> CreateRepeatAsync(string chatId, string text, int days, int minute) => Task.FromResult(ConsoleRepeatResult.Unavailable);
     /// <summary>Stops a repeat. Asked once, never retried.</summary>
     Task<ConsoleRepeatResult> CancelRepeatAsync(string id) => Task.FromResult(ConsoleRepeatResult.Unavailable);
+    /// <summary>Answers a command Hermes holds for approval (protocol 32): approve runs it once, otherwise it is denied. Asked once, never retried; the
+    /// result carries how the request stands afterwards.</summary>
+    Task<ConsoleApprovalResult> AnswerHermesApprovalAsync(string chatId, string messageId, bool approve) => Task.FromResult(ConsoleApprovalResult.Unavailable);
 
     // ---- The console's own preferences ----
 

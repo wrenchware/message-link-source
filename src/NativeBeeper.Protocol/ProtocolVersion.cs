@@ -122,10 +122,16 @@ namespace NativeBeeper.Protocol;
 /// works), and the repeats: <c>repeats.create</c>, <c>repeats.cancel</c>, the host-owned <c>repeat:</c> rows and <c>HostLimits.Repeats</c>. Additive: a client below 31 never calls them, is never
 /// given the rows, and a host answers the methods as not supported to it. Such a client still lists a Hermes thread, as a service it does not know; the owner updates
 /// server, PC and phone together (2026-11-12), so no client below 31 is filtered.</para>
+/// <para>32 (owner, 2026-11-16) adds Hermes's approvals: a command Hermes holds for approval arrives in its thread as a message of type <c>approval</c> carrying
+/// <see cref="NativeBeeper.Core.Messaging.ChatMessage.Approval"/> (the command, why it was held, how it stands and until when), and <c>accounts.hermes.answerApproval</c>
+/// approves it once or denies it. Additive: a client below 32 reads the message's text (that Hermes needs approval) and never calls the method, and a host answers
+/// it as not supported to a connection that negotiated less.</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 31;
+    public const int Current = 32;
+    /// <summary>The first version that answers Hermes's approvals (<see cref="ProtocolMethods.AccountsHermesAnswerApproval"/>).</summary>
+    public const int HermesApprovals = 32;
     /// <summary>The first version with Hermes (<see cref="ProtocolMethods.AccountsHermesNewConversation"/>, <c>HostState.Hermes</c>) and the repeats (<see cref="ProtocolMethods.RepeatsCreate"/>).</summary>
     public const int Hermes = 31;
     public const int MultipleAccounts = 30;

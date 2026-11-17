@@ -45,6 +45,82 @@ public sealed partial class ConsoleSessionViewModel
             $"Started a new conversation with {HermesTitle(chatId)}. It doesn't see what was said before; the earlier messages stay here.", "Not started.");
     }
 
+    // ---- /approve and /deny ----
+
+    // The last list /approve or /deny printed: its conversation and the requests' message ids, in the order it numbered them.
+    private (string Chat, string[] Ids)? approvalRefs;
+
+    // A command Hermes holds for approval in the conversation the prompt shows: the only one waiting, or the one numbered when several wait. Approve runs it
+    // once; nothing broader is offered. Read from the server's copy, which carries how each request stands; asked once, never retried.
+    private async Task HermesAnswerAsync(string verb, string rest)
+    {
+        if (HermesThread(verb) is not { } chatId) return;
+        int? number = null;
+        if (rest.Length > 0)
+        {
+            if (!int.TryParse(rest, NumberStyles.None, CultureInfo.InvariantCulture, out var typed) || typed < 1) { Fail($"/{verb} takes a request's number: /{verb} 2."); return; }
+            number = typed;
+        }
+        var target = Target is { } to ? to.Target ?? TargetOf(to.SourceChatId) : null;
+        if (target is null) { Fail($"/{verb} works in a Hermes conversation. Use /to Hermes first."); return; }
+        var now = clock.GetUtcNow();
+        var waiting = (await KeptAsync(target, named: true)).Where(m => m.Message.ChatId == chatId && m.Message.Approval is { } a && AgentApprovals.Answerable(a, now)).ToArray();
+        log($"console approvals waiting={waiting.Length.ToString(CultureInfo.InvariantCulture)}");
+        ChatMessage request;
+        if (number is { } n)
+        {
+            // A number is the one the last list gave, kept: renumbered from what waits now, request 1 gone would make /approve 1 answer what was 2
+            // (code review, 2026-11-16).
+            (string Chat, string[] Ids)? listed;
+            lock (gate) listed = approvalRefs;
+            if (listed is not { } list || list.Chat != chatId) { Fail($"/{verb} alone lists the requests waiting in {HermesTitle(chatId)}, numbered; then /{verb} N answers one."); return; }
+            if (n > list.Ids.Length)
+            {
+                Fail($"There's no request {n.ToString(CultureInfo.CurrentCulture)}. The last list had 1 to {list.Ids.Length.ToString(CultureInfo.CurrentCulture)}.");
+                return;
+            }
+            if (waiting.FirstOrDefault(m => m.Message.Id == list.Ids[n - 1]) is not { } still)
+            {
+                Fail($"Request {n.ToString(CultureInfo.CurrentCulture)} is no longer waiting. /{verb} lists the ones that are.");
+                return;
+            }
+            request = still.Message;
+        }
+        else
+        {
+            if (waiting.Length == 0) { Fail($"Nothing in {HermesTitle(chatId)} is waiting for your approval."); return; }
+            if (waiting.Length > 1)
+            {
+                lock (gate) approvalRefs = (chatId, [.. waiting.Select(m => m.Message.Id)]);
+                Out(new ConsoleSpan($"{waiting.Length.ToString(CultureInfo.CurrentCulture)} requests wait in {HermesTitle(chatId)}", ConsoleTone.Strong));
+                for (var i = 0; i < waiting.Length; i++)
+                    Out(new ConsoleSpan((i + 1).ToString(CultureInfo.InvariantCulture).PadRight(3), ConsoleTone.Accent), new ConsoleSpan(waiting[i].Message.Approval!.Command));
+                Out($"/{verb} 1 answers the first.", ConsoleTone.Dim);
+                return;
+            }
+            request = waiting[0].Message;
+        }
+        // A command cut short is never approved here: what would run isn't all shown. The server refuses it too.
+        if (verb == "approve" && request.Approval!.Cut) { Fail(AgentApprovals.CutText); return; }
+        ConsoleApprovalResult result;
+        try { result = await host.AnswerHermesApprovalAsync(request.ChatId, request.Id, verb == "approve"); }
+        catch (Exception) { result = new(ConsoleActionOutcome.Unknown); }
+        log($"console act name={verb} provider=hermes outcome={result.Outcome.ToString().ToLowerInvariant()} state={(result.State is { } s && s.All(char.IsAsciiLetterLower) ? s : "none")}");
+        switch (result.Outcome)
+        {
+            case ConsoleActionOutcome.Done when result.State is AgentApprovalStates.Approved or AgentApprovalStates.Denied:
+                Out(AgentApprovals.Outcome(result.State), ConsoleTone.Ok); return;
+            case ConsoleActionOutcome.Done:
+                Fail(AgentApprovals.Outcome(result.State ?? AgentApprovalStates.Closed)); return;
+            case ConsoleActionOutcome.Unavailable:
+                Fail(result.Message ?? "Answering Hermes needs Message Link Server 0.1.468 or later."); return;
+            case ConsoleActionOutcome.Refused:
+                Fail(result.Message is { Length: > 0 } why ? why : "Not answered."); return;
+            default:
+                Fail("The outcome is unknown. Check the conversation (/msgs) before answering again; nothing was retried."); return;
+        }
+    }
+
     // ---- /repeat ----
 
     private async Task RepeatAsync(string rest)

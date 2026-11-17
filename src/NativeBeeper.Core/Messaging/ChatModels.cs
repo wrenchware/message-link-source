@@ -93,9 +93,40 @@ public sealed record ChatMessage(string Id, string ChatId, string SenderId, stri
     // first line. On a message's bubble, a link under it: "Answer in Messenger" under a Marketplace Assistant question, whose
     // buttons only Messenger can press. Written only when there is one, so every other saved row reads as before. Appended.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    NoticeAction? Action = null);
+    NoticeAction? Action = null,
+    // An agent asking to run something, answered in the thread with Approve or Deny (Hermes: a terminal command its approvals hold). Only on such a
+    // message (Type "approval"), and written only then. Appended.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    AgentApproval? Approval = null);
 /// <summary>A button on a service's own line: its words, and the https address it opens in the browser.</summary>
 public sealed record NoticeAction(string Title, string Url);
+
+/// <summary>
+/// What an agent asks to run and how the request stands. <paramref name="Command"/> is the agent's own text with its secrets already removed by the agent;
+/// <paramref name="Description"/> is why it was held. <paramref name="State"/> is one fixed word (<see cref="AgentApprovalStates"/>); <paramref name="Expires"/>
+/// is when the agent stops waiting and refuses it itself (null: the agent didn't say). <paramref name="Advised"/>: the agent's own safety check advised against it.
+/// <paramref name="Cut"/>: the command was too long to keep whole, so what is shown isn't all of it and it can only be denied here.
+/// </summary>
+public sealed record AgentApproval(string Command, string? Description, string State, DateTimeOffset? Expires = null, bool Advised = false, bool Cut = false)
+{
+    /// <summary>Still answerable: waiting, or answered with an outcome not known.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Pending => State is AgentApprovalStates.Pending or AgentApprovalStates.Unknown;
+}
+
+public static class AgentApprovalStates
+{
+    /// <summary>Waiting for an answer.</summary>
+    public const string Pending = "pending";
+    /// <summary>An answer was sent and its outcome is not known: still answerable while the agent waits, since a second answer to a settled request is refused.</summary>
+    public const string Unknown = "unknown";
+    public const string Approved = "approved";
+    public const string Denied = "denied";
+    /// <summary>Nobody answered in time: the agent refused it.</summary>
+    public const string Expired = "expired";
+    /// <summary>The agent stopped waiting for another reason: its turn ended, the server restarted, or it was answered elsewhere.</summary>
+    public const string Closed = "closed";
+}
 public sealed record MessageAttachment(string? Name, string Type, string? MimeType, long? Size,
     bool IsVoiceNote, bool IsGif, bool IsSticker, string? Id = null, string? SourceUrl = null, double? Width = null, double? Height = null,
     string? Availability = null, // null, "preview" (full size requested from the phone), or "downloading" / "manual" / "failed" while the phone has not downloaded the media

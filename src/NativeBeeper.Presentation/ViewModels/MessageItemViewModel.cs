@@ -26,7 +26,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     public string Body => Message.IsDeleted ? "Message deleted" : NativeBeeper.Presentation.Services.MetaAiMessages.Text(Message) ?? (Message.Attachments.Count == 0 ? $"[{Message.Type ?? "Message"}]" : "");
     // Whether the bubble draws the body: a body that is only the address of the reel card under it is left to the card
     // (SharedLinkPresentation.CardReplacesText). The body itself is unchanged for copying, search and the list preview.
-    public bool ShowsBody => Body.Length > 0 &&
+    public bool ShowsBody => !IsApprovalRequest && Body.Length > 0 &&
         (Message.IsDeleted || Message.IsHidden || !SharedLinkPresentation.CardReplacesText(Message.Text, Message.Attachments)) ||
         AnswerInBubble;
     // A service's own note arrives as markup: Google's "Link previews are off.<br />Learn more or turn on in <u>Settings</u>."
@@ -76,6 +76,21 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     public bool AnswerInBubble => AnswerUri is not null && !(string.IsNullOrWhiteSpace(Body) && Message.Attachments.Count > 0);
     public bool AnswerUnderCard => AnswerUri is not null && !AnswerInBubble;
     public bool HasSystemAction => SystemActionUri is not null;
+    // A command Hermes holds for approval (protocol 32), drawn as a card in place of the bubble: the command, why it was held, how the request stands, and
+    // Approve and Deny while Hermes waits (AgentApprovals). A change of state arrives as the message changing, which redraws the card.
+    public bool IsApprovalRequest => AgentApprovals.IsRequest(Message);
+    public string ApprovalTitle => IsApprovalRequest ? AgentApprovals.Title(Message) : "";
+    public string ApprovalCommand => IsApprovalRequest ? Message.Approval!.Command : "";
+    public string ApprovalReason => IsApprovalRequest && AgentApprovals.Reason(Message.Approval!) is { } reason ? reason : "";
+    public bool HasApprovalReason => ApprovalReason.Length > 0;
+    public bool ApprovalAdvised => IsApprovalRequest && Message.Approval!.Advised;
+    public string ApprovalAdvisedText => AgentApprovals.AdvisedText;
+    public string ApprovalStatus => IsApprovalRequest ? AgentApprovals.Status(Message.Approval!, DateTimeOffset.UtcNow, TimeZoneInfo.Local) : "";
+    public bool CanAnswerApproval => IsApprovalRequest && AgentApprovals.Answerable(Message.Approval!, DateTimeOffset.UtcNow);
+    // A command cut short is never approved here: what would run isn't all shown (AgentApproval.Cut). Deny stays.
+    public bool CanApproveApproval => IsApprovalRequest && AgentApprovals.Approvable(Message.Approval!, DateTimeOffset.UtcNow);
+    public bool ApprovalCut => IsApprovalRequest && Message.Approval!.Cut;
+    public string ApprovalCutText => AgentApprovals.CutText;
     public bool ShowSender { get; private set; }
     public bool ContinuesGroup { get; private set; }
     public IReadOnlyList<ChatMessage> PhotoGroupMessages { get; private set; } = [];

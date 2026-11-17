@@ -38,6 +38,17 @@ public sealed partial class ProtocolDispatcher
                 await port.NewConversationAsync(p.ChatId, ct).ConfigureAwait(false);
                 return new Done();
             }));
+        routes[ProtocolMethods.AccountsHermesAnswerApproval] = Since(ProtocolVersion.HermesApprovals, AccountMutation<IHermesAccount, HermesApprovalParams, HermesApprovalAnswer>(
+            s => s.HermesAccount, async (port, p, ct) =>
+            {
+                if (!HermesIds.Owns(p.ChatId) || HermesIds.ProfileOf(p.MessageId) != HermesIds.ProfileOf(p.ChatId))
+                    throw new ProtocolException(new ProtocolError(ProtocolErrorCodes.InvalidRequest, "That isn't a Hermes conversation."));
+                try { return new HermesApprovalAnswer(await port.AnswerApprovalAsync(p.ChatId, p.MessageId, p.Approve, ct).ConfigureAwait(false)); }
+                catch (ArgumentException refused)
+                {
+                    throw new ProtocolException(new ProtocolError(ProtocolErrorCodes.InvalidRequest, refused.Message));
+                }
+            }));
         routes[ProtocolMethods.RepeatsCreate] = Since(ProtocolVersion.Hermes, Mutation<IRepeatCommands, RepeatCreateParams, RepeatAnswer>(s => s.Repeats, (port, p, ct) => port.CreateAsync(p, ct)));
         routes[ProtocolMethods.RepeatsCancel] = Since(ProtocolVersion.Hermes, Mutation<IRepeatCommands, RepeatCancelParams, RepeatAnswer>(s => s.Repeats, (port, p, ct) => port.CancelAsync(p, ct)));
         // The privacy line holds for a client that does not know Hermes: one below 31 offers a Hermes thread as a forward target and in a merge, so

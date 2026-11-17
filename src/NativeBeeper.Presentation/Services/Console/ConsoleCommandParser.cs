@@ -143,6 +143,10 @@ public static class ConsoleCommandParser
                 return rest.Length == 0 ? new ConsoleCommand.Act("new", null) : new ConsoleCommand.Invalid("Use /new on its own, in a Hermes conversation.", "new");
             case "repeat" or "repeats":
                 return new ConsoleCommand.Act("repeat", null, rest);
+            case "approve":
+                return new ConsoleCommand.Act("approve", null, rest);
+            case "deny":
+                return new ConsoleCommand.Act("deny", null, rest);
             case "grep":
                 return rest.Length == 0 ? new ConsoleCommand.Invalid("Type what to look for in the scroll: /grep words", "grep") : new ConsoleCommand.Tool("grep", rest);
             case "w" or "msg" or "query":

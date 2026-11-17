@@ -36,6 +36,7 @@ public sealed partial class ConsoleSessionViewModel
             case "delete" or "unsend": await DeleteAsync(act); return;
             case "new": await HermesNewAsync(); return;
             case "repeat": await RepeatAsync(act.Rest); return;
+            case "approve" or "deny": await HermesAnswerAsync(act.Verb, act.Rest); return;
             case var verb when ChatVerbs.Contains(verb): await ChatActAsync(verb, act.Ref!, act.Rest); return;
             default: await MessageActAsync(act.Verb, act.Ref!, act.Rest); return;
         }

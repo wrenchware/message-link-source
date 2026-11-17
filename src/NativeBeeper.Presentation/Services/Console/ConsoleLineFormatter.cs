@@ -71,11 +71,23 @@ public sealed class ConsoleLineFormatter(MergedConversations? merges = null, Tim
     /// </summary>
     public static string Words(ChatMessage message)
     {
+        if (AgentApprovals.IsRequest(message)) return ApprovalWords(message.Approval!);
         if (message.IsDeleted || message.IsHidden) return MessageItemViewModel.PreviewText(message);
         var readable = MetaAiMessages.Text(message);
         if (string.IsNullOrWhiteSpace(readable)) return MessageItemViewModel.PreviewText(message);
         var text = MessageText.PlainText(readable).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
         return text.Length == 0 ? MessageItemViewModel.PreviewText(message) : ChatPreviewText.Format(false, text);
+    }
+
+    // "wants to run: rm -rf /tmp/x · Reason: recursive delete · /approve or /deny". The whole command, as the window's card shows it: the console wraps.
+    private static string ApprovalWords(AgentApproval approval)
+    {
+        var parts = new List<string> { "wants to run: " + approval.Command.Replace("\r\n", "\n", StringComparison.Ordinal).Trim() };
+        if (AgentApprovals.Reason(approval) is { } reason) parts.Add(reason);
+        if (approval.Advised) parts.Add(AgentApprovals.AdvisedText);
+        if (approval.Cut) parts.Add(AgentApprovals.CutText);
+        parts.Add(approval.Pending ? approval.Cut ? "/deny" : "/approve or /deny" : AgentApprovals.Status(approval, DateTimeOffset.MaxValue, TimeZoneInfo.Utc));
+        return string.Join(" · ", parts);
     }
 
     /// <summary>The first 40 text elements of a message's words on one line, in curly quotes, with … when cut.</summary>
