@@ -205,10 +205,13 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         try
         {
             var thread = Thread(profile);
-            var note = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), false, "New conversation", Kind: "note", State: "done");
+            var note = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), false, NewConversationNote, Kind: "note", State: "done");
             noteId = note.Id;
             // A new conversation starts from nothing: every report so far counts as answered.
-            threads[profile] = thread with { SessionId = NewSessionId(), Messages = [.. thread.Messages, note], ReadUpTo = note.At, ReportsAckedThrough = thread.NextReportSeq };
+            threads[profile] = thread with
+            {
+                SessionId = NewSessionId(), Messages = [.. thread.Messages, note], ReadUpTo = note.At, ReportsAckedThrough = thread.NextReportSeq, Handoff = null,
+            };
             await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
         }
         finally { gate.Release(); }
@@ -351,7 +354,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             var thread = Thread(profile);
             sessionId = thread.SessionId;
             // The unanswered reports go to Hermes with this message; the thread keeps only what the owner typed (HermesTurnReports).
-            turn = Snapshot(thread, kind, string.IsNullOrEmpty(text) ? null : text);
+            turn = Carry(thread, kind, string.IsNullOrEmpty(text) ? null : text);
         }
         finally { gate.Release(); }
         var outgoing = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), true, string.IsNullOrEmpty(text) ? null : text, kind, "sent",
@@ -393,6 +396,34 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         IReadOnlyList<string> images, TaskCompletionSource<Exception?> accepted, int generation)
     {
         Interlocked.Increment(ref turnsRunning);
+        try
+        {
+            // Once more at most, in a new session, when Hermes couldn't continue this one (HermesBackend.Restart): a retry never asks for another.
+            var retrying = false;
+            while (await OneTurnAsync(profile, chatId, address, key, sessionId, outgoing, turn, images, accepted, generation, retrying).ConfigureAwait(false) is { } next)
+            {
+                (sessionId, turn) = next;
+                retrying = true;
+            }
+        }
+        catch (Exception failure) when (failure is not OperationCanceledException || !stop.IsCancellationRequested)
+        {
+            log($"hermes turn failed error={failure.GetType().Name}");
+            // Whatever broke may have come after Hermes took the turn: uncertain, never a refusal.
+            accepted.TrySetResult(null);
+            try { await UncertainAsync(profile, chatId, outgoing).ConfigureAwait(false); } catch (Exception) { }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref turnsRunning);
+            Typing(chatId, null, stopped: true);
+        }
+    }
+
+    // One request for the turn. Returns the session and what to carry when the turn is to be sent once more in a new session, else null.
+    private async Task<(string SessionId, TurnReports Turn)?> OneTurnAsync(string profile, string chatId, Uri address, string key, string sessionId,
+        HermesStoredMessage outgoing, TurnReports turn, IReadOnlyList<string> images, TaskCompletionSource<Exception?> accepted, int generation, bool retrying)
+    {
         var started = clock.GetTimestamp();
         HttpResponseMessage? response = null;
         try
@@ -405,40 +436,36 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                 log($"hermes send outcome=unknown kind={outgoing.Kind} profile={Tag(profile)} code={failure.Code}");
                 accepted.TrySetResult(null);
                 await UncertainAsync(profile, chatId, outgoing).ConfigureAwait(false);
-                return;
+                return null;
             }
             catch (HermesException failure)
             {
                 Saw(profile, failure.Failure, generation: generation);
                 log($"hermes send outcome=refused kind={outgoing.Kind} profile={Tag(profile)} failure={failure.Failure} code={failure.Code}");
                 // Refused before the send answered: the composer keeps the message as not sent, and the thread says why.
-                if (accepted.TrySetResult(failure)) { await NoteAsync(profile, chatId, Sentence(failure.Failure)).ConfigureAwait(false); return; }
+                if (accepted.TrySetResult(failure)) { await NoteAsync(profile, chatId, Sentence(failure.Failure)).ConfigureAwait(false); return null; }
                 // Refused after the send already answered: the message stays, marked not sent.
                 await UpdateAsync(profile, outgoing with { State = "failed" }).ConfigureAwait(false);
                 realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [outgoing.Id], false, clock.GetUtcNow()));
                 await NoteAsync(profile, chatId, Sentence(failure.Failure) + " Your message wasn't delivered.").ConfigureAwait(false);
-                return;
+                return null;
             }
             Saw(profile, null, generation: generation);
-            if (HermesClient.SessionOf(response) is { } echoed && echoed != sessionId) await MovedAsync(profile, sessionId, echoed).ConfigureAwait(false);
+            if (HermesClient.SessionOf(response) is { } echoed && echoed != sessionId)
+            {
+                await MovedAsync(profile, sessionId, echoed).ConfigureAwait(false);
+                sessionId = echoed;
+            }
             // Kept from the start (SendAsync); accepted now.
             accepted.TrySetResult(null);
             realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [outgoing.Id], false, clock.GetUtcNow()));
             realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
-            await StreamReplyAsync(profile, chatId, response, started, outgoing, turn.Through).ConfigureAwait(false);
-        }
-        catch (Exception failure) when (failure is not OperationCanceledException || !stop.IsCancellationRequested)
-        {
-            log($"hermes turn failed error={failure.GetType().Name}");
-            // Whatever broke may have come after Hermes took the turn: uncertain, never a refusal.
-            accepted.TrySetResult(null);
-            try { await UncertainAsync(profile, chatId, outgoing).ConfigureAwait(false); } catch (Exception) { }
+            return await StreamReplyAsync(profile, chatId, address, key, response, started, outgoing, turn, sessionId, generation, retrying).ConfigureAwait(false);
         }
         finally
         {
             response?.Dispose();
-            Interlocked.Decrement(ref turnsRunning);
-            Typing(chatId, null, stopped: true);
+            await SettledAsync(profile, turn).ConfigureAwait(false);
         }
     }
 
@@ -465,30 +492,35 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         await NoteAsync(profile, chatId, "Hermes stopped answering. Your message may not have reached it.").ConfigureAwait(false);
     }
 
-    private async Task StreamReplyAsync(string profile, string chatId, HttpResponseMessage response, long started, HermesStoredMessage outgoing, long? reportsThrough)
+    // `turn`: the reports and the handoff this turn carried count as answered on the stream's first evidence that Hermes took it (more than one piece of
+    // text, tool progress or a finished reply). The send's own answer is no evidence: it comes after AcceptWait whether Hermes confirmed or not. A lone first
+    // piece of text waits for the end, since a Hermes without the failure line writes its failure message that way. A refusal in the stream, a failure
+    // before any such event or an uncertain end answers nothing, so the next message carries them again. Returns the new session and what to carry there
+    // when the turn is to be sent once more because Hermes couldn't continue this session (HermesBackend.Restart), else null.
+    private async Task<(string SessionId, TurnReports Turn)?> StreamReplyAsync(string profile, string chatId, Uri address, string key, HttpResponseMessage response,
+        long started, HermesStoredMessage outgoing, TurnReports turn, string sessionId, int generation, bool retrying)
     {
         var kind = outgoing.Kind;
-        await StreamReplyCoreAsync(profile, chatId, response, started, kind, outgoing, reportsThrough).ConfigureAwait(false);
-    }
-
-    // `reportsThrough`: the reports this turn carried count as answered on the stream's first evidence that Hermes took it (content, tool progress or a
-    // finished reply). The send's own answer is no evidence: it comes after AcceptWait whether Hermes confirmed or not. A refusal in the stream, a failure
-    // before any such event or an uncertain end answers nothing, so the next message carries them again.
-    private async Task StreamReplyCoreAsync(string profile, string chatId, HttpResponseMessage response, long started, string kind, HermesStoredMessage outgoing,
-        long? reportsThrough = null)
-    {
+        var carried = turn.Through is not null || turn.Handoff is not null;
         async Task TookAsync()
         {
-            if (reportsThrough is not { } through) return;
-            reportsThrough = null;
-            await AnsweredAsync(profile, through).ConfigureAwait(false);
+            if (!carried) return;
+            carried = false;
+            await AnsweredAsync(profile, turn).ConfigureAwait(false);
         }
         HermesStoredMessage? reply = null;
         var words = new System.Text.StringBuilder();
         var shownAt = 0L;
         var chars = 0;
+        var deltas = 0;
         string finish = "interrupted";
         string? error = null;
+        int? status = null;
+        // Hermes showed it ran a tool or asked to: the turn may have changed something, so it is never sent again by itself.
+        var acted = false;
+        // After Hermes said the turn failed (HermesTurnFailing), text is its own failure message: held, and shown at the end only if the session stays.
+        var failing = false;
+        var failureText = new System.Text.StringBuilder();
         var approvals = new List<Held>();
         Typing(chatId, null, stopped: false);
         try
@@ -498,11 +530,13 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                 switch (piece)
                 {
                     case HermesProgress progress:
+                        acted = true;
                         await TookAsync().ConfigureAwait(false);
                         // Hermes's tool line never replaces the wait for an answer: the tool it names is the one waiting.
                         if (!approvals.Any(a => held.ContainsKey(a.MessageId))) Typing(chatId, progress.Status.Length > 0 ? progress.Status : null, stopped: false);
                         break;
                     case HermesApprovalRequest request:
+                        acted = true;
                         await TookAsync().ConfigureAwait(false);
                         // What Hermes said before it asked stays above the request, whole; what it says after (the command's outcome) starts a reply below it.
                         if (reply is not null)
@@ -516,8 +550,14 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                         }
                         approvals.Add(await HoldAsync(profile, chatId, request).ConfigureAwait(false));
                         break;
+                    case HermesTurnFailing:
+                        failing = true;
+                        break;
+                    case HermesDelta delta when failing:
+                        failureText.Append(delta.Text);
+                        break;
                     case HermesDelta delta:
-                        await TookAsync().ConfigureAwait(false);
+                        if (++deltas > 1) await TookAsync().ConfigureAwait(false);
                         words.Append(delta.Text);
                         var now = clock.GetTimestamp();
                         if (reply is null)
@@ -537,16 +577,36 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                         Typing(chatId, null, stopped: true);
                         break;
                     case HermesFinished end:
-                        finish = end.Reason; error = end.Error;
+                        finish = end.Reason; error = end.Error; status = end.ProviderStatus;
                         break;
                 }
             }
         }
         finally { await TurnEndedAsync(approvals).ConfigureAwait(false); }
+        var fault = SessionFault(finish, status);
+        // Whether the turn ran a tool, or may have: the stream says so when Hermes sends tool progress, and Hermes's own record of the session says so
+        // either way. Without a certain no, it counts as having run one.
+        var ran = !fault || acted || approvals.Count > 0
+            || await client.LatestTurnRanToolsAsync(address, profile, key, sessionId, stop.Token).ConfigureAwait(false) != false;
+        var moved = fault
+            ? await RestartAsync(profile, chatId, sessionId, outgoing, status!.Value, generation, marked: !retrying, retry: !ran && !retrying).ConfigureAwait(false)
+            : null;
+        var restart = moved is not null;
+        // Hermes's failure message shows when the session stays; when it restarts, the thread's own lines say what happened instead.
+        if (!restart) words.Append(failureText);
+        else if (!failing && !ran && reply is not null && deltas == 1)
+        {
+            // Without the failure line (an older Hermes), the failure message streamed as a reply: it goes, as the restart replaces it.
+            await RemoveAsync(profile, reply.Id).ConfigureAwait(false);
+            realtime.TryWrite(new(RealtimeKind.MessageDeleted, chatId, [reply.Id], false, clock.GetUtcNow()));
+            reply = null;
+            words.Clear();
+        }
         chars += words.Length;
-        // A reply that reached the model's output limit ("length") was taken but is not whole: kept, and the thread says it was cut off.
+        // A reply that reached the model's output limit ("length") was taken but is not whole: kept, and the thread says it was cut off. A turn that ran
+        // a tool was taken too, however it ended.
         var complete = finish == "stop";
-        if (finish is "stop" or "length") await TookAsync().ConfigureAwait(false);
+        if (finish is "stop" or "length" || (restart ? ran : deltas > 0)) await TookAsync().ConfigureAwait(false);
         if (reply is not null || words.Length > 0)
         {
             reply = (reply ?? new(NewMessageId(profile), clock.GetUtcNow(), false, null)) with { Text = words.ToString().Trim(), State = complete ? "done" : "interrupted" };
@@ -556,7 +616,22 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
         }
         log($"hermes reply outcome={finish} kind={kind} profile={Tag(profile)} chars={chars} ms={(long)clock.GetElapsedTime(started).TotalMilliseconds}"
-            + (error is null ? "" : $" code={error}"));
+            + (error is null ? "" : $" code={error}") + (status is { } s ? $" status={s.ToString(System.Globalization.CultureInfo.InvariantCulture)}" : ""));
+        if (restart)
+        {
+            if (!ran && !retrying) return moved;
+            if (ran)
+                // Hermes took it and may have done part of it: the message stays sent, and the owner decides whether to send it again.
+                await NoteAsync(profile, chatId, SendAgain).ConfigureAwait(false);
+            else
+            {
+                // The same refusal in a new session, before any tool: the message itself is what Hermes can't take. It stays, marked not sent.
+                await UpdateAsync(profile, outgoing with { State = "failed" }).ConfigureAwait(false);
+                realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [outgoing.Id], false, clock.GetUtcNow()));
+                await NoteAsync(profile, chatId, NotAnswered).ConfigureAwait(false);
+            }
+            return null;
+        }
         if (finish == "error" && error == "admission_conflict")
         {
             // Hermes said in the stream that it did not take this turn: the prompt is marked not sent, as a refusal before the stream would be.
@@ -572,6 +647,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
                 "error" => "Hermes couldn't finish its reply.",
                 _ => reply is null ? "Hermes stopped answering before it replied." : "Hermes stopped before finishing its reply.",
             }).ConfigureAwait(false);
+        return null;
     }
 
     private async Task NoteAsync(string profile, string chatId, string words)

@@ -41,8 +41,16 @@ public abstract record HermesStreamEvent;
 public sealed record HermesDelta(string Text) : HermesStreamEvent;
 /// <summary>Hermes is using a tool; the short words to show while it works (<c>hermes.tool.progress</c>).</summary>
 public sealed record HermesProgress(string Status) : HermesStreamEvent;
-/// <summary>The reply ended: <c>stop</c>, <c>length</c>, <c>cancelled</c> or <c>error</c> (with Hermes's error code when it gave one).</summary>
-public sealed record HermesFinished(string Reason, string? Error = null) : HermesStreamEvent;
+/// <summary>
+/// The reply ended: <c>stop</c>, <c>length</c>, <c>cancelled</c> or <c>error</c> (with Hermes's error code when it gave one). <see cref="ProviderStatus"/>: the HTTP
+/// status the model's provider answered, when a failed turn's summary names one (<c>HTTP 400: ...</c>); the only part of that summary ever kept.
+/// </summary>
+public sealed record HermesFinished(string Reason, string? Error = null, int? ProviderStatus = null) : HermesStreamEvent;
+/// <summary>
+/// Hermes said the turn failed for good (a <c>hermes.status</c> line starting with ❌, agent/turn_recovery.py's TerminalFailureText). It comes before the
+/// end, and whatever text follows it is Hermes's own failure message, written after the turn ended, not the model's. Nothing of the line is kept.
+/// </summary>
+public sealed record HermesTurnFailing : HermesStreamEvent;
 /// <summary>
 /// Hermes holds a command for approval and waits (<c>approval.request</c>): answered at <c>runs/{RunId}/approval</c> with <see cref="RequestId"/> and, when
 /// Hermes gave one, <see cref="Generation"/>. <see cref="Command"/> and <see cref="Description"/> are Hermes's words with its secrets already redacted;
@@ -123,6 +131,40 @@ public sealed class HermesClient(HttpClient http)
         try { await ThrowUnlessOkAsync(response, cancellationToken).ConfigureAwait(false); }
         catch { response.Dispose(); throw; }
         return response;
+    }
+
+    /// <summary>
+    /// Whether the session's latest turn ran a tool, from Hermes's own record of the session (<c>GET /api/sessions/{id}/messages</c>): a row with tool
+    /// calls or a tool result after the last user row. Hermes saves a tool call's row before it runs the tool (agent/turn_tool_round.py, v0.23.2), so
+    /// false means none ran. Null when Hermes couldn't say: no answer, an error, or no user row. Reads roles and tool fields only; nothing is kept.
+    /// </summary>
+    public async Task<bool?> LatestTurnRanToolsAsync(Uri baseAddress, string profile, string key, string sessionId, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var path = (profile == DefaultProfile ? "" : "p/" + profile + "/") + "api/sessions/" + Uri.EscapeDataString(sessionId) + "/messages?order=latest&limit=50";
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseAddress, path));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        try
+        {
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            if (JsonNode.Parse(await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false))?["data"] is not JsonArray data) return null;
+            // Oldest first by Hermes's row ids, whatever order the page came in; without an id on every row, a page Hermes didn't number can't be read.
+            var rows = data.OfType<JsonObject>().ToArray();
+            var ids = rows.Select(r => r["id"] is JsonValue id && id.TryGetValue<long>(out var n) ? n : (long?)null).ToArray();
+            if (rows.Length != data.Count || ids.Any(id => id is null)) return null;
+            rows = [.. rows.Zip(ids).OrderBy(r => r.Second).Select(r => r.First)];
+            var user = Array.FindLastIndex(rows, r => Text(r["role"]) == "user");
+            if (user < 0) return null;
+            return rows.Skip(user + 1).Any(r => Text(r["role"]) == "tool" || r["tool_calls"] is JsonArray { Count: > 0 } || Text(r["tool_call_id"]) is { Length: > 0 }
+                || Text(r["tool_calls"]) is { Length: > 2 });
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or InvalidOperationException or FormatException or IOException
+            or OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -247,12 +289,14 @@ public sealed class HermesClient(HttpClient http)
         {
             if (eventName == "hermes.tool.progress" && ProgressWords(json) is { } status) yield return new HermesProgress(status);
             else if (eventName == "approval.request" && Approval(json) is { } held) yield return held;
+            else if (eventName == "hermes.status" && Text(json["text"]) is { } said && said.StartsWith('❌')) yield return new HermesTurnFailing();
             yield break;
         }
         var choice = (json["choices"] as JsonArray)?.FirstOrDefault() as JsonObject;
         if (choice?["delta"]?["content"] is JsonValue delta && delta.TryGetValue<string>(out var words) && words.Length > 0) yield return new HermesDelta(words);
         if (choice?["finish_reason"] is JsonValue reason && reason.TryGetValue<string>(out var finish) && finish.Length > 0)
-            yield return new HermesFinished(finish is "stop" or "length" or "cancelled" or "error" ? finish : "other", Known(Text(json["error"]?["message"]) ?? Text(json["error"]?["code"])));
+            yield return new HermesFinished(finish is "stop" or "length" or "cancelled" or "error" ? finish : "other", Known(Text(json["error"]?["message"]) ?? Text(json["error"]?["code"])),
+                finish == "error" ? ProviderStatus(Text(json["error"]?["message"]) ?? Text(json["hermes"]?["error"])) : null);
         else if (json["error"] is JsonObject error)
             yield return new HermesFinished("error", Known(Text(error["code"]) ?? Text(error["message"])));
     }
@@ -295,6 +339,14 @@ public sealed class HermesClient(HttpClient http)
         var line = words.ReplaceLineEndings(" ").Trim();
         return line.Length <= 80 ? line : line[..79].TrimEnd() + "…";
     }
+
+    // A failed turn's error message is Hermes's one-line summary of what the provider answered, "HTTP 400: <body>" when the provider gave a status
+    // (agent/api_error_summary.py, _http_prefix; seen live 2026-11-17 as HTTP 400: {"detail":"Bad Request"}). Only the three digits are read: the body
+    // can echo the request.
+    internal static int? ProviderStatus(string? message) =>
+        message is { Length: >= 8 } && message.StartsWith("HTTP ", StringComparison.Ordinal) && message[5] is >= '1' and <= '5'
+        && char.IsAsciiDigit(message[6]) && char.IsAsciiDigit(message[7]) && (message.Length == 8 || !char.IsAsciiDigit(message[8]))
+            ? (message[5] - '0') * 100 + (message[6] - '0') * 10 + (message[7] - '0') : null;
 
     private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 

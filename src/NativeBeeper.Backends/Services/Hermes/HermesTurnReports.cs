@@ -20,8 +20,17 @@ internal sealed partial class HermesBackend
     internal const string ReportsTail = "[Message Link] The owner's message follows.";
 
     /// <summary>What a turn carries: the highest report sequence when it was taken (all at or below it count as answered once Hermes takes the turn),
-    /// and the prompt as Hermes gets it.</summary>
-    private sealed record TurnReports(long? Through, string? Prompt);
+    /// the prompt as Hermes gets it, and the handoff it carried (HermesBackend.Restart), cleared once Hermes takes the turn.</summary>
+    private sealed record TurnReports(long? Through, string? Prompt, string? Handoff = null);
+
+    // Under the gate. A thread that moved to a new session puts its handoff ahead of everything else the next turn carries, any kind of turn.
+    private static TurnReports Snapshot(HermesThread thread, string kind, string? text)
+    {
+        var turn = ReportsSnapshot(thread, kind, text);
+        if (thread.Handoff is not { } handoff) return turn;
+        var rest = turn.Prompt is { } prompt && prompt.StartsWith(ReportsLead + "\n", StringComparison.Ordinal) ? prompt : ReportsTail + "\n" + (text ?? "");
+        return turn with { Prompt = HandoffLead + "\n" + handoff + "\n" + rest, Handoff = handoff };
+    }
 
     // Reports from before sequences existed get them, in the thread's order, on load.
     private static HermesThread Sequenced(HermesThread thread)
@@ -33,7 +42,7 @@ internal sealed partial class HermesBackend
     }
 
     // Under the gate. The owner's own message carries the unanswered reports; a repeat's prompt carries none, not being the owner answering.
-    private static TurnReports Snapshot(HermesThread thread, string kind, string? text)
+    private static TurnReports ReportsSnapshot(HermesThread thread, string kind, string? text)
     {
         // A repeat answers nothing: it neither carries reports nor marks any answered.
         if (kind != "message") return new(null, text);
@@ -74,14 +83,21 @@ internal sealed partial class HermesBackend
 
     // Hermes took the turn (its first content, tool progress, or a finished reply): every report the snapshot covered is answered, those beyond the cap too.
     // A report that arrived while the turn was being admitted has a higher sequence and stays for the next message.
-    private async Task AnsweredAsync(string profile, long through)
+    // The handoff the turn carried is cleared the same way, unless a newer one replaced it meanwhile.
+    private async Task AnsweredAsync(string profile, TurnReports turn)
     {
         await gate.WaitAsync().ConfigureAwait(false);
         try
         {
             var thread = Thread(profile);
-            if (through <= thread.ReportsAckedThrough) return;
-            var next = thread with { ReportsAckedThrough = through };
+            var reports = turn.Through is { } through && through > thread.ReportsAckedThrough;
+            var handoff = turn.Handoff is not null && thread.Handoff == turn.Handoff;
+            if (!reports && !handoff) return;
+            var next = thread with
+            {
+                ReportsAckedThrough = reports ? turn.Through!.Value : thread.ReportsAckedThrough,
+                Handoff = handoff ? null : thread.Handoff,
+            };
             await store.SaveThreadAsync(next).ConfigureAwait(false);
             threads[profile] = next;
         }

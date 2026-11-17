@@ -47,7 +47,10 @@ public sealed record HermesThread(string Profile, string SessionId, IReadOnlyLis
     DateTimeOffset? ReadUpTo = null,
     // The last report sequence handed out, and the highest one a turn Hermes took has carried (or a new conversation passed): the reports above it and
     // at most the snapshot's go with the owner's next message. Absent in older files, so both read as 0.
-    long NextReportSeq = 0, long ReportsAckedThrough = 0);
+    long NextReportSeq = 0, long ReportsAckedThrough = 0,
+    // After Hermes couldn't continue a session and the thread moved to a new one (HermesBackend.Restart): the recent messages, as the JSON line the next
+    // turn carries so the new session knows what came before. Cleared once Hermes takes a turn that carried it, or by New conversation.
+    string? Handoff = null);
 
 /// <summary>
 /// Everything Hermes keeps between runs, under the data folder's <c>Hermes</c> folder, each file sealed by the host's protector:
