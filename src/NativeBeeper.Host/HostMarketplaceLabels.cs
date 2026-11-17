@@ -138,6 +138,14 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
                     await LookAsync(await chats.GetChatAsync(id, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            // A conversation its service has no record of (four Messenger ones its helper answers unknown_chat to, named by every start's burst of
+            // events, 2026-11-17): set aside for the run, as the history check leaves it, under the history's tag so the two lines can be matched.
+            catch (NativeBeeper.Core.Backend.BackendException unknown)
+                when (unknown.Failure == NativeBeeper.Core.Backend.BackendFailure.Unavailable && id is not null && id != BookCheck)
+            {
+                known[id] = false;
+                Write($"outcome=unreadable chat={ConversationHistory.Tag(id)}");
+            }
             catch (Exception failure)
             {
                 // Not remembered as looked at, so the next event naming it tries again.

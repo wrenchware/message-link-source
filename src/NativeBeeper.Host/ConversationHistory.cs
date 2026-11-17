@@ -1750,7 +1750,7 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
 
     private static string Service(string chatId) => chatId.IndexOf(':') is > 0 and var colon ? chatId[..colon] : chatId;
 
-    private static string Tag(string chatId) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("history:" + chatId)).AsSpan(0, 3)).ToLowerInvariant();
+    internal static string Tag(string chatId) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("history:" + chatId)).AsSpan(0, 3)).ToLowerInvariant();
 
     private static string Name(Reason reason) => reason.ToString().ToLowerInvariant();
 
