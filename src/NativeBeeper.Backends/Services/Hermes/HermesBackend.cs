@@ -112,35 +112,47 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
 
     // ---- IHermesAccount ----
 
-    public async Task ConfigureAsync(string? address, IReadOnlyList<HermesProfileInput> profiles, CancellationToken cancellationToken = default)
+    public Task ConfigureAsync(string? address, IReadOnlyList<HermesProfileInput> profiles, CancellationToken cancellationToken = default) =>
+        ConfigureAsync(_ => (address, profiles), null, null, cancellationToken);
+
+    /// <summary>
+    /// Saves what <paramref name="build"/> makes of the settings as they are once the gate is held, so a change made meanwhile (another assistant added in one
+    /// command) is built on, never undone. <paramref name="still"/>, asked under the gate first, can call it off (false answered, nothing changed);
+    /// <paramref name="committed"/> runs under the setup lock as the new settings take effect, so a setup code's state and the settings never disagree.
+    /// </summary>
+    private async Task<bool> ConfigureAsync(Func<HermesSettings, (string? Address, IReadOnlyList<HermesProfileInput> Profiles)> build, Func<bool>? still, Action? committed,
+        CancellationToken cancellationToken)
     {
         await LoadAsync().ConfigureAwait(false);
-        var parsed = HermesClient.ParseBase(address);
-        if (profiles.Count > 0 && parsed is null) throw new ArgumentException("Enter the address of Hermes's API server, such as http://192.168.1.20:8642.");
-        if (profiles.Count > MaxProfiles) throw new ArgumentException($"Hermes can have up to {MaxProfiles} profiles here.");
-        var kept = new List<HermesProfileSetting>();
-        foreach (var input in profiles)
-        {
-            var name = input.Name.Trim().ToLowerInvariant();
-            if (!HermesClient.ValidProfile(name)) throw new ArgumentException("A profile name uses lowercase letters, numbers, hyphens and underscores, as in Hermes.");
-            if (kept.Any(p => p.Name == name)) throw new ArgumentException("Each profile can be added once.");
-            var key = input.Key?.Trim() is { Length: > 0 } typed ? typed : settings.Profiles.FirstOrDefault(p => p.Name == name)?.Key;
-            if (string.IsNullOrEmpty(key)) throw new ArgumentException("Enter the API key for each profile.");
-            if (key.Any(char.IsControl) || key.Length > 512) throw new ArgumentException("That API key can't be used.");
-            // Like the key, a name of null keeps the saved one (the app's settings card and older clients send none) and a blank one clears it.
-            // The default name typed out is kept as no name, so the field shows blank again and the thread follows the default.
-            var title = input.Title is null ? settings.Profiles.FirstOrDefault(p => p.Name == name)?.Title
-                : input.Title.Trim() is { Length: > 0 } named && named != DefaultTitle(name) ? named : null;
-            if (title is not null && (title.Any(char.IsControl) || title.Length > MaxTitleLength))
-                throw new ArgumentException($"A conversation name can have up to {MaxTitleLength} characters, on one line.");
-            kept.Add(new(name, key, title));
-        }
-        var next = new HermesSettings(parsed?.ToString(), kept);
         string[] removed, added;
+        List<HermesProfileSetting> kept;
         var renamed = new List<(string ChatId, string[] Ids)>();
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (still?.Invoke() == false) return false;
+            var (address, profiles) = build(settings);
+            var parsed = HermesClient.ParseBase(address);
+            if (profiles.Count > 0 && parsed is null) throw new ArgumentException("Enter the address of Hermes's API server, such as http://192.168.1.20:8642.");
+            if (profiles.Count > MaxProfiles) throw new ArgumentException($"Hermes can have up to {MaxProfiles} profiles here.");
+            kept = [];
+            foreach (var input in profiles)
+            {
+                var name = input.Name.Trim().ToLowerInvariant();
+                if (!HermesClient.ValidProfile(name)) throw new ArgumentException("A profile name uses lowercase letters, numbers, hyphens and underscores, as in Hermes.");
+                if (kept.Any(p => p.Name == name)) throw new ArgumentException("Each profile can be added once.");
+                var key = input.Key?.Trim() is { Length: > 0 } typed ? typed : settings.Profiles.FirstOrDefault(p => p.Name == name)?.Key;
+                if (string.IsNullOrEmpty(key)) throw new ArgumentException("Enter the API key for each profile.");
+                if (key.Any(char.IsControl) || key.Length > 512) throw new ArgumentException("That API key can't be used.");
+                // Like the key, a name of null keeps the saved one (the app's settings card and older clients send none) and a blank one clears it.
+                // The default name typed out is kept as no name, so the field shows blank again and the thread follows the default.
+                var title = input.Title is null ? settings.Profiles.FirstOrDefault(p => p.Name == name)?.Title
+                    : input.Title.Trim() is { Length: > 0 } named && named != DefaultTitle(name) ? named : null;
+                if (title is not null && (title.Any(char.IsControl) || title.Length > MaxTitleLength))
+                    throw new ArgumentException($"A conversation name can have up to {MaxTitleLength} characters, on one line.");
+                kept.Add(new(name, key, title));
+            }
+            var next = new HermesSettings(parsed?.ToString(), kept);
             // Moved before anything changes: an answer made with the old settings that lands meanwhile (during the save) is not taken for the new ones.
             Interlocked.Increment(ref generation);
             var addressChanged = settings.Address != next.Address;
@@ -158,7 +170,11 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
             var titled = kept.Where(p => settings.Profiles.Any(old => old.Name == p.Name) && (settings.Profiles.First(old => old.Name == p.Name).Title ?? DefaultTitle(p.Name))
                 != (p.Title ?? DefaultTitle(p.Name))).Select(p => p.Name).ToArray();
-            settings = next;
+            lock (setupLock)
+            {
+                committed?.Invoke();
+                settings = next;
+            }
             // Hermes's messages carry the thread's name as their sender, and the server's history keeps them: a rename names each of them again, or the copy
             // there would keep the old name, its conversation not having moved since.
             foreach (var name in titled)
@@ -177,6 +193,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             foreach (var batch in ids.Chunk(64)) realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, batch, false, clock.GetUtcNow()));
         Raise();
         Interlocked.Exchange(ref checkNow, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+        return true;
     }
 
     public async Task NewConversationAsync(string chatId, CancellationToken cancellationToken = default)

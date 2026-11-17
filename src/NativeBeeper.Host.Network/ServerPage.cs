@@ -509,6 +509,9 @@ internal sealed partial class ServerPage
             case "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset":
                 Redirect(response, "/");
                 return;
+            case { } addPath when Hermes is not null && Reports is not null && IsAddPath(addPath):
+                await AddAssistantAsync(context, addPath, form, token).ConfigureAwait(false);
+                return;
             case { } reportsPath when Hermes is not null && Reports is not null && IsReportsPath(reportsPath):
                 await ReportsAsync(context, reportsPath, form, token).ConfigureAwait(false);
                 return;

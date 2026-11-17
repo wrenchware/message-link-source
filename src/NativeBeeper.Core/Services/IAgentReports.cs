@@ -46,25 +46,46 @@ public interface IAgentReports
     /// <summary>Uses a setup code: the profile's token becomes the one whose hash is <paramref name="tokenHash"/>, made where Hermes runs, with
     /// <paramref name="address"/> (how Hermes reaches the server) and <paramref name="peer"/> (where the server saw the request come from) kept beside it. The
     /// same code with the same token's hash again is the same setup, done; with another hash it was already used. Nothing changes unless the token is saved.</summary>
-    Task<AgentSetupResult> RedeemSetupCodeAsync(byte[] codeHash, byte[] tokenHash, string address, string? peer, CancellationToken cancellationToken = default);
+    /// <remarks>An add code (<see cref="IssueAddCode"/>) also needs <paramref name="add"/>: the profile is added with that key, at the first Hermes address that
+    /// answers with it, before its token is saved. When none does, nothing changes and the code keeps waiting.</remarks>
+    Task<AgentSetupResult> RedeemSetupCodeAsync(byte[] codeHash, byte[] tokenHash, string address, string? peer, CancellationToken cancellationToken = default,
+        AgentAddRequest? add = null);
 
     /// <summary>Where the setup code <paramref name="id"/> of <paramref name="profile"/> stands, for the page that shows its command; null for an id not issued.</summary>
     AgentSetupState? SetupState(string profile, string id);
+
+    /// <summary>
+    /// A setup code that adds <paramref name="profile"/>, not set up here yet, as an assistant (add an assistant in one command): the command makes or reads its
+    /// API key where Hermes runs, sends it with the code, and turns reports on in the same run. Works once, for <see cref="AgentReportRules.SetupLifetime"/>, and
+    /// replaces any earlier code for that name. <paramref name="title"/> names its conversation (blank or null: the profile's own name). Throws
+    /// <see cref="ArgumentException"/> with a sentence for a person for a name that can't be added.
+    /// </summary>
+    AgentSetupIssue IssueAddCode(string profile, string? title);
 }
+
+/// <summary>What an add code's command sends besides the report token: the profile's API key, and where the server might reach Hermes (each <c>host:port</c>,
+/// tried after any address already saved), with <paramref name="PeerPort"/> the port to try at the address the request came from, when Hermes is reached there.</summary>
+public sealed record AgentAddRequest(string Key, IReadOnlyList<string> Addresses, int? PeerPort);
 
 /// <summary>A setup code as issued: the code (shown once), its one-way id and when it stops working.</summary>
 public sealed record AgentSetupIssue(string Code, string Id, DateTimeOffset Expires);
 
-public enum AgentSetupOutcome { Ready, Done, AlreadyUsed, Unknown, Limited, Unavailable }
+/// <summary><c>HermesRefused</c>: an add code's key didn't work at any address tried, so nothing changed (<see cref="AgentSetupResult.Problem"/> says how).</summary>
+public enum AgentSetupOutcome { Ready, Done, AlreadyUsed, Unknown, Limited, Unavailable, HermesRefused }
 
-/// <summary>What a probe or a use of a setup code came to. <paramref name="Tag"/> is the code's id when it was known.</summary>
-public sealed record AgentSetupResult(AgentSetupOutcome Outcome, TimeSpan? RetryAfter = null, string? Tag = null);
+/// <summary>What a probe or a use of a setup code came to. <paramref name="Tag"/> is the code's id when it was known. <paramref name="Problem"/>, for
+/// <see cref="AgentSetupOutcome.HermesRefused"/>: <c>unreachable</c>, <c>key_rejected</c>, <c>no_profile</c>, <c>error</c> (Hermes answered with an error) or <c>saved_unreachable</c> (nothing answered at the address the other assistants use), and <paramref name="Tried"/> the addresses tried.
+/// <paramref name="Hermes"/>, for a done add: the address the server reaches Hermes at.</summary>
+public sealed record AgentSetupResult(AgentSetupOutcome Outcome, TimeSpan? RetryAfter = null, string? Tag = null, string? Problem = null,
+    IReadOnlyList<string>? Tried = null, string? Hermes = null);
 
 public enum AgentSetupPhase { Waiting, Done, Expired, Replaced }
 
 /// <summary>A setup code's state on the page: waiting until <paramref name="Expires"/>, or done at <paramref name="At"/> with the address Hermes uses and the
-/// address the server saw it come from.</summary>
-public sealed record AgentSetupState(AgentSetupPhase Phase, DateTimeOffset? Expires = null, DateTimeOffset? At = null, string? Address = null, string? From = null);
+/// address the server saw it come from. While an add code waits, <paramref name="Problem"/> is why its last use didn't add the profile, with
+/// <paramref name="Tried"/>; once done, <paramref name="Hermes"/> is where the server reaches Hermes.</summary>
+public sealed record AgentSetupState(AgentSetupPhase Phase, DateTimeOffset? Expires = null, DateTimeOffset? At = null, string? Address = null, string? From = null,
+    string? Problem = null, IReadOnlyList<string>? Tried = null, string? Hermes = null);
 
 public enum AgentReportOutcome { Delivered, Duplicate, KeyReused, Unknown, Limited, Unavailable, Ready }
 

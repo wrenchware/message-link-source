@@ -21,7 +21,7 @@ internal sealed partial class ServerPage
     // More rows than a form can usefully hold are not read.
     private const int MaxHermesRows = NativeBeeper.App.Services.Hermes.HermesBackend.MaxProfiles + 2;
 
-    private static bool IsHermesPath(string? path) => path is "/hermes" || IsReportsPath(path);
+    private static bool IsHermesPath(string? path) => path is "/hermes" || IsReportsPath(path) || IsAddPath(path);
 
     // Hermes Agent's own app icon, the sixth picture in the page's sprite (THIRD_PARTY_NOTICES.md).
     private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";
@@ -97,7 +97,8 @@ internal sealed partial class ServerPage
         if (state.Agents.Count == 0)
         {
             body.Append("<div class=\"box\">").Append(Row("Set up Hermes", "Chat with your Hermes assistants in Message Link. Each assistant gets its own conversation.", "Not set up",
-                "<a class=\"button\" href=\"/hermes\">Set up…</a>")).Append("</div></section>");
+                Reports is null ? "<a class=\"button\" href=\"/hermes\">Set up…</a>" : "<a class=\"button\" href=\"" + AddPath + "\">Add an assistant…</a>")).Append("</div>")
+                .Append(Reports is null ? "" : "<p><a href=\"/hermes\">Set up by hand instead</a></p>").Append("</section>");
             return false;
         }
         // A box for each assistant, its "can message you first" line set in under it, so with several each one's lines read as its own; then one row to
@@ -110,7 +111,9 @@ internal sealed partial class ServerPage
             body.Append("</div>");
         }
         body.Append("<div class=\"box settings\">")
-            .Append(Row("Add or change assistants", "Add an assistant, rename one, or change where Hermes runs.", null, "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
+            .Append(Reports is null ? "" : Row("Add an assistant", "Chat with another Hermes profile. You run one command where Hermes runs.", null, "<a class=\"button quiet\" href=\"" + AddPath + "\">Add…</a>"))
+            .Append(Row("Change assistants", "Rename or remove an assistant, change an API key or where Hermes runs, or add one by hand.", null,
+                "<a class=\"button quiet\" href=\"/hermes\">Change…</a>"))
             .Append("</div></section>");
         return state.Agents.Any(agent => agent.Status == "unchecked");
     }
@@ -127,7 +130,7 @@ internal sealed partial class ServerPage
             .Append("<section class=\"sec\"><div class=\"sh\"><h2>Where Hermes runs</h2></div><div class=\"box\"><div class=\"hf\">")
             .Append("<label for=\"address\">Address</label><input id=\"address\" name=\"address\" type=\"text\" value=\"").Append(Html(address))
             .Append("\" placeholder=\"http://192.168.1.20:8642\" autocomplete=\"off\" spellcheck=\"false\"><p class=\"hint\">Hermes listens on port 8642 by default.</p></div>")
-            // How to make Hermes reachable by hand: folded, as a command will do it one day (ROADMAP.md).
+            // How to make Hermes reachable by hand: folded, as Add an assistant's command does it (ServerPage.HermesAdd.cs).
             .Append("<details class=\"how\"><summary>Set up Hermes yourself<span class=\"chev\" aria-hidden=\"true\"></span></summary>")
             .Append("<ol class=\"steps\"><li>On the machine that runs Hermes, set <span class=\"copy\">API_SERVER_HOST=0.0.0.0</span> so its API server can be reached from your home network.</li>")
             .Append("<li>Give each profile its own key with <span class=\"copy\">API_SERVER_KEY</span>, then start Hermes again.</li></ol></details></div></section>")
@@ -177,7 +180,7 @@ internal sealed partial class ServerPage
         var hermes = Hermes!;
         var state = hermes.State;
         // As the card's own line.
-        const string title = "Add or change assistants";
+        const string title = "Change assistants";
         bool Saved(string name) => state.Agents.Any(agent => agent.Name == name && agent.HasKey);
         if (form is null)
         {
@@ -189,8 +192,11 @@ internal sealed partial class ServerPage
         var address = form["address"].ToString().Trim();
         var profiles = new List<HermesProfileInput>();
         var nameless = false;
+        // Every name the form had a line for, removed ones too: an assistant added in one command while the form was open had none, and is kept.
+        var listed = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < MaxHermesRows && form.ContainsKey("name-" + i); i++)
         {
+            listed.Add(form["name-" + i].ToString().Trim().ToLowerInvariant());
             if (form["remove-" + i] == "yes") continue;
             var name = form["name-" + i].ToString().Trim();
             var key = form["key-" + i].ToString();
@@ -210,6 +216,8 @@ internal sealed partial class ServerPage
             return;
         }
         if (!await PasswordAgainAsync(context, form, "hermes", title, Ask).ConfigureAwait(false)) return;
+        foreach (var agent in hermes.State.Agents)
+            if (!listed.Contains(agent.Name)) profiles.Add(new(agent.Name, null));
         try { await hermes.ConfigureAsync(address.Length == 0 ? null : address, profiles, context.RequestAborted).ConfigureAwait(false); }
         catch (ArgumentException refused)
         {

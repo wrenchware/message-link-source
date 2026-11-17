@@ -50,7 +50,7 @@ internal sealed partial class ServerPage
             Redirect(context.Response, "/manage/hermes");
             return;
         }
-        var command = DesktopTrust ? WindowsCommand(issued.Code, profile) : ShellCommand(issued.Code, profile, state, context.Request);
+        var command = DesktopTrust ? WindowsCommand(issued.Code, profile) : ShellCommand(issued.Code, profile, state.Address, context.Request);
         log("server page reports outcome=setup_shown");
         context.Response.Headers.CacheControl = "no-store";
         await PageAsync(context, StatusCodes.Status200OK, title, SetupBody(command, token, profile, name, issued.Id)).ConfigureAwait(false);
@@ -58,7 +58,7 @@ internal sealed partial class ServerPage
 
     // The addresses Hermes may reach this server at, tried in this order after the one the profile's current code names: the address kept from the last code,
     // this server's container name when it runs in one, and the address this page was opened at.
-    private IReadOnlyList<string> SetupAddresses(AgentReportsState state, HttpRequest request)
+    private IReadOnlyList<string> SetupAddresses(string? kept, HttpRequest request)
     {
         var found = new List<string>();
         void Add(string? typed)
@@ -67,27 +67,27 @@ internal sealed partial class ServerPage
             var address = url.Host + ":" + url.Port;
             if (CommandSafe.IsMatch(address) && !found.Contains(address)) found.Add(address);
         }
-        Add(state.Address);
+        Add(kept);
         if (InContainer && ListenPort?.Invoke() is { } port and > 0) Add(ContainerName + ":" + port);
         Add(Address(request));
         return found;
     }
 
     // POSIX sh with curl, for Linux and macOS: the code in the environment only; the file saved, checked and then run, and removed afterwards.
-    private string ShellCommand(string code, string profile, AgentReportsState state, HttpRequest request)
+    private string ShellCommand(string code, string profile, string? kept, HttpRequest request, bool add = false)
     {
-        var addresses = SetupAddresses(state, request);
+        var addresses = SetupAddresses(kept, request);
         var page = AgentReportCode.Url(Address(request)) is { } url && CommandSafe.IsMatch(url.Host + ":" + url.Port) ? url.Host + ":" + url.Port : addresses.LastOrDefault() ?? "";
         var port = ListenPort?.Invoke() is { } listening and > 0 ? " --port " + listening : "";
         return "MLSETUP=" + code + " sh -c 'set -e; f=$(mktemp); trap \"rm -f \\\"\\$f\\\"\" EXIT; "
             + "curl -q -fsSk --proto =https --max-time 60 --max-filesize 4000000 --pinnedpubkey " + PublicKeyPin + " -o \"$f\" https://" + page + NetworkHost.SetupShellPath + "; "
             + "[ \"$({ sha256sum 2>/dev/null || shasum -a 256; } <\"$f\" | cut -c1-64)\" = " + ReportInstaller.ShellSha256 + " ] "
             + "|| { echo \"The download does not match this server. Nothing changed.\" >&2; exit 1; }; "
-            + "sh \"$f\"" + port + " " + profile + " " + fingerprint() + " " + string.Join(' ', addresses) + "'";
+            + "sh \"$f\"" + port + (add ? " --add" : "") + " " + profile + " " + fingerprint() + " " + string.Join(' ', addresses) + "'";
     }
 
     // PowerShell with curl.exe, for the Windows server: it takes reports only from this PC, so Hermes is installed here and runs with its own Python.
-    private string WindowsCommand(string code, string profile)
+    private string WindowsCommand(string code, string profile, bool add = false)
     {
         var address = "127.0.0.1:" + (ListenPort?.Invoke() ?? NativeBeeper.Protocol.NetworkEndpoint.DefaultPort);
         return "$env:MLSETUP='" + code + "'; $f=Join-Path $env:TEMP ('ml-setup-'+[guid]::NewGuid()+'.py'); try { "
@@ -96,7 +96,7 @@ internal sealed partial class ServerPage
             + "elseif ((Get-FileHash $f -Algorithm SHA256).Hash -ne '" + ReportInstaller.PythonSha256 + "') { 'The download does not match this server. Nothing changed.' } "
             + "else { $h=Get-Command hermes -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; $a=@(); $py='python'; "
             + "if ($h) { $a+='--hermes',$h.Source; $p=Join-Path (Split-Path $h.Source) 'python.exe'; if (Test-Path $p) { $py=$p } }; "
-            + "& $py -I $f @a " + profile + " " + fingerprint() + " " + address + " } } "
+            + "& $py -I $f @a " + (add ? "--add " : "") + profile + " " + fingerprint() + " " + address + " } } "
             + "finally { Remove-Item $f -ErrorAction SilentlyContinue; Remove-Item Env:MLSETUP -ErrorAction SilentlyContinue }";
     }
 
@@ -110,7 +110,7 @@ internal sealed partial class ServerPage
             .Append("<p><button type=\"button\" class=\"quiet small\" data-copy-code=\"").Append(Html(command)).Append("\">Copy</button></p>")
             .Append(Para("It works once, within " + (int)AgentReportRules.SetupLifetime.TotalMinutes + " minutes. It adds the Message Link plugin to Hermes and makes a code that only Hermes keeps."))
             .Append("</div>")
-            .Append("<div class=\"box\" id=\"setup\" data-profile=\"").Append(Html(profile)).Append("\" data-id=\"").Append(Html(id)).Append("\">")
+            .Append("<div class=\"box\" id=\"setup\" data-watch=\"").Append(Html(SetupWatchPath + "?profile=" + Uri.EscapeDataString(profile) + "&id=" + Uri.EscapeDataString(id))).Append("\">")
             .Append(Row("Waiting for the command", "This page shows the result when the command is done.", null, null, id: "setup-state"))
             .Append("</div>")
             .Append(TurnOffForm(token, profile, name, "danger", "setup-off"))
@@ -151,11 +151,12 @@ internal sealed partial class ServerPage
 var box=document.getElementById('setup');if(!box)return;var row=document.getElementById('setup-state'),cmd=document.getElementById('setup-command'),off=document.getElementById('setup-off'),fails=0;
 function show(title,under){var g=row.querySelector('.g');g.textContent=title;var s=document.createElement('small');s.textContent=under;g.appendChild(s)}
 function tick(){if(document.hidden){setTimeout(tick,1000);return}
-fetch('/hermes/reports/setup?profile='+encodeURIComponent(box.getAttribute('data-profile'))+'&id='+encodeURIComponent(box.getAttribute('data-id')),{redirect:'error',cache:'no-store'})
+fetch(box.getAttribute('data-watch'),{redirect:'error',cache:'no-store'})
 .then(function(r){if(r.status===404)return {state:'expired'};if(!r.ok)throw r.status;return r.json()}).then(function(d){fails=0;
-if(d.state==='waiting'){setTimeout(tick,2000);return}
+if(d.state==='waiting'){if(d.problem)show('Waiting for the command',d.problem);setTimeout(tick,2000);return}
 if(cmd)cmd.remove();
-if(d.state==='done'){show('Turned on','Hermes reaches this server at '+d.address+'. Set up '+d.at+(d.from?' from '+d.from:'')+'.');if(off)off.hidden=false}
+if(d.state==='done'&&d.title)show(d.title,d.under);
+else if(d.state==='done'){show('Turned on','Hermes reaches this server at '+d.address+'. Set up '+d.at+(d.from?' from '+d.from:'')+'.');if(off)off.hidden=false}
 else if(d.state==='replaced')show('A newer command replaced this one','Use the newest command, or make another.');
 else show('This command has expired','Make a new one to try again.')})
 .catch(function(){fails++;setTimeout(tick,Math.min(30000,2000*Math.pow(2,fails)))})}

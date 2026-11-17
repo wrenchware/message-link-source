@@ -4,7 +4,10 @@
 # Sets up Message Link reports for one Hermes profile, on the computer that runs Hermes. Run by the command the
 # Message Link server's page shows, which checks this file's SHA-256 before running it:
 #
-#   MLSETUP=<setup code> sh install.sh [--port <port>] <profile> <sha256> <address>...
+#   MLSETUP=<setup code> sh install.sh [--port <port>] [--add] <profile> <sha256> <address>...
+#
+# With --add it also adds the profile to Message Link as an assistant: it gives the profile an API key when it has none
+# and tells the Python part where Message Link's server might reach Hermes's API server.
 #
 # With Hermes in Docker, it finds Hermes's container (asking when there are several) and runs the Python part, after
 # the marker line at the end of this file, inside it: as the owner of the profile's folder and with Hermes's own Python.
@@ -25,6 +28,12 @@ if [ "${1:-}" = --port ]; then
     port=${2:-}
     shift 2 || fail "Run the command the Message Link server's page shows." 2
     case $port in '' | *[!0-9]*) fail "Run the command the Message Link server's page shows." 2 ;; esac
+fi
+# --add: add the profile as an assistant (its API key too), not only its reports.
+add=
+if [ "${1:-}" = --add ]; then
+    add=--add
+    shift
 fi
 [ $# -ge 3 ] || fail "Run the command the Message Link server's page shows." 2
 profile=$1
@@ -101,11 +110,13 @@ if [ -n "$container" ]; then
         owner=$(stat -c %u:%g "$folder" 2>/dev/null) || owner=
         hermes=$(command -v hermes 2>/dev/null) || hermes=
         python=$(pick_python "$hermes") || python=
-        printf "ok\n%s\n%s\n%s\n%s\n" "$home" "$owner" "$python" "$hermes"
+        # The API port as Hermes takes it when it starts: its own .env over the environment.
+        api=$(sed -n "s/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}API_SERVER_PORT[[:space:]]*=[[:space:]]*[\"'\'']\{0,1\}\([0-9][0-9]*\).*/\2/p" "$home/.env" 2>/dev/null | tail -n 1)
+        printf "ok\n%s\n%s\n%s\n%s\n%s\n" "$home" "$owner" "$python" "$hermes" "${api:-${API_SERVER_PORT:-}}"
     ' sh "$profile" 2>/dev/null) || fail "Couldn't look inside the container $container. Nothing changed."
     state=$(printf '%s\n' "$info" | sed -n 1p)
     if [ "$state" = missing ]; then
-        fail "The container $container has no Hermes profile named $profile ($(printf '%s\n' "$info" | sed -n 2p) isn't there). Nothing changed." 2
+        fail "The container $container has no Hermes profile named $profile ($(printf '%s\n' "$info" | sed -n 2p) isn't there). Make it in Hermes first (hermes profile create $profile), then run the command again. Nothing changed." 2
     fi
     home=$(printf '%s\n' "$info" | sed -n 2p)
     owner=$(printf '%s\n' "$info" | sed -n 3p)
@@ -139,8 +150,23 @@ if [ -n "$container" ]; then
     # Told when Message Link's container shares no network with Hermes's, so a setup no address works for can say so.
     apart=
     if [ -n "$server" ] && [ -z "$network" ]; then apart=--no-shared-network; fi
+    # Adding an assistant: where Message Link's server might reach Hermes's API server. On a network both containers share, by Hermes's container name
+    # (Docker's own names resolve there) at the port inside it; otherwise at the port Docker publishes it on, at this computer's address, which the server
+    # sees the setup come from.
+    reach=
+    if [ -n "$add" ]; then
+        api=$(printf '%s\n' "$info" | sed -n 6p)
+        case $api in '' | *[!0-9]*) api=8642 ;; esac
+        if [ -n "$network" ]; then
+            reach="--reach $container:$api"
+        else
+            published=$(docker port "$container" "$api/tcp" 2>/dev/null | sed -n '1s/.*://p')
+            # 0: Docker publishes it nowhere, so the installer names that fix if the server can't reach Hermes.
+            case $published in '' | *[!0-9]*) reach="--published 0" ;; *) reach="--published $published" ;; esac
+        fi
+    fi
     python_part | MLSETUP=$code docker exec -i -u "$owner" -e MLSETUP -e HERMES_HOME="$home" "$container" \
-        "$python" -I - --hermes "$hermes" $apart "$profile" "$pin" "$@"
+        "$python" -I - --hermes "$hermes" $apart $add $reach "$profile" "$pin" "$@"
     exit $?
 fi
 
@@ -152,6 +178,6 @@ if [ -z "$hermes" ]; then
 fi
 python=$(pick_python "$hermes") || python=
 [ -n "$python" ] || fail "There's no Python here for the setup to run with. Nothing changed." 2
-python_part | MLSETUP=$code "$python" -I - --hermes "$hermes" "$@"
+python_part | MLSETUP=$code "$python" -I - --hermes "$hermes" $add "$@"
 exit $?
 #__ML_SETUP_PY__

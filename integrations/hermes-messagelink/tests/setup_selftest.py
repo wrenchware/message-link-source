@@ -186,6 +186,42 @@ class Files(unittest.TestCase):
         setup.owner_check(self.folder)
 
 
+class ApiKey(unittest.TestCase):
+    """Add an assistant: the profile's API_SERVER_KEY in .env, and which keys Hermes would take."""
+
+    def test_the_key_is_set_once_and_other_lines_stay(self):
+        text = "A=1\nexport API_SERVER_KEY = old\n# API_SERVER_KEY=comment\nB=2"
+        self.assertEqual(setup.env_with(text, "API_SERVER_KEY", "k" * 64), "A=1\n# API_SERVER_KEY=comment\nB=2\nAPI_SERVER_KEY=" + "k" * 64 + "\n")
+        self.assertEqual(setup.env_with("A=1\r\n", "API_SERVER_KEY", "x" * 20), "A=1\r\nAPI_SERVER_KEY=" + "x" * 20 + "\r\n")
+
+    def test_the_key_as_dotenv_reads_it(self):
+        self.assertEqual(setup.env_value("API_SERVER_KEY='quoted-key-0123456789'\n", "API_SERVER_KEY"), "quoted-key-0123456789")
+        self.assertEqual(setup.env_value("API_SERVER_KEY=first\nAPI_SERVER_KEY=second #note\n", "API_SERVER_KEY"), "second")
+        self.assertIsNone(setup.env_value("# API_SERVER_KEY=commented\n", "API_SERVER_KEY"))
+        # A comment after a tab, and a quoted value with a comment after it, as python-dotenv reads them.
+        self.assertEqual(setup.env_value("API_SERVER_KEY=abcdefghijklmnop1234\t# note\n", "API_SERVER_KEY"), "abcdefghijklmnop1234")
+        self.assertEqual(setup.env_value('API_SERVER_KEY="abcdefghijklmnop1234" # note\n', "API_SERVER_KEY"), "abcdefghijklmnop1234")
+        self.assertEqual(setup.env_value("API_SERVER_KEY=abc#def\n", "API_SERVER_KEY"), "abc#def")
+        # Escapes as python-dotenv decodes them.
+        self.assertEqual(setup.env_value('API_SERVER_KEY="abcdefghijklmnop\\\\tail"\n', "API_SERVER_KEY"), "abcdefghijklmnop\\tail")
+        self.assertEqual(setup.env_value("API_SERVER_KEY='abcdefghijklmnop\\\\tail'\n", "API_SERVER_KEY"), "abcdefghijklmnop\\tail")
+        self.assertEqual(setup.env_value('API_SERVER_KEY="abc\\tdef"\n', "API_SERVER_KEY"), "abc\tdef")
+
+    def test_a_key_over_several_lines_is_refused(self):
+        with self.assertRaises(setup.Stop):
+            setup.env_with('API_SERVER_KEY="never\nclosed"\n', "API_SERVER_KEY", "k" * 64)
+
+    def test_keys_hermes_would_take(self):
+        for key in ("a" * 64, "existing-key-0123456789"):
+            self.assertTrue(setup.usable_key(key), key)
+        for key in ("", "short", "changeme", "your_api_key_here", "sk-xxxxxxxxxxxxxxxxxx", "xxxx-xxxx-xxxx-xxxx"):
+            self.assertFalse(setup.usable_key(key), key)
+        # Hermes takes a key with spaces; Message Link can't send it, so the setup stops rather than replacing it.
+        self.assertTrue(setup.usable_key("has space in it 0123"))
+        self.assertFalse(setup.sendable_key("has space in it 0123"))
+        self.assertTrue(setup.sendable_key("a" * 64))
+
+
 class Shells(unittest.TestCase):
     def test_install_sh_parses_in_every_shell_here(self):
         script = os.path.join(FOLDER, "setup", "install.sh")

@@ -17,7 +17,8 @@ internal sealed partial class NetworkHost
     internal const string SetupPrefix = AgentReportCode.Path + "/setup/";
     internal const string SetupShellPath = SetupPrefix + ReportInstaller.ShellName, SetupPythonPath = SetupPrefix + ReportInstaller.PythonName;
     internal const string SetupProbePath = SetupPrefix + "probe", SetupRedeemPath = SetupPrefix + "redeem";
-    private const int MaxRedeemBody = 1024;
+    // A report token's hash and an address; an add code's command also sends the API key (512 characters at most) and up to four addresses.
+    private const int MaxRedeemBody = 4096;
 
     internal static bool IsSetupPath(string? path) => path is SetupShellPath or SetupPythonPath or SetupProbePath or SetupRedeemPath;
 
@@ -93,7 +94,10 @@ internal sealed partial class NetworkHost
             return;
         }
         if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = MaxRedeemBody;
-        string? tokenHex = null, address = null;
+        string? tokenHex = null, address = null, key = null;
+        List<string>? hermes = null;
+        int? peerPort = null;
+        var shaped = true;
         using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted))
         {
             deadline.CancelAfter(ReportReadLimit);
@@ -107,12 +111,21 @@ internal sealed partial class NetworkHost
                 {
                     tokenHex = root.TryGetProperty("token_sha256", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
                     address = root.TryGetProperty("address", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() : null;
+                    // An add code's: the profile's API key, where the server might reach Hermes, and the port Hermes answers on at the address this request came from.
+                    if (root.TryGetProperty("api_key", out var k)) { key = k.ValueKind == JsonValueKind.String ? k.GetString() : null; shaped &= key is not null; }
+                    if (root.TryGetProperty("hermes", out var h))
+                    {
+                        shaped &= h.ValueKind == JsonValueKind.Array && h.GetArrayLength() <= 8;
+                        if (shaped) hermes = [.. h.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "")];
+                    }
+                    if (root.TryGetProperty("peer_port", out var pp) && pp.ValueKind != JsonValueKind.Null) { shaped &= pp.ValueKind == JsonValueKind.Number && pp.TryGetInt32(out var n) && n is > 0 and <= 65535; if (shaped) peerPort = pp.GetInt32(); }
                 }
             }
             catch (Exception failure) when (failure is OperationCanceledException or IOException or BadHttpRequestException or JsonException) { }
         }
         // The address is kept as the code the installer writes names it (host and port), so a new code starts from it.
-        if (tokenHex is not { Length: 64 } || !tokenHex.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f')
+        if (!shaped || key is null && (hermes is not null || peerPort is not null)
+            || tokenHex is not { Length: 64 } || !tokenHex.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f')
             || address is not { Length: > 0 and <= 255 } || !address.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or ':' or '-' or '_' or '[' or ']')
             || AgentReportCode.Url(address) is null)
         {
@@ -122,7 +135,8 @@ internal sealed partial class NetworkHost
         // Where the server saw it come from, never what the installer says.
         var from = peer is null ? null : (peer.IsIPv4MappedToIPv6 ? peer.MapToIPv4() : peer).ToString();
         AgentSetupResult outcome;
-        try { outcome = await reports.RedeemSetupCodeAsync(hash, Convert.FromHexString(tokenHex), address, from, context.RequestAborted).ConfigureAwait(false); }
+        try { outcome = await reports.RedeemSetupCodeAsync(hash, Convert.FromHexString(tokenHex), address, from, context.RequestAborted,
+            key is null ? null : new AgentAddRequest(key, hermes ?? [], peerPort)).ConfigureAwait(false); }
         catch (Exception failure) when (failure is not OperationCanceledException)
         {
             log($"hermes setup outcome=failed error={failure.GetType().Name} id={id}");
@@ -144,7 +158,13 @@ internal sealed partial class NetworkHost
                 await ReportAnswerAsync(context, StatusCodes.Status204NoContent, "ready", null, outcome.Tag).ConfigureAwait(false);
                 break;
             case AgentSetupOutcome.Done:
-                await ReportJsonAsync(context, StatusCodes.Status200OK, new { status = "on" }).ConfigureAwait(false);
+                // The address the server reaches Hermes at, for an add code's command to say.
+                await ReportJsonAsync(context, StatusCodes.Status200OK, new { status = "on", hermes = outcome.Hermes }).ConfigureAwait(false);
+                break;
+            case AgentSetupOutcome.HermesRefused:
+                // Nothing changed and the code still waits: the command says what to change, with the addresses tried (names and ports the command itself sent, or saved here).
+                ReportLog("hermes_" + outcome.Problem, outcome.Tag);
+                await ReportJsonAsync(context, StatusCodes.Status422UnprocessableEntity, new { error = "hermes_" + outcome.Problem, tried = outcome.Tried ?? [] }).ConfigureAwait(false);
                 break;
             case AgentSetupOutcome.AlreadyUsed:
                 await ReportErrorAsync(context, StatusCodes.Status409Conflict, "already_used", outcome.Tag).ConfigureAwait(false);

@@ -5,7 +5,8 @@
 Run by the command the Message Link server's page shows (through install.sh on Linux and macOS, or directly on
 Windows), with the Python Hermes itself uses:
 
-    MLSETUP=<setup code> python3 -I install.py [--hermes <path>] [--no-shared-network] <profile> <sha256> <address>...
+    MLSETUP=<setup code> python3 -I install.py [--hermes <path>] [--no-shared-network]
+        [--add [--reach <host:port>]... [--published <port>]] <profile> <sha256> <address>...
 
 ``<sha256>`` is the SHA-256 of the server's certificate, which every connection pins before it sends a byte, and each
 ``<address>`` (host:port) is one the server may be reached at. The setup code is read from the environment only, so it
@@ -22,6 +23,10 @@ What it does, in order, stopping at the first problem:
    see the code and turns Hermes's restart notices off for Message Link in
    ``config.yaml`` (keeping its comments), then checks the new code once.
 5. Restarts Hermes's gateway, which commands need before they see the code, unless a chat or job is running in it.
+
+With --add (add an assistant in one command), before step 3 it also gives the profile an API key when it has none Hermes
+can use (one it has is kept), checks the key with Hermes's API server here, and sends it with the setup code; the server
+adds the profile once Hermes takes the key at an address the server reaches, and otherwise changes nothing.
 
 Running it again with a new setup code replaces the code and changes nothing else. Standard library only.
 """
@@ -163,10 +168,12 @@ def _reason(error):
     return error.strerror or type(error).__name__
 
 
-def exchange(address, pin, secret, method, path, body=None):
+def exchange(address, pin, secret, method, path, body=None, timeout=None):
     """One request on a fresh pinned connection: (status, headers, body). Never follows a redirect."""
     host, port = split_address(address)
     connection = _Pinned(host, port, pin)
+    if timeout:
+        connection.timeout = timeout
     headers = {"Host": address, "Authorization": "Bearer " + secret, "Connection": "close"}
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -303,7 +310,7 @@ def env_lines(text):
     if quote:
         raise Stop(".env has a quoted value that isn't closed, so nothing was changed.", 2)
     for _, name, opens in lines:
-        if name in OURS and opens:
+        if (name in OURS or name == KEY_ENV) and opens:
             raise Stop(".env has a %s value over several lines, so nothing was changed. Remove it, then run the "
                        "command again." % name, 2)
     return lines
@@ -348,6 +355,185 @@ def build_code(address, pin, token):
     data = json.dumps({"v": 1, "url": "https://%s%s" % (address, REPORT_PATH), "sha256": pin, "token": token},
                       separators=(",", ":")).encode("utf-8")
     return "mlrc1." + base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+_ESCAPES = {"\\": "\\", "'": "'", '"': '"', "a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+
+
+def env_value(text, name):
+    """The value .env gives ``name`` (the last assignment, as python-dotenv takes it), or None."""
+    found = None
+    for line, assigned, _ in env_lines(text):
+        if assigned == name:
+            value = _ASSIGN.match(line).group(2)
+            quoted = re.match(r"""'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)\"""", value)
+            if quoted:
+                # A quoted value ends at its closing quote; whatever follows is a comment. Its escapes are decoded as
+                # python-dotenv decodes them: \\ and \' in single quotes, those and \" \a \b \f \n \r \t \v in double.
+                if quoted.group(1) is not None:
+                    value = re.sub(r"\\([\\'])", r"\1", quoted.group(1))
+                else:
+                    value = re.sub(r"\\([\\'\"abfnrtv])", lambda m: _ESCAPES[m.group(1)], quoted.group(2))
+            else:
+                # Unquoted: a # after whitespace starts a comment, a tab before it too.
+                value = re.sub(r"\s+#.*", "", value).strip()
+            found = value
+    return found
+
+
+def env_with(text, name, value):
+    """.env with ``name`` set to ``value`` once, every other line as it was."""
+    newline = "\r\n" if text and "\r\n" in text else "\n"
+    lines = [line for line, assigned, _ in env_lines(text) if assigned != name]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    lines.append("%s=%s" % (name, value))
+    return newline.join(lines) + newline
+
+
+# ---- Adding an assistant: the profile's API key ----
+#
+# Read in Hermes v0.23.1's source (2026-11-16): a named profile's /p/<profile>/ key is API_SERVER_KEY from that profile's
+# own .env, read again on every request, never the process environment; the default profile's key is read once when the
+# gateway starts, from $HERMES_HOME/.env over the environment. A key Hermes can use has 16 characters or more and isn't a
+# placeholder (has_usable_secret). API_SERVER_HOST and API_SERVER_PORT are Hermes-wide: the environment, over which the
+# default profile's .env wins when the gateway starts. The API server runs only while the default profile has a usable key.
+
+KEY_ENV = "API_SERVER_KEY"
+DEFAULT_API_PORT = 8642
+_PLACEHOLDERS = {"*", "**", "***", "changeme", "your_api_key", "your_api_key_here", "your-api-key", "placeholder", "example",
+                 "dummy", "null", "none"}
+
+
+def usable_key(key):
+    """Whether Hermes would take this key (has_usable_secret, min_length=16). Whether it can travel to Message Link is
+    sendable_key's question: a key Hermes takes is never replaced, since other clients may use it."""
+    if not key:
+        return False
+    key = key.strip()
+    if len(key) < 16 or key.lower() in _PLACEHOLDERS:
+        return False
+    if re.fullmatch(r"your_.*_here", key.lower()) or re.fullmatch(r"(sk-|ghp_|hf_)x+", key.lower()):
+        return False
+    return set(re.sub(r"[\s_-]", "", key.lower())) != {"x"}
+
+
+def sendable_key(key):
+    """Whether Message Link can send this key as a bearer token: printable ASCII with no spaces, at most 512 characters."""
+    return 0 < len(key) <= 512 and all("!" <= c <= "~" for c in key)
+
+
+def hermes_wide(name):
+    """A Hermes-wide setting as the running gateway took it: the default profile's .env over the environment."""
+    value = env_value(read_text(os.path.join(hermes_home(), ".env")), name)
+    return (value if value is not None else os.environ.get(name, "")).strip()
+
+
+def api_listen():
+    """(host to connect to here, port, whether it listens on this computer only)."""
+    port = hermes_wide("API_SERVER_PORT")
+    port = int(port) if port.isdigit() and 0 < int(port) < 65536 else DEFAULT_API_PORT
+    host = hermes_wide("API_SERVER_HOST") or "127.0.0.1"
+    loopback = host.lower() in ("127.0.0.1", "localhost", "::1")
+    connect = "127.0.0.1" if host in ("0.0.0.0", "::", "") or loopback else host.strip("[]")
+    return connect, port, loopback
+
+
+def api_route(profile, path):
+    return ("" if profile == "default" else "/p/%s" % profile) + "/v1/" + path
+
+
+def ask_api(host, port, profile, key):
+    """Hermes's answer to the profile's /v1/models with this key, as an HTTP status, or None when nothing answers."""
+    connection = http.client.HTTPConnection(host, port, timeout=TIMEOUT)
+    try:
+        connection.request("GET", api_route(profile, "models"), headers={"Authorization": "Bearer " + key, "Connection": "close"})
+        response = connection.getresponse()
+        response.read(16 * 1024)
+        return response.status
+    except (OSError, http.client.HTTPException):
+        return None
+    finally:
+        connection.close()
+
+
+def profile_key(folder, profile, env_text):
+    """The profile's key as Hermes reads it: its own .env, and for the default profile the environment too."""
+    key = env_value(env_text, KEY_ENV)
+    if key is None and profile == "default":
+        key = os.environ.get(KEY_ENV)
+    return (key or "").strip()
+
+
+def wait_for_api(host, port, profile, key, seconds):
+    """Asks every few seconds until Hermes answers something other than nothing (or, for a named profile, 404, while
+    Hermes picks up a profile made since it started), for up to ``seconds``; the last answer."""
+    deadline = time.monotonic() + seconds
+    while True:
+        status = ask_api(host, port, profile, key)
+        if status not in (None, 404) or time.monotonic() >= deadline:
+            return status
+        time.sleep(3)
+
+
+def ensure_key(folder, profile, env_path, hermes, local_server):
+    """The profile's API key, checked with Hermes on this computer: the one it has when Hermes can use it (other clients
+    of the profile keep working), otherwise a new one written to its .env. Stops with what to change when Hermes's API
+    server can't be reached or won't take the key."""
+    host, port, loopback = api_listen()
+    key = profile_key(folder, profile, read_text(env_path))
+    if usable_key(key) and not sendable_key(key):
+        # Hermes takes it, so other clients may use it: never replaced (owner, 2026-11-16), and nothing is changed.
+        raise Stop("The profile's API key has spaces or other characters Message Link can't send. Change it in the "
+                   "profile's .env to letters, digits and punctuation only (16 or more), update any other app that uses "
+                   "it, then run the command again.", 2)
+    made = not usable_key(key)
+    if made and profile == "default" and ask_api(host, port, profile, "") is not None:
+        # Hermes's API server runs, so the default profile has a key, one this command can't see (from the environment of
+        # the service that starts Hermes, say). A new one in .env would win over it at the next start and break whatever uses it.
+        raise Stop("Hermes's API server is running with an API key this command can't see. Put that key in Hermes's own "
+                   ".env file (%s) as API_SERVER_KEY, then run the command again." % os.path.join(hermes_home(), ".env"), 2)
+    if made:
+        if key:
+            say("The profile's API key is one Hermes can't use (it needs 16 characters or more), so it gets a new one.")
+        key = secrets.token_hex(32)
+        write_atomic(env_path, env_with(read_text(env_path), KEY_ENV, key).encode("utf-8"), private_mode(env_path))
+        say(".env: %s set to a new key." % KEY_ENV)
+    else:
+        say("The profile already has an API key; it is kept.")
+    status = ask_api(host, port, profile, key)
+    # The default profile's key is read when Hermes starts: a new one, or one changed since, needs a restart. Without a
+    # usable one the API server doesn't run at all.
+    if profile == "default" and (made or status == 401):
+        say("Restarting Hermes so its API server uses the key.")
+        if not restart_hermes(hermes):
+            raise Stop("The key is in place, but Hermes needs a restart to use it. Restart Hermes when nothing is running "
+                       "in it, or restart its container, then run the command again.", 2)
+        status = wait_for_api(host, port, profile, key, 90)
+    elif status == 404:
+        # A profile made since Hermes started is picked up within about 30 seconds.
+        status = wait_for_api(host, port, profile, key, 40)
+    if status is None:
+        if profile == "default":
+            raise Stop("Hermes's API server isn't answering on port %d here. Check Hermes's log for why it didn't start, "
+                       "then run the command again." % port, 2)
+        raise Stop("Hermes's API server isn't answering on port %d here. Check that Hermes is running and that its API "
+                   "server is on: it starts only when Hermes's own .env (%s) has an API_SERVER_KEY, which adding the "
+                   "profile named default sets up. Then run the command again." % (port, os.path.join(hermes_home(), ".env")), 2)
+    if status == 404:
+        raise Stop("Hermes doesn't serve the profile %s through its API server yet. Restart Hermes, then run the command "
+                   "again. A profile set to run its own gateway (gateway.standalone) can't be added." % profile, 2)
+    if status in (401, 403):
+        raise Stop("Hermes refused the profile's API key. If the profile's API key comes from somewhere other than its "
+                   ".env file, remove it there, then run the command again.", 2)
+    if status != 200:
+        raise Stop("Hermes's API server answered %d. Run the command again in a minute." % status)
+    if loopback and not local_server:
+        raise Stop("Hermes's API server only listens on this computer, so Message Link can't reach it. Set "
+                   "API_SERVER_HOST=0.0.0.0 where Hermes runs (in its container's settings, with Docker), restart Hermes, "
+                   "then run the command again.", 2)
+    say("Hermes's API server took the key.")
+    return key, port
 
 
 # ---- config.yaml, edited as text so its comments and layout stay ----
@@ -701,9 +887,19 @@ def restart_hermes(hermes):
 # ---- The steps ----
 
 
+class Options:
+    """--add and where Message Link's server might reach Hermes's API server: --reach host:port (Hermes's container name
+    on a Docker network both share), --published <port> (the port Docker publishes it on, at the address the server sees
+    the setup come from; 0 for none)."""
+    add = False
+    reach = ()
+    published = None
+
+
 def parse(argv):
     hermes = None
     shared_network = True
+    options = Options()
     words = []
     index = 0
     while index < len(argv):
@@ -713,6 +909,18 @@ def parse(argv):
             index += 1
         elif arg == "--no-shared-network":
             shared_network = False
+        elif arg == "--add":
+            options.add = True
+        elif arg == "--reach" and index + 1 < len(argv):
+            if split_address(argv[index + 1]) is None:
+                raise Stop("Run the command the Message Link server's page shows (an address in it isn't valid).", 2)
+            options.reach = options.reach + (argv[index + 1],)
+            index += 1
+        elif arg == "--published" and index + 1 < len(argv):
+            if not argv[index + 1].isdigit() or int(argv[index + 1]) > 65535:
+                raise Stop("Run the command the Message Link server's page shows.", 2)
+            options.published = int(argv[index + 1])
+            index += 1
         elif arg.startswith("-"):
             raise Stop("Unknown option %s." % arg, 2)
         else:
@@ -727,7 +935,7 @@ def parse(argv):
         raise Stop("Run the command the Message Link server's page shows (its certificate fingerprint is missing).", 2)
     if any(split_address(address) is None for address in addresses):
         raise Stop("Run the command the Message Link server's page shows (an address in it isn't valid).", 2)
-    return profile, pin, addresses, hermes, shared_network
+    return profile, pin, addresses, hermes, shared_network, options
 
 
 def bundle_files():
@@ -796,29 +1004,78 @@ def token_for(folder, setup):
     return token, path
 
 
-def redeem(address, pin, setup, token):
-    body = json.dumps({"token_sha256": hashlib.sha256(token.encode("ascii")).hexdigest(), "address": address}).encode()
+def redeem(address, pin, setup, token, add=None):
+    """Uses the setup code. ``add``: (key, addresses, peer port) for an add code, whose redemption also hands the server
+    the profile's API key; the server asks Hermes with it (at each address, for a few seconds) before it answers, and
+    answers where it reaches Hermes."""
+    fields = {"token_sha256": hashlib.sha256(token.encode("ascii")).hexdigest(), "address": address}
+    if add:
+        fields.update({"api_key": add[0], "hermes": list(add[1]), "peer_port": add[2]})
+    body = json.dumps(fields).encode()
     for attempt in range(3):
         try:
-            status, _, _ = exchange(address, pin, setup, "POST", REDEEM_PATH, body)
+            status, _, answer = exchange(address, pin, setup, "POST", REDEEM_PATH, body, timeout=60 if add else TIMEOUT)
         except (Unreachable, OtherServer, NoAnswer):
             # The same token's hash again is safe: the server finishes the same setup or says it was already done.
             if attempt < 2:
                 time.sleep(1)
                 continue
-            raise Stop("No answer from the server, so reports may or may not be on. Run the same command again "
-                       "within 10 minutes to finish.") from None
+            raise Stop("No answer from the server, so %s may or may not be on. Run the same command again within 10 "
+                       "minutes to finish." % ("the assistant" if add else "reports")) from None
         if status == 200:
-            return
+            try:
+                return json.loads(answer.decode("utf-8")).get("hermes")
+            except (ValueError, AttributeError):
+                return None
+        if status == 422 and add:
+            raise Stop(hermes_refused(answer, add), 2)
         if status == 409:
             raise Stop("This command was already used. Make a new one on the server's page, which shows where it was "
                        "used.")
         if status == 404:
             raise Stop("The server doesn't know this command any more: it works for 10 minutes, and a newer one "
-                       "replaces it. Make a new one on the server's page.")
+                       "replaces it. Make a new one on the server's page." + (
+                           " If the assistant shows there already, choose Allow under it to let it message you first."
+                           if add else ""))
         if status == 503:
             raise Stop("The server isn't ready. Run the command again in a minute.")
-        raise Stop("The server answered %d. Nothing in Hermes changed." % status)
+        raise Stop("The server answered %d.%s" % (status, "" if add else " Nothing in Hermes changed."))
+
+
+def hermes_refused(answer, add):
+    """What to change when the server couldn't use the key: it reached no Hermes, or Hermes refused it there. Nothing
+    changed on the server, and the command still works."""
+    try:
+        data = json.loads(answer.decode("utf-8"))
+        error, tried = data.get("error"), [t for t in data.get("tried") or [] if isinstance(t, str)]
+    except (ValueError, AttributeError):
+        error, tried = None, []
+    where = ", ".join(tried) or "the addresses it had"
+    if error == "hermes_saved_unreachable":
+        return ("Message Link's server couldn't reach Hermes at %s, where it reaches your other assistants. If Hermes is "
+                "restarting, run the command again in a minute. If Hermes moved, change where it runs with Change "
+                "assistants on the server's page first." % where)
+    if error == "hermes_key_rejected":
+        return ("Message Link reached Hermes at %s, but Hermes there refused the profile's API key. If Message Link's "
+                "other assistants are on another Hermes, change where Hermes runs on the server's page. Then run the "
+                "command again." % where)
+    if error == "hermes_error":
+        return ("Message Link reached Hermes at %s, but Hermes answered with an error. Run the command again in a minute."
+                % where)
+    if error == "hermes_no_profile":
+        return ("Message Link reached Hermes at %s, but Hermes there doesn't have this profile. If Message Link's other "
+                "assistants are on another Hermes, change where Hermes runs on the server's page. Then run the command "
+                "again." % where)
+    if add[1]:
+        fix = ("Hermes's container is on a Docker network with Message Link's, so check that Hermes's API server listens "
+               "on all addresses (API_SERVER_HOST=0.0.0.0) and restart Hermes.")
+    elif add[2]:
+        fix = ("Check that this computer lets Message Link's server connect to port %d, and that Hermes's API server "
+               "listens on all addresses (API_SERVER_HOST=0.0.0.0)." % add[2])
+    else:
+        fix = ("Publish Hermes's API server port (8642) in its container's settings, or put the Hermes and Message Link "
+               "containers on one Docker network.")
+    return "Message Link's server couldn't reach Hermes's API server at %s. %s Then run the command again." % (where, fix)
 
 
 def check(address, pin, token):
@@ -833,17 +1090,33 @@ def check(address, pin, token):
 
 def run(argv):
     setup = os.environ.pop(SETUP_ENV, "").strip()
-    profile, pin, addresses, hermes, shared_network = parse(argv)
+    profile, pin, addresses, hermes, shared_network, options = parse(argv)
     if not _SETUP.fullmatch(setup):
         raise Stop("The setup code is missing. Run the command the Message Link server's page shows.", 2)
     folder = profile_folder(profile)
     if not os.path.isdir(folder):
-        raise Stop("Hermes has no profile named %s here (no folder %s)." % (profile, folder), 2)
+        # Owner, 2026-11-16: a profile is made in Hermes, never by this setup.
+        raise Stop("Hermes has no profile named %s here (no folder %s).%s Make it in Hermes first (hermes profile create "
+                   "%s), then run the command again." % (profile, folder, known_profiles(), profile), 2)
     owner_check(folder)
-    say("Setting up Message Link reports for the Hermes profile %s." % profile)
+    if options.add:
+        say("Adding the Hermes profile %s to Message Link." % profile)
+    else:
+        say("Setting up Message Link reports for the Hermes profile %s." % profile)
     with ProfileLock(folder):
-        install(folder, profile, setup, pin, addresses, hermes, shared_network)
+        install(folder, profile, setup, pin, addresses, hermes, shared_network, options)
     return 0
+
+
+def known_profiles():
+    """" Its profiles are: ..." for a profile name that isn't one, so a typing slip shows."""
+    names = ["default"]
+    try:
+        names += sorted(name for name in os.listdir(os.path.join(hermes_home(), "profiles"))
+                        if _PROFILE.fullmatch(name) and os.path.isdir(os.path.join(hermes_home(), "profiles", name)))
+    except OSError:
+        pass
+    return " Its profiles are: %s." % ", ".join(names)
 
 
 class ProfileLock:
@@ -873,7 +1146,7 @@ class ProfileLock:
         self.file.close()
 
 
-def install(folder, profile, setup, pin, addresses, hermes, shared_network):
+def install(folder, profile, setup, pin, addresses, hermes, shared_network, options=Options()):
     # Everything that could refuse is checked before anything changes.
     files = bundle_files()
     env_path = os.path.join(folder, ".env")
@@ -893,8 +1166,20 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
     address = choose_address(candidates, pin, setup, shared_network)
     say("  Hermes reaches the server at %s." % address)
 
+    add = None
+    if options.add:
+        # A server on this computer (the Windows server) reaches Hermes here too, even when its API server listens on
+        # this computer only.
+        key, port = ensure_key(folder, profile, env_path, hermes, split_address(address)[0] in ("127.0.0.1", "localhost", "::1"))
+        # Where the server might reach Hermes: by name on a shared Docker network, or at the address it sees this setup
+        # come from, on the port Docker publishes (in Docker) or Hermes's own (installed directly).
+        peer = None if options.reach else (options.published if options.published is not None else port) or None
+        add = (key, options.reach, peer)
+
     token, pending = token_for(folder, setup)
-    redeem(address, pin, setup, token)
+    reached = redeem(address, pin, setup, token, add)
+    if add:
+        say("Message Link added %s%s." % (profile, " and reaches Hermes at %s" % reached if reached else ""))
     say("The server took the new code. Any earlier code for this profile stopped working.")
 
     # From here the server has the new code. The token waits in the profile until the end, so running the same command
@@ -933,10 +1218,13 @@ def install(folder, profile, setup, pin, addresses, hermes, shared_network):
     say("Restarting Hermes so %s can use the new settings." % profile)
     if restart_hermes(hermes):
         say("Hermes restarted.")
-        say("Done. %s can now message you first." % profile)
+        if options.add:
+            say("Done. %s is ready in Message Link and can message you first." % profile)
+        else:
+            say("Done. %s can now message you first." % profile)
     else:
-        say("Setup is done. Restart Hermes when nothing is running in it, or restart its container. Until then, %s "
-            "can't message you first." % profile)
+        say("Setup is done%s. Restart Hermes when nothing is running in it, or restart its container. Until then, %s "
+            "can't message you first." % (" and you can chat with %s in Message Link" % profile if options.add else "", profile))
 
 
 def configure(config_path):
