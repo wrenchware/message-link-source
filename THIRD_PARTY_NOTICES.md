@@ -241,19 +241,19 @@ Every package in `src/NativeBeeper.App/packages.lock.json`, which includes those
 | Microsoft.Extensions.DependencyInjection | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. |
 | Microsoft.Extensions.DependencyInjection.Abstractions | 10.0.15 | MIT | © Microsoft Corporation. All rights reserved. |
 | Microsoft.Web.WebView2 | 1.0.3719.77 | BSD-3-Clause | © Microsoft Corporation. All rights reserved. |
-| Microsoft.Windows.AI.MachineLearning | 2.1.74 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.Windows.AI.MachineLearning | 2.5.96 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
 | Microsoft.Windows.SDK.BuildTools | 10.0.26100.4654 | See https://aka.ms/WinSDKLicenseURL | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK | 2.4.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.AI | 2.4.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.Base | 2.0.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.DWrite | 2.1.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.Foundation | 2.3.9 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.InteractiveExperiences | 2.1.6 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.ML | 2.1.74 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.Runtime | 2.4.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.Search | 2.4.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.Widgets | 2.0.5 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
-| Microsoft.WindowsAppSDK.WinUI | 2.3.6 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.AI | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.Base | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.DWrite | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.Foundation | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.InteractiveExperiences | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.ML | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.Runtime | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.Search | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.Widgets | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
+| Microsoft.WindowsAppSDK.WinUI | 2.7.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. |
 | SMBLibrary | 1.5.8.1 | LGPL-3.0-or-later | Copyright © Tal Aloni 2014-2026 |
 | SQLitePCLRaw.bundle_e_sqlite3 | 2.1.13 | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | SQLitePCLRaw.core | 2.1.13 | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
@@ -267,7 +267,19 @@ Build-time packages (marked as development dependencies) and packages used only 
 
 | Package | Version | Licence | Copyright | Projects |
 | --- | --- | --- | --- | --- |
+| Microsoft.Windows.AI.MachineLearning | 2.1.74 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
 | Microsoft.Windows.SDK.BuildTools.MSIX | 1.7.251221100 | See sdk_license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.App, NativeBeeper.Instagram.Spike (build time) |
+| Microsoft.WindowsAppSDK | 2.4.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.AI | 2.4.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.Base | 2.0.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.DWrite | 2.1.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.Foundation | 2.3.9 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.InteractiveExperiences | 2.1.6 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.ML | 2.1.74 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.Runtime | 2.4.0 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.Search | 2.4.4 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.Widgets | 2.0.5 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
+| Microsoft.WindowsAppSDK.WinUI | 2.3.6 | See license.txt (MICROSOFT SOFTWARE LICENSE TERMS) | © Microsoft Corporation. All rights reserved. | NativeBeeper.Instagram.Spike |
 | SkiaSharp | 4.153.1 | MIT | © Microsoft Corporation. All rights reserved. | NativeBeeper.ContractTests, NativeBeeper.Server.Linux |
 | SkiaSharp.NativeAssets.Linux.NoDependencies | 4.153.1 | MIT | © Microsoft Corporation. All rights reserved. | NativeBeeper.Server.Linux |
 | SkiaSharp.NativeAssets.macOS | 4.153.1 | MIT | © Microsoft Corporation. All rights reserved. | NativeBeeper.ContractTests, NativeBeeper.Server.Linux |
@@ -3424,7 +3436,7 @@ Identical to GOOGLE_VOICE_LICENSE_EXCEPTIONS.txt, installed beside MessageLink.e
 
 Identical to MAUTRIX_META_LICENSE_EXCEPTIONS.txt, installed beside MessageLink.exe.
 
-### license.txt: Microsoft.Windows.AI.MachineLearning 2.1.74 (license.txt)
+### license.txt: Microsoft.Windows.AI.MachineLearning 2.5.96 (license.txt)
 
 ```text
 MICROSOFT SOFTWARE LICENSE TERMS
@@ -3480,20 +3492,20 @@ This limitation applies to (a) anything related to the software, services, conte
 It also applies even if Microsoft knew or should have known about the possibility of the damages. The above limitation or exclusion may not apply to you because your state, province, or country may not allow the exclusion or limitation of incidental, consequential, or other damages.
 ```
 
-### license.txt: Microsoft.WindowsAppSDK 2.4.0 (license.txt) and 9 more
+### license.txt: Microsoft.WindowsAppSDK 2.7.0 (license.txt) and 9 more
 
 Applies to:
 
-- Microsoft.WindowsAppSDK 2.4.0 (license.txt)
-- Microsoft.WindowsAppSDK.AI 2.4.4 (license.txt)
-- Microsoft.WindowsAppSDK.Base 2.0.4 (license.txt)
-- Microsoft.WindowsAppSDK.DWrite 2.1.0 (license.txt)
-- Microsoft.WindowsAppSDK.Foundation 2.3.9 (license.txt)
-- Microsoft.WindowsAppSDK.InteractiveExperiences 2.1.6 (license.txt)
-- Microsoft.WindowsAppSDK.Runtime 2.4.0 (license.txt)
-- Microsoft.WindowsAppSDK.Search 2.4.4 (license.txt)
-- Microsoft.WindowsAppSDK.Widgets 2.0.5 (license.txt)
-- Microsoft.WindowsAppSDK.WinUI 2.3.6 (license.txt)
+- Microsoft.WindowsAppSDK 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.AI 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.Base 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.DWrite 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.Foundation 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.InteractiveExperiences 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.Runtime 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.Search 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.Widgets 2.7.0 (license.txt)
+- Microsoft.WindowsAppSDK.WinUI 2.7.0 (license.txt)
 
 ```text
 MICROSOFT SOFTWARE LICENSE TERMS
@@ -3589,7 +3601,7 @@ This limitation applies to (a) anything related to the software, services, conte
 It also applies even if Microsoft knew or should have known about the possibility of the damages. The above limitation or exclusion may not apply to you because your state, province, or country may not allow the exclusion or limitation of incidental, consequential, or other damages.
 ```
 
-### license.txt: Microsoft.WindowsAppSDK.ML 2.1.74 (license.txt)
+### license.txt: Microsoft.WindowsAppSDK.ML 2.7.0 (license.txt)
 
 ```text
 MICROSOFT SOFTWARE LICENSE TERMS
@@ -3604,7 +3616,7 @@ These license terms are an agreement between you and Microsoft Corporation (or o
         a) General. Subject to the terms of this agreement, you may install and use any number of copies of the software to develop and test your applications, solely for use on Windows. When building Generative AI applications follow the guidelines in https://learn.microsoft.com/windows/ai/rai.
         b) Included Microsoft Applications. The software may include other Microsoft applications. These license terms apply to those included applications, if any, unless other license terms are provided with the other Microsoft applications.
         c) Microsoft Platforms. The software may include components from Microsoft Windows. These components are governed by separate agreements and their own product support policies, as described in the license terms found in the installation directory for that component or in the “Licenses” folder accompanying the software.
-        d) Third Party Materials. The software may use or include source code, object code, or data available under an open source or open data license (“Open Source Materials”) or a proprietary license from a third party (with Open Source Materials, collectively, “Third Party Materials”) that are licensed under the specific license terms applicable to the Third Party Materials (an “Third Party License Agreement”). To the extent that any Third Party License Agreement requires that the corresponding Third Party Materials be licensed under terms that are different from the terms set forth in this Agreement, then such Third Party Materials are licensed under the terms of that Third Party License Agreement and the other terms and conditions in this Agreement will not apply with respect to those Third Party Materials. You (a) acknowledge that any such Third Party License Agreement is solely between Licensee and the applicable licensor of the Third Party Materials, and (b) will comply with the terms of any such Third Party License Agreement. Without limitation to the foregoing, the licenses referenced on this website (https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/supported-execution-providers) are deemed to be “Third Party Materials.”
+        d) Third Party Materials. The software may use or include source code, object code, or data available under an open source or open data license (“Open Source Materials”) or a proprietary license from a third party (with Open Source Materials, collectively, “Third Party Materials”) that are licensed under the specific license terms applicable to the Third Party Materials (an “Third Party License Agreement”). To the extent that any Third Party License Agreement requires that the corresponding Third Party Materials be licensed under terms that are different from the terms set forth in this Agreement, then such Third Party Materials are licensed under the terms of that Third Party License Agreement and the other terms and conditions in this Agreement will not apply with respect to those Third Party Materials. You (a) acknowledge that any such Third Party License Agreement is solely between Licensee and the applicable licensor of the Third Party Materials, and (b) will comply with the terms of any such Third Party License Agreement. Without limitation to the foregoing, the licenses referenced on these websites (https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/supported-execution-providers and https://aka.ms/winml-licenses) are deemed to be “Third Party Materials.”
     2. DATA.
         a) Data Collection. The software may collect information about you and your use of the software, and send that to Microsoft. Microsoft may use this information to provide services and improve our products and services. You may opt-out of many of these scenarios, but not all, as described in the product documentation. There are also some features in the software that may enable you to collect data from users of your applications. If you use these features to enable data collection in your applications, you must comply with applicable law, including providing appropriate notices to users of your applications. You can learn more about data collection and use in the help documentation and the privacy statement at https://aka.ms/privacy. Your use of the software operates as your consent to these practices.
         b) Processing of Personal Data. To the extent Microsoft is a processor or subprocessor of personal data in connection with the software, Microsoft makes the commitments in the European Union General Data Protection Regulation Terms of the Online Services Terms to all customers effective May 25, 2018, at https://docs.microsoft.com/en-us/legal/gdpr.
@@ -4480,7 +4492,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### MIT: Microsoft.WindowsAppSDK.WinUI 2.3.6 (NOTICE.txt)
+### MIT: Microsoft.WindowsAppSDK.WinUI 2.7.0 (NOTICE.txt)
 
 ```text
 NOTICES AND INFORMATION
@@ -4989,11 +5001,10 @@ These third-party notice files are too long to repeat here; each is in the named
 
 - Microsoft.Extensions.DependencyInjection 10.0.15: THIRD-PARTY-NOTICES.TXT (75 KB)
 - Microsoft.Extensions.DependencyInjection.Abstractions 10.0.15: THIRD-PARTY-NOTICES.TXT (75 KB)
-- Microsoft.Windows.AI.MachineLearning 2.1.74: ThirdPartyNotices.txt (317 KB)
-- Microsoft.WindowsAppSDK 2.4.0: NOTICE.txt (327 KB)
-- Microsoft.WindowsAppSDK.Base 2.0.4: NOTICE.txt (327 KB)
-- Microsoft.WindowsAppSDK.ML 2.1.74: ThirdPartyNotices.txt (317 KB)
-- Microsoft.WindowsAppSDK.Runtime 2.4.0: NOTICE.txt (327 KB)
+- Microsoft.Windows.AI.MachineLearning 2.5.96: ThirdPartyNotices.txt (317 KB)
+- Microsoft.WindowsAppSDK 2.7.0: NOTICE.txt (327 KB)
+- Microsoft.WindowsAppSDK.Base 2.7.0: NOTICE.txt (327 KB)
+- Microsoft.WindowsAppSDK.Runtime 2.7.0: NOTICE.txt (327 KB)
 - System.Numerics.Tensors 9.0.0: THIRD-PARTY-NOTICES.TXT (72 KB)
 
 <!-- END GENERATED -->

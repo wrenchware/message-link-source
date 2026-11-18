@@ -18,7 +18,7 @@
     <InternalsVisibleTo Include="NativeBeeper.ContractTests" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The version Microsoft.WindowsAppSDK 2.4.0 brings (src/NativeBeeper.App/packages.lock.json), so the app's own copy is this one. -->
+    <!-- The version Microsoft.WindowsAppSDK 2.7.0 brings (src/NativeBeeper.App/packages.lock.json), so the app's own copy is this one. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />
     <ProjectReference Include="../NativeBeeper.Backends/NativeBeeper.Backends.csproj" />

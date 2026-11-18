@@ -32,14 +32,14 @@
     <Product>Message Link</Product>
     <AssemblyTitle>Message Link</AssemblyTitle>
     <Company>wrenchware</Company>
-    <Version>0.1.469</Version>
+    <Version>0.1.470</Version>
     <!-- Program.cs provides Main so a second launch can redirect to the running app. -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Only explicitly requested development bundles default to isolated data. Normal releases reuse saved accounts. -->
     <DefineConstants Condition="'$(MergedDevelopmentBuild)' == 'true'">$(DefineConstants);MERGED_DEVELOPMENT_BUILD</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
     <ProjectReference Include="../NativeBeeper.Presentation/NativeBeeper.Presentation.csproj" />
     <ProjectReference Include="../NativeBeeper.Backends/NativeBeeper.Backends.csproj" />
     <ProjectReference Include="../NativeBeeper.Protocol/NativeBeeper.Protocol.csproj" />
@@ -81,7 +81,7 @@
     <Content Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
   <!-- Windows App SDK 2.4.0 self-contained leaves Microsoft.WindowsAppRuntime.Insights.Resource.dll out of the app (it is
-       in no NuGet package's runtimes folder), and without it AppNotificationManager.Register fails with 0x8007007E, so
+       in no NuGet package's runtimes folder, still so in 2.7.0 despite 2.6.4's note on this file), and without it AppNotificationManager.Register fails with 0x8007007E, so
        no notification is ever shown. Proved 2026-10-07 with a bare console app: self-contained fails, framework-dependent
        registers, and self-contained plus this one file registers. Every release from 0.1.362 (the switch to
        self-contained) to 0.1.381 shipped without notifications. The file is taken from the same SDK's own runtime MSIX,
