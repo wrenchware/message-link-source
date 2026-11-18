@@ -224,18 +224,23 @@ internal sealed class PushNotifier : IAsyncDisposable
                 if (opened) log($"push events resync count={Interlocked.Increment(ref resyncs)}");
                 opened = true;
             }
-            else if (item.Event is { ChatId: { } chatId } change && !change.IsHistory)
+            else if (item.Event is { } change && !change.IsHistory)
             {
                 try
                 {
-                    if (change.Kind == RealtimeKind.MessageChanged && !change.ReceiptOnly &&
+                    if (change.ChatId is { } chatId && change.Kind == RealtimeKind.MessageChanged && !change.ReceiptOnly &&
                         (change.IsNewMessage == true || registry.All().Any(r => r.BackgroundSync)))
                     {
                         await NewMessagesAsync(chatId, change.Ids ?? [], change.IsNewMessage == true, token).ConfigureAwait(false);
                         if (change.IsNewMessage != true) await MaybeReadAsync(chatId, token).ConfigureAwait(false);
                     }
-                    else if (change.Kind is RealtimeKind.ChatChanged or RealtimeKind.MessageChanged) await MaybeReadAsync(chatId, token).ConfigureAwait(false);
-                    else if (change.Kind == RealtimeKind.ChatDeleted) Withdraw(chatId);
+                    else if (change.Kind == RealtimeKind.MessageChanged && change.ChatId is { } changed) await MaybeReadAsync(changed, token).ConfigureAwait(false);
+                    // A conversation's own change names it in ChatId (Google Messages) or in Ids (Hermes, Messenger, Google Voice, Instagram): Hermes's
+                    // read named it in Ids alone, so a reply read at the PC left the phone's quiet notification up (2026-11-18).
+                    else if (change.Kind == RealtimeKind.ChatChanged)
+                        foreach (var id in ChatsOf(change)) await MaybeReadAsync(id, token).ConfigureAwait(false);
+                    else if (change.Kind == RealtimeKind.ChatDeleted)
+                        foreach (var id in ChatsOf(change)) Withdraw(id);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
                 catch (Exception failure)
@@ -347,6 +352,9 @@ internal sealed class PushNotifier : IAsyncDisposable
             if (told.TryGetValue(device.DeviceId, out var chatsTold) && chatsTold.TryRemove(chatId, out _))
                 Enqueue(new(device.DeviceId, new PushMessage(1, "read", chatId), Urgent: false));
     }
+
+    private static IEnumerable<string> ChatsOf(RealtimeEvent change) =>
+        (change.ChatId is { } one ? [one] : Array.Empty<string>()).Concat(change.Ids ?? []).Distinct(StringComparer.Ordinal);
 
     // A send in a burst: the device's wake waits until the sends stop for BurstQuiet.
     private void NoteBurst(string deviceId, string chatId)
