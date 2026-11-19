@@ -25,6 +25,8 @@ func TestSubmitNeverRetriesAndKeepsUncertainIdentity(t *testing.T) {
 	}{
 		{gmproto.SendMessageResponse_SUCCESS, nil, "pending", "", ""},
 		{gmproto.SendMessageResponse_FAILURE_4, nil, "rejected", "", ""},
+		// A refusal with no reason (a photo, 2026-11-19): its status is named for the app's log.
+		{gmproto.SendMessageResponse_FAILURE_2, nil, "rejected", "", ""},
 		{gmproto.SendMessageResponse_UNKNOWN, nil, "pending", "", ""},
 		// The phone not answering may still send later; its echo resolves the transaction.
 		{gmproto.SendMessageResponse_UNKNOWN, fmt.Errorf("%w in 30s", libgm.ErrPhoneNotResponding), "pending", "", "phone_unavailable"},
@@ -54,13 +56,20 @@ func TestSubmitNeverRetriesAndKeepsUncertainIdentity(t *testing.T) {
 			}
 			continue
 		}
-		// Only a refusal the phone named, or an error's class, carries more than the outcome and the transaction.
+		// Only a refusal (its status; the phone naming it adds its code and reason), or an error's class, carries more than the
+		// outcome and the transaction.
 		want := 2
+		if tc.outcome == "rejected" {
+			want = 3
+		}
 		if tc.status == gmproto.SendMessageResponse_FAILURE_4 {
-			want = 4
+			want = 5
 		}
 		if tc.class != "" {
 			want = 3
+		}
+		if tc.outcome == "rejected" && result["status"] != tc.status.String() {
+			t.Fatalf("refusal status not named: %v", result)
 		}
 		if result["outcome"] != tc.outcome || result["pendingId"] != "txn" || len(result) != want || (tc.class != "" && result["error"] != tc.class) {
 			t.Fatalf("unsafe outcome for %v: %v", tc.err, result)

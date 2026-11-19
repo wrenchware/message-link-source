@@ -191,6 +191,11 @@ func submitText(ctx context.Context, req *gmproto.SendMessageRequest, send func(
 	if reason != "" {
 		result["error"] = reason
 	}
+	// Which refusal, for the app's send log: whether a refused send would have gone on a second try is not known yet (a photo
+	// refused with no reason went at once when sent again, 2026-11-19).
+	if outcome == "rejected" {
+		result["status"] = resp.GetStatus().String()
+	}
 	// FAILURE_4 is the phone saying Google Messages is not its default SMS app (upstream connector/errors.go). Named,
 	// so the app says that rather than a generic refusal, and knows the phone's setting from it (settings.go).
 	if outcome == "rejected" && resp.GetStatus() == gmproto.SendMessageResponse_FAILURE_4 {

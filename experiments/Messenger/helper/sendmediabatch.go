@@ -126,15 +126,11 @@ func (a *adapter) sendMediaBatch(ctx context.Context, r request) (any, string) {
 			id, known = sent.ID, true
 		}
 	}
-	for _, row := range tbl.LSMarkOptimisticMessageFailed {
-		if row.OTID == "" || row.OTID == pending {
-			return nil, "send_rejected"
-		}
-	}
-	for _, row := range tbl.LSHandleFailedTask {
-		if row.OTID == "" || row.OTID == pending {
-			return nil, "send_rejected"
-		}
+	switch mediaSendRefusal(tbl, pending, known) {
+	case "rejected":
+		return nil, "send_rejected"
+	case "unknown":
+		return map[string]any{"outcome": "unknown", "otid": pending}, ""
 	}
 	if !known {
 		return map[string]any{"outcome": "unknown", "otid": pending}, ""

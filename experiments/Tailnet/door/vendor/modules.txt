@@ -126,7 +126,7 @@ github.com/tailscale/peercred
 # github.com/tailscale/web-client-prebuilt v0.0.0-20260917222731-e0ed2d0d0fea
 ## explicit; go 1.21
 github.com/tailscale/web-client-prebuilt
-# github.com/tailscale/wireguard-go v0.0.0-20260928213032-417aef361226
+# github.com/tailscale/wireguard-go v0.0.0-20261106233718-9e0ab45c16ca
 ## explicit; go 1.26.0
 github.com/tailscale/wireguard-go/conn
 github.com/tailscale/wireguard-go/conn/winrio
@@ -271,8 +271,8 @@ gvisor.dev/gvisor/pkg/tcpip/transport/tcp
 gvisor.dev/gvisor/pkg/tcpip/transport/tcpconntrack
 gvisor.dev/gvisor/pkg/tcpip/transport/udp
 gvisor.dev/gvisor/pkg/waiter
-# tailscale.com v1.104.5
-## explicit; go 1.27.3
+# tailscale.com v1.104.7
+## explicit; go 1.27.4
 tailscale.com
 tailscale.com/appc
 tailscale.com/atomicfile

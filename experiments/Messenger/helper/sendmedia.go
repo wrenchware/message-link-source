@@ -125,17 +125,13 @@ func (a *adapter) sendMedia(ctx context.Context, r request) (any, string) {
 			id, known = sent.ID, true
 		}
 	}
-	for _, row := range tbl.LSMarkOptimisticMessageFailed {
-		if row.OTID == "" || row.OTID == pending {
-			logf("sendMedia chat=%s refused", tag(key))
-			return nil, "send_rejected"
-		}
-	}
-	for _, row := range tbl.LSHandleFailedTask {
-		if row.OTID == "" || row.OTID == pending {
-			logf("sendMedia chat=%s refused", tag(key))
-			return nil, "send_rejected"
-		}
+	switch mediaSendRefusal(tbl, pending, known) {
+	case "rejected":
+		logf("sendMedia chat=%s refused", tag(key))
+		return nil, "send_rejected"
+	case "unknown":
+		logf("sendMedia chat=%s confirmed and named failed", tag(key))
+		return map[string]any{"outcome": "unknown", "otid": pending}, ""
 	}
 	if !known {
 		logf("sendMedia chat=%s accepted with no id", tag(key))
@@ -146,6 +142,28 @@ func (a *adapter) sendMedia(ctx context.Context, r request) (any, string) {
 	a.out.write(response{Event: "changed", Result: &changes{Chats: []string{chat}, Messages: map[string][]string{chat: {id}}}})
 	logf("sendMedia chat=%s accepted message=%s", tag(key), tagOf(id))
 	return map[string]any{"outcome": "accepted", "id": id, "otid": pending}, ""
+}
+
+// What Facebook's failure rows say about one media send. A row naming this send refuses it; a row naming none may be the
+// mark-read task sent with it, so it refuses only a send Facebook did not also confirm, as a text send reads it. A send both
+// confirmed and named as failed is unknown, never refused: the app offers Retry on a refusal, which would send it twice.
+func mediaSendRefusal(tbl *table.LSTable, pending string, known bool) string {
+	named, unnamed := false, false
+	for _, row := range tbl.LSMarkOptimisticMessageFailed {
+		named = named || row.OTID == pending
+		unnamed = unnamed || row.OTID == ""
+	}
+	for _, row := range tbl.LSHandleFailedTask {
+		named = named || row.OTID == pending
+		unnamed = unnamed || row.OTID == ""
+	}
+	switch {
+	case named && known:
+		return "unknown"
+	case named || unnamed && !known:
+		return "rejected"
+	}
+	return ""
 }
 
 // A recording made in the app's composer goes as a voice message, as upstream sends one: Facebook's upload is told it is

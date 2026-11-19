@@ -143,8 +143,13 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
     {
         "LOCAL_UNCONFIRMED" => "Not confirmed yet",
         "LOCAL_UNKNOWN" => "May not have sent",
+        "LOCAL_REJECTED" or "LOCAL_ATTACHMENT_REJECTED" => "Not sent",
         _ => ""
     };
+    // A send this PC made that its service refused: drawn in the error color with Retry and Remove (Edit for words) on its row, the
+    // only place it is reported (owner, 2026-11-19).
+    public bool IsNotSent => !Message.IsDeleted && Message.Delivery.SendState is "LOCAL_REJECTED" or "LOCAL_ATTACHMENT_REJECTED";
+    public bool IsNotSentText => IsNotSent && Message.Delivery.SendState == "LOCAL_REJECTED";
     // Send later: a message kept on this PC for its time (or one whose time passed unsent), with Send now, Edit and Cancel.
     public bool IsScheduled => ScheduledSendRows.Is(Message);
     // Receipt icon stage: sending, sent, delivered, read, failed or unknown; empty for incoming or deleted messages.
@@ -324,8 +329,9 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
             "LOCAL_HELD" => "Not sent yet · Undo takes it back",
             "LOCAL_UNCONFIRMED" => "Not confirmed yet · It won't be sent twice",
             "LOCAL_UNKNOWN" => "May not have sent · Check the conversation before sending it again",
-            "LOCAL_REJECTED" => "Not sent · Restore draft to try again",
-            "LOCAL_ATTACHMENT_REJECTED" => "Not sent · Select the attachment again to retry",
+            // Retry, Edit and Remove sit beside these words on the row (MessageBubble), and the reason is its tooltip.
+            "LOCAL_REJECTED" => "Not sent",
+            "LOCAL_ATTACHMENT_REJECTED" => "Not sent",
             "SUCCESS" => "Sent", "PENDING" => "Sending…", "FAIL_RETRIABLE" => "Send failed", "FAIL_PERMANENT" => "Send failed", _ => null
         };
     }

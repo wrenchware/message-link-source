@@ -57,8 +57,30 @@ public sealed class InterruptedSends : IDisposable
         this.outbox = outbox; this.sender = sender; this.state = state; this.outcomes = outcomes; this.dispatcher = dispatcher; this.host = host;
         if (host is not null) host.UnsettledChanged += (_, _) => _ = RefreshHostQuietAsync();
         outbox.Changed += OutboxChanged;
+        if (host is not null) outbox.RefusalSettled += RefusalSettled;
         if (outcomes is not null) outcomes.Reconciled += OperationReconciled;
     }
+
+    // A refused send retried, removed or taken back to edit on this PC is dealt with, so the server's record of it goes for every device.
+    // A record not written yet is retired by the same call, so it never appears. One that can't be reached now is owed, and dismissed
+    // at the next read of the server's records this session (RefreshHostAsync); after a restart it would show as any other.
+    private readonly HashSet<string> owed = new(StringComparer.Ordinal);
+    private async void RefusalSettled(object? source, string operationId)
+    {
+        try { await DismissSettledAsync(operationId); }
+        catch (Exception) { owed.Add(operationId); }
+    }
+    private async Task DismissSettledAsync(string operationId)
+    {
+        await host!.DismissUnsettledAsync(operationId);
+        owed.Remove(operationId);
+        if (hostRows.FirstOrDefault(send => send.OperationId == operationId) is { } row)
+        {
+            hostRows = [.. hostRows.Where(known => !ReferenceEquals(known, row))];
+            Changed?.Invoke(this, row.ChatId);
+        }
+    }
+    private bool Shown(InterruptedSend send) => send.OperationId is not { } name || !outbox.MadeHere(name);
 
     // The names to ask a host about: every carried send that has one.
     public IReadOnlyList<string> OperationIds => [.. carried.Select(send => send.OperationId).OfType<string>()];
@@ -94,7 +116,10 @@ public sealed class InterruptedSends : IDisposable
         await CheckAsync();
     }
 
-    public IReadOnlyList<InterruptedSend> ForChat(string chatId) => carried.Concat(hostRows).Where(send => send.ChatId == chatId).ToArray();
+    // The server's record of a send this PC made this session is left out: the message itself shows how it ended, with Retry when it
+    // was refused, and the banner said it again and outlived the resend (owner, 2026-11-19). Other devices still see the record.
+    public IReadOnlyList<InterruptedSend> ForChat(string chatId) =>
+        carried.Concat(hostRows.Where(Shown)).Where(send => send.ChatId == chatId).ToArray();
     // The conversations with a carried send, so a reset can dismiss those it clears.
     public IReadOnlyList<string> ChatIds => [.. carried.Concat(hostRows).Select(send => send.ChatId).Distinct(StringComparer.Ordinal)];
 
@@ -159,9 +184,11 @@ public sealed class InterruptedSends : IDisposable
         await SaveAsync();
     }
 
-    public async Task DismissAsync(string chatId)
+    // all: every record of the conversation, those this PC leaves out of the banner too (Google's renumbering reset). Otherwise only what
+    // the banner showed: Dismiss there must not retire, for every device, a record of this PC's own send the person never saw in it.
+    public async Task DismissAsync(string chatId, bool all = false)
     {
-        var server = hostRows.Count == 0 ? [] : hostRows.Where(send => send.ChatId == chatId).ToArray();
+        var server = hostRows.Count == 0 ? [] : hostRows.Where(send => send.ChatId == chatId && (all || Shown(send))).ToArray();
         var removed = carried.Count(send => send.ChatId == chatId);
         if (removed > 0) carried = [.. carried.Where(send => send.ChatId != chatId)];
         if (removed == 0 && server.Length == 0) return;
@@ -189,6 +216,12 @@ public sealed class InterruptedSends : IDisposable
         hostRows = read;
         foreach (var chatId in before.Concat(read).GroupBy(send => send.LocalId).Where(group => group.Count() != 2).SelectMany(group => group).Select(send => send.ChatId).Distinct())
             Changed?.Invoke(this, chatId);
+        // Settled refusals whose dismissal didn't reach the server: once each read finds them there, not in a loop of their own.
+        foreach (var name in owed.Where(name => read.Any(send => send.OperationId == name)).ToArray())
+        {
+            try { await DismissSettledAsync(name); }
+            catch (Exception) { /* still owed */ }
+        }
     }
 
     private async Task RefreshHostQuietAsync()
@@ -224,6 +257,7 @@ public sealed class InterruptedSends : IDisposable
     public void Dispose()
     {
         outbox.Changed -= OutboxChanged;
+        if (host is not null) outbox.RefusalSettled -= RefusalSettled;
         if (outcomes is not null) outcomes.Reconciled -= OperationReconciled;
         writing.Dispose();
     }

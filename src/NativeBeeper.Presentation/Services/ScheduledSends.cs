@@ -164,8 +164,8 @@ public sealed class ScheduledSends : IDisposable
             var chatId = item.ChatId; var text = item.Text;
             // No Undo send wait: the time was chosen, and the message has waited already.
             return item.ReplyToId is { } replyTo && actions is not null
-                ? outbox.SendOperationAsync(chatId, text, ct => actions.ReplyAsync(chatId, replyTo, text, ct), true, replyTo, localId: item.Id)
-                : outbox.SendOperationAsync(chatId, text, ct => sender.SendTextAsync(chatId, text, ct), true, localId: item.Id);
+                ? outbox.SendOperationAsync(chatId, text, ct => actions.ReplyAsync(chatId, replyTo, text, ct), true, replyTo, localId: item.Id, retryable: false)
+                : outbox.SendOperationAsync(chatId, text, ct => sender.SendTextAsync(chatId, text, ct), true, localId: item.Id, retryable: false);
         }
         public OutgoingState? StateOf(string id) => outbox.Find(id)?.State;
         // Added and removed on the outbox itself, so the engine is called in the order it subscribed, as before.

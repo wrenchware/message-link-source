@@ -531,6 +531,21 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
             NotifyReply();
         }
     }
+    /// <summary>
+    /// Edit on a refused message's row: its words (and its reply) back in the draft of the conversation it was sent to, as Send later's
+    /// Edit does. In a merged conversation whose box is set to another service they wait in that service's draft rather than going out
+    /// through the other one, and an edit of a sent message in the box ends first, so they can't be published as that edit.
+    /// </summary>
+    public bool EditNotSent(string localId)
+    {
+        if (IsSavingEdit || outbox.TakeRejectedText(localId) is not { } restored) return false;
+        if (restored.ChatId == chatId) EndEdit();
+        if (restored.ReplyToId is not null && !replies.ContainsKey(restored.ChatId))
+        { replies[restored.ChatId] = (restored.ReplyToId, "Reply to an earlier message"); NotifyReply(); }
+        RestoreSubmittedText(restored.ChatId, restored.Text);
+        if (restored.ChatId == chatId) ScheduleDraftSave();
+        return restored.ChatId == chatId;
+    }
     public void Clear()
     {
         draftSelection++; draftDelay?.Cancel(); draftPending = null; draftProfile = null; loadedDrafts.Clear(); draftScopes.Clear(); queuedSend = null; editing = null;

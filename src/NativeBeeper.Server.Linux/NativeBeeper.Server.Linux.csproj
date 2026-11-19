@@ -25,10 +25,10 @@
          NoDependencies build links its few libraries in statically, so it loads on the runtime image (glibc only) without fontconfig or anything
          installed beside it. SkiaSharp also brings its Windows and macOS natives; they are excluded, as this program never runs there and a
          build on Windows would otherwise copy about 400 MB of them (with their symbols) into bin. -->
-    <PackageReference Include="SkiaSharp" Version="4.153.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.153.1" ExcludeAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.153.1" ExcludeAssets="all" />
+    <PackageReference Include="SkiaSharp" Version="4.157.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.157.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.157.0" ExcludeAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="4.157.0" ExcludeAssets="all" />
     <ProjectReference Include="../NativeBeeper.Core/NativeBeeper.Core.csproj" />
     <ProjectReference Include="../NativeBeeper.Protocol/NativeBeeper.Protocol.csproj" />
     <ProjectReference Include="../NativeBeeper.Backends/NativeBeeper.Backends.csproj" />

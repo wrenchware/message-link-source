@@ -49,8 +49,10 @@ public static class AttachmentBatchRules
     public static AttachmentTextPlan Text(int attachmentCount, bool hasText, bool captionSupported) =>
         !hasText ? new(false, false) : attachmentCount == 1 && captionSupported ? new(true, false) : new(false, true);
 
-    // An unknown result may already be visible to the other person and must never remain in the retryable draft.
-    public static bool RemoveSubmittedDraft(OutgoingState state) => state != OutgoingState.Rejected;
+    // Every submitted attachment leaves the draft: an unknown result may already be visible to the other person and must never remain
+    // in the draft to be sent again, and a refused one stays on its own row with Retry (owner, 2026-11-19; it used to go back to the
+    // draft, and the row said to choose it again). That row is where a refusal is reported, so only an uncertain result also gets a notice.
+    public static bool NoticeAfter(OutgoingState state) => state != OutgoingState.Rejected;
     public static bool ContinueBatch(OutgoingState state) => state is not (OutgoingState.Rejected or OutgoingState.Unknown);
 
     // A file or video on its way, drawn as its confirmed copy will be (2026-10-04): its card or play button, with any

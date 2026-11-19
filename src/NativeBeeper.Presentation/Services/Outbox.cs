@@ -17,10 +17,11 @@ public sealed record OutgoingMessage(string LocalId, string ChatId, string Text,
 
 public sealed record ResolvedOutgoingBatch(OutgoingMessage Outgoing, IReadOnlyList<ChatMessage> Messages);
 // How a photo set sent one at a time ended (Outbox.SendSetAsync). Handled counts the photos, from the first, that have left
-// the draft: accepted, or possibly sent. Failed is the state of the photo after them when one failed; null when none did.
+// the draft: accepted, refused (kept on its row with Retry), or possibly sent. Failed is the state of the photo after them when one failed; null when none did.
 public sealed record PhotoSetOutcome(int Handled, OutgoingState? Failed, string? Explanation = null);
 
-// Owned by the UI context, independent of conversation selection. Never retries a POST.
+// Owned by the UI context, independent of conversation selection. Never retries a POST by itself: only the person's Retry on a
+// refused send's row sends it again (RetryAsync).
 // followUpDelays replaces the background confirmation schedule, and lookupStep the spacing of the quick lookups after a
 // receipt (2 s, then 4 s, then 6 s); the offline checks use them to keep those checks fast.
 // outcomes, when the sender is a host over a connection that can be lost, says what became of a send whose answer was lost
@@ -55,8 +56,64 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     public OutgoingMessage? Find(string localId) => messages.GetValueOrDefault(localId);
     private void Notify(string chatId, string localId)
     {
-        if (!messages.ContainsKey(localId)) started.Remove(localId);
+        if (!messages.ContainsKey(localId))
+        {
+            started.Remove(localId); resends.Remove(localId);
+            // A refused send taken out of the conversation (Remove, Edit) is dealt with: its record on the server goes too.
+            if (refusedAs.Remove(localId, out var name)) RefusalSettled?.Invoke(this, name);
+        }
         Changed?.Invoke(this, chatId); ItemChanged?.Invoke(this, localId);
+    }
+
+    // ---- Retry: a refused send goes again from its own row (owner, 2026-11-19) ----
+    //
+    // A refusal is certain (the service answered no), so sending the same thing again is a new send, never a duplicate. It is only ever
+    // the person's click: nothing here resends by itself. The submission is kept from the start, so a send first uncertain and then
+    // reported failed by the host (ApplyOutcome) can go again too, and dropped once the service accepts it or the send leaves the outbox.
+    private sealed record Resend(Func<CancellationToken, Task<SendReceipt>> Submit, bool WaitForConfirmation);
+    private readonly Dictionary<string, Resend> resends = [];
+    // The name the server's journal knows each refused send by (its planned OperationId), by local id: a server keeps a record of every
+    // refused send for every device (HostUnsettledSends), which this PC already draws on the message itself. Dismissed once the person
+    // retries or removes it (RefusalSettled).
+    private readonly Dictionary<string, string> refusedAs = [];
+    // Every name this outbox gave a send this session. Its outcome is shown on the message itself, refused or uncertain, so the
+    // conversation's banner leaves out the server's record of it (owner, 2026-11-19: a refused photo was reported twice, and stayed
+    // reported after its resend went).
+    private readonly HashSet<string> namedHere = new(StringComparer.Ordinal);
+    /// <summary>The operation id of a refused send this outbox has dealt with (retried, removed or taken back to edit): its server record can go.</summary>
+    public event EventHandler<string>? RefusalSettled;
+    /// <summary>Whether this outbox made the send with this operation id this session: the message shows its outcome, so the banner need not.</summary>
+    public bool MadeHere(string operationId) => namedHere.Contains(operationId);
+    public bool CanRetry(string localId) =>
+        messages.TryGetValue(localId, out var item) && item.State == OutgoingState.Rejected && resends.ContainsKey(localId);
+    private void NoteRefused(string localId, string? operationId)
+    {
+        if (operationId is not null) refusedAs[localId] = operationId;
+    }
+    private string NewName()
+    {
+        var name = PlannedOperation.NewId();
+        namedHere.Add(name);
+        return name;
+    }
+
+    /// <summary>
+    /// Sends a refused message again, as the same row: it starts sending at the end of the conversation under a new name, once. Nothing
+    /// when it is no longer refused here. Its earlier refusal is settled (RefusalSettled).
+    /// </summary>
+    public async Task RetryAsync(string localId)
+    {
+        if (!CanRetry(localId)) return;
+        var version = generation;
+        var item = messages[localId]; var resend = resends[localId];
+        // A new time, so the row moves to the end now rather than when the service's copy confirms it there.
+        var again = item with { State = OutgoingState.Sending, CreatedAt = NextCreated(), Explanation = null, PendingId = null, PendingMessageIds = null,
+            ConfirmedId = null, Unconfirmed = false, OperationId = NewName() };
+        messages[localId] = again;
+        Restart(localId);
+        if (refusedAs.Remove(localId, out var name)) RefusalSettled?.Invoke(this, name);
+        Notify(item.ChatId, localId);
+        await RunAsync(again, version, resend.Submit, resend.WaitForConfirmation);
     }
     private void Restart(string localId) => started[localId] = System.Diagnostics.Stopwatch.GetTimestamp();
     // outcome: confirmed, unknown, failed or unconfirmed. Only unconfirmed leaves the clock running, because the message
@@ -158,7 +215,9 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         string? localId = null,
         // Undo send: asked as the wait ends and before the provider is, for the composer to take the words out of the saved draft they waited in. False, or no
         // answer in time, and the send doesn't go, refused as any other is, with its banner and Restore: a sent message left in its draft could be sent again by someone who took it for unsent.
-        Func<Task<bool>>? holdEnding = null)
+        Func<Task<bool>>? holdEnding = null,
+        // False for a send another engine follows by its id (Send later's), which a Retry from the row would send behind its back.
+        bool retryable = true)
     {
         var version = generation;
         var hold = holdFor is not null && Hold > TimeSpan.Zero ? Hold : TimeSpan.Zero;
@@ -190,12 +249,12 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                 }
                 item = item with { State = OutgoingState.Sending };
                 messages[item.LocalId] = item; Restart(item.LocalId); Notify(chatId, item.LocalId);
-                await RunAsync(item, version, submit, waitForConfirmation);
+                await RunAsync(item, version, submit, waitForConfirmation, retryable: retryable);
             }
             finally { holds.Remove(item.LocalId); holding.Undo.Dispose(); }
             return;
         }
-        await RunAsync(item, version, submit, waitForConfirmation);
+        await RunAsync(item, version, submit, waitForConfirmation, retryable: retryable);
     }
 
     /// <summary>
@@ -203,17 +262,25 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     /// is pressed: each is a pending send of its own from the start, in order, and each is then submitted once, never
     /// retried, and confirmed in place. Drawn one by one as each went, the strip emptied a photo at a time and the photos
     /// arrived as a procession (2026-10-01 recordings). submit returns null to stop before a photo without submitting it.
-    /// After a failure the failed photo stays as its send — refused, or uncertain — and the photos after it, never
-    /// attempted, are withdrawn; the caller keeps them in its draft.
+    /// After a failure the failed photo stays as its send — refused, with Retry on its row, or uncertain — and leaves the
+    /// draft either way; the photos after it, never attempted, are withdrawn, and the caller keeps them in its draft.
     /// </summary>
     public async Task<PhotoSetOutcome> SendEachAsync(string chatId, string text, IReadOnlyList<MessageAttachment> attachments,
-        Func<int, CancellationToken, Task<SendReceipt?>> submit)
+        Func<int, CancellationToken, Task<SendReceipt?>> submit,
+        // What Retry sends for one photo, holding that photo alone; without it, submit is kept, with whatever it holds.
+        Func<int, Func<CancellationToken, Task<SendReceipt>>>? resendOf = null)
     {
         if (attachments.Count == 0) throw new ArgumentException("Nothing to send.", nameof(attachments));
         if (messages.Count + attachments.Count > 100) throw new InvalidOperationException("Review pending sends before sending more messages.");
         var version = generation;
         // Added together and announced once, so the conversation draws every photo in one pass.
         var items = attachments.Select(attachment => Place(chatId, text, canRestoreText: false, replyToId: null, [attachment])).ToArray();
+        // Retry sends that one photo again. Null from submit is the caller stopping the set (its account changed), which for one photo
+        // alone is a refusal: nothing went.
+        for (var each = 0; each < items.Length; each++)
+            resends[items[each].LocalId] = new(resendOf?.Invoke(each) ?? Resubmit(submit, each), false);
+        static Func<CancellationToken, Task<SendReceipt>> Resubmit(Func<int, CancellationToken, Task<SendReceipt?>> submit, int at) =>
+            async ct => await submit(at, ct) ?? throw new SendException(false, "The account changed, so the photo wasn't sent.");
         Changed?.Invoke(this, chatId);
         foreach (var item in items) ItemChanged?.Invoke(this, item.LocalId);
         for (var index = 0; index < items.Length; index++)
@@ -235,20 +302,23 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                 var unknown = ex is SendException { OutcomeUnknown: true } || ex is OperationCanceledException;
                 Report(messages[localId], unknown ? "unknown" : "failed");
                 var explanation = ex is SendException send ? send.Message : "The photo wasn't sent. Check your connection and try again.";
+                if (!unknown) NoteRefused(localId, messages[localId].OperationId);
                 messages[localId] = messages[localId] with { State = unknown ? OutgoingState.Unknown : OutgoingState.Rejected, Explanation = explanation,
                     OperationId = unknown ? (ex as SendException)?.OperationId : null };
                 Notify(chatId, localId);
                 // The host's answer may have come before the send was marked unknown: what it said is this photo's outcome. A
-                // definite refusal keeps the photo in the draft; a definite send goes on to the next photo (its confirmation
-                // already started), as a receipt would have. The verdict is taken from what was applied, not looked up
-                // afterwards: a lookup that answers at once confirms the photo and removes it before it could be read back.
+                // definite refusal stays on its row with Retry (it used to go back to the draft); a definite send goes on to the
+                // next photo (its confirmation already started), as a receipt would have. The verdict is taken from what was
+                // applied, not looked up afterwards: a lookup that answers at once confirms the photo and removes it before it
+                // could be read back.
                 var settled = SettleEarly(localId) ?? messages.GetValueOrDefault(localId);
                 if (settled?.State == OutgoingState.Pending) continue;
                 var refused = settled?.State == OutgoingState.Rejected;
                 Withdraw(index + 1);
-                return new(index + (refused ? 0 : 1), refused ? OutgoingState.Rejected : OutgoingState.Unknown, refused ? settled!.Explanation : explanation);
+                return new(index + 1, refused ? OutgoingState.Rejected : OutgoingState.Unknown, refused ? settled!.Explanation : explanation);
             }
             messages[localId] = messages[localId] with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null };
+            resends.Remove(localId);
             Notify(chatId, localId);
             _ = ConfirmAsync(localId, version, lifetime.Token);
         }
@@ -271,6 +341,8 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     {
         var version = generation;
         var item = Add(chatId, text, canRestoreText: true, replyToId: null, attachments: null);
+        // Retry sends the words alone: what they waited for is behind them by then.
+        resends[item.LocalId] = new(ct => sender.SendTextAsync(chatId, text, ct), true);
         // Watched before it can start: with ready already true and a service that answers at once, it could be accepted,
         // confirmed and gone before a watch begun afterwards, which would then call it not accepted.
         accepted = AcceptedAsync(item.LocalId);
@@ -368,17 +440,21 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     // Sends are drawn in the order they were made. Several made in one turn could share a clock reading and then sort by
     // their random ids instead, so each is given a time after the one before.
     private DateTimeOffset lastCreated;
+    private DateTimeOffset NextCreated()
+    {
+        var now = DateTimeOffset.UtcNow;
+        return lastCreated = now > lastCreated ? now : lastCreated.AddTicks(1);
+    }
     private OutgoingMessage Place(string chatId, string text, bool canRestoreText, string? replyToId, IReadOnlyList<MessageAttachment>? attachments,
         OutgoingState state = OutgoingState.Sending, string? localId = null)
     {
         // Listening starts with the first send, there being nothing to hear about before it (a primary constructor has no body to do it in).
         if (outcomes is not null && !listening) { listening = true; outcomes.Reconciled += OperationReconciled; }
-        var now = DateTimeOffset.UtcNow;
-        lastCreated = now > lastCreated ? now : lastCreated.AddTicks(1);
+        var created = NextCreated();
         // Named now, before anything is sent: the record kept for the next launch (InterruptedSends) then holds the name of a send that was in flight when the
         // app was killed, and the host's journal can say what became of it. A port that runs in this process never looks at it.
-        var item = new OutgoingMessage(localId ?? "local:" + Guid.NewGuid().ToString("N"), chatId, text, lastCreated, state,
-            CanRestoreText: canRestoreText, ReplyToId: replyToId, Attachments: attachments, OperationId: PlannedOperation.NewId());
+        var item = new OutgoingMessage(localId ?? "local:" + Guid.NewGuid().ToString("N"), chatId, text, created, state,
+            CanRestoreText: canRestoreText, ReplyToId: replyToId, Attachments: attachments, OperationId: NewName());
         messages.Add(item.LocalId, item);
         Restart(item.LocalId);
         return item;
@@ -394,9 +470,10 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
 
     // The one body behind SendOperationAsync and Submit: a single submission, then lookups. Never a second submit.
     private async Task RunAsync(OutgoingMessage item, int version, Func<CancellationToken, Task<SendReceipt>> submit, bool waitForConfirmation,
-        Action? withheld = null)
+        Action? withheld = null, bool retryable = true)
     {
         var chatId = item.ChatId;
+        if (retryable) resends.TryAdd(item.LocalId, new(submit, waitForConfirmation));
         try
         {
             var receipt = await Named(item, () => submit(lifetime.Token));
@@ -408,6 +485,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
             // Accepted: the receipt names it from here, so the name given before sending is dropped.
             messages[item.LocalId] = item with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null,
                 PendingMessageIds = receipt.PendingMessageIds?.ToArray() };
+            resends.Remove(item.LocalId);
             Notify(chatId, item.LocalId);
             if (!waitForConfirmation)
             {
@@ -431,6 +509,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
             if (messages[item.LocalId].PendingId is not null) { _ = FollowUpAsync(item.LocalId, version, lifetime.Token); return; }
             var unknown = ex is SendException { OutcomeUnknown: true } || ex is OperationCanceledException;
             Report(item, unknown ? "unknown" : "failed");
+            if (!unknown) NoteRefused(item.LocalId, item.OperationId);
             messages[item.LocalId] = item with { State = unknown ? OutgoingState.Unknown : OutgoingState.Rejected,
                 Explanation = ex is SendException send ? send.Message : "The message wasn't sent. Check your connection and try again.",
                 OperationId = unknown ? (ex as SendException)?.OperationId : null };
@@ -477,6 +556,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
             // Failed is the host saying it was not done, and an item here is only ever a message send, reply or attachment send (its
             // OperationId comes from their SendException). Directory and group operations, some of whose refusals say the thing was done, are
             // never in the outbox; SendExceptionSentenceChecks keeps those sentences out of the send paths.
+            NoteRefused(item.LocalId, item.OperationId);
             var refused = messages[item.LocalId] = item with { State = OutgoingState.Rejected, OperationId = null,
                 Explanation = outcome.Explanation ?? "The message wasn't sent. Check your connection and try again." };
             Notify(item.ChatId, item.LocalId);
@@ -604,11 +684,29 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         if (!messages.TryGetValue(localId, out var item) || item.State != OutgoingState.Rejected) return false;
         messages.Remove(localId); Notify(item.ChatId, localId); return true;
     }
+    /// <summary>
+    /// Takes every refused send of the matching conversations out, and ends Retry for any of theirs still open: after Google's
+    /// conversations are renumbered, the number a send was made to is someone else's conversation, and Retry would reach them.
+    /// Returns how many refused sends went.
+    /// </summary>
+    public int ForgetRefused(Func<string, bool> chats)
+    {
+        foreach (var localId in resends.Keys.Where(id => messages.TryGetValue(id, out var open) && chats(open.ChatId)).ToArray()) resends.Remove(localId);
+        var refused = messages.Values.Where(m => m.State == OutgoingState.Rejected && chats(m.ChatId)).ToArray();
+        foreach (var item in refused) { messages.Remove(item.LocalId); Notify(item.ChatId, item.LocalId); }
+        return refused.Length;
+    }
+    /// <summary>Takes one refused text out of the conversation by its local id, for Edit on its row; null when it is not a refused text.</summary>
+    public OutgoingMessage? TakeRejectedText(string localId)
+    {
+        if (!messages.TryGetValue(localId, out var item) || item.State != OutgoingState.Rejected || !item.CanRestoreText) return null;
+        messages.Remove(localId); Notify(item.ChatId, localId); return item;
+    }
     public void Clear()
     {
         generation++; lifetime.Cancel(); lifetime.Dispose(); lifetime = new();
         var removed = messages.Keys.ToArray();
-        messages.Clear(); started.Clear(); Changed?.Invoke(this, "");
+        messages.Clear(); started.Clear(); resends.Clear(); refusedAs.Clear(); namedHere.Clear(); Changed?.Invoke(this, "");
         foreach (var localId in removed) ItemChanged?.Invoke(this, localId);
     }
     public void Dispose()

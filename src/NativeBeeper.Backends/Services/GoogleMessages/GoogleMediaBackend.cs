@@ -164,6 +164,8 @@ internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, 
             submitted=true; outcome="outcome unknown";
             var result=await backend.MediaCallAsync("ui.sendMedia",new {chatId=backend.Models.Native(chatId),name=Path.GetFileName(file.Name),mime=file.MimeType,text=caption ?? ""},cancellationToken);
             outcome=result.GetProperty("outcome").GetString() ?? outcome;
+            // The helper call itself is logged as ok whatever Google answered (operation=send_media): this line says what the answer was.
+            if(outcome!="pending") GoogleMessagesLog.Write($"send media chat={GoogleMessagesLog.Tag(chatId)} outcome={(outcome is "rejected" or "unknown" ? outcome : "other")}{GoogleMessagesBackend.RefusalStatus(result)}{GoogleMessagesBackend.SendErrorClass(result)}");
             if(outcome=="rejected") throw new SendException(false,backend.NotDefaultSmsRefusal(result) ?? "Google Messages couldn't send this attachment. Carrier size or format limits may apply.");
             if(outcome=="unknown") throw new SendException(true,"Attachment outcome is unknown. Check the conversation before sending again.");
             var txn=result.GetProperty("pendingId").GetString();

@@ -274,9 +274,23 @@ public sealed class HermesClient(HttpClient http)
             ["model"] = profile == DefaultProfile ? "hermes-agent" : profile,
             ["stream"] = true,
             // Only the new turn: the session holds everything before it (X-Hermes-Session-Id).
-            ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = content }),
+            ["messages"] = new JsonArray(
+                new JsonObject { ["role"] = "system", ["content"] = RendersMarkdown },
+                new JsonObject { ["role"] = "user", ["content"] = content }),
         }.ToJsonString();
     }
+
+    /// <summary>
+    /// Sent with every turn. Hermes tells a model on its API server to assume plain text and write no Markdown (PLATFORM_HINTS["api_server"],
+    /// agent/prompt_builder.py, v0.23.2), but both apps draw a Hermes reply's Markdown (HermesMarkdown), so the client says what it renders.
+    /// Hermes layers a request's system messages over its own prompt for that call only: never saved to the session, never cached
+    /// (_parse_chat_messages; agent/system_prompt.py). A profile can drop the hint itself with platform_hints.api_server.replace in its config.yaml.
+    /// Fixed text: nothing of the owner's travels in it.
+    /// </summary>
+    internal const string RendersMarkdown =
+        "You're replying in Message Link, a messaging app that renders Markdown in your replies: headings, bold, italic, strikethrough, lists, "
+        + "task lists, quotes, fenced code blocks, tables, horizontal rules and http or https links. This replaces the instruction to write plain "
+        + "text: use Markdown wherever it makes a reply easier to read, and keep short replies conversational. HTML is not rendered.";
 
     internal static IEnumerable<HermesStreamEvent> Parse(string? eventName, string data)
     {

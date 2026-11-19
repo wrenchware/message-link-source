@@ -198,7 +198,10 @@ public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? 
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase).ToArray();
         foreach (var network in networks)
             Filters.Add(new(network.Key, Network: network.Key));
-        foreach (var network in networks.Where(group => group.Count() > 1))
+        // Hermes profiles are one assistant's personas, not separate inboxes: the single Hermes row lists them all (owner,
+        // 2026-11-19), and each conversation's title already says which profile it is.
+        foreach (var network in networks.Where(group => group.Count() > 1 &&
+                     !string.Equals(group.Key, HermesThreads.Network, StringComparison.OrdinalIgnoreCase)))
             foreach (var account in network.OrderBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase))
                 Filters.Add(new($"{network.Key} · {account.DisplayName}", account.Id));
         SetServiceFilters(prior.Select(old => Filters.FirstOrDefault(f => f.AccountId == old.AccountId &&

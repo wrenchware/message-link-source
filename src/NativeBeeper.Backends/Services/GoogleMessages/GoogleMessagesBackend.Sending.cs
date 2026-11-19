@@ -91,7 +91,7 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
             {
                 // The phone refusing because Google Messages is not its default SMS app says so, and is remembered.
                 var notDefault = NotDefaultSmsRefusal(result);
-                GoogleMessagesLog.Write($"send chat={GoogleMessagesLog.Tag(chatId)} outcome=rejected{(notDefault is null ? "" : " reason=" + GoogleDefaultSmsApp.RefusalCode)}{GoogleMessagesLog.Conversation(result)}");
+                GoogleMessagesLog.Write($"send chat={GoogleMessagesLog.Tag(chatId)} outcome=rejected{(notDefault is null ? "" : " reason=" + GoogleDefaultSmsApp.RefusalCode)}{RefusalStatus(result)}{GoogleMessagesLog.Conversation(result)}");
                 throw new SendException(false,notDefault ?? (result.TryGetProperty("reason",out var why) && why.GetString() is { Length: > 0 } reason
                     ? reason : "Google Messages rejected the message. Check the conversation before trying again."));
             }
@@ -111,6 +111,10 @@ internal sealed partial class GoogleMessagesBackend : INotificationActionHints
         catch (Exception failure) { GoogleMessagesLog.Write($"send chat={GoogleMessagesLog.Tag(chatId)} outcome=unknown reason={GoogleMessagesLog.Reason(failure)}"); throw new SendException(true,"The send outcome is unknown. Check Google Messages before sending again; this app will not retry automatically."); }
     }
     // The helper's class for an error after the request (phone_unavailable while it stays pending), from the fixed codes only.
+    // Google's own word for a refusal (send.go): FAILURE_ and a number, nothing else written.
+    internal static string RefusalStatus(JsonElement result)
+        => result.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String && status.GetString() is { Length: <= 20 } value &&
+           value.StartsWith("FAILURE_", StringComparison.Ordinal) && value[8..].All(char.IsAsciiDigit) ? " status=" + value : "";
     internal static string SendErrorClass(JsonElement result)
         => result.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String
             ? " reason=" + GoogleMessagesLog.Reason(new InvalidOperationException(error.GetString())) : "";

@@ -325,7 +325,7 @@ The emoji button beside Send opens a picker with three tabs.
 
 Message Link never sends anything twice behind your back.
 
-- If a send fails, a **Message wasn't sent** banner offers **Restore message**, which puts the text back to edit or try again. The message itself reads "Not sent · Restore draft to try again".
+- If a service turns a message, photo or file down, it stays in the conversation marked **Not sent** in red; point at the words to see why. **Retry** sends it again from there, once. **Edit** (text only) puts the words back in the message box, and **Remove** takes it out of the conversation. Nothing is sent again unless you choose Retry.
 - "**Not confirmed yet** · It won't be sent twice" means the service hasn't answered yet. **Check again** in the message's menu asks it, without resending.
 - "**May not have sent** · Check the conversation before sending it again" means Message Link can't know. It never resends; look at the conversation on another device first.
 - If Message Link closed while messages were still unconfirmed, the next start says so: "A message sent at 3:42 PM wasn't confirmed before Message Link closed."
