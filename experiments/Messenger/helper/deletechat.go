@@ -189,6 +189,7 @@ func (a *adapter) forgetChatLocked(ctx context.Context, key int64) {
 	rows := kept.forgetThread(ctx, key)
 	a.mu.Lock()
 	delete(a.asked, key)
+	delete(a.emptyFailed, key)
 	delete(a.refreshing, key)
 	a.mu.Unlock()
 	logf("chat removed chat=%s messages=%d stored=%d", tag(key), messages, rows)
@@ -214,6 +215,7 @@ func (s *store) forgetThread(key int64) int {
 		delete(s.reactions, id)
 	}
 	delete(s.messages, key)
+	s.staleLocked(key)
 	current := s.get(key)
 	current.deletedAt = max(current.deletedAt, current.lastActivity, time.Now().UnixMilli())
 	current.deleted = true

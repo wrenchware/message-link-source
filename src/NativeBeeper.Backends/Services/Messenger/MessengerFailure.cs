@@ -81,7 +81,13 @@ internal static class MessengerFailure
     // what kind of ending it was. Its standard error is Go runtime output, and a panic's value can be anything an upstream
     // goroutine held, so none of its text is kept (HelperConnection.LastError is never logged). It was, verbatim.
     public static string StoppedLine(TimeSpan uptime, string? lastError) =>
-        $"helper stopped after {(int)uptime.TotalSeconds}s {NativeBeeper.App.Services.Instagram.InstagramHelperExit.Describe(lastError)}";
+        $"helper stopped after {(long)Math.Max(0, uptime.TotalSeconds)}s {NativeBeeper.App.Services.Instagram.InstagramHelperExit.Describe(lastError)}";
+
+    // Whether a helper that stopped gives recovery its attempts back: only one that finished connecting (readyAtTicks, UTC
+    // ticks, 0 when it never did) and then stayed up longer than two minutes.
+    public static readonly TimeSpan RecoveryEarnedAfter = TimeSpan.FromMinutes(2);
+    public static bool EarnsRecoveryBack(long readyAtTicks, DateTimeOffset now) =>
+        readyAtTicks > 0 && now.UtcTicks - readyAtTicks > RecoveryEarnedAfter.Ticks;
 
     // What a failed connect may put in a log: a helper's fixed code, or only the exception's type. An
     // InvalidOperationException is not always one of ours (a malformed reply raises one with prose), so only a

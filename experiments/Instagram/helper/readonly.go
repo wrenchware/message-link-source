@@ -331,7 +331,10 @@ func (a *readOnlyAdapter) login(ctx context.Context, raw json.RawMessage) (any, 
 	a.mu.Unlock()
 	client := a.factory(jar, func(ctx context.Context, event slidetypes.ClientEvent) error { return a.handle(ctx, generation, event) },
 		func() { a.streamReopened(generation) })
+	// Under the lock: the typing side queue reads the client while a login runs.
+	a.mu.Lock()
 	a.client, a.jar, a.key = client, jar, key
+	a.mu.Unlock()
 	ok := false
 	defer func() {
 		if !ok {

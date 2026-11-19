@@ -61,6 +61,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         this.store = store ?? new HermesStore(AppPaths.Combine("Hermes"), protector);
         this.clock = clock ?? TimeProvider.System;
         this.log = log ?? AppLog.Write;
+        this.store.Log ??= this.log;
         client = new HermesClient(http ?? new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10), PooledConnectionLifetime = TimeSpan.FromMinutes(10) })
         { Timeout = Timeout.InfiniteTimeSpan });
         realtime = new(256, line => this.log("hermes " + line));
@@ -81,32 +82,66 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         CanConfigure: true);
 
     private readonly object loading = new();
-    public Task LoadAsync() { lock (loading) return loaded ??= Task.Run(LoadCoreAsync); }
+    // The settings or the report tokens a load found there but couldn't read (HermesStore holds the file): read as none,
+    // and the load counted as done, Hermes stayed unconfigured, or every report token unknown, until the process restarted.
+    // The next caller once the wait is over loads what is still missing again; the wait doubles while it stays held.
+    private bool settingsPending = true, reportsPending = true;
+    private DateTimeOffset loadRetryAt;
+    private TimeSpan loadRetryWait;
+    internal TimeSpan LoadRetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan LoadRetryMost = TimeSpan.FromMinutes(2);
+
+    // A load that faulted is run again by the next caller: kept, it failed every Hermes call until the process restarted.
+    public Task LoadAsync()
+    {
+        lock (loading)
+        {
+            if (loaded is null or { IsFaulted: true }
+                || loaded.IsCompletedSuccessfully && (settingsPending || reportsPending) && clock.GetUtcNow() >= loadRetryAt)
+                loaded = Task.Run(LoadCoreAsync);
+            return loaded;
+        }
+    }
 
     private async Task LoadCoreAsync()
     {
-        var read = await store.ReadSettingsAsync().ConfigureAwait(false);
+        // Settings that loaded are not read again: what this run has changed since is in memory and saved, and the threads were read with them.
+        var read = settingsPending ? await store.ReadSettingsAsync().ConfigureAwait(false) : null;
         var closed = new List<string>();
         await gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            settings = read;
-            reportTokens = await store.ReadReportTokensAsync().ConfigureAwait(false);
+            // Taken as loaded only once the whole load is through: one that faulted after them reads both again.
+            var settingsHeld = read is null ? settingsPending : store.SettingsHeld;
+            if (read is not null) settings = read;
+            var reportsHeld = reportsPending;
+            if (reportsPending)
+            {
+                reportTokens = await store.ReadReportTokensAsync().ConfigureAwait(false);
+                reportsHeld = store.ReportTokensHeld;
+            }
             // Only against settings that loaded with profiles: an unreadable settings file reads as none, and pruning against that would revoke every live token
             // for good (code review, 2026-11-15). Removing every profile forgets the tokens itself, before the settings are saved.
             if (settings.Profiles.Count > 0 && reportTokens.Rows.Any(r => !settings.Profiles.Any(p => p.Name == r.Profile)))
                 await ForgetReportTokensAsync([.. reportTokens.Rows.Select(r => r.Profile).Where(name => !settings.Profiles.Any(p => p.Name == name)).Distinct()]).ConfigureAwait(false);
-            foreach (var profile in settings.Profiles)
-                if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread)
-                {
-                    var before = closed.Count;
-                    threads[profile.Name] = Sequenced(CloseStale(thread, closed));
-                    if (closed.Count > before) await store.SaveThreadAsync(threads[profile.Name]).ConfigureAwait(false);
-                    SeedLastReport(thread);
-                }
+            if (read is not null)
+                foreach (var profile in settings.Profiles)
+                    if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread)
+                    {
+                        var before = closed.Count;
+                        threads[profile.Name] = Sequenced(CloseStale(thread, closed));
+                        if (closed.Count > before) await store.SaveThreadAsync(threads[profile.Name]).ConfigureAwait(false);
+                        SeedLastReport(thread);
+                    }
+            (settingsPending, reportsPending) = (settingsHeld, reportsHeld);
+            loadRetryWait = settingsPending || reportsPending
+                ? (loadRetryWait == TimeSpan.Zero ? LoadRetryDelay : TimeSpan.FromTicks(Math.Min(loadRetryWait.Ticks * 2, LoadRetryMost.Ticks)))
+                : TimeSpan.Zero;
+            loadRetryAt = clock.GetUtcNow() + loadRetryWait;
         }
         finally { gate.Release(); }
-        log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}" + (closed.Count > 0 ? $" approvals_closed={closed.Count}" : ""));
+        log($"hermes loaded configured={(settings.Configured ? 1 : 0)} profiles={settings.Profiles.Count}" + (closed.Count > 0 ? $" approvals_closed={closed.Count}" : "")
+            + (settingsPending || reportsPending ? $" held={(settingsPending ? "settings" : "")}{(settingsPending && reportsPending ? "," : "")}{(reportsPending ? "reports" : "")}" : ""));
         foreach (var id in closed) realtime.TryWrite(new(RealtimeKind.MessageChanged, HermesIds.Chat(HermesIds.ProfileOf(id)!), [id], false, clock.GetUtcNow()));
     }
 
@@ -200,19 +235,24 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
     {
         var profile = Profile(chatId);
         await LoadAsync().ConfigureAwait(false);
+        await ReadHeldThreadAsync(profile, cancellationToken).ConfigureAwait(false);
         string noteId;
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Refused before anything changes: the thread in memory took the new session, note, read mark and cleared handoff while
+            // the save was refused, and the next turn ran on a session the saved thread never had.
+            if (store.ThreadHeld(profile)) throw new IOException("hermes_store_unreadable");
             var thread = Thread(profile);
             var note = new HermesStoredMessage(NewMessageId(profile), clock.GetUtcNow(), false, NewConversationNote, Kind: "note", State: "done");
             noteId = note.Id;
             // A new conversation starts from nothing: every report so far counts as answered.
-            threads[profile] = thread with
+            var started = thread with
             {
                 SessionId = NewSessionId(), Messages = [.. thread.Messages, note], ReadUpTo = note.At, ReportsAckedThrough = thread.NextReportSeq, Handoff = null,
             };
-            await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
+            await store.SaveThreadAsync(started).ConfigureAwait(false);
+            threads[profile] = started;
         }
         finally { gate.Release(); }
         log($"hermes new_conversation profile={Tag(profile)}");
@@ -314,12 +354,48 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
 
     // ---- sending ----
 
-    public Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken = default) => Task.FromResult(Permission(chatId));
+    public async Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken = default)
+    {
+        if (HermesIds.ProfileOf(chatId) is { } profile && HermesClient.ValidProfile(profile))
+            await ReadHeldThreadAsync(profile, cancellationToken).ConfigureAwait(false);
+        return Permission(chatId);
+    }
+
+    // A thread whose file is there but couldn't be read is read again when it is next asked for (a send, its permission, a new
+    // conversation), so a file that was only locked or briefly out of reach comes back without a restart of the server.
+    private async Task ReadHeldThreadAsync(string profile, CancellationToken cancellationToken)
+    {
+        if (!store.ThreadHeld(profile)) return;
+        var closed = new List<string>();
+        bool restored;
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!store.ThreadHeld(profile) || !Has(profile)) return;
+            var read = await store.ReadThreadAsync(profile).ConfigureAwait(false);
+            restored = read is not null;
+            if (read is not null)
+            {
+                threads[profile] = Sequenced(CloseStale(read, closed));
+                if (closed.Count > 0) await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
+                SeedLastReport(read);
+            }
+        }
+        finally { gate.Release(); }
+        if (store.ThreadHeld(profile)) return;
+        log($"hermes thread_read_again profile={Tag(profile)} restored={(restored ? "yes" : "no")}");
+        var chatId = HermesIds.Chat(profile);
+        foreach (var id in closed) realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, [id], false, clock.GetUtcNow()));
+        realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
+        Raise();
+    }
 
     private SendPermission Permission(string chatId)
     {
         var profile = HermesIds.ProfileOf(chatId);
         if (profile is null || !Has(profile)) return new(false, "This Hermes profile isn't set up. Add it in Settings.");
+        // Its saved file is there but couldn't be read: a send would start the thread over on top of it. Read again on the next try.
+        if (store.ThreadHeld(profile)) return new(false, "This conversation's history couldn't be opened. Try again later.", MaxTextLength);
         return Word(profile) switch
         {
             "key_rejected" => new(false, "Hermes rejected this profile's API key. Change it in Settings.", MaxTextLength),
@@ -341,6 +417,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
     {
         var profile = Profile(chatId);
         await LoadAsync().ConfigureAwait(false);
+        await ReadHeldThreadAsync(profile, cancellationToken).ConfigureAwait(false);
         var permission = Permission(chatId);
         if (!permission.Allowed) throw new SendException(false, permission.Reason);
         if (text?.Length > MaxTextLength) throw new SendException(false, "That message is too long for Hermes.");
@@ -688,15 +765,15 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
 
     // ---- pictures ----
 
-    public Task<SendPermission> GetPermissionAsync(string chatId, CancellationToken cancellationToken = default) => Task.FromResult(Permission(chatId));
+    public Task<SendPermission> GetPermissionAsync(string chatId, CancellationToken cancellationToken = default) => GetSendPermissionAsync(chatId, cancellationToken);
 
-    public Task<SendPermission> GetFilePermissionAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default)
+    public async Task<SendPermission> GetFilePermissionAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default)
     {
-        var permission = Permission(chatId);
-        if (!permission.Allowed) return Task.FromResult(permission);
+        var permission = await GetSendPermissionAsync(chatId, cancellationToken).ConfigureAwait(false);
+        if (!permission.Allowed) return permission;
         if (!ImageTypes.Contains(file.MimeType, StringComparer.OrdinalIgnoreCase) || file.IsVoiceNote)
-            return Task.FromResult(new SendPermission(false, "Hermes takes pictures only."));
-        return Task.FromResult(file.Length > MaxImageBytes ? new SendPermission(false, "That picture is too large for Hermes.") : permission);
+            return new SendPermission(false, "Hermes takes pictures only.");
+        return file.Length > MaxImageBytes ? new SendPermission(false, "That picture is too large for Hermes.") : permission;
     }
 
     public Task<AttachmentCaptionSupport> GetCaptionSupportAsync(string chatId, AttachmentFile file, CancellationToken cancellationToken = default) =>
@@ -869,10 +946,12 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             await gate.WaitAsync(stop.Token).ConfigureAwait(false);
             try
             {
-                if (generation != Volatile.Read(ref this.generation) || !Has(profile) || Thread(profile).Messages.Count > 0) return;
+                // A thread whose file couldn't be read looks empty here, and a greeting saved over it took everything it held.
+                if (generation != Volatile.Read(ref this.generation) || !Has(profile) || store.ThreadHeld(profile) || Thread(profile).Messages.Count > 0) return;
                 note = new(NewMessageId(profile), clock.GetUtcNow(), false, Greeting, Kind: "note", State: "done");
-                threads[profile] = Thread(profile) with { Messages = [note], ReadUpTo = note.At };
-                await store.SaveThreadAsync(threads[profile]).ConfigureAwait(false);
+                var greeted = Thread(profile) with { Messages = [note], ReadUpTo = note.At };
+                await store.SaveThreadAsync(greeted).ConfigureAwait(false);
+                threads[profile] = greeted;
             }
             finally { gate.Release(); }
             log($"hermes greeted profile={Tag(profile)}");

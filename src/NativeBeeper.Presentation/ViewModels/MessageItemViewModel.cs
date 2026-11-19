@@ -3,7 +3,21 @@ using NativeBeeper.Presentation.Services;
 
 namespace NativeBeeper.Presentation.ViewModels;
 
-public sealed record ReactionChip(string Emoji, string People);
+/// <summary>One emoji's reactions on a message: who gave it, by name for the tooltip, and how many for the count beside it.</summary>
+public sealed record ReactionChip(string Emoji, string People, int Count)
+{
+    // By id, so a photo set's chips are joined person by person. The count was taken by splitting People on ", ", which
+    // counted a contact saved as "Doe, Jane" twice, and joined two people who share a name as one.
+    internal IReadOnlyList<(string Id, string Name)> Reactors { get; private init; } = [];
+    internal static ReactionChip Of(string emoji, IEnumerable<(string Id, string Name)> reactors)
+    {
+        var list = reactors.DistinctBy(reactor => reactor.Id).ToArray();
+        return new(emoji, string.Join(", ", list.Select(reactor => reactor.Name)), list.Length) { Reactors = list };
+    }
+    // What a row shows (MessageItemViewModel.HasSameContent): the emoji, the names and the count.
+    public bool Equals(ReactionChip? other) => other is not null && Emoji == other.Emoji && People == other.People && Count == other.Count;
+    public override int GetHashCode() => HashCode.Combine(Emoji, People, Count);
+}
 
 /// <summary>One person's small face, shown beside the newest message they have read.</summary>
 public sealed record ReadFace(string ParticipantId, string? AvatarUrl, string Name, string? AvatarOverrideId = null);
@@ -108,8 +122,7 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         // A set is one picture on screen, as Messenger's phone client shows it: every photo's reactions and every
         // reader's face appear under the set rather than on hidden member rows.
         ReactionChips = members.SelectMany(member => member.ReactionChips).GroupBy(chip => chip.Emoji)
-            .Select(chips => new ReactionChip(chips.Key, string.Join(", ",
-                chips.SelectMany(chip => chip.People.Split(", ", StringSplitOptions.RemoveEmptyEntries)).Distinct()))).ToArray();
+            .Select(chips => ReactionChip.Of(chips.Key, chips.SelectMany(chip => chip.Reactors))).ToArray();
         Reactions = string.Join("   ", ReactionChips.Select(chip => chip.Emoji));
         ReadBy = members.SelectMany(member => member.ReadBy).Reverse().DistinctBy(face => face.ParticipantId).Reverse().ToArray();
     }
@@ -205,7 +218,9 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         ShowDate == other.ShowDate && DateLabel == other.DateLabel && ShowUnreadDivider == other.ShowUnreadDivider && ShowSender == other.ShowSender && ContinuesGroup == other.ContinuesGroup &&
         ShowHeader == other.ShowHeader && ShowTime == other.ShowTime && (!ShowTime || HeaderTime == other.HeaderTime) && HeaderName == other.HeaderName && ReceiptStage == other.ReceiptStage && ShowReceipt == other.ShowReceipt &&
         // A reader's face moves from one message to another as they read on, which changes no other part of the row.
-        ReadBy.SequenceEqual(other.ReadBy) && ShowLock == other.ShowLock && IsPhotoGroupMember == other.IsPhotoGroupMember &&
+        ReadBy.SequenceEqual(other.ReadBy) && ShowLock == other.ShowLock &&
+        // Reactors' names come from the participants, which can arrive or change while the reactions stay the same.
+        ReactionChips.SequenceEqual(other.ReactionChips) && IsPhotoGroupMember == other.IsPhotoGroupMember &&
         PhotoGroupMessages.SequenceEqual(other.PhotoGroupMessages) && MediaReloadVersion == other.MediaReloadVersion;
 
     // Quoted: messages a reply quotes that are not loaded rows, by MessageIdentity.Key, as a service's memory gave them whole
@@ -246,13 +261,13 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         Attachments = message.IsDeleted ? "" : string.Join("\n", message.Attachments.Where(a => a.Type != "img" && a.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true).Select(a =>
             $"{(a.IsVoiceNote ? "Voice message" : a.IsSticker ? "Sticker" : a.IsGif ? "GIF" : a.Type switch { "img" => "Image", "video" => "Video", "audio" => "Audio", _ => "File" })}" +
             (string.IsNullOrWhiteSpace(a.Name) ? "" : $" · {a.Name}") + (a.Size is > 0 ? $" · {a.Size / 1024.0:0.#} KB" : "")));
-        ReactionChips = message.IsDeleted ? [] : message.Reactions.GroupBy(r => r.Key).Select(g => new ReactionChip(g.Key,
-            string.Join(", ", g.Select(r => r.ParticipantId).Distinct().Select(id =>
+        ReactionChips = message.IsDeleted ? [] : message.Reactions.GroupBy(r => r.Key).Select(g => ReactionChip.Of(g.Key,
+            g.Select(r => r.ParticipantId).Distinct().Select(id =>
             {
                 var person = chat.Participants.FirstOrDefault(p => p.Id == id);
-                return person?.IsSelf == true || id == NativeBeeper.Presentation.Services.ReactionPrediction.LocalSelf ? "You"
-                    : person?.DisplayName ?? (id == message.SenderId ? Sender : "Unknown participant");
-            })))).ToArray();
+                return (id, person?.IsSelf == true || id == NativeBeeper.Presentation.Services.ReactionPrediction.LocalSelf ? "You"
+                    : person?.DisplayName ?? (id == message.SenderId ? Sender : "Unknown participant"));
+            }))).ToArray();
         Reactions = string.Join("   ", ReactionChips.Select(r => r.Emoji));
         Status = string.Join(" · ", new[] { message.EditedAt is not null && !message.IsDeleted ? "Edited" : null, DeliveryText(message, chat) }.Where(s => !string.IsNullOrEmpty(s)));
         ReceiptStage = Stage(message, chat) ?? "";

@@ -27,6 +27,8 @@ internal sealed class RestoredMark
     private readonly string path;
     private readonly IStateProtector protector;
     private readonly object gate = new();
+    // One write at a time, each of the newest record: two removals at once shared the temporary file, so one failed or an older list was left on the disk.
+    private readonly SemaphoreSlim writing = new(1, 1);
     private Stored stored;
 
     private RestoredMark(string path, IStateProtector protector, Stored stored) { this.path = path; this.protector = protector; this.stored = stored; }
@@ -64,21 +66,22 @@ internal sealed class RestoredMark
     /// <summary>Notes a device removed since the restore, by its token's hash, so it is told it was removed. The oldest notes go past <see cref="MaxRevoked"/>.</summary>
     public async Task NoteRevokedAsync(byte[] tokenHash)
     {
-        Stored next;
         lock (gate)
         {
             var revoked = stored.Revoked.Append(Convert.ToBase64String(tokenHash)).Distinct(StringComparer.Ordinal).TakeLast(MaxRevoked).ToList();
-            stored = next = stored with { Revoked = revoked };
+            stored = stored with { Revoked = revoked };
         }
-        try { await SaveAsync(path, protector, next).ConfigureAwait(false); }
+        await writing.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            Stored latest;
+            lock (gate) latest = stored;
+            await SaveAsync(path, protector, latest).ConfigureAwait(false);
+        }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { /* Kept in memory for this run; the device is removed either way. */ }
+        finally { writing.Release(); }
     }
 
-    private static async Task SaveAsync(string path, IStateProtector protector, Stored stored)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temporary = path + ".tmp";
-        await File.WriteAllBytesAsync(temporary, await protector.ProtectAsync(JsonSerializer.SerializeToUtf8Bytes(stored)).ConfigureAwait(false)).ConfigureAwait(false);
-        File.Move(temporary, path, overwrite: true);
-    }
+    private static async Task SaveAsync(string path, IStateProtector protector, Stored stored) =>
+        await ServerRestore.WritePrivateAsync(path, await protector.ProtectAsync(JsonSerializer.SerializeToUtf8Bytes(stored)).ConfigureAwait(false)).ConfigureAwait(false);
 }

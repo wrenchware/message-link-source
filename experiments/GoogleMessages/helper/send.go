@@ -9,6 +9,7 @@ import (
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto"
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/util"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -81,9 +82,13 @@ func (a *adapter) sendCall(ctx context.Context, r request) (any, string) {
 		return answer(map[string]any{"outcome": "rejected", "reason": reason})
 	}
 	if p.ReplyTo != "" {
-		a.mediaMu.Lock()
-		target := a.messageRefs[p.ReplyTo]
-		a.mediaMu.Unlock()
+		target, err := a.messageRef(ctx, c.GetConversationID(), p.ReplyTo)
+		if err != nil {
+			return answer(map[string]any{"outcome": "rejected", "reason": replyLookupReason})
+		}
+		if target == nil {
+			return answer(map[string]any{"outcome": "rejected", "reason": replyMissingReason})
+		}
 		if !replyAllowed(c, target, sim) {
 			return answer(map[string]any{"outcome": "rejected"})
 		}
@@ -95,8 +100,20 @@ func (a *adapter) sendCall(ctx context.Context, r request) (any, string) {
 		if len(data) == 0 || len(data) > mediaLimit || !permittedUpload(p.Mime) || len(p.Text) > 65536 || p.Name == "" {
 			return answer(map[string]any{"outcome": "rejected"})
 		}
-		media, err := a.client.UploadMedia(context.Background(), data, p.Name, p.Mime)
+		// The upload ends early enough to leave the send its own time: a send whose budget is spent is refused before it
+		// goes, which is an answer, where one that runs out during the call is only pending.
+		upload, stop := context.WithCancel(ctx)
+		if deadline, ok := ctx.Deadline(); ok {
+			stop()
+			upload, stop = context.WithDeadline(ctx, deadline.Add(-sendReserve))
+		}
+		media, err := a.client.UploadMedia(upload, data, p.Name, p.Mime)
+		late := upload.Err() != nil
+		stop()
 		if err != nil {
+			if late {
+				return answer(map[string]any{"outcome": "rejected", "reason": uploadLateReason})
+			}
 			return answer(map[string]any{"outcome": "rejected"})
 		}
 		req.MessagePayload.MessageInfo = []*gmproto.MessageInfo{{Data: &gmproto.MessageInfo_MediaContent{MediaContent: media}}}
@@ -139,6 +156,11 @@ func (a *adapter) holdSends(r request) (any, string) {
 // error (5xx, network, a closed connection, an odd answer) may have been passed on, so it is reported as unknown, never
 // as sent or not sent. The code names the class for the app's send log.
 func submitText(ctx context.Context, req *gmproto.SendMessageRequest, send func(context.Context, *gmproto.SendMessageRequest) (*gmproto.SendMessageResponse, error)) (map[string]any, string) {
+	// A budget already spent (a slow upload, a reply's lookup, a wait behind the mutation before it) fails the call
+	// before anything is posted, and that error read as pending: the app took a message nobody sent as handed on.
+	if ctx.Err() != nil {
+		return map[string]any{"outcome": "rejected", "reason": sendLateReason}, ""
+	}
 	resp, err := send(ctx, req)
 	outcome := "pending"
 	var reason string
@@ -153,9 +175,11 @@ func submitText(ctx context.Context, req *gmproto.SendMessageRequest, send func(
 		switch {
 		case status >= 400 && status < 500:
 			return nil, sendRefusalCode(status)
-		case errors.Is(err, libgm.ErrPhoneNotResponding) || errors.Is(err, context.DeadlineExceeded):
+		case errors.Is(err, libgm.ErrPhoneNotResponding) || err == context.DeadlineExceeded:
 			// The relay took it and the phone has not answered: it may still send when it comes back, and its echo
-			// resolves the transaction.
+			// resolves the transaction. The library gives the context's own error, unwrapped, only while it waits for
+			// the phone after the relay accepted the post (session_handler.go). A deadline during the post comes
+			// wrapped in the HTTP client's error and may or may not have reached the relay, so it is unknown.
 		default:
 			outcome = "unknown"
 		}
@@ -189,6 +213,18 @@ func sendRefusalCode(status int) string {
 		return "send_rejected"
 	}
 }
+
+// What a media send keeps back from the request's budget for posting the message once the upload is done. A variable so
+// a check can shorten it.
+var sendReserve = 10 * time.Second
+
+const (
+	sendLateReason    = "Not sent. It took too long to get ready. Send it again."
+	uploadLateReason  = "Not sent. The attachment took too long to upload. Send it again."
+	replyLookupReason = "Not sent. Couldn't find the message you're replying to. Send it again."
+	// Only the conversation's newest page is looked in, so a miss may be an older message rather than a removed one.
+	replyMissingReason = "Not sent. Couldn't find the message you're replying to among this conversation's recent messages. Send it without the reply."
+)
 
 const (
 	notDefaultSMSCode = "not_default_sms_app"

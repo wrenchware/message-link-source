@@ -10,7 +10,19 @@ public sealed partial class ComposerViewModel
 
     // What the flyout needs: a conversation, words within its limit, and a schedule to keep them in. The send check is not
     // needed now; it is asked when the time comes.
-    public bool CanSchedule => scheduledSends is not null && IsReady && editing is null && chatId is not null && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength;
+    public bool CanSchedule => !SchedulingHere && scheduledSends is not null && IsReady && editing is null && chatId is not null && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength;
+
+    // The words stay in the box until the schedule is kept, so a refusal has nothing to give back. Until then they are not
+    // offered again: a second pick of a time made a second scheduled message (a client's create takes no name to match the
+    // first by), and Enter sent them now as well. Held per conversation: one still being kept stays held while another is
+    // scheduled and kept meanwhile.
+    private readonly HashSet<string> schedulingIn = new(StringComparer.Ordinal);
+    private bool SchedulingHere => chatId is not null && schedulingIn.Contains(chatId);
+    private void SetScheduling(string target, bool held)
+    {
+        if (held) schedulingIn.Add(target); else schedulingIn.Remove(target);
+        OnPropertyChanged(nameof(CanSchedule)); OnPropertyChanged(nameof(CanSendOrQueue)); SendCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>Schedules the box's text for <paramref name="due"/>. False, with the reason in Status, when it could not.</summary>
     public async Task<bool> ScheduleAsync(DateTimeOffset due)
@@ -18,12 +30,17 @@ public sealed partial class ComposerViewModel
         if (!CanSchedule || scheduledSends is null || chatId is null) return false;
         var target = chatId; var body = Text;
         var reply = replies.TryGetValue(target, out var selectedReply) ? selectedReply : default;
-        try { await scheduledSends.ScheduleAsync(target, body, due, reply.Id, reply.Preview); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { Status = ex.Message; return false; }
-        catch (Exception) { Status = "Couldn't schedule this message: Message Link couldn't save it."; return false; }
-        // The words go only once they are kept; typing that happened meanwhile stays, as it does for a send.
-        if (reply.Id is not null && replies.TryGetValue(target, out var current) && current == reply) { replies.Remove(target); NotifyReply(); }
-        ClearSubmittedText(target, body);
+        SetScheduling(target, true);
+        try
+        {
+            try { await scheduledSends.ScheduleAsync(target, body, due, reply.Id, reply.Preview); }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { Status = ex.Message; return false; }
+            catch (Exception) { Status = "Couldn't schedule this message: Message Link couldn't save it."; return false; }
+            // The words go only once they are kept; typing that happened meanwhile stays, as it does for a send.
+            if (reply.Id is not null && replies.TryGetValue(target, out var current) && current == reply) { replies.Remove(target); NotifyReply(); }
+            ClearSubmittedText(target, body);
+        }
+        finally { SetScheduling(target, false); }
         await FlushDraftAsync(target);
         return true;
     }

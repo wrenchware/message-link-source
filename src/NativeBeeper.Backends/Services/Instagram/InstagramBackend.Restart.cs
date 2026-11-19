@@ -81,6 +81,9 @@ internal sealed partial class InstagramBackend
         {
             var code = InstagramConnectionFailure.Code(failure);
             InstagramLog.Write($"instagram helper restart failed code={code}");
+            // A resume that failed before its start closed anything (the helper file gone, an account check, a held refusal) left the closed-off
+            // helper in place, refusing every call while Settings said reconnecting. Closed only if it is still the current one.
+            if (current is not null) try { await CloseSealedAsync(current); } catch (Exception) { }
             return code;
         }
         finally { if (!IsConnected) ExpectReconnect(false); }

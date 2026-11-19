@@ -946,9 +946,16 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         var native = known.NativeChat(chatId);
         var chat = chats.FirstOrDefault(item => item.Id == native);
         // A message request or a spam thread is not somewhere to reply from: answering one accepts it, which is a
-        // separate decision nobody has made.
+        // separate decision nobody has made. Nor is a thread whose folder Instagram has not named (the helper's ""),
+        // since it may be a request. It is not called one: an inbox thread below the pages the list reads, opened from
+        // New chat, comes back the same way.
         if (chat is not null && chat.Folder != "inbox")
-            return new(false, chat.Folder == "spam" ? "This Instagram conversation is filed as spam." : "This is an Instagram message request.");
+            return new(false, chat.Folder switch
+            {
+                "spam" => "This Instagram conversation is filed as spam.",
+                "pending" => "This is an Instagram message request.",
+                _ => "Instagram hasn't said whether this conversation is a message request, so it can't be answered here yet.",
+            });
         if (chat?.ReadOnly == true) return new(false, "Instagram does not allow replies in this conversation.");
         return new(true, "", MaxTextLength);
     }
@@ -1145,10 +1152,12 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         var native = known.NativeChat(chatId);
         var message = known.NativeMessage(messageId);
         var chat = chats.FirstOrDefault(item => item.Id == native);
+        // A conversation can become a request after CanMarkReadAsync offered it. The read is still not made, and said so:
+        // answered as done, the view showed the conversation read here while Instagram kept it unread.
         if (!InstagramMarkRead.Allowed(chat))
         {
             InstagramLog.Write(InstagramLog.MarkReadSkipped(native, chat!.Folder));
-            return;
+            throw Refused("Instagram doesn't mark message requests as read.");
         }
         // Instagram wants the message's own time alongside its id, as upstream sends it.
         ChatMessage? remembered;
@@ -1245,6 +1254,8 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
             startRefused = null;
             ReleaseHold();
             directorySearch.ForgetAnswers();
+            // The release on the disk before the sign-out is done: a restart or another backend after it reads no hold.
+            await GuardWrittenAsync();
         }
         finally { gate.Release(); }
         ChatsChanged?.Invoke(this, EventArgs.Empty);
@@ -1273,6 +1284,8 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
             await CloseCoreAsync();
             await sessionWrites.WaitAsync(cancellationToken);
             sessionWrites.Release();
+            // The limits' file leaves with the account: no write of this backend's may land on it after the export read it.
+            await GuardWrittenAsync().WaitAsync(cancellationToken);
         }
         finally { gate.Release(); }
     }

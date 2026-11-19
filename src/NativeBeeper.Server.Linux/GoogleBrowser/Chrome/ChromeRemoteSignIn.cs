@@ -403,14 +403,32 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
     // Google's part: until the cookie store holds a NEW complete sign-in (and `ready` says it is the one wanted), which it leaves in run.Cookies. When `deadEnd` is given and Chrome has opened a
     // page starting with it (one the policy refuses, so nobody can get past it here), the sign-in ends with that page's word instead.
     private Task InteractAsync(Session session, Run run, IRemoteSignInOutput output, CancellationToken cancellationToken, string workingPath, string page, ChromiumRenewalTarget target,
-        Func<ChromeCookieRead, bool> ready, Func<Task>? prepare, string logPrefix, string? deadEnd = null) =>
-        InteractAsync(session, run, output, cancellationToken, workingPath, page, async token =>
+        Func<ChromeCookieRead, bool> ready, Func<Task>? prepare, string logPrefix, string? deadEnd = null)
+    {
+        IReadOnlyDictionary<string, string>? started = null;
+        return InteractAsync(session, run, output, cancellationToken, workingPath, page, async token =>
         {
-            var finished = await WaitForSignInAsync(workingPath, target, ready, deadEnd, token).ConfigureAwait(false);
+            var finished = await WaitForSignInAsync(workingPath, target, ready, deadEnd, started, token).ConfigureAwait(false);
             run.Lifetime = finished.SidtsLifetime;
             run.Cookies = new Dictionary<string, string>(finished.Cookies, StringComparer.Ordinal);
             finished.Cookies.Clear();
-        }, prepare, failure => log($"{logPrefix} failed type={failure.GetType().Name}"));
+        }, async () =>
+        {
+            if (prepare is not null) await prepare().ConfigureAwait(false);
+            // The session already there, read before Chrome runs on the profile: read after, an incomplete or unreadable first look left no baseline, and the old
+            // session was then taken as the new sign-in at the next look.
+            started = await BaselineAsync(workingPath, target, cancellationToken).ConfigureAwait(false);
+        }, failure => log($"{logPrefix} failed type={failure.GetType().Name}"));
+    }
+
+    // The session cookies in a profile Chrome is not running on, complete or not, as hashes; null when it holds none. A store that is there but cannot be read ends
+    // the sign-in: without a baseline the session it holds would pass for a new one.
+    private async Task<IReadOnlyDictionary<string, string>?> BaselineAsync(string folder, ChromiumRenewalTarget target, CancellationToken cancellationToken)
+    {
+        var read = await cookies.ReadAsync(folder, target, cancellationToken).ConfigureAwait(false);
+        if (read is null) return ChromeCookieStore.StorePath(folder) is null ? null : throw new IOException("cookie_store_unreadable");
+        return ChromeRenewalLoop.SessionCookies.Any(read.Cookies.ContainsKey) ? SessionHashes(read) : null;
+    }
 
     // The person's part, the same for every service: Chrome on a profile at a page, its display shown and driven, until `wait` ends (Google's: a new sign-in in the cookie store; Messenger's and
     // Instagram's: the person's Done). What happened to the run is left in run.Outcome (timeout, cancelled); the browser's display and input are let go before this returns, however it ends.
@@ -487,26 +505,35 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
         }
     }
 
-    // Polls Chrome's cookie store until a NEW complete Google sign-in is there: one whose session cookies are not those the store held when the window opened (or any, when it held none), and that `ready`
-    // accepts (Voice's own cookie, which only a Voice page that loaded sets).
-    private async Task<ChromeCookieRead> WaitForSignInAsync(string folder, ChromiumRenewalTarget target, Func<ChromeCookieRead, bool> ready, string? deadEnd, CancellationToken cancellationToken)
+    // Polls Chrome's cookie store until a NEW complete Google sign-in is there: one whose session cookies are not `started`, those the profile held before Chrome ran
+    // on it (or any, when it held none), and that `ready` accepts (Voice's own cookie, which only a Voice page that loaded sets).
+    private async Task<ChromeCookieRead> WaitForSignInAsync(string folder, ChromiumRenewalTarget target, Func<ChromeCookieRead, bool> ready, string? deadEnd, IReadOnlyDictionary<string, string>? started,
+        CancellationToken cancellationToken)
     {
-        var first = await cookies.ReadAsync(folder, target, cancellationToken).ConfigureAwait(false);
-        var started = first is { Complete: true } ? Signature(first) : null;
         while (true)
         {
             await Task.Delay(PollGap, cancellationToken).ConfigureAwait(false);
             if (deadEnd is not null && ChromeVisitedPages.Opened(folder, deadEnd)) throw new InvalidOperationException(ChromeVisitedPages.GoogleVerificationWord);
             var read = await cookies.ReadAsync(folder, target, cancellationToken).ConfigureAwait(false);
             if (read is not { Complete: true } || !ready(read)) continue;
-            if (started is null || Signature(read) != started) return read;
+            if (NewSession(started, read)) return read;
         }
     }
 
-    // What identifies the signed-in session, as a hash of the cookies that name it; compared in memory and dropped. The timestamp cookies are left out: Google rotates them by itself while a person is typing.
-    private static string Signature(ChromeCookieRead read)
+    // What identifies the signed-in session: a hash of each cookie that names it, by name; compared in memory and dropped. The timestamp cookies are left out:
+    // Google rotates them by itself while a person is typing.
+    private static Dictionary<string, string> SessionHashes(ChromeCookieRead read) =>
+        ChromeRenewalLoop.SessionCookies.Where(read.Cookies.ContainsKey).ToDictionary(name => name, name => Hash(read.Cookies[name]), StringComparer.Ordinal);
+
+    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+    // A new session is evidence of one: SID there with another value when the profile held one, otherwise a session cookie it held there with another value. A
+    // cookie gone (expired between the baseline and a look) is no evidence: compared as one signature, an optional cookie's expiry passed for a sign-in with the
+    // SID unchanged (review, 2026-11-18).
+    private static bool NewSession(IReadOnlyDictionary<string, string>? started, ChromeCookieRead read)
     {
-        var text = string.Join("|", ChromeRenewalLoop.SessionCookies.Select(name => read.Cookies.TryGetValue(name, out var value) ? value : ""));
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+        if (started is null) return true;
+        if (started.TryGetValue("SID", out var sid)) return read.Cookies.TryGetValue("SID", out var now) && Hash(now) != sid;
+        return started.Any(pair => read.Cookies.TryGetValue(pair.Key, out var value) && Hash(value) != pair.Value);
     }
 }

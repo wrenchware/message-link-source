@@ -55,6 +55,8 @@ public static class ConsoleShell
             else
             {
                 var words = ConsoleCommandParser.Words(part);
+                // A filter of only an empty quote ("" or " ") has no words at all.
+                if (words.Count == 0) return "Something is missing around a ; | or &&.";
                 var name = words[0].TrimStart('/').ToLowerInvariant();
                 if (!FilterNames.Contains(name))
                     return $"There's no filter called “{words[0]}”. Filters: {string.Join(", ", FilterNames)}.";

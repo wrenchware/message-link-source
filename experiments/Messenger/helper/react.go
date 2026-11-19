@@ -18,8 +18,12 @@ import (
 // One reaction on one message, added or taken away. Messenger keeps one reaction per person, so adding replaces what
 // this account had; an empty one removes it. Which connection carries it depends on the conversation, the same way
 // messages do.
+//
+// A removal names the reaction it takes away, and Facebook's own removal does not: it clears whatever this account
+// has. So it is sent only while that reaction is still this account's. A removal asked for from an older view of the
+// message, after a different reaction replaced it, used to clear the newer one; now it changes nothing and says so.
 func (a *adapter) reactTo(ctx context.Context, key int64, messageID, reaction string, remove bool) (any, string) {
-	if key == 0 || messageID == "" || (!remove && reaction == "") {
+	if key == 0 || messageID == "" || reaction == "" {
 		return nil, "invalid_input"
 	}
 	target, known := a.chats.messageByID(key, messageID)
@@ -31,6 +35,10 @@ func (a *adapter) reactTo(ctx context.Context, key int64, messageID, reaction st
 		return nil, "login_required"
 	}
 	if remove {
+		if current := a.chats.reactionBy(target.ID, self); current != reaction {
+			logf("react chat=%s remove skipped: not this account's reaction now (has one=%v)", tag(key), current != "")
+			return map[string]any{"outcome": "accepted", "changed": false}, ""
+		}
 		reaction = ""
 	}
 	if encrypted, _ := a.chats.encryptedThread(key); encrypted {

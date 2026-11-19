@@ -53,13 +53,25 @@ internal sealed partial class ServerBackupService : IServerBackup
         this.paths = paths; this.protector = protector; this.folder = folder; this.messenger = messenger; this.app = app; this.log = log; this.time = time ?? TimeProvider.System;
         // A server's backups are on unless its page turned them off: a mapped folder is the owner's request for them, and nothing runs before a password is set.
         LoadDestination();
-        settings = (File.Exists(paths.BackupSettings) ? BackupSettings.Load(paths.BackupSettings) : new BackupSettings(Enabled: true)) with { Folder = this.folder };
+        settings = (File.Exists(paths.BackupSettings) ? BackupSettings.TryLoad(paths.BackupSettings) ?? Unreadable(paths.BackupSettings, log) : new BackupSettings(Enabled: true))
+            with { Folder = this.folder };
         if (destination is { Id: not null } && settings.DestinationId != destination.Id) settings = ForDestination(settings, destination.Id);
         // The password and its change time are one protected file. Recover the time if a settings save was interrupted.
         if (HasPassword)
             try { if (ReadPasswordRecordAsync().GetAwaiter().GetResult().At is { } at) settings = settings with { PasswordSetAt = at }; }
             catch (BackupFailedException) { }
         SweepTransfers();
+    }
+
+    // A settings file that cannot be read is no "off": read as one, backups stopped and, being off, never went stale, so no phone was told. Backups stay on (the
+    // page's choice is the only off), and the file is set aside as it was.
+    private static BackupSettings Unreadable(string path, Action<string> log)
+    {
+        var aside = "no";
+        try { File.Move(path, path + ".unreadable", overwrite: true); aside = "yes"; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        log($"server backup settings unreadable set_aside={aside}");
+        return new BackupSettings(Enabled: true);
     }
 
     /// <summary>The wait before the schedule first looks (well clear of the start), and between looks. The harness makes them short.</summary>

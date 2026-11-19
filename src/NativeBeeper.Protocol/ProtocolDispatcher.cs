@@ -84,6 +84,8 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
             await EndFeedAsync().ConfigureAwait(false);
             // What this connection stated no longer counts (HostClientState), nor its version.
             EndClientState();
+            // The media this connection was reading: its wake held the bytes for up to 30 s after the close, and each reconnect made another (review, 2026-11-18).
+            readCache.Dispose();
             services.Connections?.Closed(this);
             channel.Close();
         }

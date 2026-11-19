@@ -473,8 +473,34 @@ public sealed partial class ConversationViewModel(IChatReader reader, Conversati
         catch (Exception ex) when (ex is not OperationCanceledException) { return (saved, 0); }
     }
 
+    // The command's ExecuteAsync does not look at CanExecute, and the media viewer and the gallery call it without looking at
+    // IsBusy. A second read from the same cursor was taken by Merge for a stalled one, ending paging, and a load that ran
+    // inside an event batch's awaits had its page written over by the batch. So a load already on its way is shared, and
+    // anything else holding the conversation busy (an opening, a batch) is waited out, bounded, before this one reads.
+    // Shared only within the selection it began in: one for a conversation left behind can still be unwinding its cancelled
+    // read, and joining it brought nothing for the conversation open now.
+    private Task? olderLoad;
+    private long olderLoadGeneration;
+    private const int OlderLoadWaits = 100;
+    private static readonly TimeSpan OlderLoadWaitStep = TimeSpan.FromMilliseconds(50);
+
     [RelayCommand(CanExecute = nameof(CanLoadOlder))]
-    private async Task LoadOlderAsync()
+    private Task LoadOlderAsync()
+    {
+        if (olderLoad is { IsCompleted: false } running && olderLoadGeneration == generation) return running;
+        olderLoadGeneration = generation;
+        return olderLoad = LoadOlderWhenFreeAsync();
+    }
+
+    private async Task LoadOlderWhenFreeAsync()
+    {
+        var asked = generation;
+        for (var waits = 0; IsBusy && waits < OlderLoadWaits && asked == generation; waits++) await Task.Delay(OlderLoadWaitStep);
+        if (IsBusy || asked != generation) return;
+        await LoadOlderCoreAsync();
+    }
+
+    private async Task LoadOlderCoreAsync()
     {
         if (current is null || selection is null) return;
         if (window is not null) { await LoadWindowOlderAsync(); return; }

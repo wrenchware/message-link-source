@@ -88,7 +88,9 @@ public sealed partial class PagerApp : ConsoleApp
             Invalidate();
         }
         catch (Exception) { Message = "This log could not be read."; Invalidate(); }
-        finally { reading = false; }
+        // A read Switch left behind clears nothing: the flag is the current log's read's by then, and clearing it let the next tick
+        // start a second read from the same place, so its lines went in twice.
+        finally { if (version == generation) reading = false; }
     }
 
     private void Switch(int to)

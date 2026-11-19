@@ -152,14 +152,18 @@ public sealed partial class ConsoleSessionViewModel
         {
             IReadOnlyList<MessageRef> list;
             lock (gate) list = messageRefs;
-            var n = int.Parse(word[1..], CultureInfo.InvariantCulture);
+            // Too many digits for a number is a number past the end; int.Parse threw, and the command ended with nothing said.
+            if (!int.TryParse(word[1..], NumberStyles.None, CultureInfo.InvariantCulture, out var n)) n = int.MaxValue;
             if (list.Count == 0) { Fail("There are no message numbers yet. /msgs name lists messages as m1, m2 …"); return null; }
+            if (n == int.MaxValue) { Fail($"There's no {word}. The last /msgs listed m1 to m{list.Count.ToString(CultureInfo.InvariantCulture)}."); return null; }
             if (n < 1 || n > list.Count) { Fail($"There's no m{n.ToString(CultureInfo.InvariantCulture)}. The last /msgs listed m1 to m{list.Count.ToString(CultureInfo.InvariantCulture)}."); return null; }
             return list[n - 1];
         }
-        if (word.StartsWith('^'))
+        // ^ followed by anything but a number (^x) names no message, which is said below.
+        var back = 1;
+        if (word.StartsWith('^') && (word.Length == 1 || int.TryParse(word[1..], NumberStyles.None, CultureInfo.InvariantCulture, out back)))
         {
-            var n = word.Length == 1 ? 1 : int.Parse(word[1..], CultureInfo.InvariantCulture);
+            var n = back;
             var to = Target;
             var target = to is null ? null : to.Target ?? TargetOf(to.SourceChatId);
             if (target is null) { Fail("^ is the newest message from the person the prompt shows, and no one is selected. /to name, or /msgs name for numbers."); return null; }

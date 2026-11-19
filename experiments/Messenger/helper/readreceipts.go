@@ -93,6 +93,28 @@ func (s *store) readMarkOf(key int64, current *message) []string {
 	return marks
 }
 
+// Every face in a conversation at once, by the message it sits on: what readMarkOf answers for each message, for one
+// scan of the conversation per reader instead of one per reader for every message drawn. Call with the lock held.
+func (s *store) readMarksLocked(key int64) map[string][]string {
+	thread, ok := s.threads[key]
+	if !ok || len(thread.readBy) == 0 {
+		return nil
+	}
+	marks := map[string][]string{}
+	for contact, watermark := range thread.readBy {
+		if contact == s.self {
+			continue
+		}
+		if latest := s.latestReadMessage(key, watermark); latest != nil {
+			marks[latest.id] = append(marks[latest.id], strconv.FormatInt(contact, 10))
+		}
+	}
+	for _, readers := range marks {
+		sort.Strings(readers)
+	}
+	return marks
+}
+
 // A deterministic target shared by marker projection and incremental invalidation.
 func (s *store) latestReadMessage(key, watermark int64) *message {
 	var latest *message

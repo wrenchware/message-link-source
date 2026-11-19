@@ -193,10 +193,11 @@ internal sealed partial class LinuxHostStartup : IDisposable
     /// </summary>
     public async Task RestoreAsync(CancellationToken stop)
     {
-        await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
-        if (google is not null) { await RestoreWithGoogleAsync(stop).ConfigureAwait(false); return; }
         try
         {
+            // Inside the try: a stop during the added accounts' restore still answers a client waiting on the host's, rather than holding the stop's drain.
+            await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
+            if (google is not null) { await RestoreWithGoogleAsync(stop).ConfigureAwait(false); return; }
             if (stop.IsCancellationRequested)
             {
                 foreach (var provider in Restoring) log($"server restore provider={provider} outcome=stopped");
@@ -206,6 +207,10 @@ internal sealed partial class LinuxHostStartup : IDisposable
             // Let go while the restore runs, as the Windows server does once the others have started: a client then sees the connection as it comes up.
             if (!stop.IsCancellationRequested) feed.Open();
             await restoring;
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            foreach (var provider in Restoring) log($"server restore provider={provider} outcome=stopped");
         }
         // However it ended, a client waiting on the host's restore is answered (skipped) rather than left waiting.
         finally { restores.End(); }
@@ -227,6 +232,9 @@ internal sealed partial class LinuxHostStartup : IDisposable
 
     /// <summary>The host's restore will not run: a client waiting on it is answered skipped.</summary>
     public void EndRestores() => restores.End();
+
+    /// <summary>The start's restore is skipped or held: every feed but Google's own goes now, so Hermes and an account connected meanwhile are heard.</summary>
+    public void OpenPassiveFeed() => feed.OpenPassive();
 
     // Messenger's and Instagram's saved sessions, side by side, each through the host's one slot for it. With or without Google Messages.
     private Task RestoreOthersAsync(CancellationToken stop)

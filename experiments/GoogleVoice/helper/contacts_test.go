@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go.mau.fi/mautrix-gvoice/pkg/libgv"
 	"go.mau.fi/mautrix-gvoice/pkg/libgv/gvproto"
@@ -63,10 +64,17 @@ func TestContactBookFailuresLeaveNumbersUnnamedAndAreRetried(t *testing.T) {
 			return map[string]*gvproto.RespLookupContacts_Match{"+15550004": {Autocompletion: person("Later", true, "+15550004")}}, nil
 		},
 	}
+	clock := &voiceClock{at: time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)}
+	book.now = clock.now
 	if contacts, _ := book.infoFor(context.Background(), nil, []string{"+15550004"}); len(contacts) != 0 {
 		t.Fatalf("a failed lookup names nobody: %v", contacts)
 	}
 	fail = false
+	// Not at once: a list a moment later would only ask a failing service again.
+	if contacts, _ := book.infoFor(context.Background(), nil, []string{"+15550004"}); len(contacts) != 0 || lookups != 1 {
+		t.Fatalf("a failed lookup was asked again at once: %v %d", contacts, lookups)
+	}
+	clock.advance(contactsRetry)
 	if contacts, _ := book.infoFor(context.Background(), nil, []string{"+15550004"}); contacts["+15550004"].Name != "Later" || lookups != 2 {
 		t.Fatalf("a failed lookup must be tried again: %v %d", contacts, lookups)
 	}

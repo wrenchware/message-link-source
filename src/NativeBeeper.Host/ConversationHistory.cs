@@ -1264,7 +1264,7 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
 
     // ---- The background: filling every conversation, catching up, checking ----
 
-    private enum Work { Open = 0, Arrival = 1, Check = 2, Refresh = 3, CatchUp = 4, Initial = 5, Mirror = 6 }
+    internal enum Work { Open = 0, Arrival = 1, Check = 2, Refresh = 3, CatchUp = 4, Initial = 5, Mirror = 6 }
     private enum Reason { Open, Event, Arrival, Check, Refresh, CatchUp, Initial, Older, Mutation, Mirror }
 
     private void Enqueue(string chatId, Work work) => queue.Add(chatId, work);
@@ -1313,6 +1313,9 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
                 // Whatever the read was asked for, it compared the service's newest page with the copy: a mirror check waiting on this conversation counts it.
                 Mirrored(item.ChatId, taken ? chat.LastDifference : null);
                 if (!taken && item.Work != Work.Mirror && item.Tries < 5) queue.Later(item.ChatId, item.Work, RetryAfter * (1 << item.Tries), item.Tries + 1);
+                // The conversation was read: a failed open's retry still waiting has what it was for, and read as an open it would pass the budget
+                // (review, 2026-11-18). An open asked for again since is not a retry, and stays.
+                if (taken) queue.RetireRetry(item.ChatId);
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { return; }
             catch (Exception failure)
@@ -1832,15 +1835,16 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     }
 
     /// <summary>
-    /// The background's work, each conversation once at the most urgent of what it was asked for, and work put off until a time. Bounded by the number of
-    /// conversations, since a conversation is in it at most once.
+    /// The background's work, each conversation at the most urgent of what it was asked for, and work put off until a time. A conversation holds at most
+    /// one read someone asked for (Open, read whatever the budget) and one of the server's own (which waits for the budget), so the queue is bounded by twice
+    /// the number of conversations.
     /// </summary>
-    private sealed class WorkQueue
+    internal sealed class WorkQueue
     {
         // Order: when it was asked for, so work of one urgency goes first come first served (the walk asks for the most recently active first).
         public sealed record Item(string ChatId, Work Work, int Tries, long NotBefore, long Order = 0);
         private readonly object gate = new();
-        private readonly Dictionary<string, Item> items = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string ChatId, bool Asked), Item> items = new();
         private TaskCompletionSource signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private bool completed;
         private long order;
@@ -1856,12 +1860,29 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
             lock (gate)
             {
                 if (completed) return;
-                if (items.TryGetValue(item.ChatId, out var was) && was.Work <= item.Work && was.NotBefore <= item.NotBefore) return;
-                items[item.ChatId] = was is null ? item with { Order = ++order }
-                    : item with { Work = (Work)Math.Min((int)was.Work, (int)item.Work), Tries = Math.Max(was.Tries, item.Tries), Order = was.Order };
+                // An asked read takes the place of the server's own read due no sooner, since it reads the conversation for both. The server's own read due
+                // sooner stays apart: merged, it took the asked read's class and skipped the budget (review, 2026-11-18), or the asked read's later time.
+                var asked = item.Work == Work.Open;
+                if (asked && items.TryGetValue((item.ChatId, false), out var own) && own.NotBefore >= item.NotBefore) items.Remove((item.ChatId, false));
+                if (!asked && items.TryGetValue((item.ChatId, true), out var open) && open.NotBefore <= item.NotBefore) return;
+                var key = (item.ChatId, asked);
+                if (items.TryGetValue(key, out var was) && was.Work <= item.Work && was.NotBefore <= item.NotBefore) return;
+                // Merged, the work is the more urgent and the time the sooner, with that side's tries: a backed-off retry of more urgent work no longer puts
+                // off work that was due now (it reads the conversation once either way), nor gives it the retry's count.
+                var sooner = was is null || item.NotBefore < was.NotBefore ? item : was.NotBefore < item.NotBefore ? was : item with { Tries = Math.Max(was.Tries, item.Tries) };
+                items[key] = was is null ? item with { Order = ++order }
+                    : sooner with { Work = (Work)Math.Min((int)was.Work, (int)item.Work), Order = was.Order };
                 wake = signal;
             }
             wake.TrySetResult();
+        }
+
+        /// <summary>Takes away the conversation's waiting open when it is a retry (tries past 0). An open asked for anew has none: merged into a retry, it
+        /// is due sooner and takes its own count.</summary>
+        public void RetireRetry(string chatId)
+        {
+            lock (gate)
+                if (items.TryGetValue((chatId, true), out var open) && open.Tries > 0) items.Remove((chatId, true));
         }
 
         public void Complete()
@@ -1882,7 +1903,9 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
                     var due = items.Values.Where(item => item.NotBefore <= now).OrderBy(item => item.Work).ThenBy(item => item.Order).FirstOrDefault();
                     if (due is not null)
                     {
-                        items.Remove(due.ChatId);
+                        items.Remove((due.ChatId, due.Work == Work.Open));
+                        // The server's own read of the conversation that is due too is done by this asked one (an asked one due sorts first).
+                        if (due.Work == Work.Open && items.TryGetValue((due.ChatId, false), out var own) && own.NotBefore <= now) items.Remove((due.ChatId, false));
                         return due;
                     }
                     if (signal.Task.IsCompleted) signal = new(TaskCreationOptions.RunContinuationsAsynchronously);

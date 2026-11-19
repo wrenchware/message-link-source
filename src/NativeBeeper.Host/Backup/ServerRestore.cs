@@ -191,7 +191,7 @@ internal static class ServerRestore
                 log($"server restore finished resumed=yes moves={left.Moves.Count}");
                 return left.Outcome;
             }
-            // Written whole before any move, so one that cannot be read was never begun: nothing has moved.
+            // Written whole and flushed before any move, and again so after the deletions, so one that cannot be read was never begun: nothing has moved.
             File.Delete(commitPath);
         }
         var staged = Path.Combine(paths.Restore, StagedFolder);
@@ -219,7 +219,7 @@ internal static class ServerRestore
         Commit built;
         try
         {
-            built = await BuildAsync(paths, protector, file, plan, staged, time, restorePagePassword, cancellationToken).ConfigureAwait(false);
+            built = OnlyStaged(await BuildAsync(paths, protector, file, plan, staged, time, restorePagePassword, cancellationToken).ConfigureAwait(false));
             await WriteWholeAsync(commitPath, JsonSerializer.SerializeToUtf8Bytes(built)).ConfigureAwait(false);
         }
         catch (BackupFileException failure)
@@ -242,6 +242,20 @@ internal static class ServerRestore
         log($"server restore applied kind={o.Kind} devices={o.Devices} forgotten={o.Forgotten} rows={o.Rows} messages={o.Messages} held={o.Held} " +
             $"messenger_pages={o.MessengerPages} pc_rows={o.PcRows} ms={clock.ElapsedMilliseconds}");
         return o;
+    }
+
+    // Only what was written is listed. A store the backup held nothing for is never made (state.db with no rows), and its move, listed with no staged file, read
+    // on a replay as a move already made (review, 2026-11-18): such a store is emptied instead, as the backup's was. Any other file missing is a staging that
+    // failed, before anything moved.
+    private static Commit OnlyStaged(Commit commit)
+    {
+        var moves = new List<Move>();
+        var deletes = new List<string>(commit.Deletes);
+        foreach (var move in commit.Moves)
+            if (File.Exists(move.From)) moves.Add(move);
+            else if (move.Store) deletes.Add(move.To);
+            else throw new IOException("A staged file is missing.");
+        return commit with { Moves = moves, Deletes = deletes };
     }
 
     private static RestoreUnfinishedException Unfinished(Action<string> log, Exception failure)
@@ -538,7 +552,14 @@ internal static class ServerRestore
     // never swept or called "nothing was changed": the list stays, and the next start finishes it.
     private static void Finish(ServerBackupPaths paths, IStateProtector protector, Commit commit)
     {
-        if (commit.Deletes.Count > 0)
+        // Every move listed was staged (OnlyStaged), so one with neither its staged file nor its target has lost the file: the list stays, and the server does not
+        // open on it.
+        if (commit.Moves.FirstOrDefault(move => !File.Exists(move.From) && !File.Exists(move.To)) is not null)
+            throw new IOException("A restore move has neither its staged file nor its target.");
+        // A move whose staged file is gone was made, and moves come only after the deletes: those were done, and done again they would delete what the move put
+        // there (the pending folder's pages). The rewritten list's rename is not on the disk until its folder is, and a power cut can lose it while a later move
+        // stays (review, 2026-11-18).
+        if (commit.Deletes.Count > 0 && !commit.Moves.Any(move => !File.Exists(move.From)))
         {
             foreach (var path in commit.Deletes)
             {
@@ -546,9 +567,8 @@ internal static class ServerRestore
                     if (File.Exists(file)) File.Delete(file);
                 if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
             }
-            var commitPath = Path.Combine(paths.Restore, CommitFile);
-            File.WriteAllBytes(commitPath + ".tmp", JsonSerializer.SerializeToUtf8Bytes(commit with { Deletes = [] }));
-            File.Move(commitPath + ".tmp", commitPath, overwrite: true);
+            // On the disk before the rename, as the first write was: a list lost to a power cut after the deletions would read as never begun.
+            WritePrivateAsync(Path.Combine(paths.Restore, CommitFile), JsonSerializer.SerializeToUtf8Bytes(commit with { Deletes = [] })).GetAwaiter().GetResult();
         }
         foreach (var move in commit.Moves)
         {

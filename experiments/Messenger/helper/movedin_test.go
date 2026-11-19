@@ -10,8 +10,8 @@ import (
 )
 
 // Facebook answering "not found" or "logged out" for the device of an account that arrived by a move must not make the
-// helper register another one by itself: the dead keys go (so the person's explicit enable can register afresh), the
-// state is told as "device gone", and nothing is started. No client exists in this test, so nothing can reach Facebook.
+// helper register another one by itself (no device is, since 2026-11-18): the state is told as "device gone" and
+// nothing is started. No client exists in this test, so nothing can reach Facebook.
 func TestMovedDeviceRefusedByFacebookIsNotRegisteredAgain(t *testing.T) {
 	root := moveRoot(t)
 	a := moveAdapter(t)
@@ -24,10 +24,7 @@ func TestMovedDeviceRefusedByFacebookIsNotRegisteredAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.crypto = &encrypted{device: &wadevice.Device{Deleted: true}}
-	a.forgetDevice(events.ConnectFailureNotFound)
-	if a.reregistered.Load() {
-		t.Fatal("a moved device was registered again on its own")
-	}
+	a.forgetDevice(a.crypto, events.ConnectFailureNotFound)
 	if !a.encryptedGone.Load() {
 		t.Fatal("a refused moved device was not reported as gone")
 	}

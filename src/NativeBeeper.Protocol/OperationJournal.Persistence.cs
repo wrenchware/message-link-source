@@ -120,10 +120,10 @@ public sealed partial class OperationJournal
             json.WriteString("sendChatId", chatId);
             json.WriteNumber("sendAt", entry.Started.ToUnixTimeMilliseconds());
         }
-        if (entry.Result is { } result && KeepsResult(result))
+        if (entry.Result is { } result && (KeepsResult(result) ? result : ScheduledOutcome(result)) is { } kept)
         {
             json.WritePropertyName("result");
-            json.WriteRawValue(result);
+            json.WriteRawValue(kept);
         }
         if (entry.Error is { } error)
         {
@@ -167,6 +167,35 @@ public sealed partial class OperationJournal
             }
         }
         catch (JsonException) { return false; }
+    }
+
+    private static readonly HashSet<string> ScheduledAnswerMembers = new(StringComparer.Ordinal) { "status", "id", "rev", "message", "text" };
+    private static readonly HashSet<string> ScheduledStatusWords = new(StringComparer.Ordinal)
+        { ScheduledStatuses.Done, ScheduledStatuses.Conflict, ScheduledStatuses.AlreadySending, ScheduledStatuses.Refused, ScheduledStatuses.Retired };
+
+    // A scheduled command's answer, kept as its status word, id and rev without its sentence or words: dropped whole, a `refused` create whose answer was lost
+    // read after a restart as done without a result, which a phone takes as kept and clears the draft for (review, 2026-11-18). Null for anything else.
+    private static byte[]? ScheduledOutcome(byte[] result)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(result);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.EnumerateObject().All(member => ScheduledAnswerMembers.Contains(member.Name))
+                || !root.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String || !ScheduledStatusWords.Contains(status.GetString()!))
+                return null;
+            var buffer = new ArrayBufferWriter<byte>(128);
+            using (var json = new Utf8JsonWriter(buffer))
+            {
+                json.WriteStartObject();
+                json.WriteString("status", status.GetString());
+                if (root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String) json.WriteString("id", id.GetString());
+                if (root.TryGetProperty("rev", out var rev) && rev.ValueKind == JsonValueKind.Number) json.WriteNumber("rev", rev.GetInt64());
+                json.WriteEndObject();
+            }
+            return buffer.WrittenSpan.ToArray();
+        }
+        catch (Exception failure) when (failure is JsonException or FormatException) { return null; }
     }
 
     // Reads the stored journal into the empty one. An entry that was running when the process died has no outcome anyone knows, so it

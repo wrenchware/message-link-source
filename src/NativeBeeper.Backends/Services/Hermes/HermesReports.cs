@@ -103,7 +103,13 @@ internal sealed partial class HermesBackend : IAgentReports
         return reportTokens.Rows.FirstOrDefault(r => r.Hash == hex) is { } row && Has(row.Profile) ? row : null;
     }
 
-    public bool KnowsReportToken(byte[] tokenHash) => loaded is { IsCompletedSuccessfully: true } && TokenRow(tokenHash) is not null;
+    public bool KnowsReportToken(byte[] tokenHash)
+    {
+        // The door asks without loading. Tokens that couldn't be read are asked for again here (LoadAsync waits out its own
+        // backoff), so the report after they can be read finds its token without a restart.
+        if (loaded is { IsCompletedSuccessfully: true } && (reportsPending || settingsPending)) _ = LoadAsync();
+        return loaded is { IsCompletedSuccessfully: true } && TokenRow(tokenHash) is not null;
+    }
 
     public void ReportRefused(byte[] tokenHash, string reason)
     {

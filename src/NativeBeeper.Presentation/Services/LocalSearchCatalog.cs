@@ -172,11 +172,18 @@ public sealed class LocalSearchCatalog
 
     public void Invalidate(RealtimeEvent change)
     {
+        // The client's link to its host dropped, not a provider's to its service (RealtimeEvent.ClientLink): the host and its
+        // accounts ran on and the resumed feed replays what was missed, so nothing here can be another account's. It cleared
+        // the whole catalog, again every few seconds while the server could not be reached.
+        if (change.Kind == RealtimeKind.Disconnected && change.Scope is null && change.ClientLink == true) return;
         lock (sync)
         {
             // A reconnect can be a different account behind a fixed provider id. Rebuild that service from
-            // fresh reads; a cached result must never survive sign-out into another account's session.
-            if (change.Kind is RealtimeKind.Connected or RealtimeKind.Disconnected or RealtimeKind.AuthenticationRequired)
+            // fresh reads; a cached result must never survive sign-out into another account's session. A resync for everything
+            // is the host saying the feed could not resume (it restarted, or this reader fell too far behind): what it missed,
+            // a sign-out or an unsend among it, never reaches this catalog, so it goes as the link's drop once made it go.
+            if (change.Kind is RealtimeKind.Connected or RealtimeKind.Disconnected or RealtimeKind.AuthenticationRequired ||
+                change.Kind == RealtimeKind.ResyncRequired && change.Scope is null)
             {
                 generation++;
                 // Only the summaries here: the messages go in one pass below. RemoveChat walked every message once per

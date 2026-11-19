@@ -94,7 +94,11 @@ public sealed class BeeperAvatarReader(IChatReader chats, IMediaReader media, IA
             try
             {
                 var key = profile + "\n" + chatId;
-                if (!sources.TryGetValue(key, out var cached) || cached.Until < DateTimeOffset.UtcNow)
+                (DateTimeOffset Until, string[] Sources) cached;
+                // The gate lets three readers in at once, so the map has its own lock.
+                bool fresh;
+                lock (sources) fresh = sources.TryGetValue(key, out cached) && cached.Until >= DateTimeOffset.UtcNow;
+                if (!fresh)
                 {
                     // A conversation that cannot be read right now must not cost the picture that came with it: the
                     // supplied source is already in the candidates and is usually the one that works.
@@ -107,8 +111,11 @@ public sealed class BeeperAvatarReader(IChatReader chats, IMediaReader media, IA
                         if (others.Length == 1 && others[0].AvatarUrl is { Length: > 0 } avatar) urls.Add(avatar);
                     }
                     cached = (DateTimeOffset.UtcNow.AddMinutes(2), urls.Distinct().ToArray());
-                    if (sources.Count >= 256) sources.Clear();
-                    sources[key] = cached;
+                    lock (sources)
+                    {
+                        if (sources.Count >= 256) sources.Clear();
+                        sources[key] = cached;
+                    }
                 }
                 candidates.AddRange(cached.Sources);
             }

@@ -12,6 +12,7 @@ internal sealed partial class GoogleMessagesBackend
     // connection, and the helper allows avatar thumbnails only 5 s.
     private static readonly TimeSpan IndexStartDelay = TimeSpan.FromSeconds(45), IndexQuietPeriod = TimeSpan.FromSeconds(15), IndexPageDelay = TimeSpan.FromMilliseconds(2500), IndexRealtimePause = TimeSpan.FromSeconds(30);
     private const int IndexPageSize = 50;
+    private static readonly TimeSpan IndexLoadRetryMost = TimeSpan.FromMinutes(10);
     private readonly GoogleIndexRun indexing = new();
     // Always on (owner, 2026-11-04: no switch for it, and an old choice of off no longer counts). It pauses while someone is active.
     private volatile bool historyIndexingEnabled = true;
@@ -51,8 +52,16 @@ internal sealed partial class GoogleMessagesBackend
         try
         {
             GoogleMessagesLog.Write("index starting");
-            var profile = await LoadArchiveAsync(token);
-            if (profile is null) { GoogleMessagesLog.Write("index unavailable"); return; }
+            // An archive that didn't load is asked for again (GoogleArchive.LoadRetryAfter), backing off: given up on at once,
+            // the crawl stayed off until the next reconnect, on a server for days, even after a search had loaded the archive.
+            string? profile;
+            var retry = archive.LoadRetryAfter + TimeSpan.FromMilliseconds(250);
+            while ((profile = await LoadArchiveAsync(token)) is null)
+            {
+                GoogleMessagesLog.Write("index unavailable");
+                await Task.Delay(retry, token);
+                retry = TimeSpan.FromTicks(Math.Min(retry.Ticks * 2, IndexLoadRetryMost.Ticks));
+            }
             // Let the chat list, visible avatars and the open conversation load first.
             await Task.Delay(IndexStartDelay, token);
             var listed = new Dictionary<string, GoogleChat>();

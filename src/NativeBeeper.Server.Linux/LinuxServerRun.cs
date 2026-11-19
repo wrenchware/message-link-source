@@ -210,6 +210,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
             // Not knowing is not permission: no restore this run, and nobody left waiting for one.
             log($"server restore skipped reason=paced error={failure.GetType().Name}");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         // A count that cannot be written (a full disk, a read-only folder) is no limit at all: the next start would find the cap and the back-off gone. Fail
@@ -218,12 +219,15 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
         {
             log("server restore skipped reason=ledger_not_saved");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         if (decision.Wait > TimeSpan.Zero)
         {
             log($"server restore held reason=paced wait_s={(long)Math.Ceiling(decision.Wait.TotalSeconds)} unclean={decision.Unclean} recent={decision.Recent}");
             composed.EndRestores();
+            // Every feed but Google's goes meanwhile, so Hermes and an account a client connects are heard; the restore lets Google's go after the wait.
+            composed.OpenPassiveFeed();
             try { await Task.Delay(decision.Wait, stop).ConfigureAwait(false); }
             catch (OperationCanceledException)
             {
@@ -236,6 +240,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
         {
             log("server restore skipped reason=ledger_not_saved");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         await composed.RestoreAsync(stop).ConfigureAwait(false);

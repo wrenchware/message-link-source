@@ -253,18 +253,23 @@ public sealed class HostStateCache
 
     public bool IsScopeConnected(string scope) => !lost && current is { } snapshot && snapshot.Scopes.TryGetValue(scope, out var found) && found.Connected;
 
-    // The routers' rule: a Voice scope is configured when it names a known account; Messenger's and Instagram's by their own session;
-    // every other scope string is Google's.
+    // A scope the host sent a row for answers for itself (Hermes, an added account). Otherwise the routers' rule: a Voice scope is configured when it names a
+    // known account; Messenger's, Instagram's and Hermes's by their own row (an added account's too, so one the host never named is not set up); every other
+    // scope string is Google's. Read by Google's flags, an added Messenger account's Disconnected on a server without Google was dropped as not set up.
     public bool IsConfigured(string scope)
     {
         if (current is not { } snapshot) return false;
-        var key = scope.StartsWith(ProviderScopes.VoicePrefix, StringComparison.Ordinal) || scope == ProviderScopes.Messenger || scope == ProviderScopes.Instagram
+        if (snapshot.Scopes.TryGetValue(scope, out var own)) return own.Configured;
+        var key = scope.StartsWith(ProviderScopes.VoicePrefix, StringComparison.Ordinal) || scope.StartsWith(ProviderScopes.Messenger, StringComparison.Ordinal)
+            || scope.StartsWith(ProviderScopes.Instagram, StringComparison.Ordinal) || scope.StartsWith(ProviderScopes.Hermes, StringComparison.Ordinal)
             ? scope : ProviderScopes.Google;
         return snapshot.Scopes.TryGetValue(key, out var found) && found.Configured;
     }
 
+    // Google's, and an added Google account's, each by its own row.
     public bool NeedsSignInOnly(string scope) =>
-        scope == ProviderScopes.Google && current is { } snapshot && snapshot.Scopes.TryGetValue(ProviderScopes.Google, out var found) && found.NeedsSignInOnly;
+        scope.StartsWith(ProviderScopes.Google, StringComparison.Ordinal) && current is { } snapshot
+        && snapshot.Scopes.TryGetValue(scope, out var found) && found.NeedsSignInOnly;
 
     // ---- What a scope's conversations and attachments can do ----
 

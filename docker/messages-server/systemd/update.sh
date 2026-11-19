@@ -31,7 +31,21 @@ if [ -r "$settings" ]; then
 fi
 
 work=$(mktemp -d /var/tmp/messages-server-update.XXXXXX)
-trap 'rm -rf "$work"' EXIT
+# Whatever ends this script (a failed Chrome upgrade under set -e, a signal), a server it stopped is started again:
+# Restart=on-failure does not cover a deliberate stop, and the next night skips a server that is not running. stopped
+# is cleared once the server is started below, or install.sh has taken it over (the file `took` it writes once its own
+# recovery is armed), so an operator's later stop is left alone.
+stopped=no
+took="$work/install-took-over"
+finish() {
+    if [ "$stopped" = yes ] && [ ! -e "$took" ] && ! systemctl is-active --quiet messages-server; then
+        echo "update: starting the server again." >&2
+        systemctl start messages-server || echo "update: the server did not start; see journalctl -u messages-server." >&2
+    fi
+    rm -rf "$work" || true
+}
+trap finish EXIT
+trap 'exit 1' HUP INT TERM
 
 # ---- A newer release, downloaded and checked before anything is stopped. ----
 package=""
@@ -90,23 +104,38 @@ running=no
 if systemctl is-active --quiet messages-server; then
     running=yes
     say "stopping the server (pending sends finish first; up to 60 s)..."
+    stopped=yes
     systemctl stop messages-server
 fi
+chromefailed=no
 if [ "$chrome" = yes ]; then
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --only-upgrade google-chrome-stable
-    say "Google Chrome is now $(google-chrome-stable --version 2>/dev/null || echo unknown)."
+    # The lock wait covers apt-daily or unattended-upgrades holding dpkg at the same hour. A failed upgrade keeps the
+    # Chrome that was installed, and the release and the start below still run.
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq -o DPkg::Lock::Timeout=300 --only-upgrade google-chrome-stable; then
+        say "Google Chrome is now $(google-chrome-stable --version 2>/dev/null || echo unknown)."
+    else
+        chromefailed=yes
+        echo "update: Google Chrome did not upgrade; it keeps the version it had." >&2
+    fi
 fi
 if [ -n "$package" ]; then
-    # install.sh starts the server again, Google's setting kept (it reads the drop-in). One that fails leaves the old
-    # program in place (it swaps the folder in one rename), so the server is started on it again.
-    if ! "$package/install.sh"; then
-        systemctl start messages-server || true
-        fail "the new release did not install; the server runs the one it had."
+    # install.sh starts the server, Google's setting kept (it reads the drop-in). Once it says it has taken over, it owns
+    # that start: one that fails, or whose release does not stay running, puts the release that was there back, starts it
+    # if this script stopped it, and says above what runs. Until then the start stays this script's: an install.sh that
+    # never ran (a staging folder mounted noexec, a broken interpreter line) left nobody to start the server. Run by sh,
+    # so neither stops it.
+    handover=0
+    if [ "$stopped" = yes ]; then handover=1; fi
+    if ! MESSAGES_INSTALL_RESTART=$handover MESSAGES_INSTALL_ACK="$took" sh "$package/install.sh"; then
+        fail "the new release was not installed."
     fi
+    stopped=no
     echo "$want" > "$app/.package-sha256"
     chmod 0644 "$app/.package-sha256"
     say "installed $(basename "$package")."
 elif [ "$running" = yes ]; then
-    systemctl start messages-server
+    stopped=no
+    systemctl start messages-server || fail "the server did not start; see journalctl -u messages-server."
     say "the server is running again."
 fi
+[ "$chromefailed" = no ] || exit 1

@@ -211,14 +211,19 @@ internal sealed class ServerNetwork : IAsyncDisposable
             log($"server network failed type={failure.GetType().Name} port={settings.Port.ToString(CultureInfo.InvariantCulture)}");
             return null;
         }
-        LocalPageLink.WritePort(root, network.Port);
+        // Owned from here, before anything else can fail: a door already listening that the run held no ServerNetwork for was never drained or stopped. What follows
+        // is the door's extras, and a failure of one is logged and leaves the door serving.
+        var opened = new ServerNetwork(network, new DoorSwitch(root, settings, keys, relay, tailnet, log));
+        try { LocalPageLink.WritePort(root, network.Port); }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { log($"server network port_file failed type={failure.GetType().Name}"); }
         // Inside the pipe's own bound at the stop (ServerRun.StopNetworkAsync): the door has two seconds to close its node before it is ended.
         TailnetDoor.StopWait = TimeSpan.FromSeconds(2);
         log($"server listening transport=network port={network.Port.ToString(CultureInfo.InvariantCulture)} tailnet={(settings.Tailnet ? "on" : "off")}");
-        var opened = new ServerNetwork(network, new DoorSwitch(root, settings, keys, relay, tailnet, log));
         // The page's Tailscale card is this switch on Windows: kept in Server\network.json and applied at once.
         tailnet.Turn = opened.doors.Turn;
-        if (settings.Tailnet) opened.doors.Turn(true);
+        if (settings.Tailnet)
+            try { opened.doors.Turn(true); }
+            catch (Exception failure) when (failure is not OperationCanceledException) { log($"server tailnet start failed type={failure.GetType().Name}"); }
         return opened;
     }
 

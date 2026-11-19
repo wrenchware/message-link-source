@@ -59,12 +59,10 @@ func chatFixture() (*readOnlyAdapter, *fakeHistoryClient) {
 	// spending round trips reading it.
 	request := &slidetypes.ThreadInfo{ID: "request", ThreadFBID: "request", ViewerID: "123", Viewer: viewer,
 		Users: []*slidetypes.User{viewer, person(999, "A Stranger", "stranger")}, LastActivityTimestampMS: at(2000),
-		SystemFolder:  "PENDING",
 		SlideMessages: &slidetypes.SlideMessages{Edges: []slidetypes.Node[*slidetypes.Message]{{Node: said("r1", "request", 999, "let me in", 2000)}}},
 	}
 	spam := &slidetypes.ThreadInfo{ID: "spam", ThreadFBID: "spam", ViewerID: "123", Viewer: viewer,
 		Users: []*slidetypes.User{viewer, person(888, "Spammer", "spammer")}, LastActivityTimestampMS: at(100),
-		SystemFolder:  "SPAM",
 		SlideMessages: &slidetypes.SlideMessages{Edges: []slidetypes.Node[*slidetypes.Message]{{Node: said("s1", "spam", 888, "buy this", 100)}}},
 	}
 	older := &slidetypes.SlideMessages{Edges: []slidetypes.Node[*slidetypes.Message]{{Node: said("d0", "direct", 456, "oldest", 500)}}}
@@ -278,16 +276,92 @@ func hasChat(chats []*uiChat, id string) bool {
 func TestChatDetailKeepsTheFolderTheListEstablished(t *testing.T) {
 	a, _ := chatFixture()
 	chatsOf(t, a, `{}`)
-	result, code := a.uiChat(context.Background(), json.RawMessage(`{"chatId":"request"}`))
+	result, code := a.uiChat(context.Background(), json.RawMessage(`{"chatId":"spam"}`))
 	if code != "" {
 		t.Fatal(code)
 	}
 	chat := result.(*uiChat)
-	// A detail response carries no folder. Taking it at face value would quietly promote a message request into the
-	// inbox, which is exactly the distinction the app needs to keep.
-	if chat.Folder != "pending" {
+	// The fixture's detail names no folder. Taking that as the inbox would quietly promote a spam thread, which is
+	// exactly the distinction the app needs to keep.
+	if chat.Folder != "spam" {
 		t.Fatalf("detail lost the folder: %q", chat.Folder)
 	}
+}
+
+// A message request the list never read (requests are not paged) and whose detail names no folder has no known
+// standing. It must not come back as the inbox, which is what allows a reply or a read mark.
+func TestChatDetailWithNoKnownFolderIsNotTheInbox(t *testing.T) {
+	a, _ := chatFixture()
+	chatsOf(t, a, `{}`)
+	result, code := a.uiChat(context.Background(), json.RawMessage(`{"chatId":"request"}`))
+	if code != "" {
+		t.Fatal(code)
+	}
+	if folder := result.(*uiChat).Folder; folder != "" {
+		t.Fatalf("an unknown folder was filed as %q", folder)
+	}
+}
+
+// A folder the detail names is the newer fact, over what the list held and over no list at all.
+func TestChatDetailTakesTheFolderItNames(t *testing.T) {
+	a, client := chatFixture()
+	chatsOf(t, a, `{}`)
+	client.details["request"].SystemFolder = "PENDING"
+	client.details["direct"].SystemFolder = "SPAM"
+	for id, want := range map[string]string{"request": "pending", "direct": "spam"} {
+		result, code := a.uiChat(context.Background(), json.RawMessage(`{"chatId":"`+id+`"}`))
+		if code != "" {
+			t.Fatal(code)
+		}
+		if folder := result.(*uiChat).Folder; folder != want {
+			t.Fatalf("%s: detail named %q, filed as %q", id, want, folder)
+		}
+	}
+	client.details["spam"].SystemFolder = "INBOX"
+	result, _ := a.uiChat(context.Background(), json.RawMessage(`{"chatId":"spam"}`))
+	if folder := result.(*uiChat).Folder; folder != "inbox" {
+		t.Fatalf("a thread Instagram filed in the inbox was kept as %q", folder)
+	}
+}
+
+// A spam page that fails keeps the spam rows already held. Dropping them let a later detail read, which names no
+// folder, decide the thread's standing on its own.
+func TestFailedSpamPageKeepsTheSpamRowsHeld(t *testing.T) {
+	a, client := chatFixture()
+	chatsOf(t, a, `{}`)
+	failing := &failingSpamClient{fakeHistoryClient: client}
+	a.client = failing
+	chats := chatsOf(t, a, `{"refresh":true}`)
+	if !failing.asked {
+		t.Fatal("the spam folder was not read again")
+	}
+	spam, ok := a.chats.get("spam")
+	if !ok || spam.Folder != "spam" || !hasChat(chats, "spam") {
+		t.Fatal("a failed spam page dropped the spam thread")
+	}
+	if direct, _ := a.chats.get("direct"); direct == nil || direct.Folder != "inbox" {
+		t.Fatal("the inbox was not read")
+	}
+	// A spam page that answers again replaces the store as before, so a thread no longer in spam goes.
+	client.pages["SPAM:"] = &slidetypes.MailboxPage{}
+	a.client = client
+	chatsOf(t, a, `{"refresh":true}`)
+	if _, ok := a.chats.get("spam"); ok {
+		t.Fatal("a whole read that succeeded kept a thread no folder listed")
+	}
+}
+
+type failingSpamClient struct {
+	*fakeHistoryClient
+	asked bool
+}
+
+func (c *failingSpamClient) PaginateMailbox(ctx context.Context, r *slidetypes.PaginateMailboxRequest) (*slidetypes.PaginateMailboxResponse, error) {
+	if r.Folder == "SPAM" {
+		c.asked = true
+		return nil, errors.New("spam folder unavailable")
+	}
+	return c.fakeHistoryClient.PaginateMailbox(ctx, r)
 }
 
 func TestMessagesPageOldestFirstAndBackwards(t *testing.T) {

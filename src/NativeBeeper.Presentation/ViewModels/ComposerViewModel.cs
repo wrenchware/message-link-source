@@ -154,7 +154,7 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
     // Enter while this conversation's send check is still running (right after launch or a reconnect) sends once the
     // check allows it. It is the one send the user asked for, dropped if the text or conversation changes first.
     private (string ChatId, string Text, long QueuedAt, string WaitingFor)? queuedSend;
-    public bool CanSendOrQueue => IsReady && editing is null && chatId is not null && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength;
+    public bool CanSendOrQueue => !SchedulingHere && IsReady && editing is null && chatId is not null && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength;
     // Durations only, for Settings > Troubleshooting.
     public string SendDelaySummary { get; private set; } = "No sends from the composer measured yet this session.";
     public async Task SendOrQueueAsync()
@@ -175,7 +175,7 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
         await SendCommand.ExecuteAsync(null);
     }
     partial void OnIsCheckingChanged(bool value) => SendCommand.NotifyCanExecuteChanged();
-    private bool CanSend() => IsReady && editing is null && allowed && IsLive && !IsChecking && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength && WrittenAsSignedInAccount();
+    private bool CanSend() => !SchedulingHere && IsReady && editing is null && allowed && IsLive && !IsChecking && !string.IsNullOrWhiteSpace(Text) && Text.Length <= maxLength && WrittenAsSignedInAccount();
     private bool CanRestore() => chatId is not null && editing is null && outbox.ForChat(chatId).Any(m => m.State == OutgoingState.Rejected && m.CanRestoreText);
 
     public async Task SelectAsync(string? id)

@@ -164,17 +164,25 @@ internal sealed record BackupSettings(bool Enabled = false, string? Folder = nul
         _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
     };
 
-    public static BackupSettings Load(string path)
+    public static BackupSettings Load(string path) => File.Exists(path) ? TryLoad(path) ?? new() : new();
+
+    /// <summary>The settings in a file that is there, or null when it cannot be read; the server tells that apart from a file never written.</summary>
+    public static BackupSettings? TryLoad(string path)
     {
-        try { return File.Exists(path) ? JsonSerializer.Deserialize<BackupSettings>(File.ReadAllText(path)) ?? new() : new(); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return new(); }
+        try { return JsonSerializer.Deserialize<BackupSettings>(File.ReadAllText(path)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(this));
+        // On the disk before the rename (DurableFile): a rename kept over data lost to a power cut is a file of zeros, which reads as backups off.
+        using (var file = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            file.Write(JsonSerializer.SerializeToUtf8Bytes(this));
+            file.Flush(flushToDisk: true);
+        }
         File.Move(temporary, path, overwrite: true);
     }
 }

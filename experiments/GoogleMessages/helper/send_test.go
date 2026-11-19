@@ -8,6 +8,7 @@ import (
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/events"
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -28,6 +29,8 @@ func TestSubmitNeverRetriesAndKeepsUncertainIdentity(t *testing.T) {
 		// The phone not answering may still send later; its echo resolves the transaction.
 		{gmproto.SendMessageResponse_UNKNOWN, fmt.Errorf("%w in 30s", libgm.ErrPhoneNotResponding), "pending", "", "phone_unavailable"},
 		{gmproto.SendMessageResponse_UNKNOWN, context.DeadlineExceeded, "pending", "", "phone_unavailable"},
+		// The deadline during the post itself: it may or may not have reached the relay.
+		{gmproto.SendMessageResponse_UNKNOWN, &url.Error{Op: "Post", URL: "relay", Err: context.DeadlineExceeded}, "unknown", "", "phone_unavailable"},
 		// Anything else may or may not have been passed on: reported neither as sent nor as not sent.
 		{gmproto.SendMessageResponse_UNKNOWN, errors.New("synthetic private upstream error"), "unknown", "", "history_failed"},
 		{gmproto.SendMessageResponse_UNKNOWN, libgm.ErrConnectionClosed, "unknown", "", "connection_closed"},

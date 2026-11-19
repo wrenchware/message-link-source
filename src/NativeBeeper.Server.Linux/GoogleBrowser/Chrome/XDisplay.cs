@@ -11,7 +11,10 @@ internal interface IXDisplay : IDisposable
 {
     int Width { get; }
     int Height { get; }
-    /// <summary>The whole display as tightly packed 32-bit B, G, R, unused pixels (<c>Width * Height * 4</c> bytes), or null when it could not be read this time.</summary>
+    /// <summary>
+    /// The whole display as tightly packed 32-bit B, G, R, unused pixels (<c>Width * Height * 4</c> bytes), or null when it could not be read this time. The array
+    /// may be the one the last capture returned, filled again: it is the caller's only until its next Capture (one caller, the screen stream).
+    /// </summary>
     byte[]? Capture();
     /// <summary>The pointer to pixel (<paramref name="x"/>, <paramref name="y"/>) of the display.</summary>
     void MotionTo(int x, int y);
@@ -195,6 +198,8 @@ internal sealed class XcbDisplay : IXDisplay
         if (connection == IntPtr.Zero || xcb_connection_has_error(connection) != 0) throw new IOException("x_unavailable");
     }
 
+    private byte[]? frame;
+
     public byte[]? Capture()
     {
         ThrowIfDead();
@@ -205,7 +210,8 @@ internal sealed class XcbDisplay : IXDisplay
         {
             var length = xcb_get_image_data_length(reply);
             if (length < Width * Height * 4) return null;
-            var pixels = new byte[Width * Height * 4];
+            // One array for every look: a new 4 MB one every 100 ms of a sign-in was garbage on the large object heap.
+            var pixels = frame is { } kept && kept.Length == Width * Height * 4 ? kept : frame = new byte[Width * Height * 4];
             Marshal.Copy(xcb_get_image_data(reply), pixels, 0, pixels.Length);
             return pixels;
         }

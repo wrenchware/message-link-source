@@ -156,16 +156,20 @@ internal sealed partial class ServerBackupService
     private Written WriteDestination(string target, BackupSettings current, string password, bool includeMessenger, string? leftOut, CancellationToken token)
     {
         if (!UsesSmb) return Write(target, current, password, includeMessenger, leftOut, token);
-        using var smb = OpenSmb(destination!, token);
-        var files = smb.List();
-        foreach (var old in files.Where(f => BackupFolder.IsOwnTemporaryName(f.Name, current.Install!) && time.GetUtcNow() - f.Written > TemporaryAge))
-            smb.Delete(old.Name);
+        // A session only to reach the share (so an unreachable one fails before the archive is written) and sweep its leftovers. Then the archive is written
+        // with no session open, and a new one publishes: the client sends no keep-alives, and a share that drops idle sessions (Windows after 15 minutes)
+        // failed every long backup at its publish.
+        using (var first = OpenSmb(destination!, token))
+            foreach (var old in first.List().Where(f => BackupFolder.IsOwnTemporaryName(f.Name, current.Install!) && time.GetUtcNow() - f.Written > TemporaryAge))
+                first.Delete(old.Name);
         var scratch = ScratchFolder();
         try
         {
             Written written;
             try { written = Write(scratch, current, password, includeMessenger, leftOut, token); }
             catch (BackupFailedException e) when (e.Reason == "space") { throw new BackupFailedException("local_space", e); }
+            using var smb = OpenSmb(destination!, token);
+            var files = smb.List();
             var occupied = files.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             string? name = null;
             for (var copy = 1; copy < 1000; copy++)

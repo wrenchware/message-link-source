@@ -108,14 +108,21 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
     /// </summary>
     internal Func<bool>? MayConnect { get; set; }
 
-    private async Task<int> ConnectCoreAsync(Dictionary<string, string> cookies, CancellationToken cancellationToken, bool adoptLegacy, bool automatic)
+    private async Task<int> ConnectCoreAsync(Dictionary<string, string> cookies, CancellationToken cancellationToken, bool adoptLegacy, bool automatic, int stoppedGeneration = 0)
     {
         await gate.WaitAsync(cancellationToken);
         try
         {
             if (MayConnect?.Invoke() == false) throw new InvalidOperationException("account_moved_away");
             // An automatic reconnect (the recovery after a helper stopped) never reopens a close it did not make: a shutdown that came while it waited stands.
-            if (automatic && closing) return chats.Length;
+            if (automatic && closing) return -1;
+            // Nor replaces a helper started since the one it recovers stopped (a Connect from Settings, another recovery): its close took
+            // the healthy connection down, and a send in flight lost its answer.
+            if (automatic && Volatile.Read(ref helperGeneration) != stoppedGeneration)
+            {
+                MessengerLog.Write("helper recovery skipped; connected meanwhile");
+                return -1;
+            }
             // An explicit connect can reopen a signed-out backend. An automatic history restart cannot.
             closing = false;
             await ConnectLockedAsync(cookies, cancellationToken, adoptLegacy);
@@ -141,15 +148,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
             if (closing) throw new OperationCanceledException("Messenger is closing.");
             var started = await HelperConnection.StartAsync(path, null, cancellationToken, Slot.HelperEnvironment);
             started.Scope = Models.Qualify("");
-            started.Received += (kind, data) =>
-            {
-                if (!ReferenceEquals(helper, started)) return;
-                if (kind == "failed") SocketFailed(started);
-                else if (kind == "history_stalled") HistoryStalled(started);
-                else OnHelperEvent(kind, data);
-            };
-            started.Disconnected += () => HelperStopped(started);
-            helper = started;
+            Adopt(started);
             void StillOpen()
             {
                 if (closing || !ReferenceEquals(helper, started)) throw new OperationCanceledException("Messenger is closing.");
@@ -190,8 +189,8 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
             Took("saveChats");
             await RestoreEncryptedAsync(started, cancellationToken);
             Took("restoreEncrypted");
-            connectedAt = DateTimeOffset.UtcNow;
             ready = !closing && ReferenceEquals(helper, started);
+            if (ready) Interlocked.Exchange(ref readyAtTicks, DateTimeOffset.UtcNow.UtcTicks);
         }
         // Windows refused to start the helper (blocked, or gone since the check above). Said by its fixed code, which
         // the restore treats as definite and Settings explains; the exception's own message names the path.
@@ -419,9 +418,8 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
     {
         ready = false;
         // Connect calls this before opening its first helper. There is no lost connection in that case.
-        if (helper is not { } started) return;
+        if (Interlocked.Exchange(ref helper, null) is not { } started) return;
         realtime.Writer.TryWrite(new(RealtimeKind.Disconnected));
-        helper = null;
         started.Received -= OnHelperEvent;
         try { await started.DisposeAsync(); } catch (Exception) { }
     }
@@ -429,27 +427,57 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
     // The helper process ending is not something the app can paper over: every call after it fails, and without this
     // the backend would keep handing out a dead pipe until the app restarts.
     private int restarts;
-    private DateTimeOffset connectedAt;
+    // When the current helper finished connecting, in UTC ticks; 0 while it has not. A helper that dies before it was ever
+    // ready has earned nothing back: measured from the last connect instead (never set on a process's first), every stop
+    // during a connect reset the budget, and recovery signed in to Facebook afresh every few seconds without end.
+    private long readyAtTicks;
     // Set when the app is putting the backend down on purpose, so a deliberate close does not look like a helper that
     // fell over and start reconnecting behind it.
     private volatile bool closing;
-    private void HelperStopped(HelperConnection stopped)
+    // Moves each time a helper is put in place; a recovery carries the one its stopped helper had.
+    private int helperGeneration;
+    internal int HelperGeneration => Volatile.Read(ref helperGeneration);
+    internal TimeSpan RecoveryStep { get; set; } = TimeSpan.FromSeconds(3);
+    // The recovery a stop started last, for the checks to wait on.
+    internal Task Recovery { get; private set; } = Task.CompletedTask;
+    // Runs inside a stop the backend took as its current helper's, for the checks to put a replacement in place there.
+    internal Action? StopTaken { get; set; }
+
+    // Puts a started helper in place (the gate held). Its stop carries the generation it was given here: read when the
+    // stop arrived, a replacement put in place meanwhile lent the recovery its own, and the recovery closed it.
+    internal void Adopt(HelperConnection started)
     {
-        if (!ReferenceEquals(helper, stopped)) return;
-        helper = null;
+        var generation = Interlocked.Increment(ref helperGeneration);
+        started.Received += (kind, data) =>
+        {
+            if (!ReferenceEquals(helper, started)) return;
+            if (kind == "failed") SocketFailed(started);
+            else if (kind == "history_stalled") HistoryStalled(started);
+            else OnHelperEvent(kind, data);
+        };
+        started.Disconnected += () => HelperStopped(started, generation);
+        Interlocked.Exchange(ref readyAtTicks, 0);
+        helper = started;
+    }
+
+    private void HelperStopped(HelperConnection stopped, int generation)
+    {
+        // Checked and cleared in one step: a replacement put in place between the two was cleared as the stopped one.
+        if (!ReferenceEquals(Interlocked.CompareExchange(ref helper, null, stopped), stopped)) return;
+        StopTaken?.Invoke();
         ready = false;
         realtime.Writer.TryWrite(new(RealtimeKind.Disconnected));
         stopped.Received -= OnHelperEvent;
         // A helper that stops takes everything it knew with it, pictures included: the ids the app still holds mean
         // nothing to its replacement. Recorded by how long it ran and what kind of ending it was, in fixed words only.
-        var uptime = DateTimeOffset.UtcNow - connectedAt;
-        MessengerLog.Write(MessengerFailure.StoppedLine(uptime, stopped.LastError));
+        var now = DateTimeOffset.UtcNow;
+        MessengerLog.Write(MessengerFailure.StoppedLine(now - stopped.StartedAt, stopped.LastError));
         // A helper that ran properly for a while and then stopped is an accident worth recovering from, and its own
         // budget of attempts. One that dies soon after every connection is a loop, and the budget has to hold across
         // those attempts — resetting it on each successful connect meant a helper dying repeatedly signed in forever.
-        if (uptime > TimeSpan.FromMinutes(2)) Interlocked.Exchange(ref restarts, 0);
+        if (MessengerFailure.EarnsRecoveryBack(Interlocked.Read(ref readyAtTicks), now)) Interlocked.Exchange(ref restarts, 0);
         if (closing) return;
-        _ = RecoverAsync();
+        Recovery = RecoverAsync(generation);
     }
 
     // messagix has left its connection loop for good (Facebook closed the socket as unauthorised) and will not come
@@ -469,16 +497,17 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
 
     // Reconnects from the saved session, a few times at most: a helper that cannot stay up must not become a loop of
     // sign-ins against Facebook. Until it comes back, the conversations already known are still served.
-    private async Task RecoverAsync()
+    internal async Task RecoverAsync(int stoppedGeneration)
     {
         var attempt = Interlocked.Increment(ref restarts);
         if (attempt > 3) { MessengerLog.Write("helper recovery given up"); ChatsChanged?.Invoke(this, EventArgs.Empty); return; }
         recovering = true;
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(3 * attempt));
+            await Task.Delay(RecoveryStep * attempt);
             if (closing) return;
-            if (await ReadSavedCookiesAsync() is { } cookies) await ConnectCoreAsync(cookies, CancellationToken.None, adoptLegacy: true, automatic: true);
+            if (await ReadSavedCookiesAsync() is not { } cookies
+                || await ConnectCoreAsync(cookies, CancellationToken.None, adoptLegacy: true, automatic: true, stoppedGeneration) < 0) return;
             // A new helper knows none of the media the old one had registered. ConnectAsync already says every
             // conversation changed once it is ready, so the app reads them again and picks up ids this helper has.
             if (helper is not null) MessengerLog.Write($"helper recovered; {chats.Length} conversations asked for again");
@@ -1238,8 +1267,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
     public void Dispose()
     {
         closing = true;
-        var started = helper;
-        helper = null;
+        var started = Interlocked.Exchange(ref helper, null);
         if (started is not null) _ = started.DisposeAsync().AsTask();
     }
 }

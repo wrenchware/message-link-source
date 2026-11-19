@@ -98,17 +98,31 @@ internal sealed class GoogleArchive(MessageArchive store)
     public int MessageCount => index.Count;
     public bool IsLoaded => loading is { IsCompletedSuccessfully: true, Result: true };
 
-    // Loads once per profile; a different paired account resets the in-memory view.
+    // Loads once per profile; a different paired account resets the in-memory view. A load that failed is tried again once
+    // LoadRetryAfter has passed: kept as the answer, one unreadable moment left search and history indexing off until the
+    // process restarted, on a server until the container did. What the failed load read stays; the next one adds the rest.
     public Task<bool> LoadAsync(string account, Func<Task>? beforeMessageBatch = null)
     {
         lock (sync)
         {
-            if (profile == account && loading is not null && !loading.IsFaulted && !loading.IsCanceled) return loading;
+            if (profile == account && loading is not null && !loading.IsFaulted && !loading.IsCanceled
+                && !(loading.IsCompletedSuccessfully && !loading.Result && failedAt != 0
+                    && System.Diagnostics.Stopwatch.GetElapsedTime(failedAt) >= LoadRetryAfter)) return loading;
             if (profile != account) { documents.Clear(); mediaOwners.Clear(); chats.Clear(); crawl.Clear(); switches.Clear(); contacts = null; index.Clear(); ForgetWritten(); chatsReadFor = null; }
             profile = account;
-            return loading = Task.Run(() => LoadCoreAsync(account, beforeMessageBatch));
+            failedAt = 0;
+            return loading = Task.Run(async () =>
+            {
+                var loaded = await LoadCoreAsync(account, beforeMessageBatch);
+                if (!loaded) lock (sync) if (profile == account) failedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                return loaded;
+            });
         }
     }
+
+    // When the last load of this profile failed (Stopwatch timestamp), 0 when it did not. Under sync.
+    private long failedAt;
+    internal TimeSpan LoadRetryAfter { get; set; } = TimeSpan.FromSeconds(30);
 
     // Whether this account's saved conversations are here, which a send asks before trusting that one is not hidden.
     private string? chatsReadFor;
@@ -297,7 +311,7 @@ internal sealed class GoogleArchive(MessageArchive store)
     {
         lock (sync)
         {
-            profile = null; loading = null; chatsReadFor = null;
+            profile = null; loading = null; chatsReadFor = null; failedAt = 0;
             documents.Clear(); mediaOwners.Clear(); chats.Clear(); crawl.Clear(); switches.Clear(); contacts = null; index.Clear(); pending.Clear(); ForgetWritten();
         }
         // A batch already taken is written first; its rows are cleared below.

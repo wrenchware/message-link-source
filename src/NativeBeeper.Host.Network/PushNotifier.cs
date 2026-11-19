@@ -231,8 +231,9 @@ internal sealed class PushNotifier : IAsyncDisposable
                     if (change.ChatId is { } chatId && change.Kind == RealtimeKind.MessageChanged && !change.ReceiptOnly &&
                         (change.IsNewMessage == true || registry.All().Any(r => r.BackgroundSync)))
                     {
-                        await NewMessagesAsync(chatId, change.Ids ?? [], change.IsNewMessage == true, token).ConfigureAwait(false);
-                        if (change.IsNewMessage != true) await MaybeReadAsync(chatId, token).ConfigureAwait(false);
+                        // A change to messages already there can also be their reading, which withdraws the phone's notification even when judging them failed.
+                        try { await NewMessagesAsync(chatId, change.Ids ?? [], change.IsNewMessage == true, token).ConfigureAwait(false); }
+                        finally { if (change.IsNewMessage != true && !token.IsCancellationRequested) await MaybeReadAsync(chatId, token).ConfigureAwait(false); }
                     }
                     else if (change.Kind == RealtimeKind.MessageChanged && change.ChatId is { } changed) await MaybeReadAsync(changed, token).ConfigureAwait(false);
                     // A conversation's own change names it in ChatId (Google Messages) or in Ids (Hermes, Messenger, Google Voice, Instagram): Hermes's
@@ -263,7 +264,14 @@ internal sealed class PushNotifier : IAsyncDisposable
         ChatSummary? chat = null;
         foreach (var id in ids)
         {
-            var message = await messages.ResolveMessageAsync(chatId, id, token).ConfigureAwait(false);
+            ChatMessage message;
+            // One message the service cannot give back costs its own push, not the others' in the same change.
+            try { message = await messages.ResolveMessageAsync(chatId, id, token).ConfigureAwait(false); }
+            catch (Exception failure) when (failure is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                log($"push resolve failed type={failure.GetType().Name}");
+                continue;
+            }
             var now = DateTimeOffset.UtcNow;
             if (message.ChatId != chatId || message.IsHidden || message.IsDeleted || message.Type is "system" or "scheduled" || message.EditedAt is not null ||
                 message.Timestamp < now - Fresh || message.Timestamp > now.AddMinutes(1)) continue;

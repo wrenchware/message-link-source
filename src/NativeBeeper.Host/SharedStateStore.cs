@@ -1008,14 +1008,17 @@ public sealed class SharedStateStore : ISharedState
         CreateFresh(file, retired);
         using var connection = OpenFile(file, null);
         using var transaction = connection.BeginTransaction();
-        var any = false;
+        // A rev for every SharedLimits.PutWrites rows, as AddAbsentAsync gives them: a commit is never split across state.sync pages, so one rev for every row
+        // made the first sync after a restore a single page past the row bound and, with enough rows, past the frame limit.
+        var count = 0;
         foreach (var row in rows)
         {
-            Execute(connection, transaction, "INSERT INTO rows(key, payload, rev, deleted, size, since, updated) VALUES($key, $payload, 1, 0, $size, $since, $now)",
-                ("$key", row.Key), ("$payload", row.Sealed), ("$size", size(row)), ("$since", row.Since), ("$now", now.ToUnixTimeMilliseconds()));
-            any = true;
+            Execute(connection, transaction, "INSERT INTO rows(key, payload, rev, deleted, size, since, updated) VALUES($key, $payload, $rev, 0, $size, $since, $now)",
+                ("$key", row.Key), ("$payload", row.Sealed), ("$rev", 1 + count / SharedLimits.PutWrites), ("$size", size(row)), ("$since", row.Since),
+                ("$now", now.ToUnixTimeMilliseconds()));
+            count++;
         }
-        if (any) Execute(connection, transaction, "UPDATE meta SET rev = 1");
+        if (count > 0) Execute(connection, transaction, "UPDATE meta SET rev = $rev", ("$rev", 1 + (count - 1) / SharedLimits.PutWrites));
         transaction.Commit();
     }
 

@@ -80,8 +80,14 @@ public sealed class HermesStore(string root, IStateProtector protector)
         HermesClient.ValidProfile(thread.Profile) ? WriteAsync(ThreadPath(thread.Profile), thread) : throw new ArgumentException("Invalid profile.");
     public void DeleteThread(string profile)
     {
-        if (HermesClient.ValidProfile(profile)) try { File.Delete(ThreadPath(profile)); } catch (IOException) { }
+        if (!HermesClient.ValidProfile(profile)) return;
+        try { File.Delete(ThreadPath(profile)); held.TryRemove(ThreadPath(profile), out _); } catch (IOException) { }
     }
+    /// <summary>Whether the last read of the settings, or of the report tokens, found the file there but couldn't read it.</summary>
+    internal bool SettingsHeld => held.ContainsKey(SettingsPath);
+    internal bool ReportTokensHeld => held.ContainsKey(ReportsPath);
+    /// <summary>Whether this profile's thread file is there but couldn't be read, so nothing may be saved over it in this run.</summary>
+    internal bool ThreadHeld(string profile) => HermesClient.ValidProfile(profile) && held.ContainsKey(ThreadPath(profile));
 
     /// <summary>A media id is ours only: 32 lowercase hex characters, the only thing that ever names a file here.</summary>
     public static bool ValidMediaId(string? id) => id is { Length: 32 } && id.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f');
@@ -101,18 +107,75 @@ public sealed class HermesStore(string root, IStateProtector protector)
         catch (Exception exception) when (exception is IOException or CryptographicException or UnauthorizedAccessException) { return null; }
     }
 
+    /// <summary>Fixed words for the host's log: a file that couldn't be read, by its kind only.</summary>
+    internal Action<string>? Log { get; set; }
+    internal TimeSpan ReadRetryDelay { get; set; } = TimeSpan.FromMilliseconds(250);
+    // Files that are there but couldn't be read (still failing after one retry): nothing is written over them in this run.
+    // Read as missing, a thread was started afresh and greeted, and that save replaced the session id, the report sequence,
+    // the handoff, the read mark and the approvals; unreadable settings read as none, and the next save lost every key.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> held = new(StringComparer.Ordinal);
+
+    // Null when the file is missing, or when it couldn't be read. Only a definite answer that it isn't there counts as
+    // missing: File.Exists says false for a file it may not look at too. Bytes that are damaged for certain (an empty file,
+    // a value whose own framing the protector refused, or one that opened but isn't what was saved) are moved aside with
+    // the time, so nothing of it is lost and a new one can start in its place. Anything else holds the path: the file or
+    // the key couldn't be read, the protector failed for its own reasons, or the value failed authentication or decryption,
+    // which may only mean a different key (a key file replaced, another Windows account) and must not cost the file. Saves
+    // to a held path are refused until a read succeeds, and the file is left exactly as it was.
     private async Task<T?> ReadAsync<T>(string path) where T : class
     {
         await gate.WaitAsync();
         try
         {
-            if (!File.Exists(path)) return null;
-            var plain = await protector.UnprotectAsync(await File.ReadAllBytesAsync(path));
-            return JsonSerializer.Deserialize<T>(plain, Json);
+            byte[] bytes;
+            try { bytes = await ReadBytesAsync(path); }
+            catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { held.TryRemove(path, out _); return null; }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return Hold<T>(path, exception); }
+            if (bytes.Length == 0) return MoveAside<T>(path, new InvalidDataException("empty"));
+            byte[] plain;
+            try { plain = await protector.UnprotectAsync(bytes); }
+            catch (Exception exception) when (SealedFraming.IsDamaged(exception)) { return MoveAside<T>(path, exception); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { return Hold<T>(path, exception); }
+            T? value;
+            try { value = JsonSerializer.Deserialize<T>(plain, Json); }
+            catch (JsonException exception) { return MoveAside<T>(path, exception); }
+            if (value is null) return MoveAside<T>(path, new JsonException("empty"));
+            held.TryRemove(path, out _);
+            return value;
         }
-        catch (Exception exception) when (exception is IOException or JsonException or CryptographicException or UnauthorizedAccessException) { return null; }
         finally { gate.Release(); }
     }
+
+    // A read that fails for a moment (another process has it open) is tried once more before the path is held.
+    private async Task<byte[]> ReadBytesAsync(string path)
+    {
+        try { return await File.ReadAllBytesAsync(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException && exception is not (FileNotFoundException or DirectoryNotFoundException))
+        {
+            await Task.Delay(ReadRetryDelay);
+            return await File.ReadAllBytesAsync(path);
+        }
+    }
+
+    private T? Hold<T>(string path, Exception exception) where T : class
+    {
+        held[path] = 0;
+        Log?.Invoke($"hermes store unreadable file={Kind(path)} outcome=held error={exception.GetType().Name}");
+        return null;
+    }
+
+    private T? MoveAside<T>(string path, Exception exception) where T : class
+    {
+        var aside = path + ".unreadable-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        try { File.Move(path, aside, overwrite: false); }
+        catch (Exception moving) when (moving is IOException or UnauthorizedAccessException) { return Hold<T>(path, exception); }
+        held.TryRemove(path, out _);
+        Log?.Invoke($"hermes store unreadable file={Kind(path)} outcome=moved_aside error={exception.GetType().Name}");
+        return null;
+    }
+
+    private string Kind(string path) =>
+        path == SettingsPath ? "settings" : path == ReportsPath ? "reports" : Path.GetDirectoryName(path)?.EndsWith("threads", StringComparison.Ordinal) == true ? "thread" : "other";
 
     private async Task WriteAsync<T>(string path, T value)
     {
@@ -120,16 +183,19 @@ public sealed class HermesStore(string root, IStateProtector protector)
         await gate.WaitAsync();
         try
         {
+            if (held.ContainsKey(path)) throw new IOException("hermes_store_unreadable");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await ReplaceAsync(path, sealedBytes);
         }
         finally { gate.Release(); }
     }
 
+    // Flushed to the disk before the rename: renamed unflushed, a power cut could leave the new name over bytes never
+    // written, which is the likeliest way a file here became unreadable.
     private static async Task ReplaceAsync(string path, byte[] bytes)
     {
         var temporary = path + ".tmp";
-        await File.WriteAllBytesAsync(temporary, bytes);
+        await NativeBeeper.Storage.DurableFile.WriteAsync(temporary, bytes);
         File.Move(temporary, path, overwrite: true);
     }
 }

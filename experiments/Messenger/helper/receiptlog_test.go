@@ -86,8 +86,8 @@ func TestReceiptObserverRefusesUserActionsAndDeviceRecovery(t *testing.T) {
 	}
 	crypto := &encrypted{device: &wadevice.Device{}}
 	a.crypto = crypto
-	a.forgetDevice(events.ConnectFailureNotFound)
-	if a.crypto != crypto || a.reregistered.Load() {
+	a.forgetDevice(crypto, events.ConnectFailureNotFound)
+	if a.crypto != crypto || a.encryptedGone.Load() {
 		t.Fatal("observer attempted device removal/re-registration")
 	}
 }

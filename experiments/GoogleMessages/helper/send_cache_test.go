@@ -24,6 +24,8 @@ func (c *handClock) advance(by time.Duration) { c.at = c.at.Add(by) }
 type answeringPhone struct {
 	mu    sync.Mutex
 	chats map[string]*gmproto.Conversation
+	// A conversation's newest page, when a test gives one (send_budget_test.go).
+	messages map[string][]*gmproto.Message
 }
 
 func (p *answeringPhone) describes(c *gmproto.Conversation) {
@@ -51,6 +53,10 @@ func (p *answeringPhone) answer(t *testing.T, client *libgm.Client) func(relayPo
 				list.Conversations = append(list.Conversations, c)
 			}
 			answer = list
+		case gmproto.ActionType_LIST_MESSAGES:
+			var asked gmproto.ListMessagesRequest
+			post.open(t, client, &asked)
+			answer = &gmproto.ListMessagesResponse{Messages: p.messages[asked.GetConversationID()]}
 		case gmproto.ActionType_SEND_MESSAGE:
 			answer = &gmproto.SendMessageResponse{Status: gmproto.SendMessageResponse_SUCCESS}
 		case gmproto.ActionType_SEND_REACTION:

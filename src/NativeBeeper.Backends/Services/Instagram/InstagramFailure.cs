@@ -207,7 +207,9 @@ internal static class InstagramRefusal
 
     private static string FirstMessageSentence(Exception failure) => CodeOf(failure) switch
     {
-        "chat_not_writable" => "That Instagram conversation is a message request or filed as spam, so a message cannot be sent into it from here.",
+        // The helper refuses a request, a spam thread and one whose folder Instagram hasn't named alike (startchat.go),
+        // and this code doesn't say which; an unnamed folder may be an inbox thread, so none of them is asserted.
+        "chat_not_writable" => "Instagram hasn't placed that conversation in the inbox, so a message can't be sent into it from here.",
         "chat_is_self" => "That is this Instagram account.",
         "chat_unknown" or "invalid_response" => "Instagram couldn't say which conversation this is. Nothing was sent.",
         "send_uncertain" => "Instagram did not say whether the message was sent. Check Instagram before sending it again.",

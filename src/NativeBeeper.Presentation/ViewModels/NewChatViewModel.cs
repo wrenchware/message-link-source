@@ -43,6 +43,9 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
     private readonly Dictionary<string, GroupOptions> groupings = [];
     private readonly RemoteContactCache remoteCache = new();
     private string lastQuery = "";
+    // The local pass for lastQuery drew its list. Until it has, the remote pass neither asks nor settles the footer: a local
+    // pass that refused the words or failed left its reason there, beside the previous query's rows.
+    private bool published;
 
     public GroupOptions GroupOptions { get; private set; } = new(false, "Choose a service.");
     public ObservableCollection<ContactPerson> Participants { get; } = [];
@@ -380,7 +383,7 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
     public void ClearLookup()
     {
         if (IsStarting) return;
-        generation++; request?.Cancel(); request?.Dispose(); request = null; Contacts.Clear(); IsBusy = false;
+        generation++; request?.Cancel(); request?.Dispose(); request = null; Contacts.Clear(); IsBusy = false; published = false;
         IsSearchingRemote = false;
     }
 
@@ -454,7 +457,7 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
     {
         if (IsStarting || !CanSearch) return;
         var text = query.Trim();
-        if (text != lastQuery || !RemoteSearchRules.Allows(text)) return;
+        if (text != lastQuery || !published || !RemoteSearchRules.Allows(text)) return;
         var remotes = Scope.Where(Remote).ToArray();
         if (remotes.Length == 0) return;
         var version = generation;
@@ -472,7 +475,9 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
             if (remoteCache.MayCall(account, now)) ask.Add(account);
         }
         if (cached.Count > 0) Merge(cached);
-        if (ask.Count == 0) return;
+        // The local pass said "still searching"; with nothing to ask (all remembered, or every service asked too lately) the
+        // search is over.
+        if (ask.Count == 0) { SettleStatus(); return; }
         IsSearchingRemote = true;
         try
         {
@@ -492,11 +497,15 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
             // The words may have moved on while this was in flight; a stale answer is dropped rather than drawn.
             if (version != generation || text != lastQuery) return;
             Merge([.. answers.SelectMany(people => people).Select(person => new NewChatResult(Destination(person), NewChatRank.FreshRemote, 0))]);
+            SettleStatus();
         }
-        catch (OperationCanceledException) { }
-        catch (Exception) { /* Remote results are an addition; failing to get them leaves the local ones standing. */ }
+        catch (OperationCanceledException) { if (version == generation && text == lastQuery) SettleStatus(); }
+        // Remote results are an addition; failing to get them leaves the local ones standing.
+        catch (Exception) { if (version == generation && text == lastQuery) SettleStatus(); }
         finally { if (version == generation) IsSearchingRemote = false; }
     }
+
+    private void SettleStatus() => Status = Rows.Count == 0 ? $"No results for “{lastQuery}”." : $"{Rows.Count} found.";
 
     private ChatDestination Destination(ContactPerson person) =>
         new(person.AccountId, NetworkOf(person.AccountId), person.Id, person.Name,
@@ -526,11 +535,10 @@ public sealed partial class NewChatViewModel(IContactBackend backend, IAccessTok
 
     private void Publish(IReadOnlyList<NewChatResult> results, bool remotePending)
     {
-        Rows.Clear(); Contacts.Clear();
+        Rows.Clear(); Contacts.Clear(); published = true;
         Merge(results);
-        Status = Rows.Count == 0
-            ? remotePending ? "Searching…" : $"No results for “{lastQuery}”."
-            : remotePending ? $"{Rows.Count} so far — still searching." : $"{Rows.Count} found.";
+        if (!remotePending) SettleStatus();
+        else Status = Rows.Count == 0 ? "Searching…" : $"{Rows.Count} so far — still searching.";
     }
 
     /// <summary>Kept for the group dialog, which searches one service and has no separate remote pass.</summary>

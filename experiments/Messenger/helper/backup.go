@@ -1173,6 +1173,8 @@ func (a *adapter) importPage(ctx context.Context, kept *messageStore, page *back
 		return nil, err
 	}
 	committed = true
+	// Imported messages may sit inside a deleted conversation's purged range.
+	kept.forgetPurges()
 	for _, id := range forgotten {
 		if key, found := a.chats.forgetDeleted(id); found {
 			shown.deleted(key, id)
@@ -1664,6 +1666,7 @@ func (s *store) cutBefore(key int64, cutoff int64) []string {
 		delete(s.reactions, id)
 		delete(s.shares, shareMessageKey{key, id})
 		delete(s.messages[key], id)
+		s.staleLocked(key)
 		removed = append(removed, id)
 	}
 	sort.Strings(removed)
@@ -1679,6 +1682,7 @@ func (s *store) forgetDeleted(id string) (int64, bool) {
 	key, _, found := s.messageAnywhere(id)
 	if found {
 		delete(s.messages[key], id)
+		s.staleLocked(key)
 		delete(s.shares, shareMessageKey{key, id})
 	}
 	for _, item := range s.attached[id] {

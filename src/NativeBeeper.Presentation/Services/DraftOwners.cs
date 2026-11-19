@@ -69,16 +69,21 @@ public sealed class DraftOwners
     private async Task SafeRefreshAsync()
     {
         if (Interlocked.Exchange(ref refreshing, 1) == 1) { Volatile.Write(ref again, 1); return; }
-        try
+        while (true)
         {
-            do
+            try
             {
-                Volatile.Write(ref again, 0);
-                try { await RefreshAsync(); }
-                catch (Exception) { /* The next change, or the next conversation opened, reads it again. */ }
-            } while (Volatile.Read(ref again) == 1);
+                do
+                {
+                    Volatile.Write(ref again, 0);
+                    try { await RefreshAsync(); }
+                    catch (Exception) { /* The next change, or the next conversation opened, reads it again. */ }
+                } while (Volatile.Read(ref again) == 1);
+            }
+            finally { Volatile.Write(ref refreshing, 0); }
+            // A change that came after the last look at again and before the release found the look still running, and went.
+            if (Volatile.Read(ref again) == 0 || Interlocked.Exchange(ref refreshing, 1) == 1) return;
         }
-        finally { Volatile.Write(ref refreshing, 0); }
     }
 
     /// <summary>The "profile" a conversation's rows are filed under: the profile itself, or the profile and the account that owns it.</summary>
@@ -94,9 +99,15 @@ public sealed class DraftOwners
     // composer itself while it lives, and by this class for a composer that has gone or a run that has ended.
 
     /// <summary>One composer's words for one Messenger conversation, kept for no account yet.</summary>
-    internal sealed record UnfiledDraft(string ChatId, string Writer, string Text, string? ReplyId, string? ReplyPreview, bool Held = true);
+    /// <remarks><paramref name="Id"/> is new with each write, so a row once filed is known again (FiledCategory) and its words, joined already, are not joined to the draft once more however it changed since.</remarks>
+    internal sealed record UnfiledDraft(string ChatId, string Writer, string Text, string? ReplyId, string? ReplyPreview, bool Held = true, string? Id = null);
 
     private const string UnfiledCategory = "draft-unfiled";
+    // The id of the unfiled row last filed, or let go by its composer, per row: written once its words are in the account's
+    // draft and before the row is removed, so a row whose remove failed is only removed at the next look. A row of its own
+    // that stays on this device like the unfiled rows, since a composer's later saves of the draft would drop it. Rows from
+    // before the id was kept fall back to FileWords.
+    private const string FiledCategory = "draft-filed";
     private readonly object writersGate = new();
     private readonly HashSet<string> writers = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim filing = new(1);
@@ -123,7 +134,7 @@ public sealed class DraftOwners
         try
         {
             if (text.Length == 0 && replyId is null) await state.RemoveAsync(profile, UnfiledCategory, id);
-            else await state.WriteAsync(profile, UnfiledCategory, id, new UnfiledDraft(chatId, writer, text, replyId, replyPreview));
+            else await state.WriteAsync(profile, UnfiledCategory, id, new UnfiledDraft(chatId, writer, text, replyId, replyPreview, Id: Guid.NewGuid().ToString("N")));
             return true;
         }
         catch (Exception) { return false; }
@@ -147,8 +158,23 @@ public sealed class DraftOwners
     public async Task<bool> ForgetUnfiledAsync(string profile, string writer, string chatId)
     {
         if (state is null) return true;
-        try { await state.RemoveAsync(profile, UnfiledCategory, chatId + "\n" + writer); return true; }
-        catch (Exception) { return false; /* Left, it is filed again and joined to words already there, which does not repeat them. */ }
+        var id = chatId + "\n" + writer;
+        try
+        {
+            // Noted first: left by a failed remove, it is then let go at the next look rather than filed again.
+            try { if (await state.ReadAsync<UnfiledDraft>(profile, UnfiledCategory, id) is { Id: { } rowId }) await state.WriteAsync(profile, FiledCategory, id, rowId); }
+            catch (Exception) { /* Without the note, FileWords still keeps words the draft holds from being joined again. */ }
+            await state.RemoveAsync(profile, UnfiledCategory, id);
+            await ForgetFiledAsync(profile, id);
+            return true;
+        }
+        catch (Exception) { return false; /* Left, it is let go or filed at the next look. */ }
+    }
+
+    // The note is only needed while its row is there; one left behind names an id no later row has.
+    private async Task ForgetFiledAsync(string profile, string id)
+    {
+        try { await state!.RemoveAsync(profile, FiledCategory, id); } catch (Exception) { }
     }
 
     /// <summary>
@@ -191,12 +217,24 @@ public sealed class DraftOwners
                 if (row is null || row.Held && live.Contains(row.Writer) || key != PrivateState.KeyOf(profile, UnfiledCategory, row.ChatId + "\n" + row.Writer)) continue;
                 try
                 {
+                    var rowId = row.ChatId + "\n" + row.Writer;
+                    // Filed already, and its remove failed: its words are in the draft, or were sent or edited from there since.
+                    if (row.Id is { } once && await state.ReadAsync<string>(profile, FiledCategory, rowId) == once)
+                    {
+                        await state.RemoveKeyAsync(key);
+                        await ForgetFiledAsync(profile, rowId);
+                        continue;
+                    }
                     var filed = FileUnder(profile, row.ChatId, owner);
                     var held = await state.ReadAsync<SavedDraft>(filed, "draft", row.ChatId);
                     if (held is null && await AdoptAsync(profile, row.ChatId, owner)) held = await state.ReadAsync<SavedDraft>(filed, "draft", row.ChatId);
-                    await state.WriteAsync(filed, "draft", row.ChatId, new SavedDraft(JoinWords(held?.Text ?? "", row.Text), held?.ReplyId ?? row.ReplyId,
+                    // The draft first, then the note. A note that fails (or a quit between) files the row again at the next look, which can bring
+                    // back words sent since; the note first could lose the only copy of the words instead (2026-11-18 review: twice rather than none).
+                    await state.WriteAsync(filed, "draft", row.ChatId, new SavedDraft(FileWords(held?.Text ?? "", row.Text), held?.ReplyId ?? row.ReplyId,
                         held?.ReplyId is not null ? held.ReplyPreview : row.ReplyPreview));
+                    if (row.Id is not null) await state.WriteAsync(profile, FiledCategory, rowId, row.Id);
                     await state.RemoveKeyAsync(key);
+                    await ForgetFiledAsync(profile, rowId);
                     moved++;
                 }
                 catch (Exception) { Volatile.Write(ref filedFor, null); /* Kept as it was; the next look files it. */ }
@@ -217,6 +255,12 @@ public sealed class DraftOwners
         known.Add(owner);
         await state.WriteAsync(profile, OwnerCategory, KnownScopesId, known);
     }
+
+    // A row filed again finds its words already there when the remove after its first filing failed, or a composer filed them itself and could not let
+    // the row go: as the whole draft, or as whole lines of it. Joining them again repeated them in the draft.
+    internal static string FileWords(string saved, string typed) =>
+        typed.Length > 0 && (Environment.NewLine + saved + Environment.NewLine).Contains(Environment.NewLine + typed + Environment.NewLine, StringComparison.Ordinal)
+            ? saved : JoinWords(saved, typed);
 
     /// <summary>Joins words typed to those saved, without repeating them when they are the same.</summary>
     internal static string JoinWords(string saved, string typed) =>

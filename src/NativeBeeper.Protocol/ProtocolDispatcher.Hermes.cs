@@ -1,4 +1,5 @@
 using NativeBeeper.Core.Services;
+using System.Text.Json;
 
 namespace NativeBeeper.Protocol;
 
@@ -60,6 +61,31 @@ public sealed partial class ProtocolDispatcher
     }
 
     internal const string HermesNeedsUpdate = "Update Message Link to write to Hermes.";
+
+    // A scheduled command from a client below 31 on a Hermes conversation's message: answered refused, which every client shows as not kept, rather than an
+    // error a client could read as an unknown outcome. A create names its conversation; an edit or a send-now is looked at by the schedule under the message's
+    // own gate (`refusing`), since a concurrent cancel can take the message out of the list while its save is pending and put it back when the save fails.
+    private static Route ScheduledHermesFrom31<TParams>(Route route, Func<IScheduledCommands, TParams, CancellationToken, Task<ScheduledAnswer>> refusing) where TParams : class
+    {
+        var prepare = route.Prepare ?? throw new InvalidOperationException("not a mutation");
+        return route with
+        {
+            Prepare = (connection, services, request) =>
+            {
+                var prepared = prepare(connection, services, request);
+                if (connection.negotiated >= ProtocolVersion.Hermes || services.Scheduled is not { } port) return prepared;
+                var parameters = ReadParams<TParams>(request);
+                return prepared with
+                {
+                    Call = async cancellationToken =>
+                        JsonSerializer.SerializeToUtf8Bytes(await refusing(port, parameters, cancellationToken).ConfigureAwait(false), ProtocolJson.Options),
+                };
+            },
+        };
+    }
+
+    private static Task<ScheduledAnswer> HermesCreateFrom31(IScheduledCommands port, ScheduledCreateParams request, CancellationToken cancellationToken) =>
+        HermesIds.Owns(request.ChatId) ? Task.FromResult(new ScheduledAnswer(ScheduledStatuses.Refused, Message: HermesNeedsUpdate)) : port.CreateAsync(request, cancellationToken);
 
     private static Route HermesFrom31<TParams>(Route route, Func<TParams, string?> chat) where TParams : class
     {

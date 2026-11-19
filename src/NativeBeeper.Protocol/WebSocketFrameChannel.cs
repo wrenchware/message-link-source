@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
@@ -21,6 +22,9 @@ public sealed class WebSocketFrameChannel : IFrameChannel
     public const int MaxMessageBytes = 4 * 1024 * 1024;
 
     private const int SmallMessage = 16 * 1024;
+    // The most the receive buffer keeps between messages: a media chunk's frame (1 MiB of bytes, about 1.4 MB as text) fits, so a read of a saved video does not
+    // grow the buffer to 4 MB and throw it away at every chunk. Past it a buffer grows for the one message and is let go after it.
+    private const int KeptMessage = 2 * 1024 * 1024;
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
@@ -68,7 +72,19 @@ public sealed class WebSocketFrameChannel : IFrameChannel
     public async ValueTask SendAsync(string frame, CancellationToken cancellationToken = default)
     {
         if (Volatile.Read(ref closed) != 0) throw new ChannelClosedException();
-        var bytes = Encoding.UTF8.GetBytes(frame);
+        // Encoded into a rented buffer: a media chunk's answer is over a megabyte, and a new array for each went to the large object heap.
+        var count = Encoding.UTF8.GetByteCount(frame);
+        var bytes = ArrayPool<byte>.Shared.Rent(count);
+        try
+        {
+            Encoding.UTF8.GetBytes(frame, bytes);
+            await SendBytesAsync(bytes.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+        }
+        finally { ArrayPool<byte>.Shared.Return(bytes); }
+    }
+
+    private async ValueTask SendBytesAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    {
         await sending.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -148,7 +164,7 @@ public sealed class WebSocketFrameChannel : IFrameChannel
                     if (length == message.Length)
                     {
                         if (length >= MaxMessageBytes) { Refuse(WebSocketCloseStatus.MessageTooBig, "too_big"); return; }
-                        Array.Resize(ref message, Math.Min(message.Length * 4, MaxMessageBytes));
+                        Array.Resize(ref message, Math.Min(message.Length < KeptMessage ? Math.Min(message.Length * 4, KeptMessage) : message.Length * 2, MaxMessageBytes));
                     }
                     result = await socket.ReceiveAsync(message.AsMemory(length), stop.Token).ConfigureAwait(false);
                     if (result.MessageType == WebSocketMessageType.Close) return;
@@ -164,7 +180,7 @@ public sealed class WebSocketFrameChannel : IFrameChannel
                 // (ChannelClosedException, below); a message arriving after a local close is not delivered, as before.
                 try { await incoming.Writer.WriteAsync(text, stop.Token).ConfigureAwait(false); }
                 catch (ChannelClosedException) { }
-                if (message.Length > 1024 * 1024) message = new byte[SmallMessage];
+                if (message.Length > KeptMessage) message = new byte[SmallMessage];
             }
         }
         catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException or OperationCanceledException or InvalidOperationException) { }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,6 +28,42 @@ type messageStore struct {
 	// saveIdentity already holds, and only updated once the transaction has committed.
 	savedThreads  map[int64][32]byte
 	savedContacts map[int64][32]byte
+	// Deleted conversations whose kept messages up to their deletion time are already gone, by that time, so
+	// saveIdentity does not rerun five deletes per deleted conversation on every apply. Any write that could put a
+	// message back into a conversation drops its entry and counts in writes (wrote); a save that saw a write while it
+	// ran records nothing. Its own lock: the writers do not hold the store lock saveIdentity does.
+	purgeMu sync.Mutex
+	purged  map[int64]int64
+	writes  uint64
+}
+
+// A message row was written, or may have been, into this conversation: its purge has to run again.
+func (m *messageStore) wrote(thread int64) {
+	if m == nil {
+		return
+	}
+	m.purgeMu.Lock()
+	delete(m.purged, thread)
+	m.writes++
+	m.purgeMu.Unlock()
+}
+
+// Every conversation's purge has to run again, after writes too many to name (a backup import).
+func (m *messageStore) forgetPurges() {
+	if m == nil {
+		return
+	}
+	m.purgeMu.Lock()
+	m.purged = nil
+	m.writes++
+	m.purgeMu.Unlock()
+}
+
+func (m *messageStore) purgedThrough(thread, deletedAt int64) bool {
+	m.purgeMu.Lock()
+	defer m.purgeMu.Unlock()
+	at, ok := m.purged[thread]
+	return ok && at >= deletedAt
 }
 
 func openAccountMessageStore(ctx context.Context, path string, viewer int64) (*messageStore, error) {
@@ -166,6 +203,19 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 	}
 	if hasNotice == 0 {
 		if _, err := db.ExecContext(ctx, `ALTER TABLE encrypted_message ADD COLUMN notice INTEGER NOT NULL DEFAULT 0`); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
+	// How many edits Facebook said an ordinary message's words carry, beside edited_at: with only the mark, a history
+	// row from between two edits named one and put the older words back after a restart.
+	var hasEdits int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('encrypted_message') WHERE name = 'edits'`).Scan(&hasEdits); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if hasEdits == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE encrypted_message ADD COLUMN edits INTEGER NOT NULL DEFAULT 0`); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
@@ -315,6 +365,15 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 		`CREATE TABLE IF NOT EXISTS thread_mapping (jid INTEGER PRIMARY KEY, thread INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS thread_contact (id INTEGER PRIMARY KEY, name TEXT NOT NULL, picture TEXT NOT NULL)`,
 		receiptWatermarkTable, receiptWaitingTable,
+		// What a deleted conversation's purge, a taken-back message's forget and a backup import's deletions look
+		// rows up by. Without them each was a scan of the whole table, run under the store lock.
+		`CREATE INDEX IF NOT EXISTS message_thread_at ON encrypted_message(thread, at)`,
+		`CREATE INDEX IF NOT EXISTS media_thread_at ON encrypted_media(thread, at)`,
+		`CREATE INDEX IF NOT EXISTS media_message ON encrypted_media(message)`,
+		`CREATE INDEX IF NOT EXISTS attachment_message ON message_attachment(message)`,
+		// Attachments of messages taken back before forget removed them too: their names and addresses stayed on
+		// disk, were unsealed at every start and counted as orphans by a backup.
+		`DELETE FROM message_attachment WHERE message IN (SELECT id FROM deleted_message)`,
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
 			_ = db.Close()
@@ -431,11 +490,11 @@ func (m *messageStore) rememberAttachmentsOn(ctx context.Context, on execer, thr
 		}
 		_, err = on.ExecContext(ctx,
 			`INSERT INTO message_attachment (id, message, thread, name, mime, size, width, height, video, animated, source, preview, playable, previewSource, link, description, actionTitle)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM deleted_message WHERE id = ?)
 			 ON CONFLICT(id) DO UPDATE SET source = excluded.source, preview = excluded.preview,
 			   playable = excluded.playable, previewSource = excluded.previewSource, link = excluded.link, description = excluded.description, actionTitle = excluded.actionTitle`,
 			item.id, messageID, thread, sealed[0], sealed[1], item.size, item.width, item.height,
-			item.video, item.animated, sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7], sealed[8])
+			item.video, item.animated, sealed[2], sealed[3], sealed[4], sealed[5], sealed[6], sealed[7], sealed[8], messageID)
 		if err != nil {
 			logf("an attachment could not be kept")
 			return
@@ -478,20 +537,43 @@ func (m *messageStore) restoreAttachments(ctx context.Context, into *store) {
 
 // A message taken back stays taken back. The stored copy is removed and the deletion itself recorded, so restoring
 // cannot resurrect it.
-func (m *messageStore) forget(ctx context.Context, thread int64, id string) {
+//
+// One transaction, the record first. As separate statements, a write landing between the deletes and the record (an
+// attachment for the same message, kept by another apply) found no record to stop it and stayed; inside it, that write
+// lands either before (and is deleted) or after (and sees the record). Any statement failing undoes all of them.
+func (m *messageStore) forget(ctx context.Context, thread int64, id string) error {
 	if m == nil || id == "" {
-		return
+		return nil
 	}
-	if _, err := m.db.ExecContext(ctx, `DELETE FROM encrypted_message WHERE id = ?`, id); err != nil {
+	err := m.forgetIn(ctx, thread, id)
+	if err != nil {
 		logf("a deleted message could not be removed from the store")
-		return
 	}
-	_, _ = m.db.ExecContext(ctx, `DELETE FROM encrypted_media WHERE message = ?`, id)
-	_, _ = m.db.ExecContext(ctx, `DELETE FROM encrypted_share WHERE message = ?`, id)
-	_, _ = m.db.ExecContext(ctx, `DELETE FROM encrypted_reaction WHERE message = ?`, id)
-	_, _ = m.db.ExecContext(ctx,
-		`INSERT INTO deleted_message (id, thread, at) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-		id, thread, time.Now().UnixMilli())
+	return err
+}
+
+func (m *messageStore) forgetIn(ctx context.Context, thread int64, id string) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO deleted_message (id, thread, at) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+		id, thread, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`DELETE FROM encrypted_message WHERE id = ?`,
+		`DELETE FROM encrypted_media WHERE message = ?`,
+		`DELETE FROM encrypted_share WHERE message = ?`,
+		`DELETE FROM message_attachment WHERE message = ?`,
+		`DELETE FROM encrypted_reaction WHERE message = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // One person's reaction to one message, kept. An empty emoji is the reaction being taken away.
@@ -534,6 +616,7 @@ func (m *messageStore) rememberMedia(ctx context.Context, thread int64, messageI
 		 ON CONFLICT(id) DO UPDATE SET transport = excluded.transport, kind = excluded.kind, link = excluded.link`,
 		item.id, messageID, thread, sealed[0], sealed[1], item.size, item.width, item.height,
 		item.video, item.animated, sealed[2], transport, at, sealed[3])
+	m.wrote(thread)
 	if err != nil {
 		logf("e2ee attachment could not be kept")
 	}
@@ -566,6 +649,7 @@ func (m *messageStore) rememberAIOn(ctx context.Context, on execer, thread int64
 		 reply = excluded.reply, encrypted = excluded.encrypted, ai_updated_at = excluded.ai_updated_at, edited_at = excluded.edited_at
 		WHERE excluded.ai_updated_at >= encrypted_message.ai_updated_at AND excluded.edited_at >= encrypted_message.edited_at`,
 		id, thread, row.sender, sealed[0], sealed[1], row.timestamp, row.encrypted, row.aiUpdatedAt, row.editedAt, id)
+	m.wrote(thread)
 	if err != nil {
 		logf("meta ai accepted message could not be kept")
 	}
@@ -593,6 +677,7 @@ func (m *messageStore) rememberOrdinaryAIOn(ctx context.Context, on execer, thre
 		WHERE encrypted_message.encrypted = 0`, id, thread, row.sender, sealed[0], sealed[1], row.timestamp, sealed[2], id); err != nil {
 		logf("meta ai card text could not be kept")
 	}
+	m.wrote(thread)
 }
 
 // Whether Facebook wrote an ordinary message as a line across the conversation. Written only for those, so the cold
@@ -608,6 +693,26 @@ func (m *messageStore) rememberNoticeOn(ctx context.Context, on execer, thread i
 	if _, err := on.ExecContext(ctx, `UPDATE encrypted_message SET notice = 1 WHERE id = ? AND thread = ? AND encrypted = 0`,
 		id, thread); err != nil {
 		logf("a notice could not be kept")
+	}
+}
+
+// Whether an ordinary message was edited. Its corrected words already arrive in its own row; without the mark it came
+// back at the next start looking as it was first written. Written only for those, like a notice.
+func (m *messageStore) rememberEditedOn(ctx context.Context, on execer, thread int64, id string, from *store) {
+	from.mu.Lock()
+	current := from.messages[thread][id]
+	editedAt, edits := int64(0), int64(0)
+	if current != nil && !current.encrypted {
+		editedAt, edits = current.editedAt, current.edits
+	}
+	from.mu.Unlock()
+	if editedAt == 0 {
+		return
+	}
+	if _, err := on.ExecContext(ctx, `UPDATE encrypted_message SET edited_at = max(edited_at, ?), edits = max(edits, ?)
+		WHERE id = ? AND thread = ? AND encrypted = 0 AND (edited_at < ? OR edits < ?)`,
+		editedAt, edits, id, thread, editedAt, edits); err != nil {
+		logf("an edit mark could not be kept")
 	}
 }
 
@@ -643,6 +748,7 @@ func (m *messageStore) rememberCheckedOn(ctx context.Context, on execer, thread 
 		`INSERT INTO encrypted_message (id, thread, sender, body, reply, at, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?)
 	 ON CONFLICT(id) DO UPDATE SET thread = excluded.thread, body = excluded.body, reply = excluded.reply, at = excluded.at, encrypted = excluded.encrypted`,
 		id, thread, sender, sealed[0], sealed[1], at, encrypted)
+	m.wrote(thread)
 	return err
 }
 
@@ -660,7 +766,7 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 			time.Since(started).Milliseconds())
 	}()
 	m.restoreIdentity(ctx, into)
-	rows, err := m.db.QueryContext(ctx, `SELECT thread, id, sender, body, reply, at, encrypted, ai_updated_at, edited_at, card_text, notice FROM encrypted_message ORDER BY at`)
+	rows, err := m.db.QueryContext(ctx, `SELECT thread, id, sender, body, reply, at, encrypted, ai_updated_at, edited_at, edits, card_text, notice FROM encrypted_message ORDER BY at`)
 	if err != nil {
 		logf("e2ee kept messages could not be read")
 		return 0
@@ -668,11 +774,11 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 	defer rows.Close()
 	restored := 0
 	for rows.Next() {
-		var thread, sender, at, aiUpdatedAt, editedAt int64
+		var thread, sender, at, aiUpdatedAt, editedAt, edits int64
 		var id string
 		var protectedBody, protectedReply, protectedCard []byte
 		var encrypted, notice bool
-		if rows.Scan(&thread, &id, &sender, &protectedBody, &protectedReply, &at, &encrypted, &aiUpdatedAt, &editedAt, &protectedCard, &notice) != nil {
+		if rows.Scan(&thread, &id, &sender, &protectedBody, &protectedReply, &at, &encrypted, &aiUpdatedAt, &editedAt, &edits, &protectedCard, &notice) != nil {
 			continue
 		}
 		body, bodyErr := unprotectString(protectedBody)
@@ -686,7 +792,8 @@ func (m *messageStore) restore(ctx context.Context, into *store) int {
 			into.mu.Lock()
 			if current := into.messages[thread][id]; current != nil {
 				current.aiUpdatedAt = aiUpdatedAt
-				current.editedAt = editedAt
+				current.editedAt = max(current.editedAt, editedAt)
+				current.edits = max(current.edits, edits)
 				current.cardText, current.choices = unpackCard(cardText)
 				current.notice = notice
 			}
@@ -848,6 +955,7 @@ func (a *adapter) keepMessages(ctx context.Context, touched *changes) (cost keep
 					logf("e2ee message could not be kept")
 				} else {
 					kept.rememberNoticeOn(ctx, tx, key, id, a.chats)
+					kept.rememberEditedOn(ctx, tx, key, id, a.chats)
 					kept.rememberCardOn(ctx, tx, key, id, a.chats)
 				}
 			}

@@ -19,7 +19,8 @@
 #     /var/lib/messages-server/data, .../keys and .../backups, private to the account, the way the container's volumes
 #     are (README.md, "Where things live").
 # An update stops the running server first (it finishes pending sends; up to 60 s), replaces /opt/messages-server and
-# starts it again, with the same data, keys, sign-ins and paired devices. uninstall.sh takes it away again.
+# starts it again, with the same data, keys, sign-ins and paired devices; a new release that does not stay running is
+# replaced by the one that was there. uninstall.sh takes it away again.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -32,6 +33,56 @@ policy=/etc/opt/chrome/policies/managed/messages-server.json
 chrome_signer=EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
 
 fail() { echo "install.sh: $*" >&2; exit 1; }
+
+# Whether the server runs once the install has ended is decided here alone: a server this install stopped, or one the
+# caller stopped and handed over with MESSAGES_INSTALL_RESTART=1 (update.sh), is started again whatever ends the
+# install. The release that was there stays in $app.old until the new one has stayed running, and is put back before
+# that start when the new one did not. A server that was not running is not started on the old release.
+restart=no
+[ "${MESSAGES_INSTALL_RESTART:-0}" = 1 ] && restart=yes
+swapped=no
+# Running at each of five looks 2 s apart: a server that exits shows as activating for RestartSec (10 s), not active.
+stays_running() {
+    for look in 1 2 3 4 5; do
+        sleep 2
+        systemctl is-active --quiet messages-server || return 1
+    done
+}
+recover() {
+    status=$?
+    [ "$status" -ne 0 ] || exit 0
+    # How far the swap got is read from the disk as well as the flag: a rename that failed, or one a signal ended the
+    # script right after, leaves $app.old and no $app.
+    if [ -d "$app.old" ] && { [ "$swapped" = yes ] || [ ! -d "$app" ]; }; then
+        echo "install.sh: putting back the release that was there." >&2
+        systemctl stop messages-server 2>/dev/null || true
+        rm -rf "$app.failed" || true
+        if { [ ! -d "$app" ] || mv "$app" "$app.failed"; } && mv "$app.old" "$app"; then
+            if [ -e "$app/.messages-server.service" ]; then
+                mv "$app/.messages-server.service" "$units/messages-server.service" || true
+            fi
+            systemctl daemon-reload || true
+            rm -rf "$app.failed" || true
+            swapped=no
+        else
+            echo "install.sh: could not put it back; $app.old holds it." >&2
+            swapped=yes
+        fi
+    fi
+    if [ "$restart" = yes ] && [ "$swapped" = no ]; then
+        if systemctl start messages-server && stays_running; then
+            echo "install.sh: the server is running the release it had." >&2
+        else
+            echo "install.sh: the server did not stay running; see journalctl -u messages-server." >&2
+        fi
+    fi
+    exit "$status"
+}
+trap recover EXIT
+trap 'exit 1' HUP INT TERM
+# The caller's duty to start the server again is this script's from here, its recovery armed: said so in the file the
+# caller named, which keeps the duty until it sees it (update.sh).
+if [ -n "${MESSAGES_INSTALL_ACK:-}" ]; then : > "$MESSAGES_INSTALL_ACK"; fi
 
 google=keep
 host_sign_in=no
@@ -175,11 +226,14 @@ fi
 running=no
 if systemctl is-active --quiet messages-server 2>/dev/null; then
     running=yes
+    restart=yes
     echo "Stopping the running server (pending sends finish first; up to 60 s)..."
     systemctl stop messages-server
 fi
 
 # The new copy goes in beside the old one and takes its place in one rename, so a failed copy leaves the old one whole.
+# An install that ended between the two renames below left only $app.old.
+if [ ! -d "$app" ] && [ -d "$app.old" ]; then mv "$app.old" "$app"; fi
 rm -rf "$app.new"
 mkdir -p "$app.new"
 ( cd "$here" && tar -cf - --exclude=./install.sh --exclude=./uninstall.sh --exclude='./*.service' --exclude='./*.timer' --exclude=./google.conf . ) \
@@ -193,9 +247,13 @@ done
 # What the nightly update last installed, kept across an install by hand.
 if [ -e "$app/.package-sha256" ]; then cp "$app/.package-sha256" "$app.new/.package-sha256"; fi
 rm -rf "$app.old"
-[ -d "$app" ] && mv "$app" "$app.old"
+if [ -d "$app" ]; then
+    # The unit the release that was there ran with goes back with it.
+    if [ -e "$units/messages-server.service" ]; then cp "$units/messages-server.service" "$app/.messages-server.service"; fi
+    mv "$app" "$app.old"
+    swapped=yes
+fi
 mv "$app.new" "$app"
-rm -rf "$app.old"
 
 mkdir -p "$settings"
 chmod 0755 "$settings"
@@ -278,9 +336,20 @@ systemctl enable --quiet messages-server
 systemctl enable --quiet --now messages-server-update.timer
 systemctl start messages-server
 
-sleep 3
-if systemctl is-active --quiet messages-server; then
+if stays_running; then
+    # The new release stays: nothing is left for the exit to put back or start.
+    restart=no
+    swapped=no
+    rm -rf "$app.old"
     if [ "$running" = yes ]; then echo "Message Link Server updated and running."; else echo "Message Link Server installed and running."; fi
+elif [ "$(systemctl show -p ActiveState --value messages-server 2>/dev/null)" = inactive ] \
+    && [ "$(systemctl show -p Result --value messages-server 2>/dev/null)" = success ]; then
+    # Stopped during the check, not failed: a stop ends the server cleanly (inactive, result success), where an exit
+    # shows as activating or failed with the exit's result. The operator's stop is kept, on the new release.
+    restart=no
+    swapped=no
+    rm -rf "$app.old"
+    echo "Message Link Server is installed. It was stopped during its startup check and stays stopped."
 else
     echo "Message Link Server did not stay running. Its last lines:" >&2
     journalctl -u messages-server -n 20 --no-pager >&2 || true

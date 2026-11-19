@@ -87,8 +87,25 @@ internal sealed partial class InstagramBackend
     /// <summary>What a resume is refused with now, for the checks.</summary>
     internal string? HeldRefusal => RefusedWith();
 
-    /// <summary>Writes the limits' state as it is now; the latest state wins whatever order the writes are asked in. When the file cannot be written the budget stops handing out reads.</summary>
-    internal Task PersistGuardAsync() => Task.Run(async () =>
+    // Every guard write asked for so far, the ones Hold, ReleaseHold and the budget start and nobody awaits included.
+    private Task guardWritten = Task.CompletedTask;
+
+    /// <summary>
+    /// Writes the limits' state as it is now; the latest state wins whatever order the writes are asked in. When the file cannot be written the budget stops
+    /// handing out reads. Ends once every write asked for before it has ended too: awaited, nothing of this backend's is still to land on the file (an earlier
+    /// write of a hold could otherwise land after it, over a release another backend wrote since).
+    /// </summary>
+    internal Task PersistGuardAsync()
+    {
+        var write = WriteGuardAsync();
+        lock (guardGate) return guardWritten = guardWritten.IsCompleted ? write : Task.WhenAll(guardWritten, write);
+    }
+
+    /// <summary>Ends once every guard write asked for so far has ended, starting none: before the file leaves with a moved account, and before a sign-out
+    /// says it is done (review, 2026-11-18).</summary>
+    internal Task GuardWrittenAsync() { lock (guardGate) return guardWritten; }
+
+    private Task WriteGuardAsync() => Task.Run(async () =>
     {
         await guardWrites.WaitAsync().ConfigureAwait(false);
         try

@@ -203,7 +203,7 @@ public sealed class InstagramSessionStore(string root, IStateProtector protector
     private static async Task ReplaceAsync(string path, byte[] protectedValue)
     {
         var temporary = path + ".tmp";
-        await File.WriteAllBytesAsync(temporary, protectedValue);
+        await DurableFile.WriteAsync(temporary, protectedValue);
         File.Move(temporary, path, true);
     }
 }

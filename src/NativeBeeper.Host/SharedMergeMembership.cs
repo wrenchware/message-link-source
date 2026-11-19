@@ -13,27 +13,29 @@ namespace NativeBeeper.Host;
 internal sealed class SharedMergeMembership
 {
     private readonly MergedConversations merges;
+    // The unarchiver and the Marketplace labels ask from their own workers, and a reload empties the merges before it reads the row again: unserialized, the
+    // other's DisplayId could find none and unarchive a merged member at its service, or file a label under the member's id.
+    private readonly SemaphoreSlim gate = new(1, 1);
 
     /// <param name="localKey">The key the host files its shared rows under (its space key once pinned, <see cref="SharedStateStore.AttachSpace"/>), read when asked.</param>
     public SharedMergeMembership(SharedStateStore store, Func<CancellationToken, Task<string?>> localKey) =>
         merges = new MergedConversations(new PrivateState(new Rows(store), new Key(localKey)), GoogleVoiceIds.TextRouteForCall);
 
     /// <summary>Whether a merge holds <paramref name="chat"/>. Throws when the row cannot be read.</summary>
-    public async Task<bool> HoldsAsync(ChatSummary chat, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await merges.ReloadAsync().ConfigureAwait(false);
-        merges.Observe([chat]);
-        return merges.DisplayId(chat.Id) != chat.Id;
-    }
+    public async Task<bool> HoldsAsync(ChatSummary chat, CancellationToken cancellationToken) =>
+        await DisplayIdAsync(chat, cancellationToken).ConfigureAwait(false) != chat.Id;
 
     /// <summary>The id the list shows <paramref name="chat"/> under: its merge's, or its own. Throws when the row cannot be read.</summary>
     public async Task<string> DisplayIdAsync(ChatSummary chat, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        await merges.ReloadAsync().ConfigureAwait(false);
-        merges.Observe([chat]);
-        return merges.DisplayId(chat.Id);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await merges.ReloadAsync().ConfigureAwait(false);
+            merges.Observe([chat]);
+            return merges.DisplayId(chat.Id);
+        }
+        finally { gate.Release(); }
     }
 
     private sealed class Key(Func<CancellationToken, Task<string?>> localKey) : IAccessTokenStore

@@ -17,15 +17,23 @@ type fakeDirectoryClient struct {
 	threads       map[int64]*instameow.ThreadIGIDs
 	createdOnSend map[int64]*instameow.ThreadIGIDs
 	threadErr     error
-	results   []*slidetypes.SearchResult
-	searchErr error
-	searched  []string
-	looked    []int64
-	grouped    []*slidetypes.CreateGroupRequest
-	renamed    []string
-	groupErr   error
-	titleErr   error
-	nilOnGroup bool
+	results       []*slidetypes.SearchResult
+	searchErr     error
+	searched      []string
+	looked        []int64
+	grouped       []*slidetypes.CreateGroupRequest
+	renamed       []string
+	groupErr      error
+	titleErr      error
+	nilOnGroup    bool
+	// The thread a first message makes appears without that message in it (another thread arriving meanwhile).
+	notHoldingSent bool
+	// It holds, instead, somebody else's message carrying the same offline threading id under another message id.
+	othersOfflineID bool
+	// It holds the sent message under a message id other than the one the send was answered with.
+	sentUnderOtherID bool
+	// Instagram answers a send without naming the message.
+	unconfirmedSend bool
 }
 
 func (c *fakeDirectoryClient) SearchUsers(_ context.Context, query string) (*slidetypes.SearchResponse, error) {
@@ -68,14 +76,34 @@ func (c *fakeDirectoryClient) EditGroupTitle(_ context.Context, threadID, title 
 }
 
 // Instagram makes the thread as a side effect of the first message, so a conversation listed here does not exist
-// until a send has happened and then does.
+// until a send has happened and then does, holding that message unless the test says it appeared without it.
 func (c *fakeDirectoryClient) SendMessage(ctx context.Context, r *slidetypes.SendTextRequest) (*slidetypes.SendTextResponse, error) {
 	response, err := c.fakeWriteClient.SendMessage(ctx, r)
 	if err == nil {
 		for fbid, ids := range c.createdOnSend {
 			c.threads[fbid] = ids
 			delete(c.createdOnSend, fbid)
+			if thread := c.details[ids.ShortID]; thread != nil && !c.notHoldingSent {
+				if thread.SlideMessages == nil {
+					thread.SlideMessages = &slidetypes.SlideMessages{}
+				}
+				message := &slidetypes.Message{
+					ID: "sent-1", MessageID: "sent-1", OfflineThreadingID: r.OfflineThreadingID, SenderFBID: 1234, TextBody: r.Text.Value, TimestampMS: at(4000),
+				}
+				if c.sentUnderOtherID {
+					message.ID, message.MessageID = "echo-1", "echo-1"
+				}
+				if c.othersOfflineID {
+					message = &slidetypes.Message{
+						ID: "theirs-1", MessageID: "theirs-1", OfflineThreadingID: r.OfflineThreadingID, SenderFBID: fbid, TextBody: "hi", TimestampMS: at(4000),
+					}
+				}
+				thread.SlideMessages.Edges = append(thread.SlideMessages.Edges, slidetypes.Node[*slidetypes.Message]{Node: message})
+			}
 		}
+	}
+	if response != nil && c.unconfirmedSend {
+		response.Message.MessageID = ""
 	}
 	return response, err
 }
@@ -202,11 +230,21 @@ func TestStartDirectKeepsAMessageRequestARequest(t *testing.T) {
 	if code != "" {
 		t.Fatalf("start: %s", code)
 	}
-	if chat.Folder != "pending" {
+	// The fixture's detail names no folder and the list never read requests, so its standing is unknown.
+	if chat.Folder == "inbox" {
 		t.Fatalf("a request was filed as %q", chat.Folder)
 	}
 	if _, code := a.uiSendText(context.Background(), json.RawMessage(`{"chatId":"request","text":"hi"}`)); code != "chat_not_writable" {
 		t.Fatalf("a request accepted a send: %q", code)
+	}
+	if _, code := a.uiMarkRead(context.Background(), json.RawMessage(`{"chatId":"request","messageId":"r1","at":2000}`)); code != "chat_not_writable" {
+		t.Fatalf("a request was marked read: %q", code)
+	}
+	if _, code := startWithText(t, a, `{"personId":"999","text":"hi"}`); code != "chat_not_writable" {
+		t.Fatalf("a first message to a request's sender went through: %q", code)
+	}
+	if len(client.sent) != 0 || len(client.read) != 0 {
+		t.Fatal("a refused request still reached Instagram")
 	}
 }
 
@@ -425,6 +463,51 @@ func TestAFirstMessageCannotSlipIntoAMessageRequestOrSpam(t *testing.T) {
 		if len(client.sent) != 0 {
 			t.Fatalf("a first message reached %s anyway", folder.thread)
 		}
+	}
+}
+
+// The thread found after a first message is filed in the inbox only when Instagram confirmed the send and the thread
+// holds that message. A thread that appeared between the two lookups without it (a request arriving meanwhile, whose
+// detail names no folder), one holding only somebody else's message with the same offline threading id, or a send
+// answered without a message id, leaves the standing unknown, which refuses a reply.
+func TestAFirstMessageFilesOnlyTheThreadThatHoldsIt(t *testing.T) {
+	for _, unproven := range []struct {
+		name string
+		set  func(*fakeDirectoryClient)
+	}{
+		{"a thread without the message", func(c *fakeDirectoryClient) { c.notHoldingSent = true }},
+		{"an unconfirmed send", func(c *fakeDirectoryClient) { c.unconfirmedSend = true }},
+		{"another sender's message with the same offline id", func(c *fakeDirectoryClient) { c.othersOfflineID = true }},
+	} {
+		a, client := newcomerFixture(t)
+		unproven.set(client)
+		started, code := startWithText(t, a, `{"personId":"777","text":"hello there"}`)
+		if code != "" || started.Chat == nil || started.Chat.ID != "fresh" {
+			t.Fatalf("%s: the send or the lookup after it failed: %q %+v", unproven.name, code, started)
+		}
+		if started.Chat.Folder == "inbox" {
+			t.Fatalf("%s: the thread was filed in the inbox", unproven.name)
+		}
+		if _, code := a.uiSendText(context.Background(), json.RawMessage(`{"chatId":"fresh","text":"and again"}`)); code != "chat_not_writable" {
+			t.Fatalf("%s: a reply into it was taken: %q", unproven.name, code)
+		}
+		if len(client.sent) != 1 {
+			t.Fatalf("%s: %d sends reached Instagram", unproven.name, len(client.sent))
+		}
+	}
+}
+
+// The thread can carry this account's message under another id than the send's answer named; the threading id the
+// send chose, on a message this account sent, still shows the thread is the one the message made.
+func TestAFirstMessageFoundByItsThreadingIDFilesTheThread(t *testing.T) {
+	a, client := newcomerFixture(t)
+	client.sentUnderOtherID = true
+	started, code := startWithText(t, a, `{"personId":"777","text":"hello there"}`)
+	if code != "" || started.Chat == nil || started.Chat.ID != "fresh" {
+		t.Fatalf("the send or the lookup after it failed: %q %+v", code, started)
+	}
+	if started.Chat.Folder != "inbox" {
+		t.Fatalf("the thread holding this account's message was not filed in the inbox: %q", started.Chat.Folder)
 	}
 }
 

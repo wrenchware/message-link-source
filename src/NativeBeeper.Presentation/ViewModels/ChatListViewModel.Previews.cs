@@ -145,6 +145,14 @@ public sealed partial class ChatListViewModel
         if (cleared) Rebuild();
     }
 
+    /// <summary>What seeing a conversation answers, read or not: Mark unread is undone and a snooze's reminder is no longer owed. The row's unread stays as it is.</summary>
+    public void ApplySeen(string chatId)
+    {
+        using var held = HoldRebuild();
+        ClearMarkedUnread(chatId);
+        ClearSnooze(chatId);
+    }
+
     public long ApplyPendingRead(string chatId, DateTimeOffset? activityAtRead)
     {
         // Up to three changes below, drawn once on the way out rather than three times over.

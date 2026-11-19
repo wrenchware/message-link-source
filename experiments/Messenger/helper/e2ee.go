@@ -38,6 +38,9 @@ type encrypted struct {
 	client   *whatsmeow.Client
 	device   *wadevice.Device
 	messages *messageStore
+	// The device's address as it was when the client started. whatsmeow's own Delete clears device.ID, so what a
+	// refusal left behind on e2ee.db is looked up by this.
+	jid waTypes.JID
 }
 
 // Registers this computer as one of the account's devices if it is not already, then connects. Returns the reason it
@@ -47,15 +50,27 @@ type encrypted struct {
 // on. It must never register: a lost or never-copied e2ee.db used to be recreated empty here and the computer
 // registered again, silently adding a device to the account. With restore set, no e2ee.db (or one without this
 // account's device) is "device_missing" and nothing is created or registered. Registration stays what an explicit
-// enable in Settings, a first sign-in and the one recovery after Facebook removes the device ask for (restore false).
+// enable in Settings and a first sign-in ask for (restore false); a device Facebook refused is never replaced on its own.
 func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 	a.encryptedStart.Lock()
 	defer a.encryptedStart.Unlock()
 	a.mu.Lock()
 	exists := a.crypto != nil
+	// Read with the client under the same lock, so a client given up on a moment ago is seen with its teardown.
+	drained := a.encryptedDrained
 	a.mu.Unlock()
 	if exists {
 		return ""
+	}
+	// A refused client's handlers, socket and pool are gone before another starts: its late events could otherwise
+	// reach the replacement, and both would hold e2ee.db.
+	if drained != nil {
+		select {
+		case <-drained:
+		case <-ctx.Done():
+			logf("e2ee the previous client was still being released")
+			return "e2ee_failed"
+		}
 	}
 	self := a.chats.viewer()
 	// Before the account folder is touched: a device that now lives on another machine is never started here.
@@ -98,6 +113,34 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 	if err != nil {
 		logf("e2ee device lookup failed")
 		return "e2ee_store_failed"
+	}
+	// Turning encrypted conversations on after Facebook refused this run's device is the person's decision to start
+	// afresh, so the refused keys go now and not when the refusal arrived. Reusing them would only be refused again (a
+	// 415 leaves them all in place). Only the device that was refused: an account can hold others here (from the days
+	// when a failed lookup registered a new one on every start), nothing has said they are dead, and keys deleted cannot
+	// be had back. One of those is reused if it is there; a new device is registered only when none is left.
+	a.mu.Lock()
+	refused := a.refusedDevice
+	a.mu.Unlock()
+	if !restore && a.encryptedGone.Load() && !refused.IsEmpty() {
+		remaining := make([]*wadevice.Device, 0, len(stored))
+		for _, candidate := range stored {
+			if candidate.ID == nil || *candidate.ID != refused {
+				remaining = append(remaining, candidate)
+				continue
+			}
+			if err := candidate.Delete(ctx); err != nil {
+				logf("e2ee the refused device could not be cleared")
+				return "e2ee_store_failed"
+			}
+			logf("e2ee cleared the refused device before starting again")
+		}
+		stored = remaining
+		a.mu.Lock()
+		if a.refusedDevice == refused {
+			a.refusedDevice = waTypes.JID{}
+		}
+		a.mu.Unlock()
 	}
 	var device *wadevice.Device
 	for _, candidate := range stored {
@@ -152,7 +195,8 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 	// its conversations — the helper restores the whole store at login.
 	a.mu.Lock()
 	kept := a.kept
-	a.crypto = &encrypted{devices: devices, client: client, device: device, messages: kept}
+	crypto := &encrypted{devices: devices, client: client, device: device, messages: kept, jid: *device.ID}
+	a.crypto = crypto
 	a.deviceID = device.ID.Device
 	a.mu.Unlock()
 	if !a.observeReceipts {
@@ -161,14 +205,18 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 		}
 	}
 	a.chats.setSecure(true)
-	client.AddEventHandler(a.encryptedEvent)
+	// Each client's events carry which client they came from, so one given up on cannot change its replacement.
+	client.AddEventHandler(func(raw any) { a.encryptedEvent(crypto, raw) })
 	if err := client.Connect(); err != nil {
 		// Connect retries network failures on its own and returns only what retrying cannot fix: a refused upgrade, a
 		// failed handshake, a deleted device. Back to how things stood before the call, conversations included: left
 		// secure, they offered a composer whose every send, reaction and read then failed with e2ee_off. The client's
 		// device now belongs to a closed pool; the next attempt sets a fresh one before it does anything else.
+		client.RemoveEventHandlers()
 		a.mu.Lock()
-		a.crypto = nil
+		if a.crypto == crypto {
+			a.crypto = nil
+		}
 		a.mu.Unlock()
 		a.chats.setSecure(false)
 		a.announceEncrypted()
@@ -176,6 +224,9 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 		return "e2ee_failed"
 	}
 	connected = true
+	// A device Facebook refused earlier this run has been replaced, or reused and is being tried again; a refusal
+	// sets this again.
+	a.encryptedGone.Store(false)
 	a.encryptedStateChanged()
 	logf("e2ee connected, device reused=%v", !fresh)
 	// Connect only starts the socket. Whether it came up is what decides if this conversation can be carried at all,
@@ -206,8 +257,21 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 
 // One decrypted message from an encrypted conversation. Only what the app draws is kept: who sent it, when, and its
 // text. Anything richer than text is recorded as an attachment-less message for now.
-func (a *adapter) encryptedEvent(raw any) {
+func (a *adapter) encryptedEvent(from *encrypted, raw any) {
 	defer func() { _ = recover() }()
+	switch raw.(type) {
+	case *events.Connected, *events.Disconnected, *events.LoggedOut, *events.ConnectFailure, *events.TemporaryBan,
+		*events.ClientOutdated, *events.CATRefreshError:
+		// A client given up on says nothing about the connection any more: a late refusal of the old device would
+		// otherwise turn the conversations off, or release, under a client started since. Its messages still count.
+		a.mu.Lock()
+		current := a.crypto == from
+		a.mu.Unlock()
+		if !current {
+			logf("e2ee %T from a released client ignored", raw)
+			return
+		}
+	}
 	// The events that can change the connection's word tell the app after their own handling has run (encryptedstate.go).
 	switch raw.(type) {
 	case *events.Connected, *events.LoggedOut, *events.ConnectFailure, *events.TemporaryBan, *events.ClientOutdated:
@@ -230,14 +294,17 @@ func (a *adapter) encryptedEvent(raw any) {
 		a.encryptedStateChanged()
 		logf("e2ee socket disconnected")
 	case *events.LoggedOut:
-		logf("e2ee device was removed from the account")
+		// whatsmeow answers 401, 403 and 406 with this event rather than ConnectFailure (and a device_removed stream
+		// error as 401), and deletes the device's own keys itself as it sends it. forgetDevice leaves 403 alone.
+		logf("e2ee signed out: %s", connectRefusal(evt.Reason))
 		a.chats.setSecure(false)
+		a.forgetDevice(from, evt.Reason)
 	case *events.ConnectFailure:
 		// Why the socket would not come up, by name. Facebook answers a refused connection with a three-digit code and
 		// nothing else, and without this it arrived as an unexplained failure to connect.
 		logf("e2ee refused: %s", connectRefusal(evt.Reason))
 		a.chats.setSecure(false)
-		a.forgetDevice(evt.Reason)
+		a.forgetDevice(from, evt.Reason)
 	case *events.CATRefreshError:
 		// The token the encrypted connection authenticates with could not be renewed, which is a refusal of a
 		// different kind: the session is the problem, not the device.
@@ -330,7 +397,7 @@ func (a *adapter) applyEncrypted(evt *events.FBMessage) {
 		kept := a.crypto
 		a.mu.Unlock()
 		if kept != nil {
-			kept.messages.forget(context.Background(), key, about)
+			a.forgetKept(kept.messages, key, about)
 		}
 		if !touched.empty() {
 			a.out.write(response{Event: "changed", Result: touched})
@@ -520,13 +587,15 @@ func connectRefusal(reason events.ConnectFailureReason) string {
 	}
 }
 
-// A device Facebook has no record of is worth nothing, and keeping it means every start fails the same way for good.
-// The stored keys are thrown away so that turning encrypted conversations on again registers this computer afresh.
+// Facebook saying this computer is no longer one of the account's devices. The client is let go of and the state told
+// as device_gone; nothing stored is deleted here and no device is registered. Registering puts a device on the
+// account, which is the person's to ask for: turning encrypted conversations on again does it (startEncrypted), and
+// that is also when the refused keys are cleared. whatsmeow deletes the refused device's own keys on 401 and 406 as
+// it reports them; the release records whether it had.
 //
 // Only the refusals that mean the device itself is gone. A token that expired, a service that is down or a block on
-// the account are all reasons to wait, not reasons to give up what is stored — and registering is not done here in
-// any case: it puts a device on the account, which is the user's to ask for, from Settings.
-func (a *adapter) forgetDevice(reason events.ConnectFailureReason) {
+// the account are all reasons to wait, not reasons to give up the client.
+func (a *adapter) forgetDevice(from *encrypted, reason events.ConnectFailureReason) {
 	if a.observeReceipts {
 		logf("e2ee observation will not remove or register a device")
 		return
@@ -536,69 +605,73 @@ func (a *adapter) forgetDevice(reason events.ConnectFailureReason) {
 	default:
 		return
 	}
+	if !a.retireEncrypted(from, reason.IsLoggedOut()) {
+		return
+	}
+	// Which device it was, so turning encrypted conversations on again clears that one and no other.
 	a.mu.Lock()
-	crypto := a.crypto
-	a.crypto = nil
+	a.refusedDevice = from.jid
 	a.mu.Unlock()
-	if crypto == nil {
-		return
+	a.encryptedGone.Store(true)
+	logf("e2ee this computer is no longer a registered device; nothing is registered until encrypted conversations are turned on again")
+	a.announceEncrypted()
+}
+
+// How long a release waits for whatsmeow to finish deleting a signed-out device's keys before it closes e2ee.db.
+var encryptedDeleteWait = 3 * time.Second
+
+// Takes from out of use if it is still the current client, and releases it off the caller's goroutine: the caller is
+// usually the client's own event dispatch, which holds the handler lock that RemoveEventHandlers needs. The next
+// startEncrypted waits for the release (encryptedDrained). False when from was already given up on.
+func (a *adapter) retireEncrypted(from *encrypted, loggedOut bool) bool {
+	a.mu.Lock()
+	if from == nil || a.crypto != from {
+		a.mu.Unlock()
+		return false
 	}
-	ctx := context.Background()
-	// Every stored device, not only the one that was refused. This account has several from the days when a failed
-	// lookup registered a new one on every start, and they are all equally dead: clearing one simply hands the next
-	// corpse to the next attempt, which is refused in exactly the same way.
-	cleared := 0
-	if crypto.devices != nil {
-		if stored, err := crypto.devices.GetAllDevices(ctx); err == nil {
-			for _, candidate := range stored {
-				if candidate.Delete(ctx) == nil {
-					cleared++
-				}
-			}
-		}
-	}
-	if cleared == 0 && crypto.device != nil {
-		if err := crypto.device.Delete(ctx); err != nil {
-			logf("e2ee the dead device could not be cleared")
-			return
-		}
-		cleared = 1
-	}
-	logf("e2ee cleared %d stored device(s)", cleared)
-	// Registering again is done here, once. The user has already said this computer should be one of the account's
-	// devices — that is what turning encrypted conversations on meant — and the device it was given has been taken
-	// away by Facebook, not by them. Leaving it to a control in Settings that is already switched on gives them
-	// nothing to press.
-	//
-	// Once per run, and no more. The pile of duplicate devices on this account came from registering on every start
-	// when the lookup failed; this happens only when Facebook has said outright that the device is gone, and a second
-	// refusal after a fresh registration is a real refusal, not something to keep answering.
-	// A device that arrived by a move is not replaced on its own. The dead keys are gone (above) so that the person's explicit
-	// enable registers afresh; nothing else does.
-	if arrivedByMove(a.chats.viewer()) {
-		logf("e2ee the moved device was refused by Facebook; not registering another on its own")
-		a.encryptedGone.Store(true)
-		a.announceEncrypted()
-		return
-	}
-	if a.reregistered.Swap(true) {
-		logf("e2ee registered again already this run and was refused again; leaving it alone")
-		a.encryptedGone.Store(true)
-		a.announceEncrypted()
-		return
-	}
-	logf("e2ee this computer is no longer a registered device; registering it again, once")
+	a.crypto = nil
+	previous := a.encryptedDrained
+	done := make(chan struct{})
+	a.encryptedDrained = done
+	a.mu.Unlock()
 	go func() {
+		defer close(done)
 		defer func() { _ = recover() }()
-		if !wait(a.lifetime, 3*time.Second) {
-			return
+		if previous != nil {
+			<-previous
 		}
-		if code := a.startEncrypted(a.lifetime, false); code != "" {
-			logf("e2ee could not register again: %s", code)
-			a.encryptedGone.Store(true)
-			a.announceEncrypted()
-			return
-		}
-		logf("e2ee registered again")
+		from.release(loggedOut)
 	}()
+	return true
+}
+
+// A client given up on is let go of entirely: its handlers, its socket and its pool on e2ee.db. Each refusal used to
+// leave all three behind for the life of the process. RemoveEventHandlers returns once no event of this client is
+// still being handled, so nothing of it runs after this.
+func (crypto *encrypted) release(loggedOut bool) {
+	if crypto.client != nil {
+		crypto.client.RemoveEventHandlers()
+		crypto.client.Disconnect()
+	}
+	if crypto.devices == nil {
+		return
+	}
+	defer func() { _ = crypto.devices.Close() }()
+	if !loggedOut || crypto.jid.IsEmpty() {
+		return
+	}
+	// whatsmeow deletes a signed-out device's keys on its own goroutine as it reports the sign-out. Closing the pool
+	// under it would leave them in place, so the release waits a moment for it, and says which way it went.
+	ctx := context.Background()
+	for deadline := time.Now().Add(encryptedDeleteWait); ; time.Sleep(50 * time.Millisecond) {
+		held, err := crypto.devices.GetDevice(ctx, crypto.jid)
+		if err == nil && held == nil {
+			logf("e2ee the signed-out device's keys were deleted by the client library")
+			return
+		}
+		if time.Now().After(deadline) {
+			logf("e2ee the signed-out device's keys are still stored")
+			return
+		}
+	}
 }

@@ -162,7 +162,7 @@ func (a *readOnlyAdapter) uiStartDirect(ctx context.Context, raw json.RawMessage
 	}
 	// Instagram has no thread for this pair yet when this refuses. Creating one means sending into it, which is a
 	// different decision and a different call; saying so is better than sending something nobody asked to send.
-	chat, code := a.resolveDirect(ctx, client, person, params.PersonID)
+	chat, code := a.resolveDirect(ctx, client, person, params.PersonID, nil)
 	if code != "" {
 		return nil, code
 	}
@@ -216,7 +216,7 @@ func (a *readOnlyAdapter) uiStartDirectWithText(ctx context.Context, raw json.Ra
 	// the route lookup's own short id matters twice over: the id a send addresses is the one the thread itself
 	// carried, never one derived from another call, and a conversation that turns out to be a message request must
 	// refuse this message exactly as an ordinary reply to it would.
-	existing, code := a.resolveDirect(ctx, client, person, params.PersonID)
+	existing, code := a.resolveDirect(ctx, client, person, params.PersonID, nil)
 	if code != "" && code != "chat_not_started" {
 		return nil, code
 	}
@@ -256,7 +256,12 @@ func (a *readOnlyAdapter) uiStartDirectWithText(ctx context.Context, raw json.Ra
 	// looked up. Everything past this point is only about drawing it: the message has already gone, and no failure
 	// here may say otherwise.
 	if existing == nil {
-		if chat, code := a.resolveDirect(ctx, client, person, params.PersonID); code == "" {
+		// Only a send Instagram confirmed with a message id can show which thread it went into.
+		var first *firstMessage
+		if sent.MessageID != "" {
+			first = &firstMessage{id: sent.MessageID, offlineID: request.OfflineThreadingID, self: client.GetOwnFBID()}
+		}
+		if chat, code := a.resolveDirect(ctx, client, person, params.PersonID, first); code == "" {
 			started.Chat = chat
 		}
 	}
@@ -265,7 +270,9 @@ func (a *readOnlyAdapter) uiStartDirectWithText(ctx context.Context, raw json.Ra
 
 // The conversation this account shares with one person, mapped and stored. Shared by opening a chat and by the
 // lookup that follows a first message, so both agree about what a conversation with somebody is.
-func (a *readOnlyAdapter) resolveDirect(ctx context.Context, client directoryClient, person int64, personID string) (*uiChat, string) {
+// first is this account's first message to the person, when the lookup follows one: a thread holding it is the thread
+// that message made or went into, which files it in this account's inbox.
+func (a *readOnlyAdapter) resolveDirect(ctx context.Context, client directoryClient, person int64, personID string, first *firstMessage) (*uiChat, string) {
 	ids, err := client.FetchThreadID(ctx, person)
 	// No thread for the pair is an answer, not a failure.
 	a.requests.note(ctx, &a.requests.directory, err != nil && !errors.Is(err, instameow.ErrThreadNotFound))
@@ -297,13 +304,40 @@ func (a *readOnlyAdapter) resolveDirect(ctx context.Context, client directoryCli
 	if chat.Group || !hasParticipant(chat, personID) {
 		return nil, "invalid_response"
 	}
-	// A detail response carries no folder, so a request or a spam thread keeps the standing the list gave it rather
-	// than being quietly promoted to the inbox by having been opened from the picker.
-	if known, ok := a.chats.get(chat.ID); ok && known.Folder != "" {
-		chat.Folder = known.Folder
+	known, found := a.chats.get(chat.ID)
+	detailFolder(chat, known, found)
+	// A thread that appeared between the two lookups without this message in it (a request arriving meanwhile) is
+	// not this send's, and keeps the unknown standing that refuses a reply.
+	if chat.Folder == "" && first.in(thread) {
+		chat.Folder = "inbox"
 	}
 	a.chats.put(chat)
 	return chat, ""
+}
+
+// This account's first message to somebody, as Instagram confirmed it, the threading id it was sent with, and the
+// account that sent it.
+type firstMessage struct {
+	id, offlineID string
+	self          int64
+}
+
+// Whether the thread's messages, as the detail read carries them, include this one. The threading id is chosen by
+// whoever sends, so it only identifies this message when this account is the sender.
+func (m *firstMessage) in(thread *slidetypes.ThreadInfo) bool {
+	if m == nil || m.id == "" || thread.SlideMessages == nil {
+		return false
+	}
+	for _, edge := range thread.SlideMessages.Edges {
+		n := edge.Node
+		if n == nil {
+			continue
+		}
+		if n.MessageID == m.id || (m.offlineID != "" && m.self > 0 && n.SenderFBID == m.self && n.OfflineThreadingID == m.offlineID) {
+			return true
+		}
+	}
+	return false
 }
 
 // What creating a group produced. The thread id is reported separately from the conversation for the same reason a
@@ -402,6 +436,10 @@ func (a *readOnlyAdapter) resolveGroup(ctx context.Context, client directoryClie
 		return nil, "invalid_response"
 	}
 	chat := mapThread(thread, client.GetOwnFBID(), "", a.media)
+	// This account made the group, which files it in this account's inbox.
+	if chat.Folder == "" {
+		chat.Folder = "inbox"
+	}
 	a.chats.put(chat)
 	return chat, ""
 }

@@ -20,6 +20,7 @@ import (
 	"go.mau.fi/mautrix-meta/pkg/messagix/socket"
 	"go.mau.fi/mautrix-meta/pkg/messagix/table"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+	"go.mau.fi/whatsmeow/proto/waConsumerApplication"
 	waTypes "go.mau.fi/whatsmeow/types"
 )
 
@@ -85,13 +86,15 @@ type adapter struct {
 	client *messagix.Client
 	// Stands in for the socket so a task round trip can be driven offline; nil means the client is used.
 	executeTasks func(context.Context, ...socket.Task) (*table.LSTable, error)
-	totals       summary
-	events       map[string]int
-	lifetime     context.Context
-	stop         context.CancelFunc
-	out          *output
-	chats        *store
-	media        []*mediaCache
+	// Stands in for the encrypted connection's send of a take-back in tests; nil means the client is used.
+	revokeSend func(ctx context.Context, to waTypes.JID, message *waConsumerApplication.ConsumerApplication, id string) error
+	totals     summary
+	events     map[string]int
+	lifetime   context.Context
+	stop       context.CancelFunc
+	out        *output
+	chats      *store
+	media      []*mediaCache
 	// Whether a sweep of idle downloads is pending, under mediaMu; and the clock they are aged by, nil but in tests.
 	mediaSweep bool
 	mediaNow   func() time.Time
@@ -101,6 +104,9 @@ type adapter struct {
 	// preview for, so a conversation Facebook answers nothing for must not cost a fetch every time it is asked about:
 	// the helper answers one call at a time, and everything else — the pictures on screen — waits behind it.
 	asked map[int64]time.Time
+	// When a fetch for a conversation with nothing held last failed, so the chat list's asking waits emptyRetry before
+	// it costs another; under mu. Kept apart from asked, which says the conversation was fetched.
+	emptyFailed map[int64]time.Time
 	// Tables waiting to have their cursors taken, see trackCursors.
 	cursors  chan *table.LSTable
 	tracking sync.Once
@@ -111,7 +117,7 @@ type adapter struct {
 	// The second connection, for conversations Facebook has moved to end-to-end encryption.
 	crypto   *encrypted
 	deviceID uint16
-	// Receive-only diagnostic process: existing device only, no user actions or recovery registration.
+	// Receive-only diagnostic process: existing device only, no user actions, and a refusal never gives up its device.
 	observeReceipts bool
 	mediaCheck      bool // Ordinary download diagnostic; its request allowlist cannot mutate or start E2EE.
 	// A process that only moves the kept history in or out of an account's messages.db (backup.open, then
@@ -124,15 +130,17 @@ type adapter struct {
 	// Set when Facebook has said this computer is no longer one of the account's devices, so Settings can say so
 	// instead of reporting encrypted conversations as working.
 	encryptedGone atomic.Bool
+	// The device Facebook refused, by its address as the client started with it; under mu, empty when none was. Turning
+	// encrypted conversations on again clears that device and no other (startEncrypted).
+	refusedDevice waTypes.JID
 	// When the encrypted socket was last asked to open or was last seen to drop (Unix ms), so a connection that is
 	// still coming up is told from one that is down (encryptedstate.go).
 	encryptedChanged atomic.Int64
 	// The encrypted connection's word the app was last told by an "encrypted" event (encryptedstate.go).
 	announcedMu sync.Mutex
 	announced   string
-	// Whether this run has already registered the device again after Facebook said it was gone. Once is recovery;
-	// twice would be the loop that filled the account with devices.
-	reregistered atomic.Bool
+	// Closed once the last client given up on has been released (retireEncrypted), under mu; nil before any was.
+	encryptedDrained chan struct{}
 	// Whether the app has asked the helper to connect yet. Until it has, waiting for the connection is waiting for
 	// something nobody has started: see readyToSend.
 	connectAsked atomic.Bool
@@ -165,7 +173,7 @@ func (a *adapter) setPaging(state string) {
 func newAdapter(out *output) *adapter {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &adapter{out: out, events: map[string]int{}, lifetime: ctx, stop: cancel, chats: newStore(),
-		asked: map[int64]time.Time{}, cursors: make(chan *table.LSTable, 64),
+		asked: map[int64]time.Time{}, emptyFailed: map[int64]time.Time{}, cursors: make(chan *table.LSTable, 64),
 		deleteWatches:   map[int64]chan struct{}{},
 		observeReceipts: os.Getenv("NATIVEBEEPER_MESSENGER_OBSERVE_RECEIPTS") == "1",
 		mediaCheck:      os.Getenv("NATIVEBEEPER_MESSENGER_MEDIA_CHECK") == "1",
@@ -397,6 +405,7 @@ func (a *adapter) history(ctx context.Context, key int64, count int, before int6
 	}
 	a.mu.Lock()
 	asked := a.asked[key]
+	failed := a.emptyFailed[key]
 	a.mu.Unlock()
 	known := a.chats.messageCount(key)
 	// The kind decides which connection a conversation's messages and pictures travel on, so a conversation whose
@@ -410,8 +419,12 @@ func (a *adapter) history(ctx context.Context, key int64, count int, before int6
 	stale := a.pageNeedsRefresh(key, before)
 	// Answer from what is known when there is nothing to be gained by asking again: a conversation already fetched, or
 	// one Facebook had nothing for a moment ago. The chat list asks about every conversation it has no preview for, so
-	// without this each of those costs a fetch, and everything else waits behind them.
-	if !stale && before == 0 && !asked.IsZero() && (known > 0 || time.Since(asked) < emptyRetry) {
+	// without this each of those costs a fetch, and everything else waits behind them. One with nothing held whose fetch
+	// failed a moment ago waits as well, by a mark of its own: as the asked mark it outlived the wait once a message
+	// arrived, and every open after that answered from memory as if the conversation had been fetched.
+	fetched := !asked.IsZero() && (known > 0 || time.Since(asked) < emptyRetry)
+	cooling := known == 0 && !failed.IsZero() && time.Since(failed) < emptyRetry
+	if !stale && before == 0 && (fetched || cooling) {
 		page := a.chats.historyBefore(key, 0, count)
 		logf("history chat=%s answered from memory=%d", tag(key), len(page))
 		return page, ""
@@ -419,6 +432,27 @@ func (a *adapter) history(ctx context.Context, key int64, count int, before int6
 	a.mu.Lock()
 	a.asked[key] = time.Now()
 	a.mu.Unlock()
+	// A conversation whose first fetch failed, or was cancelled before Facebook answered, gets its mark back as it was.
+	// Left set, every later open answered from memory, often with only the newest message, until the archiver reached
+	// the conversation or a restart. One with nothing held also starts the emptyRetry wait: the chat list asks about
+	// every such conversation again after each change, and without the wait each of them cost a fetch every time while
+	// Facebook kept failing.
+	reached := false
+	unask := func() {
+		if reached {
+			return
+		}
+		a.mu.Lock()
+		if asked.IsZero() {
+			delete(a.asked, key)
+		} else {
+			a.asked[key] = asked
+		}
+		if known == 0 {
+			a.emptyFailed[key] = time.Now()
+		}
+		a.mu.Unlock()
+	}
 	// A conversation with nothing known needs two rounds: one to be given its most recent messages, one to page back
 	// from them. The rounds stop as soon as one brings nothing, and the helper answers one call at a time, so this is
 	// deliberately short — everything else on screen is waiting behind it.
@@ -478,10 +512,12 @@ func (a *adapter) history(ctx context.Context, key int64, count int, before int6
 			if err != nil {
 				logf("history chat=%s round=%d failed", tag(key), round)
 				if round == 0 {
+					unask()
 					return nil, "history_failed"
 				}
 				break
 			}
+			reached = true
 			applied := a.applyTable(ctx, tbl)
 			logRows("history reply", tbl, applied)
 			if !a.waitForMessages(ctx, key, before, count) {
@@ -489,6 +525,9 @@ func (a *adapter) history(ctx context.Context, key int64, count int, before int6
 				break
 			}
 		}
+	}
+	if ctx.Err() != nil {
+		unask()
 	}
 	page := a.chats.historyBefore(key, before, count)
 	logf("history chat=%s returning=%d withMedia=%d known=%d stale=%v", tag(key), len(page), withMedia(page), a.chats.messageCount(key), stale)

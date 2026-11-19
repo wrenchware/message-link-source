@@ -189,8 +189,23 @@ internal sealed class HostScheduledSends : IScheduledCommands, IDisposable
     public Task<ScheduledAnswer> EditAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default) =>
         request.IfRev == 0 ? DiscardAsync(request, TakeBack, cancellationToken) : CommandAsync(request, TakeBack, cancellationToken);
 
+    public Task<ScheduledAnswer> EditAsync(ScheduledCommandParams request, Func<string, bool> refuses, string refusal, CancellationToken cancellationToken = default)
+    {
+        var act = Unless(refuses, refusal, TakeBack);
+        return request.IfRev == 0 ? DiscardAsync(request, act, cancellationToken) : CommandAsync(request, act, cancellationToken);
+    }
+
     public Task<ScheduledAnswer> CancelAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default) =>
         request.IfRev == 0 ? DiscardAsync(request, CancelIt, cancellationToken) : CommandAsync(request, CancelIt, cancellationToken);
+
+    // The dispatcher's line for a client that may not write to a conversation (Hermes, below 31), looked at once the message is found under its own gate: a
+    // look before the gate could miss a message a cancel had taken out while its save was pending, and that a failed save then put back (review, 2026-11-18).
+    private Func<ScheduledSend, Task<ScheduledAnswer>> Unless(Func<string, bool> refuses, string refusal, Func<ScheduledSend, Task<ScheduledAnswer>> act) => item =>
+    {
+        if (!refuses(item.ChatId)) return act(item);
+        log("scheduled command outcome=refused reason=client");
+        return Task.FromResult(new ScheduledAnswer(ScheduledStatuses.Refused, Message: refusal));
+    };
 
     private async Task<ScheduledAnswer> TakeBack(ScheduledSend item)
     {
@@ -242,10 +257,13 @@ internal sealed class HostScheduledSends : IScheduledCommands, IDisposable
             }
         }), cancellationToken);
 
-    public Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default) =>
-        CommandAsync(request, async item =>
-            await engine.SendNowAsync(item.Id).ConfigureAwait(true) ? new ScheduledAnswer(ScheduledStatuses.Done, item.Id, await rows.RevOfAsync(item.Id).ConfigureAwait(true)) : Sending(),
-            cancellationToken);
+    public Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default) => CommandAsync(request, SendItNow, cancellationToken);
+
+    public Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, Func<string, bool> refuses, string refusal, CancellationToken cancellationToken = default) =>
+        CommandAsync(request, Unless(refuses, refusal, SendItNow), cancellationToken);
+
+    private async Task<ScheduledAnswer> SendItNow(ScheduledSend item) =>
+        await engine.SendNowAsync(item.Id).ConfigureAwait(true) ? new ScheduledAnswer(ScheduledStatuses.Done, item.Id, await rows.RevOfAsync(item.Id).ConfigureAwait(true)) : Sending();
 
     /// <summary>
     /// Removes the shared record of a send that may not have gone (<c>outbox:</c>), for every client. It sends and asks nothing: the send is never made again whatever the

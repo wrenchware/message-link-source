@@ -20,7 +20,9 @@ internal sealed partial class GoogleMessagesBackend
         await StopHistoryIndexingAsync();
         await archive.ResetAsync(profile);
         await directoryGate.WaitAsync();
-        try { chats.Clear(); messages.Clear(); lock (listedChatIds) listedChatIds.Clear(); placeholders.Clear(); ArrivalHold.Clear(); lastListed = null; }
+        // The held whole list goes too: answered over the emptied conversations, the next list read after a reset came back
+        // with no Google conversation at all until a later read.
+        try { chats.Clear(); messages.Clear(); lock (listedChatIds) listedChatIds.Clear(); placeholders.Clear(); ArrivalHold.Clear(); lastListed = null; lastList = null; chatWritten.Clear(); }
         finally { directoryGate.Release(); }
         await ResetIdentitiesAsync(profile);
         if (connected) StartHistoryIndexing();

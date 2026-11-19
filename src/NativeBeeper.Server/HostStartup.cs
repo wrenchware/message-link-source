@@ -99,8 +99,10 @@ internal sealed partial class HostStartup : IDisposable
         step.Took("instagram");
         var voice = services.GetRequiredService<GoogleVoiceBackend>();
         step.Took("voice");
-        var feed = new GatedRealtimeFeed(new CompositeRealtimeFeed(() => MessagingRouter.GoogleMessagesExpected,
-            ("google-direct:", google), ("messenger:", messenger), ("gvoice:", voice), ("instagram:", instagram), (HermesIds.Scope, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
+        var googleFeed = new GatedRealtimeFeed(google, runs: () => MessagingRouter.GoogleMessagesExpected);
+        var feed = new GatedRealtimeFeed(new CompositeRealtimeFeed(() => true,
+            ("google-direct:", googleFeed), ("messenger:", messenger), ("gvoice:", voice), ("instagram:", instagram), (HermesIds.Scope, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())),
+            googleFeed);
         // The host restores its own accounts only with --restore. The slots exist from here, before the pipe opens, so a client that asks for a restore
         // ahead of the host's own begins waits for it (RestoreOnce).
         var restores = restore ? RestoreOnce.ForAll() : RestoreOnce.None;
@@ -166,9 +168,10 @@ internal sealed partial class HostStartup : IDisposable
     /// </summary>
     public async Task RestoreAsync(CancellationToken stop)
     {
-        await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
         try
         {
+            // Inside the try: a stop during the added accounts' restore still answers a client waiting on the host's, rather than holding the stop's drain.
+            await Services.GetRequiredService<ProviderAccounts>().RestoreAsync(stop);
             // The window starts the keeper as it is built, ahead of the launch's connect, so a refusal that connect hears is renewed. Same here.
             var signIn = StartSignInKeeper(stop);
             var messenger = Services.GetRequiredService<IMessengerAccount>();
@@ -199,12 +202,17 @@ internal sealed partial class HostStartup : IDisposable
             if (!stop.IsCancellationRequested) feed.Open();
             await others;
         }
+        // A stop is not a failed start: logged as the restore's outcome, as the Linux host's is.
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { log("server restore outcome=stopped"); }
         // However the restore ended, a client waiting on a provider it never reached is answered (skipped) rather than left waiting.
         finally { restores.End(); }
     }
 
     /// <summary>The host's restore will not run (the server was stopped first): a client waiting on it is answered skipped.</summary>
     public void EndRestores() => restores.End();
+
+    /// <summary>The start's restore is skipped or held: every feed but Google's own goes now, so Hermes and an account connected meanwhile are heard.</summary>
+    public void OpenPassiveFeed() => feed.OpenPassive();
 
     /// <summary>
     /// Whether the start's restore would log a Messenger or Instagram account in: the restore ledger counts only those (<see cref="RestoreLedger.StartAsync"/>), as the

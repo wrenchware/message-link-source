@@ -44,8 +44,8 @@ public sealed class FileKeyStateProtector : IStateProtector
     public Task<byte[]> UnprotectAsync(byte[] value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        if (!value.AsSpan().StartsWith(Prefix)) throw new InvalidDataException("The value is not protected by a key file.");
-        if (value.Length < Prefix.Length + NonceLength + TagLength) throw new InvalidDataException("The protected value is incomplete.");
+        if (!value.AsSpan().StartsWith(Prefix)) throw SealedFraming.Damaged(new InvalidDataException("The value is not protected by a key file."));
+        if (value.Length < Prefix.Length + NonceLength + TagLength) throw SealedFraming.Damaged(new InvalidDataException("The protected value is incomplete."));
         var plain = new byte[value.Length - Prefix.Length - NonceLength - TagLength];
         var key = ReadKey();
         try

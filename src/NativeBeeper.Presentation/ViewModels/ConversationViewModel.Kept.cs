@@ -102,22 +102,35 @@ public sealed partial class ConversationViewModel
     private async Task PeekQuotesAsync(IReadOnlyList<ChatMessage> rows, IMessagePeek? source, long version, CancellationToken token)
     {
         if ((peek ?? source) is not { } memory) return;
+        // What these rows quote, newest reply first, up to the bound: the newest are the ones drawn where the reader is. Only
+        // these are kept or asked for, so the bound holds however many replies are loaded; keeping every quote the rows
+        // named let a long conversation pass it (2026-11-18 review). An older reply past the bound keeps its words.
         HashSet<string>? loaded = null;
-        List<(string Chat, string Id, string Key)>? wanted = null;
-        foreach (var row in rows)
+        var ranked = new List<(string Chat, string Id, string Key)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = rows.Count - 1; index >= 0 && ranked.Count < QuotesKept; index--)
         {
+            var row = rows[index];
             if (row.ReplyToId is not { } reply || row.IsDeleted) continue;
             var key = MessageIdentity.Key(row.ChatId, reply);
-            if (quotes.ContainsKey(key) || quoteMisses.Contains(key)) continue;
+            if (!seen.Add(key)) continue;
             loaded ??= rows.Select(MessageIdentity.Key).ToHashSet(StringComparer.Ordinal);
-            if (loaded.Contains(key) || wanted?.Any(item => item.Key == key) == true) continue;
-            (wanted ??= []).Add((row.ChatId, reply, key));
+            if (!loaded.Contains(key)) ranked.Add((row.ChatId, reply, key));
         }
-        if (wanted is null) return;
+        // Bounded before this drawing's answers go in, so they are there for its render, and only by what the rows no longer
+        // need: trimmed with Keys.First() after them, a full map let go of the quotes just found (a Dictionary refills freed
+        // slots last in, first out), so they never drew and were asked for again on every drawing.
+        if (quotes.Count > QuotesKept - QuotesPerDrawing || quoteMisses.Count > QuotesKept - QuotesPerDrawing)
+        {
+            var kept = ranked.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+            foreach (var key in quotes.Keys.Where(key => !kept.Contains(key)).ToArray()) quotes.Remove(key);
+            quoteMisses.IntersectWith(kept);
+        }
+        var wanted = ranked.Where(item => !quotes.ContainsKey(item.Key) && !quoteMisses.Contains(item.Key)).ToList();
+        if (wanted.Count == 0) return;
         var began = System.Diagnostics.Stopwatch.GetTimestamp();
         int asked = 0, found = 0;
-        // The newest replies first: they are the ones drawn where the reader is.
-        foreach (var (chat, id, key) in Enumerable.Reverse(wanted).Take(QuotesPerDrawing))
+        foreach (var (chat, id, key) in wanted.Take(QuotesPerDrawing))
         {
             var left = QuoteWait - System.Diagnostics.Stopwatch.GetElapsedTime(began);
             if (left <= TimeSpan.Zero) break;
@@ -135,8 +148,6 @@ public sealed partial class ConversationViewModel
             if (message is { } whole && whole.ChatId == chat && whole.Id == id) { quotes[key] = whole; found++; }
             else quoteMisses.Add(key);
         }
-        while (quotes.Count > QuotesKept) quotes.Remove(quotes.Keys.First());
-        while (quoteMisses.Count > QuotesKept) quoteMisses.Remove(quoteMisses.First());
         if (asked > 0)
             Timed?.Invoke(this, $"history quotes asked={asked} found={found} left={wanted.Count - asked} ms={(long)System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalMilliseconds}");
     }

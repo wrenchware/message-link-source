@@ -53,6 +53,30 @@ func reactionAllowed(c *gmproto.Conversation, m *gmproto.Message, sim *gmproto.S
 		(c.GetType() == gmproto.ConversationType_RCS || c.GetType() == gmproto.ConversationType_SMS) &&
 		c.GetDefaultOutgoingID() != "" && sim.GetSIMParticipant().GetID() == c.GetDefaultOutgoingID() && sim.GetSIMData().GetSIMPayload() != nil
 }
+
+// The message an action or a reply names: the one already drawn, or else looked for in the conversation's newest page.
+// messageRefs is cleared whole at 5000 entries, so a message still on screen can be missing from it. Nil with no error
+// when the page does not hold it either.
+func (a *adapter) messageRef(ctx context.Context, chatID, messageID string) (*gmproto.Message, error) {
+	a.mediaMu.Lock()
+	m := a.messageRefs[messageID]
+	a.mediaMu.Unlock()
+	if m != nil {
+		return m, nil
+	}
+	page, err := a.client.FetchMessages(ctx, chatID, 20, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, msg := range page.GetMessages() {
+		a.viewMessage(msg)
+		if msg.GetMessageID() == messageID {
+			m = msg
+		}
+	}
+	return m, nil
+}
+
 func replyAllowed(c *gmproto.Conversation, m *gmproto.Message, sim *gmproto.SIMCard) bool {
 	return reactionAllowed(c, m, sim) && c.GetType() == gmproto.ConversationType_RCS && m.GetMessageID() != "" &&
 		(m.GetMessageStatus().GetStatus() == gmproto.MessageStatusType_INCOMING_COMPLETE ||
@@ -130,20 +154,9 @@ func (a *adapter) actionCall(ctx context.Context, r request) (any, string) {
 	if sim == nil {
 		sim = c.GetSimCard()
 	}
-	a.mediaMu.Lock()
-	m := a.messageRefs[p.MessageID]
-	a.mediaMu.Unlock()
-	if m == nil {
-		page, e := a.client.FetchMessages(ctx, p.ChatID, 20, nil)
-		if e != nil {
-			return nil, "history_failed"
-		}
-		for _, msg := range page.GetMessages() {
-			a.viewMessage(msg)
-			if msg.GetMessageID() == p.MessageID {
-				m = msg
-			}
-		}
+	m, err := a.messageRef(ctx, p.ChatID, p.MessageID)
+	if err != nil {
+		return nil, "history_failed"
 	}
 	if r.Method == "ui.actions" {
 		opts := actionOptions{Add: []string{}, Remove: []string{}}

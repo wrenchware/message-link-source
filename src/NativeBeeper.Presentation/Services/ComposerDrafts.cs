@@ -117,20 +117,25 @@ public sealed class ComposerDrafts
     private async Task ReloadForHostAsync()
     {
         if (Interlocked.Exchange(ref hostReading, 1) == 1) { Volatile.Write(ref hostAgain, 1); return; }
-        try
+        while (true)
         {
-            do
+            try
             {
-                Volatile.Write(ref hostAgain, 0);
-                PrivateState? read; string? forProfile;
-                lock (gate) { read = state; forProfile = loadedProfile; }
-                if (read is null || forProfile is null) break;
-                try { await LoadAsync(read, forProfile, again: true); }
-                catch (Exception) { /* The next draft, or the next load of the list, reads them again. */ }
-                Changed?.Invoke(this, "");
-            } while (Volatile.Read(ref hostAgain) == 1);
+                do
+                {
+                    Volatile.Write(ref hostAgain, 0);
+                    PrivateState? read; string? forProfile;
+                    lock (gate) { read = state; forProfile = loadedProfile; }
+                    if (read is null || forProfile is null) break;
+                    try { await LoadAsync(read, forProfile, again: true); }
+                    catch (Exception) { /* The next draft, or the next load of the list, reads them again. */ }
+                    Changed?.Invoke(this, "");
+                } while (Volatile.Read(ref hostAgain) == 1);
+            }
+            finally { Volatile.Write(ref hostReading, 0); }
+            // A change that came after the last look at hostAgain and before the release found the read still running, and went.
+            if (Volatile.Read(ref hostAgain) == 0 || Interlocked.Exchange(ref hostReading, 1) == 1) return;
         }
-        finally { Volatile.Write(ref hostReading, 0); }
     }
 
     /// <summary>

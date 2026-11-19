@@ -206,7 +206,8 @@ func (a *adapter) deleteEncrypted(ctx context.Context, key int64, target viewMes
 	if crypto == nil {
 		return nil, "e2ee_off"
 	}
-	if !a.encryptedReady() {
+	// A test standing in for the send has no socket to be up.
+	if a.revokeSend == nil && !a.encryptedReady() {
 		logf("delete chat=%s encrypted socket is not up", tag(key))
 		return nil, "e2ee_offline"
 	}
@@ -230,16 +231,52 @@ func (a *adapter) deleteEncrypted(ctx context.Context, key int64, target viewMes
 		},
 	}
 	id := strconv.FormatInt(methods.GenerateEpochID(), 10)
-	if _, err := crypto.client.SendFBMessage(ctx, to, message, nil, whatsmeow.SendRequestExtra{ID: waTypes.MessageID(id)}); err != nil {
+	if err := a.sendRevoke(ctx, crypto, to, message, id); err != nil {
 		logf("delete chat=%s encrypted send failed: %s", tag(key), scrub(err.Error()))
 		return nil, "delete_failed"
 	}
-	// Taken back here too, and recorded as taken back, so the stored copy cannot put it back at the next start.
+	// Taken back here too, and recorded as taken back, so the stored copy cannot put it back at the next start. Facebook
+	// has taken it back whether or not the record is written, so the answer stays accepted either way.
 	touched := a.chats.removeEncrypted(key, target.ID)
-	crypto.messages.forget(ctx, key, target.ID)
+	a.forgetKept(crypto.messages, key, target.ID)
 	if !touched.empty() {
 		a.out.write(response{Event: "changed", Result: touched})
 	}
 	logf("delete chat=%s message=%s encrypted accepted", tag(key), tagOf(target.ID))
 	return map[string]any{"outcome": "accepted"}, ""
+}
+
+func (a *adapter) sendRevoke(ctx context.Context, crypto *encrypted, to waTypes.JID, message *waConsumerApplication.ConsumerApplication, id string) error {
+	if a.revokeSend != nil {
+		return a.revokeSend(ctx, to, message, id)
+	}
+	_, err := crypto.client.SendFBMessage(ctx, to, message, nil, whatsmeow.SendRequestExtra{ID: waTypes.MessageID(id)})
+	return err
+}
+
+// How long a deletion record that could not be written waits before the next try; it doubles, up to a minute.
+var forgetRetryDelay = 500 * time.Millisecond
+
+// Writes the record of a message taken back, and keeps trying while the helper runs when the write fails. The take-back
+// itself is never sent again: Facebook has it. Without the record, the stored copy put the message back at the next
+// start.
+func (a *adapter) forgetKept(kept *messageStore, key int64, id string) {
+	if kept.forget(context.Background(), key, id) == nil {
+		return
+	}
+	go func() {
+		defer func() { _ = recover() }()
+		delay := forgetRetryDelay
+		for attempt := 1; ; attempt++ {
+			if !wait(a.lifetime, delay) {
+				logf("a deleted message's record was still not written at exit message=%s", tagOf(id))
+				return
+			}
+			if kept.forget(context.Background(), key, id) == nil {
+				logf("a deleted message's record was written on try %d message=%s", attempt+1, tagOf(id))
+				return
+			}
+			delay = min(delay*2, time.Minute)
+		}
+	}()
 }

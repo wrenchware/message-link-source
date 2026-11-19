@@ -49,18 +49,19 @@ public sealed class WindowsVideoFrameExtractor : IVideoFrameExtractor
         using var player = new MediaPlayer { IsVideoFrameServerEnabled = true, IsMuted = true, AutoPlay = false, Source = source };
         var opened = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var seeked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var framed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // False when the player failed after opening: no frame came, and the surface is still black (a black still was cached for good, 2026-11-18).
+        var framed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var wanted = 0; // Frames are taken only once the seek has landed, never the one the player shows first.
         D3dSurface? surface = null;
         player.MediaOpened += (_, _) => opened.TrySetResult(true);
-        player.MediaFailed += (_, _) => { opened.TrySetResult(false); framed.TrySetResult(); };
+        player.MediaFailed += (_, _) => { opened.TrySetResult(false); seeked.TrySetResult(); framed.TrySetResult(false); };
         player.PlaybackSession.SeekCompleted += (_, _) => seeked.TrySetResult();
         player.VideoFrameAvailable += (sender, _) =>
         {
             if (Volatile.Read(ref wanted) == 0 || surface is null || framed.Task.IsCompleted) return;
             try { sender.CopyFrameToVideoSurface(surface.Surface); }
             catch (Exception) { return; } // The next frame may be copied.
-            framed.TrySetResult();
+            framed.TrySetResult(true);
         };
         using var registration = token.Register(() => { opened.TrySetCanceled(token); framed.TrySetCanceled(token); seeked.TrySetCanceled(token); });
 
@@ -83,9 +84,9 @@ public sealed class WindowsVideoFrameExtractor : IVideoFrameExtractor
             }
             Volatile.Write(ref wanted, 1);
             player.Play();
-            await framed.Task;
+            var framedOne = await framed.Task;
             player.Pause();
-            if (!framed.Task.IsCompletedSuccessfully) return null;
+            if (!framedOne) return null;
             using var picture = await SoftwareBitmap.CreateCopyFromSurfaceAsync(surface.Surface).AsTask(token);
             using var opaque = SoftwareBitmap.Convert(picture, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
             return await EncodeAsync(opaque, longEdge, token);

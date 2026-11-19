@@ -98,4 +98,14 @@ public interface IScheduledCommands
     Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default);
     /// <summary>Removes the shared record of a send of unknown outcome. Idempotent: one already gone is done. Never sends.</summary>
     Task<Done> DismissAsync(OutboxDismissParams request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// <see cref="EditAsync(ScheduledCommandParams, CancellationToken)"/> for a client that may not write to some conversations (below 31: Hermes's): a message
+    /// in a conversation <paramref name="refuses"/> names is answered refused with <paramref name="refusal"/>. Looked at under the message's own gate, so no
+    /// other command on it (a cancel whose failed save puts it back) runs between the look and the act. A schedule that cannot look there refuses every one.
+    /// </summary>
+    Task<ScheduledAnswer> EditAsync(ScheduledCommandParams request, Func<string, bool> refuses, string refusal, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ScheduledAnswer(ScheduledStatuses.Refused, Message: refusal));
+    /// <summary><see cref="SendNowAsync(ScheduledCommandParams, CancellationToken)"/> with the same line as the refusing <c>EditAsync</c>.</summary>
+    Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, Func<string, bool> refuses, string refusal, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ScheduledAnswer(ScheduledStatuses.Refused, Message: refusal));
 }

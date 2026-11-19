@@ -88,7 +88,9 @@ internal sealed partial class ProviderAccounts
             owner.Changed += Changed;
             try
             {
-                await owner.started.Task.WaitAsync(stop.Token);
+                // Messenger's pumps only pass on what their accounts do, so they go at once: waiting for the restore left an account a client connected
+                // unheard for a whole run whose restore was skipped or held (review, 2026-11-18). Google's connects by being run, and Instagram's starts the
+                // inbox poll, which reads Instagram: both wait for the restore (RestoreAsync wakes this once it has ended).
                 Changed();
                 await foreach (var _ in wake.Reader.ReadAllAsync(stop.Token))
                 {
@@ -103,7 +105,8 @@ internal sealed partial class ProviderAccounts
                     foreach (var account in accounts.Where(a => !pumps.ContainsKey(a.Registration.Key)))
                     {
                         // A Google feed connects by itself; never start it for an unfinished sign-in.
-                        if (account.Google is { } google && !google.Files.SessionSaved) continue;
+                        if (account.Google is { } google && (!google.Files.SessionSaved || !owner.started.Task.IsCompleted)) continue;
+                        if (account.Instagram is not null && !owner.started.Task.IsCompleted) continue;
                         var ownStop = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                         IRealtimeFeed feed = (IRealtimeFeed?)account.Google ?? (IRealtimeFeed?)account.Messenger ?? account.Instagram!;
                         var scope = Scope(account);

@@ -115,12 +115,9 @@ const movedAwayName = "moved-away.json"
 
 // A file of this name in an account's folder says the account arrived here by a move: its device is the one this
 // computer's owner had, brought over whole. If Facebook later refuses that device, nothing here registers another on
-// its own — the person is told and decides.
+// its own — the person is told and decides. Nothing here reads it any more: since 2026-11-18 no refused device is
+// registered again on its own, moved or not. The name stays so the app's and the server's moves keep writing the same file.
 const movedInName = "moved-in.json"
-
-func arrivedByMove(viewer int64) bool {
-	return existingAccountPath(viewer, movedInName) != ""
-}
 
 func movedAway(viewer int64) bool {
 	return existingAccountPath(viewer, movedAwayName) != ""

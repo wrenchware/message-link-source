@@ -386,6 +386,24 @@ func (s *chatStore) replace(chats []*uiChat) {
 	s.sweptAt = s.loadedAt
 }
 
+// A whole read in which one folder failed: the held rows of that folder that the read did not find are carried over.
+func (s *chatStore) replaceKeeping(chats []*uiChat, folder string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.chats
+	s.chats = make(map[string]*uiChat, len(chats))
+	for _, chat := range chats {
+		s.chats[chat.ID] = chat
+	}
+	for id, chat := range previous {
+		if _, found := s.chats[id]; !found && chat.Folder == folder {
+			s.chats[id] = chat
+		}
+	}
+	s.loadedAt = time.Now()
+	s.sweptAt = s.loadedAt
+}
+
 // The first page laid over what the last whole read found. Nothing is removed: a conversation below the first page is
 // not gone for being absent from it, and a conversation taken away on the phone goes at the next whole read.
 func (s *chatStore) merge(chats []*uiChat) {
@@ -462,14 +480,28 @@ func (s *chatStore) stale() {
 	s.loadedAt = time.Time{}
 }
 
+// "inbox" is the one folder that allows sends and read marks, so it is given only on evidence: the thread was listed
+// from the inbox, or Instagram named the folder itself. Anything else is "" (unknown), which every inbox check
+// refuses. Defaulting to "inbox" let a message request opened from New chat be answered and marked read without
+// anybody accepting it.
 func folderName(thread *slidetypes.ThreadInfo, queried string) string {
 	switch {
 	case thread.SystemFolder == "PENDING" || queried == "PENDING":
 		return "pending"
 	case thread.SystemFolder == "SPAM" || queried == "SPAM":
 		return "spam"
-	default:
+	case thread.SystemFolder == "INBOX" || queried == "INBOX":
 		return "inbox"
+	default:
+		return ""
+	}
+}
+
+// The folder a detail read leaves a conversation in. A folder the detail names is the newer fact; one it does not name
+// keeps what the list established, so a request or a spam thread is not promoted by being opened.
+func detailFolder(chat, known *uiChat, found bool) {
+	if chat.Folder == "" && found && known.Folder != "" {
+		chat.Folder = known.Folder
 	}
 }
 
@@ -802,8 +834,12 @@ func (a *readOnlyAdapter) loadChats(ctx context.Context, client historyClient) (
 	// which is most of what made the first list slow. Stage 7 reads it when it has somewhere to put it.
 	//
 	// A folder that fails is not a reason to show no conversations at all: the inbox is already in hand.
-	_ = page("SPAM", nil)
-	a.chats.replace(chats)
+	// The spam folder's own rows are kept when it could not be read, rather than dropped until the next whole read.
+	if page("SPAM", nil) != "" {
+		a.chats.replaceKeeping(chats, "spam")
+	} else {
+		a.chats.replace(chats)
+	}
 	return "", true
 }
 
@@ -950,11 +986,8 @@ func (a *readOnlyAdapter) uiChat(ctx context.Context, raw json.RawMessage) (any,
 		return nil, "invalid_response"
 	}
 	chat := mapThread(thread, client.GetOwnFBID(), "", a.media)
-	// A detail response carries no folder, so the folder the list established is kept rather than silently demoting
-	// a request to the inbox.
-	if known, ok := a.chats.get(chat.ID); ok && known.Folder != "" {
-		chat.Folder = known.Folder
-	}
+	known, found := a.chats.get(chat.ID)
+	detailFolder(chat, known, found)
 	a.chats.put(chat)
 	return chat, ""
 }

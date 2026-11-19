@@ -17,15 +17,18 @@ internal sealed partial class GoogleMessagesBackend : IRecentMessages
         // Dates first, which is all the archive filters by; then the exact span. Newest first. Off the interface thread, as
         // search runs it: it walks every document the archive holds, under the archive's lock.
         var filters = new NativeBeeper.Core.Services.SearchFilters(From: DateOnly.FromDateTime(since.LocalDateTime), Through: DateOnly.FromDateTime(until.LocalDateTime));
-        var hits = await Task.Run(() => archive.Search("", filters: filters, cancellationToken: cancellationToken)
-            .Where(hit => hit.At >= since && hit.At < until).Take(limit).ToArray(), cancellationToken);
         // Only conversations search would show: the archive still holds ones the user deleted (KnownChats leaves them out).
+        // Left out before the limit is counted, and the limit counts what is kept: taken first, a deleted conversation's
+        // newest messages filled the limit and the span came back short or empty.
         var known = KnownChats();
-        var items = new List<ConsoleHistoryItem>(hits.Length);
+        var hits = await Task.Run(() => archive.Search("", filters: filters, cancellationToken: cancellationToken)
+            .Where(hit => hit.At >= since && hit.At < until && known.ContainsKey(hit.ChatId)).ToArray(), cancellationToken);
+        var items = new List<ConsoleHistoryItem>(Math.Min(hits.Length, Math.Max(limit, 0)));
         foreach (var hit in hits)
         {
+            if (items.Count >= limit) break;
             cancellationToken.ThrowIfCancellationRequested();
-            if (!known.TryGetValue(hit.ChatId, out var chat)) continue;
+            var chat = known[hit.ChatId];
             if (await archive.ReadMessageAsync(account, hit.MessageId, cancellationToken) is not { } message) continue;
             items.Add(new(Summary(chat), Models.Map(message, chat)));
         }

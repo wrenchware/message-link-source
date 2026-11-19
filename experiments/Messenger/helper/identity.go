@@ -208,6 +208,9 @@ func (m *messageStore) saveIdentityChecked(ctx context.Context, s *store) (writt
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	m.purgeMu.Lock()
+	writesBefore := m.writes
+	m.purgeMu.Unlock()
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		logf("thread identity could not be saved")
@@ -226,6 +229,8 @@ func (m *messageStore) saveIdentityChecked(ctx context.Context, s *store) (writt
 	// Stand-in rows deleted below. Their memo goes with them, or an address that reappeared with the same content
 	// would be taken as already written to a row that no longer exists.
 	var dropped []int64
+	// Conversations purged below, and those a remap just moved messages into, which have to be purged whatever the memo says.
+	purged, remapped := map[int64]int64{}, map[int64]bool{}
 	for key, t := range s.threads {
 		data, e := json.Marshal(savedThread{key, t.name, t.picture, t.folder, t.snippet, t.kind, t.participants,
 			t.lastActivity, t.readAt, t.anchorAt, t.anchorID, t.cannotReply, t.deleted, t.unresolved, t.deletedAt, t.previewOutgoing, t.muteUntil})
@@ -309,9 +314,10 @@ func (m *messageStore) saveIdentityChecked(ctx context.Context, s *store) (writt
 				return
 			}
 		}
+		remapped[key] = true
 	}
 	for key, t := range s.threads {
-		if t.deletedAt == 0 {
+		if t.deletedAt == 0 || !remapped[key] && m.purgedThrough(key, t.deletedAt) {
 			continue
 		}
 		for _, statement := range []string{
@@ -325,11 +331,22 @@ func (m *messageStore) saveIdentityChecked(ctx context.Context, s *store) (writt
 				return
 			}
 		}
+		purged[key] = t.deletedAt
 	}
 	if tx.Commit() != nil {
 		logf("thread identity could not be saved")
 		return
 	}
+	m.purgeMu.Lock()
+	if m.writes == writesBefore {
+		if m.purged == nil {
+			m.purged = map[int64]int64{}
+		}
+		for key, at := range purged {
+			m.purged[key] = at
+		}
+	}
+	m.purgeMu.Unlock()
 	if m.savedThreads == nil {
 		m.savedThreads, m.savedContacts = map[int64][32]byte{}, map[int64][32]byte{}
 	}

@@ -56,6 +56,14 @@ internal static class MessengerEncryptedStatus
         _ => ("Not connected", false),
     };
 
+    /// <summary>
+    /// Whether the card offers the button that turns encrypted conversations on. Once on there is nothing to press, except
+    /// when the device was removed or its keys are missing: those lines tell the person to turn it on again, and the
+    /// button is the way to (the helper clears the refused device and registers afresh on that call).
+    /// </summary>
+    public static bool OffersTurnOn(MessengerEncryption state, bool enabled) =>
+        !enabled || state is MessengerEncryption.DeviceGone or MessengerEncryption.DeviceMissing;
+
     public const string SignedOut = "Off while Messenger is signed out. Signing in again on this PC uses the same encrypted-device keys, so no new device is added.";
 
     /// <summary>

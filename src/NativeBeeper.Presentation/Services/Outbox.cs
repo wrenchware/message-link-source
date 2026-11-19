@@ -238,9 +238,15 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                 messages[localId] = messages[localId] with { State = unknown ? OutgoingState.Unknown : OutgoingState.Rejected, Explanation = explanation,
                     OperationId = unknown ? (ex as SendException)?.OperationId : null };
                 Notify(chatId, localId);
-                SettleEarly(localId);
+                // The host's answer may have come before the send was marked unknown: what it said is this photo's outcome. A
+                // definite refusal keeps the photo in the draft; a definite send goes on to the next photo (its confirmation
+                // already started), as a receipt would have. The verdict is taken from what was applied, not looked up
+                // afterwards: a lookup that answers at once confirms the photo and removes it before it could be read back.
+                var settled = SettleEarly(localId) ?? messages.GetValueOrDefault(localId);
+                if (settled?.State == OutgoingState.Pending) continue;
+                var refused = settled?.State == OutgoingState.Rejected;
                 Withdraw(index + 1);
-                return new(index + (unknown ? 1 : 0), unknown ? OutgoingState.Unknown : OutgoingState.Rejected, explanation);
+                return new(index + (refused ? 0 : 1), refused ? OutgoingState.Rejected : OutgoingState.Unknown, refused ? settled!.Explanation : explanation);
             }
             messages[localId] = messages[localId] with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null };
             Notify(chatId, localId);
@@ -449,41 +455,42 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         _ = applyOn!.InvokeAsync(() => { ApplyOutcome(outcome); return Task.CompletedTask; });
     }
 
-    private void SettleEarly(string localId)
-    {
-        if (messages.TryGetValue(localId, out var item) && item.OperationId is { } id && early.Remove(id, out var outcome)) ApplyOutcome(outcome);
-    }
+    // Returns the send as the answer left it (refused or pending), or null when no answer applied.
+    private OutgoingMessage? SettleEarly(string localId)
+        => messages.TryGetValue(localId, out var item) && item.OperationId is { } id && early.Remove(id, out var outcome) ? ApplyOutcome(outcome) : null;
 
-    private void ApplyOutcome(OperationOutcome outcome)
+    private OutgoingMessage? ApplyOutcome(OperationOutcome outcome)
     {
-        if (outcome.Verdict == OperationVerdict.Unknown) return;
+        if (outcome.Verdict == OperationVerdict.Unknown) return null;
         var item = messages.Values.FirstOrDefault(m => m.OperationId == outcome.OperationId);
-        if (item is null)
+        // Not this outbox's, or not yet marked unknown: kept briefly for the second. A send carries its planned name from the moment it is
+        // placed, so one whose answer came first is found still sending, not missing; SettleEarly takes it once the send is marked unknown.
+        if (item is null || item.State is OutgoingState.Sending or OutgoingState.Held)
         {
-            // Not yet marked unknown, or not this outbox's: kept briefly for the first.
             if (early.Count >= 64) early.Clear();
             early[outcome.OperationId] = outcome;
-            return;
+            return null;
         }
-        if (item.State != OutgoingState.Unknown) return;
+        if (item.State != OutgoingState.Unknown) return null;
         if (outcome.Verdict == OperationVerdict.Failed)
         {
             // Failed is the host saying it was not done, and an item here is only ever a message send, reply or attachment send (its
             // OperationId comes from their SendException). Directory and group operations, some of whose refusals say the thing was done, are
             // never in the outbox; SendExceptionSentenceChecks keeps those sentences out of the send paths.
-            messages[item.LocalId] = item with { State = OutgoingState.Rejected, OperationId = null,
+            var refused = messages[item.LocalId] = item with { State = OutgoingState.Rejected, OperationId = null,
                 Explanation = outcome.Explanation ?? "The message wasn't sent. Check your connection and try again." };
             Notify(item.ChatId, item.LocalId);
-            return;
+            return refused;
         }
         // Done without a receipt that names this conversation and a message identifies nothing to look up: it stays unknown.
         if (outcome.Receipt is not { } receipt || receipt.ChatId != item.ChatId || string.IsNullOrWhiteSpace(receipt.PendingMessageId) ||
             receipt.PendingMessageIds is { Count: > 0 } ids && (ids.Any(string.IsNullOrWhiteSpace) || ids.Distinct(StringComparer.Ordinal).Count() != ids.Count || !ids.Contains(receipt.PendingMessageId)))
-            return;
-        messages[item.LocalId] = item with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null, Explanation = null,
+            return null;
+        var pending = messages[item.LocalId] = item with { State = OutgoingState.Pending, PendingId = receipt.PendingMessageId, OperationId = null, Explanation = null,
             PendingMessageIds = receipt.PendingMessageIds?.ToArray() };
         Notify(item.ChatId, item.LocalId);
         _ = ConfirmAsync(item.LocalId, generation, lifetime.Token);
+        return pending;
     }
 
     private async Task ConfirmAsync(string id, int version, CancellationToken token)

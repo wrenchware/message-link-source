@@ -18,6 +18,9 @@ public sealed class LocalAlarm(TimeProvider clock, Func<Task> pass, IUiDispatche
     private readonly Lock gate = new();
     private ITimer? timer;
     private Task running = Task.CompletedTask;
+    // Whether a loop will still look at again, decided under the gate. The task's own completion comes after the loop has
+    // left the gate, and a wake that saw it unfinished in between asked a loop that had already stopped, and was lost.
+    private bool looping;
     private bool again, stopped;
 
     /// <summary>The latest pass, finished or not. The offline checks await it after moving the clock.</summary>
@@ -43,7 +46,8 @@ public sealed class LocalAlarm(TimeProvider clock, Func<Task> pass, IUiDispatche
         lock (gate)
         {
             if (stopped) return running;
-            if (!running.IsCompleted) { again = true; return running; }
+            if (looping) { again = true; return running; }
+            looping = true;
             running = LoopAsync();
             return running;
         }
@@ -51,16 +55,20 @@ public sealed class LocalAlarm(TimeProvider clock, Func<Task> pass, IUiDispatche
 
     private async Task LoopAsync()
     {
-        // Off the caller's stack: a timer callback, or whoever asked, returns at once.
-        await Task.Yield();
-        while (true)
+        try
         {
-            lock (gate) { again = false; if (stopped) return; }
-            try { await (dispatcher is null ? pass() : dispatcher.InvokeAsync(pass)); }
-            // A failed pass must not end the schedule; the next wake tries again.
-            catch (Exception) { WakeAt(null); }
-            lock (gate) if (!again || stopped) return;
+            // Off the caller's stack: a timer callback, or whoever asked, returns at once.
+            await Task.Yield();
+            while (true)
+            {
+                lock (gate) { again = false; if (stopped) { looping = false; return; } }
+                try { await (dispatcher is null ? pass() : dispatcher.InvokeAsync(pass)); }
+                // A failed pass must not end the schedule; the next wake tries again.
+                catch (Exception) { WakeAt(null); }
+                lock (gate) if (!again || stopped) { looping = false; return; }
+            }
         }
+        catch (Exception) { lock (gate) looping = false; throw; }
     }
 
     /// <summary>No pass starts after this. One already running finishes.</summary>

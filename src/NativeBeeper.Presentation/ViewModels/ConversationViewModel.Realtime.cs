@@ -13,10 +13,28 @@ public sealed partial class ConversationViewModel
     // When each send confirmed here was made on this PC (Outbox CreatedAt), by its message: a send still on its way is
     // drawn after what was sent before it, never after what was sent after it (WithOutgoing).
     private readonly Dictionary<string, DateTimeOffset> sentAt = [];
+    // The order each map's keys came in, oldest first, for its cap. A Dictionary's own order is not that once anything has
+    // been removed: it fills freed slots last in, first out, so Keys.First() was most often the entry just added, and a full
+    // map kept its oldest entries and let every new one go.
+    private readonly Queue<string> sentOrder = new(), confirmationOrder = new(), photoBatchOrder = new();
+    private static void Keep<TValue>(Dictionary<string, TValue> map, Queue<string> order, string key, int cap)
+    {
+        order.Enqueue(key);
+        while (map.Count > cap && order.TryDequeue(out var oldest))
+            // A key given again since is let go at its later place.
+            if (!order.Contains(oldest)) map.Remove(oldest);
+        // Keys removed by other means leave their places behind; dropped once there are too many.
+        if (order.Count > cap * 2)
+        {
+            var live = order.Reverse().Where(map.ContainsKey).Distinct(StringComparer.Ordinal).Reverse().ToArray();
+            order.Clear();
+            foreach (var kept in live) order.Enqueue(kept);
+        }
+    }
     private void NoteSentAt(ChatMessage message, DateTimeOffset at)
     {
         sentAt[MessageIdentity.Key(message)] = at;
-        while (sentAt.Count > 1000) sentAt.Remove(sentAt.Keys.First());
+        Keep(sentAt, sentOrder, MessageIdentity.Key(message), 1000);
     }
     // A deleted conversation's own entries only; see MessageIdentity.Key for the photo batches' prefix.
     private void ForgetSends(string chatId)
@@ -117,7 +135,7 @@ public sealed partial class ConversationViewModel
                 index+1<Messages.Count?Messages[index+1].Message:null,CarriesReceipt(Messages.Skip(index + 1), message, chat),newest, IsMerged, quotes));
         }
         confirmations[message.ChatId + "\n" + message.Id] = message;
-        if (confirmations.Count > 1000) confirmations.Remove(confirmations.Keys.First());
+        Keep(confirmations, confirmationOrder, message.ChatId + "\n" + message.Id, 1000);
         if (ContainsChat(message.ChatId)) RenderLive();
     }
 
@@ -134,11 +152,11 @@ public sealed partial class ConversationViewModel
         foreach (var message in batch.Messages)
         {
             confirmations[message.ChatId + "\n" + message.Id] = message;
+            Keep(confirmations, confirmationOrder, message.ChatId + "\n" + message.Id, 1000);
             exactPhotoBatches[MessageIdentity.Key(message)] = batch.Outgoing.LocalId;
+            Keep(exactPhotoBatches, photoBatchOrder, MessageIdentity.Key(message), 1000);
             NoteSentAt(message, batch.Outgoing.CreatedAt);
         }
-        while (confirmations.Count > 1000) confirmations.Remove(confirmations.Keys.First());
-        while (exactPhotoBatches.Count > 1000) exactPhotoBatches.Remove(exactPhotoBatches.Keys.First());
         if (!ContainsChat(batch.Outgoing.ChatId) || current is null) return;
         if (Messages.FirstOrDefault(row => row.Message.ChatId == batch.Outgoing.ChatId && row.Message.Id == batch.Outgoing.LocalId) is { } local)
         {
@@ -539,9 +557,10 @@ public sealed partial class ConversationViewModel
             // per receipt — Instagram's poll can send one every twenty seconds, and Instagram counts requests.
             if (!full && current is not null && !needsRecovery && !awaitingProviderRefresh && relevant.All(e => e.ReceiptOnly))
             {
-                var receiptRows = current.Messages.ToDictionary(MessageIdentity.Key);
+                var receiptBefore = current.Messages.ToDictionary(MessageIdentity.Key);
+                var receiptRows = new Dictionary<string, ChatMessage>(receiptBefore);
                 if (await ResolveMergedChangesAsync(lookup, relevant, receiptRows, version, token) is not true) return;
-                current = current with { Messages = OrderMerged(receiptRows.Values) };
+                current = current with { Messages = OrderMerged(Rebased(receiptBefore, receiptRows, current.Messages)) };
                 cache.Put(current); RenderLive(); await cache.SaveAsync(current);
                 return;
             }
@@ -596,9 +615,10 @@ public sealed partial class ConversationViewModel
                 if (version != generation) return;
                 current = HistoryMerge.KeepOlder(prior, WithCards(prior, Merge(new(detail, [], null, true, new HashSet<string>()), page)), page.HasMore);
             }
-            var mergedRows = current.Messages.ToDictionary(MessageIdentity.Key);
+            var mergedBefore = current.Messages.ToDictionary(MessageIdentity.Key);
+            var mergedRows = new Dictionary<string, ChatMessage>(mergedBefore);
             if (await ResolveMergedChangesAsync(lookup, events, mergedRows, version, token) is null) return;
-            current = current with { Messages = OrderMerged(mergedRows.Values) };
+            current = current with { Messages = OrderMerged(Rebased(mergedBefore, mergedRows, current.Messages)) };
             await PeekQuotesAsync(current.Messages, lookup as IMessagePeek, version, token);
             if (version != generation) return;
             foreach (var message in current.Messages) confirmations.Remove(message.ChatId + "\n" + message.Id);
@@ -673,18 +693,19 @@ public sealed partial class ConversationViewModel
         // arrived in a different conversation, which is most of them. Measured at eight hundred messages: two and a
         // half megabytes for an event naming another chat entirely, exactly as much as one naming this one.
         var touched = false;
-        var rows = current.Messages.ToDictionary(m => m.Id);
+        // Kept as changes and put to the rows only after the last await below: rows copied before them and written back
+        // after dropped any page of older messages read meanwhile, while the paging cursor kept that page's place.
+        var changes = new List<(string Id, ChatMessage? Message)>();
         foreach (var change in events.Where(e => e.ChatId == id))
             foreach (var messageId in change.Ids ?? [])
             {
                 if (change.Kind == RealtimeKind.MessageDeleted)
-                { touched |= rows.Remove(messageId); touched |= unconfirmed.Contains(id + "\n" + messageId); }
+                { changes.Add((messageId, null)); touched |= unconfirmed.Contains(id + "\n" + messageId); }
                 else if (change.Kind == RealtimeKind.MessageChanged)
                 {
                     var message = await lookup.ResolveMessageAsync(id, messageId, token);
                     if (version != generation) return;
-                    rows[message.Id] = WithCard(rows.GetValueOrDefault(message.Id), message); confirmations.Remove(id + "\n" + message.Id);
-                    touched = true;
+                    changes.Add((message.Id, message)); confirmations.Remove(id + "\n" + message.Id);
                 }
             }
         if (version != generation) return;
@@ -700,6 +721,10 @@ public sealed partial class ConversationViewModel
             }
             catch (Exception ex) when (IsNotReady(ex)) { if (version != generation) return; }
         }
+        var rows = current.Messages.ToDictionary(m => m.Id);
+        foreach (var (messageId, message) in changes)
+            if (message is null) touched |= rows.Remove(messageId);
+            else { rows[message.Id] = WithCard(rows.GetValueOrDefault(message.Id), message); touched = true; }
         // Nothing in this conversation moved, so its history is the history it already had and the rows on screen
         // are already drawing it. A render here would build the same thing again and throw it away.
         //
@@ -731,7 +756,8 @@ public sealed partial class ConversationViewModel
                 .All(messageChats.Contains)),
             _ => true
         })) return false;
-        var rows = current!.Messages.ToDictionary(MessageIdentity.Key);
+        var before = current!.Messages.ToDictionary(MessageIdentity.Key);
+        var rows = new Dictionary<string, ChatMessage>(before);
         foreach (var change in events.Where(e => e.Kind is RealtimeKind.MessageChanged or RealtimeKind.MessageDeleted))
             foreach (var messageId in change.Ids!)
             {
@@ -749,10 +775,11 @@ public sealed partial class ConversationViewModel
                 catch (Exception) { return false; } // A missing delta needs the authoritative snapshot.
             }
         if (version != generation) return true;
-        var arrived = OrderMerged(rows.Values);
+        var basis = current.Messages;
+        var arrived = OrderMerged(Rebased(before, rows, basis));
         await PeekQuotesAsync(arrived, lookup as IMessagePeek, version, token);
         if (version != generation) return true;
-        current = current with { Messages = arrived };
+        current = current with { Messages = ReferenceEquals(current.Messages, basis) ? arrived : OrderMerged(Rebased(before, rows, current.Messages)) };
         foreach (var change in events.Where(e => e.Kind is RealtimeKind.MessageChanged or RealtimeKind.MessageDeleted))
             foreach (var messageId in change.Ids!) confirmations.Remove(change.ChatId + "\n" + messageId);
         var manualRoute = merges!.Find(current.Chat.Id)?.SendingRoute;
@@ -890,6 +917,18 @@ public sealed partial class ConversationViewModel
         var messages = OrderMerged(rows.Values);
         var atLimit = messages.Length >= ConversationCache.MaxMessages || prior.AtLimit;
         return (WithCards(prior, prior with { Messages = messages, AtLimit = atLimit, HasMore = prior.HasMore && !atLimit }), null);
+    }
+
+    // What a resolve did to its copy of the rows (before → after), put to the rows as they are now. The copy was taken
+    // before its awaits, and writing it back whole dropped a page of older messages read meanwhile.
+    private static IEnumerable<ChatMessage> Rebased(Dictionary<string, ChatMessage> before, Dictionary<string, ChatMessage> after,
+        IReadOnlyList<ChatMessage> now)
+    {
+        var rows = now.ToDictionary(MessageIdentity.Key);
+        foreach (var key in before.Keys) if (!after.ContainsKey(key)) rows.Remove(key);
+        foreach (var (key, row) in after)
+            if (!before.TryGetValue(key, out var was) || !ReferenceEquals(was, row)) rows[key] = row;
+        return rows.Values;
     }
 
     private static ChatMessage[] OrderMerged(IEnumerable<ChatMessage> messages) =>

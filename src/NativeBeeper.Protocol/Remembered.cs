@@ -22,6 +22,8 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
         public bool Ever;
         public bool Asking;
         public bool Stale;
+        // Moved by every Put and MarkStale: a refresh asked before either brings an answer older than what they said, which it must not put back.
+        public long Version;
     }
 
     private readonly Func<TKey, Task<TValue>> ask;
@@ -46,6 +48,8 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
     {
         var start = false;
         TValue value;
+        Entry? asking = null;
+        long version = 0;
         lock (gate)
         {
             if (!entries.TryGetValue(key, out var entry))
@@ -58,9 +62,10 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
             {
                 entry.Asking = true;
                 start = true;
+                (asking, version) = (entry, entry.Version);
             }
         }
-        if (start) _ = Task.Run(() => RefreshAsync(key));
+        if (start) _ = Task.Run(() => RefreshAsync(key, asking!, version));
         return value;
     }
 
@@ -81,6 +86,7 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
             entry.Asked = Environment.TickCount64;
             entry.Ever = true;
             entry.Stale = false;
+            entry.Version++;
         }
     }
 
@@ -88,10 +94,14 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
     public void MarkStale()
     {
         lock (gate)
-            foreach (var entry in entries.Values) entry.Stale = true;
+            foreach (var entry in entries.Values)
+            {
+                entry.Stale = true;
+                entry.Version++;
+            }
     }
 
-    private async Task RefreshAsync(TKey key)
+    private async Task RefreshAsync(TKey key, Entry asked, long version)
     {
         TValue fresh = unknown;
         var answered = false;
@@ -106,8 +116,20 @@ internal sealed class Remembered<TKey, TValue> where TKey : notnull
         bool differs;
         lock (gate)
         {
-            if (!entries.TryGetValue(key, out var entry)) return;
+            // Dropped (the table was emptied) or replaced since: nothing of this answer is kept.
+            if (!entries.TryGetValue(key, out var entry) || entry != asked) return;
             entry.Asking = false;
+            // A Put or a MarkStale since the question: the Put's answer is newer, and kept. A MarkStale wants a question asked after it, asked now: a read
+            // made while this one was out got the old answer and started nothing, and may be the last read for a while (the SIM chip reads only when told
+            // of a change, which this question's answer would have been: review, 2026-11-18).
+            if (entry.Version != version)
+            {
+                if (!entry.Stale) return;
+                entry.Asking = true;
+                var again = entry.Version;
+                _ = Task.Run(() => RefreshAsync(key, asked, again));
+                return;
+            }
             entry.Asked = Environment.TickCount64;
             entry.Ever = true;
             entry.Stale = false;

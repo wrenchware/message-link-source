@@ -118,18 +118,22 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
         {
             AppLog.Write($"server restore skipped reason=paced error={failure.GetType().Name}");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         if (!decision.Saved)
         {
             AppLog.Write("server restore skipped reason=ledger_not_saved");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         if (decision.Wait > TimeSpan.Zero)
         {
             AppLog.Write($"server restore held reason=paced wait_s={(long)Math.Ceiling(decision.Wait.TotalSeconds)} unclean={decision.Unclean} recent={decision.Recent}");
             composed.EndRestores();
+            // Every feed but Google's goes meanwhile, so an account a client connects is heard; the restore lets Google's go after the wait.
+            composed.OpenPassiveFeed();
             try { await Task.Delay(decision.Wait, stopping); }
             catch (OperationCanceledException) { return; }
         }
@@ -138,6 +142,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
         {
             AppLog.Write("server restore skipped reason=ledger_not_saved");
             composed.EndRestores();
+            composed.OpenPassiveFeed();
             return;
         }
         await composed.RestoreAsync(stopping);

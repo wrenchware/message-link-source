@@ -636,10 +636,15 @@ internal sealed class AccountMoveHost : IAccountMove, IAccountGate, IAsyncDispos
         var starts = named.ToDictionary(provider => provider, provider => activated.Contains(provider) ? runner.StartAsync(provider, CancellationToken.None) : null);
         var pending = starts.Values.OfType<Task<AccountStart>>().ToList();
         if (pending.Count > 0) await Task.WhenAny(Task.WhenAll(pending), Task.Delay(LoginWait, time, cancellationToken)).ConfigureAwait(false);
+        // Where each stands after the logins, read under the gate again: the records are written by the gate's other holders, never read outside it.
+        Dictionary<string, string> states;
+        await gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try { states = named.ToDictionary(provider => provider, provider => Effective(provider).State); }
+        finally { gate.Release(); }
         var answers = new List<AccountMoveActivation>();
         foreach (var provider in named)
         {
-            var state = Effective(provider).State;
+            var state = states[provider];
             if (starts[provider] is not { } start) answers.Add(new(provider, state, runner.Connected(provider) ? "connected" : "not_connected"));
             else if (!start.IsCompleted) answers.Add(new(provider, state, "pending"));
             else if (start.IsFaulted) answers.Add(new(provider, state, "not_connected", "login_failed"));

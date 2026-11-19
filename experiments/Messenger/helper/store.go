@@ -64,6 +64,10 @@ type message struct {
 	// When the words were last changed, if they have been. Facebook and the encrypted connection both report an edit
 	// separately from the message, so this is set by that report rather than by anything the message itself carries.
 	editedAt int64
+	// How many edits Facebook has said the words carry, where it said (0 when only editedAt is known: an encrypted
+	// edit, or one kept before the count was). A row naming fewer was captured before the latest edit and does not
+	// replace its words.
+	edits int64
 	// Envelope timestamp of the last accepted AI text delivery, separate from row placement.
 	aiUpdatedAt int64
 	// Supplied title of an ordinary text-only AI card, separate from provider body text.
@@ -150,6 +154,9 @@ type store struct {
 	contacts map[int64]string
 	pictures map[int64]string
 	messages map[int64]map[string]*message
+	// latestMessageTimestampLocked's answer per conversation, so a restore that adds thousands of messages to one does not
+	// rescan it for each. Raised as messages arrive (heldLocked) and dropped whenever one is removed or replaced (staleLocked).
+	newest map[int64]int64
 	// Conversations whose preview stayed Facebook's bare "text" this run, logged once each (view).
 	previewNoted map[int64]bool
 	// Revoked stanza IDs remain rejected even if a delayed encrypted delivery arrives.
@@ -398,6 +405,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		if thread, ok := s.messages[key]; ok {
 			delete(thread, id)
 		}
+		s.staleLocked(key)
 		if known, ok := messages[key]; ok {
 			delete(known, id)
 		}
@@ -623,21 +631,36 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		var choices []string
 		wasCarded := false
 		receipt := false
+		editedAt := int64(0)
+		text, edits := row.Text, row.EditCount
 		replyTo := row.ReplySourceId
 		if previous := thread[row.MessageId]; previous != nil && previous.sender == row.SenderId && !row.IsUnsent {
 			cardText = previous.cardText
 			choices = previous.choices
 			wasCarded = previous.carded
 			receipt = previous.receipt
+			editedAt = previous.editedAt
 			if row.SenderId == metaAIMessengerID && replyTo == "" {
 				replyTo = previous.replyTo
 			}
+			// A history page can be older than an edit already applied, and its row then carries the words from
+			// before it: kept, they came back under the Edited label. An edit is never undone, so a row naming fewer
+			// edits than are held (any, when only the mark is known) keeps the corrected words.
+			if previous.editedAt > 0 && row.SenderId != metaAIMessengerID && row.EditCount < max(previous.edits, 1) {
+				text, edits = previous.text, previous.edits
+			}
 		}
+		// Facebook names how often a message was edited but not when. Its own time stands in, so a message first seen
+		// already edited (a refetch after a restart) still says so.
+		if editedAt == 0 && row.EditCount > 0 && !row.IsUnsent {
+			editedAt = row.TimestampMs
+		}
+		previous := thread[row.MessageId]
 		thread[row.MessageId] = &message{
 			id:        row.MessageId,
 			otid:      row.OfflineThreadingId,
 			sender:    row.SenderId,
-			text:      row.Text,
+			text:      text,
 			timestamp: row.TimestampMs,
 			replyTo:   replyTo,
 			unsent:    row.IsUnsent,
@@ -647,7 +670,10 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 			carded:    wasCarded,
 			notice:    row.IsAdminMessage,
 			receipt:   receipt,
+			editedAt:  editedAt,
+			edits:     edits,
 		}
+		s.heldLocked(row.ThreadKey, previous, thread[row.MessageId])
 	}
 	hybridRows := append([]*table.LSVerifyHybridThreadExists{}, tbl.LSVerifyHybridThreadExists...)
 	for _, row := range tbl.LSUpdateThreadAuthorityAndMappingWithOTIDFromJID {
@@ -710,6 +736,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 					delete(s.shares, shareMessageKey{row.ThreadJID, id})
 					continue
 				}
+				s.heldLocked(row.ThreadKey, thread[id], held)
 				thread[id] = held
 				current.deleted = false
 				if held.timestamp > current.lastActivity {
@@ -728,6 +755,7 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 				}
 			}
 			delete(s.messages, row.ThreadJID)
+			s.staleLocked(row.ThreadJID)
 			s.adoptReceipts(s.threads[row.ThreadJID], row.ThreadJID, row.ThreadKey)
 			delete(s.threads, row.ThreadJID)
 			delete(s.pages, row.ThreadJID)
@@ -792,8 +820,13 @@ func (s *store) apply(tbl *table.LSTable) *changes {
 		if !ok || current.unsent {
 			continue
 		}
+		// The same edit delivered again, or one older than the words held, changes nothing.
+		if row.EditCount > 0 && row.EditCount <= current.edits {
+			continue
+		}
 		current.text = row.Text
 		current.editedAt = time.Now().UnixMilli()
+		current.edits = max(row.EditCount, current.edits+1)
 		if thread, ok := s.threads[key]; ok && thread.lastActivity == current.timestamp {
 			thread.snippet = row.Text
 		}
@@ -1136,8 +1169,9 @@ func (s *store) historyAround(key int64, at int64, older int, newer int) (page [
 		end++
 	}
 	page = make([]viewMessage, 0, end-start)
+	marks := s.readMarksLocked(key)
 	for _, current := range known[start:end] {
-		page = append(page, s.viewOf(key, current))
+		page = append(page, s.viewMarked(key, current, marks[current.id]))
 	}
 	return page, start > 0, end < len(known)
 }
@@ -1158,14 +1192,21 @@ func (s *store) historyBefore(key int64, before int64, count int) []viewMessage 
 		known = known[start:]
 	}
 	history := make([]viewMessage, 0, len(known))
+	marks := s.readMarksLocked(key)
 	for _, current := range known {
-		history = append(history, s.viewOf(key, current))
+		history = append(history, s.viewMarked(key, current, marks[current.id]))
 	}
 	return history
 }
 
 // Call with the lock held.
 func (s *store) viewOf(key int64, current *message) viewMessage {
+	return s.viewMarked(key, current, s.readMarkOf(key, current))
+}
+
+// The same, with the faces on it already worked out: a page works out every reader's once (readMarksLocked) rather
+// than scanning the conversation per reader for every message it draws. Call with the lock held.
+func (s *store) viewMarked(key int64, current *message, readMark []string) viewMessage {
 	media := s.mediaFor(current.id)
 	visible := media[:0]
 	generated := false
@@ -1216,7 +1257,7 @@ func (s *store) viewOf(key int64, current *message) viewMessage {
 		Media:     visible,
 		Reactions: s.reactionsFor(current.id),
 		SeenBy:    s.readersOf(key, current),
-		ReadMark:  s.readMarkOf(key, current),
+		ReadMark:  readMark,
 		EditedAt:  current.editedAt,
 		Delivered: s.deliveredTo(key, current),
 		SeenAt:    s.seenAt(key, current),
@@ -1290,13 +1331,38 @@ func (s *store) markSent(key int64, text string, timestamp int64) {
 // Call with the lock held. Thread activity can be a few milliseconds ahead of its message,
 // so preview direction follows the newest actual message rather than the thread timestamp.
 func (s *store) latestMessageTimestampLocked(key int64) int64 {
+	if latest, ok := s.newest[key]; ok {
+		return latest
+	}
 	var latest int64
 	for _, current := range s.messages[key] {
 		if !current.unsent && current.timestamp > latest {
 			latest = current.timestamp
 		}
 	}
+	if s.newest == nil {
+		s.newest = map[int64]int64{}
+	}
+	s.newest[key] = latest
 	return latest
+}
+
+// A message put in a conversation, in place of previous if it held one. Call with the lock held.
+func (s *store) heldLocked(key int64, previous, next *message) {
+	latest, ok := s.newest[key]
+	switch {
+	case !ok:
+	case previous != nil && !previous.unsent && previous.timestamp >= latest && (next.unsent || next.timestamp < latest):
+		// The newest was replaced by something that no longer is: what is newest now takes a look.
+		delete(s.newest, key)
+	case !next.unsent && next.timestamp > latest:
+		s.newest[key] = next.timestamp
+	}
+}
+
+// A message, or the whole conversation, taken out of what is held. Call with the lock held.
+func (s *store) staleLocked(key int64) {
+	delete(s.newest, key)
 }
 
 // The id Facebook gave a message sent with this offline threading id, if it has answered yet.
@@ -1654,6 +1720,10 @@ func (s *store) addEncrypted(key int64, id string, sender int64, text, replyTo s
 				next.replyTo = replyTo
 			}
 		}
+	} else if previous := s.messages[key][id]; previous != nil && previous.sender == sender && !previous.unsent && previous.editedAt > 0 {
+		// The same message again (a restore landing after a refetch, a repeated delivery) is still the corrected one:
+		// an edit is always later than the message it corrects, so its words and mark stand.
+		next.text, next.editedAt = previous.text, previous.editedAt
 	}
 	current := s.get(key)
 	if current.deletedAt > 0 && at <= current.deletedAt {
@@ -1677,6 +1747,7 @@ func (s *store) addEncrypted(key int64, id string, sender int64, text, replyTo s
 		thread = map[string]*message{}
 		s.messages[key] = thread
 	}
+	s.heldLocked(key, thread[id], next)
 	thread[id] = next
 	chat := strconv.FormatInt(key, 10)
 	return s.settleWaitingReceipts(key, next, &changes{Chats: []string{chat}, Messages: map[string][]string{chat: {id}}})
@@ -1709,6 +1780,13 @@ func (s *store) setReaction(messageID string, actor int64, key string) {
 		s.reactions[messageID] = held
 	}
 	held[actor] = key
+}
+
+// The reaction one person has on one message now; empty when they have none.
+func (s *store) reactionBy(messageID string, actor int64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reactions[messageID][actor]
 }
 
 // One person's reaction, from outside the lock. Reports the conversation it belongs to so it can be announced.
@@ -1915,6 +1993,7 @@ func (s *store) forget(key int64, id string) {
 	if thread, ok := s.messages[key]; ok {
 		delete(thread, id)
 	}
+	s.staleLocked(key)
 	for _, item := range s.attached[id] {
 		delete(s.media, item.id)
 		delete(s.files, item.id)
@@ -1973,6 +2052,7 @@ func (s *store) removeEncrypted(key int64, id string) *changes {
 		_, found = thread[id]
 		delete(thread, id)
 	}
+	s.staleLocked(key)
 	for _, item := range s.attached[id] {
 		delete(s.media, item.id)
 		delete(s.files, item.id)

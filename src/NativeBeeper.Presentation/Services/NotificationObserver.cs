@@ -157,7 +157,8 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
     /// <remarks>
     /// Not for the message that was newest when the conversation was snoozed. A conversation read in the meantime,
     /// here or on the phone, has nothing left to say and stays quiet. A muted conversation is reminded even so: the
-    /// snooze was asked for by name, while mute is only a standing preference.
+    /// snooze was asked for by name, while mute is only a standing preference. Throws when it cannot tell yet (the
+    /// conversation cannot be read, or its account is not known yet): the snooze tries again for a while, where false ends it.
     /// </remarks>
     public async Task<bool> RemindAsync(ChatSummary chat, DateTimeOffset until, CancellationToken token = default)
     {
@@ -170,7 +171,14 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         var serviceKey = NotificationOptions.ServiceKey(source ?? chat);
         if (!preferences.Options.IsOn(serviceKey)) { RecordDelivery("reminder not shown (service off)"); return false; }
         var sourceScope = accountScopes is null || source is null ? null : await accountScopes.ForSourceAsync(source, token);
-        if (accountScopes is not null && sourceScope is null) return false;
+        if (accountScopes is not null)
+        {
+            // Not known yet is not a refusal: a false here ended the snooze with nothing raised, in the seconds after a start
+            // before the account's saved scope is listed. PublishAsync asks the same of the message's conversation.
+            if (sourceScope is null || await accountScopes.ForChatAsync(message.ChatId, token) is not { } owner)
+                throw new InvalidOperationException("The reminder's account is not known yet.");
+            if (owner != sourceScope) return false;
+        }
         // Its own identity, so a reminder is never mistaken for the notification already shown for that message,
         // and a conversation snoozed a second time is reminded a second time.
         var id = NotificationIdentity.Hash(profile + "\n" + sourceScope + "\n" + chat.Id + "\n" + message.Id + "\nreminder\n" + until.ToUnixTimeSeconds());
@@ -364,17 +372,13 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
     }
 
     // What a reminder is about. Most conversation summaries already carry their latest message, but not every
-    // provider fills one in, and a reminder that quietly never came would look exactly like a snooze that worked.
+    // provider fills one in, and a reminder that quietly never came would look exactly like a snooze that worked. A read
+    // that fails is thrown, not taken for nothing to remind of: the snooze waits it out (RemindAsync).
     private async Task<ChatMessage?> LatestIncomingAsync(ChatSummary chat, CancellationToken token)
     {
         if (chat.Preview is { } preview && Eligible(preview)) return preview;
-        try
-        {
-            var page = await chats.GetMessagesAsync(chat.Id, cancellationToken: token);
-            return page.Items.Where(Eligible).OrderByDescending(message => message.Timestamp).FirstOrDefault();
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Exception) { return null; }
+        var page = await chats.GetMessagesAsync(chat.Id, cancellationToken: token);
+        return page.Items.Where(Eligible).OrderByDescending(message => message.Timestamp).FirstOrDefault();
         static bool Eligible(ChatMessage message) => !message.IsOutgoing && !message.IsHidden && !message.IsDeleted && message.Type != "system";
     }
 
@@ -393,7 +397,12 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception) { /* Preview remains useful if action capability discovery fails. */ }
-        if (accountScopes is not null && (sourceScope is null || sourceScope != await accountScopes.ForChatAsync(message.ChatId, token))) return false;
+        var owner = accountScopes is null ? null : await accountScopes.ForChatAsync(message.ChatId, token);
+        // A reminder (attribution) whose account or connection can't be told after these lookups is not refused: false would
+        // end its snooze with nothing raised, so it throws and the snooze tries again within its grace (RemindAsync).
+        if (attribution is not null && (accountScopes is not null && owner is null || profile != await NotificationIdentity.ProfileAsync(tokens, token)))
+            throw new InvalidOperationException("The reminder's account is not known yet.");
+        if (accountScopes is not null && (sourceScope is null || sourceScope != owner)) return false;
         if (profile != await NotificationIdentity.ProfileAsync(tokens, token)) return false;
         // A shared private read may arrive while message/action lookups await. Re-check without writing a read marker or making another provider read.
         if (attribution is null && AlreadyRead(chat, message)) return false;

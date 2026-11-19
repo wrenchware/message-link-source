@@ -8,11 +8,15 @@ namespace NativeBeeper.Presentation.Services;
 // Merge the protected Google archive index with the session-only catalogue, newest first.
 // Cursor buffers retain an unconsumed provider page so an uneven service mix cannot lose results.
 // History another provider keeps on this PC (Messenger's messages.db) joins the catalogue's side of the merge: it is
-// answered whole, like the catalogue, so the same offset cursor pages through both.
+// answered whole, like the catalogue, so the same cursor pages through both.
 public sealed class UniversalSearchBackend(ISearchBackend archive, LocalSearchCatalog catalog, IAccessTokenStore tokens, MergedConversations? merges = null,
     IKeptHistorySearch? kept = null) : ISearchBackend, ISearchScopeInfo
 {
-    private sealed record Cursor(string Request, int Generation, string? ArchiveNext, bool ArchiveDone, SearchHit[] Buffer, int LocalOffset);
+    // The local side resumes after the last hit it gave, by that hit's place in the order. An index into the list was wrong by
+    // the next page: the catalogue takes messages in and lets them go between pages, which moved every later hit, so one was
+    // shown twice or never.
+    private sealed record Place(DateTimeOffset? Time, string ChatId, string? MessageId);
+    private sealed record Cursor(string Request, int Generation, string? ArchiveNext, bool ArchiveDone, SearchHit[] Buffer, Place? LastLocal);
     private static readonly string[] SessionServices = ["Messenger", "Instagram", "Voice"];
     // Instagram's and Voice's recent conversations are in the catalogue from their saved copies too, once the app puts them
     // there (SavedSearchSeeding); Messenger's are its helper's own store.
@@ -39,9 +43,9 @@ public sealed class UniversalSearchBackend(ISearchBackend archive, LocalSearchCa
         Cursor state;
         try
         {
-            state = cursor is null ? new(signature, generation, null, false, [], 0) :
+            state = cursor is null ? new(signature, generation, null, false, [], null) :
                 JsonSerializer.Deserialize<Cursor>(Convert.FromBase64String(cursor)) ?? throw new FormatException();
-            if (state.Request != signature || state.Generation != generation || state.LocalOffset < 0) throw new FormatException();
+            if (state.Request != signature || state.Generation != generation) throw new FormatException();
         }
         catch (Exception ex) when (ex is FormatException or JsonException)
         { throw new BackendException(BackendFailure.Unsupported, "Search changed. Search again to refresh results."); }
@@ -68,6 +72,8 @@ public sealed class UniversalSearchBackend(ISearchBackend archive, LocalSearchCa
                 local = [.. combined];
             }
         }
+        if (state.LastLocal is { } last) local = [.. local.Where(hit => Compare(PlaceOf(hit), last) > 0)];
+        var offset = 0;
         var hits = new List<SearchHit>();
         string? warning = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -85,24 +91,26 @@ public sealed class UniversalSearchBackend(ISearchBackend archive, LocalSearchCa
                 if (state.Buffer.Length == 0 && !state.ArchiveDone) continue;
             }
             var a = state.Buffer.FirstOrDefault();
-            var b = state.LocalOffset < local.Length ? local[state.LocalOffset] : null;
+            var b = offset < local.Length ? local[offset] : null;
             if (a is null && b is null) break;
             var takeArchive = a is not null && (b is null || Compare(a, b) <= 0);
             if (takeArchive) { hits.Add(a!); state = state with { Buffer = state.Buffer[1..] }; }
-            else { hits.Add(b!); state = state with { LocalOffset = state.LocalOffset + 1 }; }
+            else { hits.Add(b!); offset++; state = state with { LastLocal = PlaceOf(b!) }; }
         }
         cancellationToken.ThrowIfCancellationRequested();
         if (generation != catalog.SetProfile(await NotificationIdentity.ProfileAsync(tokens, cancellationToken)))
             throw new BackendException(BackendFailure.NotReady, "The connected accounts changed. Search again.");
-        var more = state.Buffer.Length > 0 || !state.ArchiveDone || state.LocalOffset < local.Length;
+        var more = state.Buffer.Length > 0 || !state.ArchiveDone || offset < local.Length;
         return new(hits, more, more ? Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(state)) : null, null, Warning: warning);
     }
 
-    private static int Compare(SearchHit a, SearchHit b)
+    private static int Compare(SearchHit a, SearchHit b) => Compare(PlaceOf(a), PlaceOf(b));
+    private static Place PlaceOf(SearchHit hit) => new(hit.Message?.Timestamp ?? hit.Chat.LastActivity, hit.Chat.Id, hit.Message?.Id);
+    private static int Compare(Place a, Place b)
     {
-        var time = Nullable.Compare(b.Message?.Timestamp ?? b.Chat.LastActivity, a.Message?.Timestamp ?? a.Chat.LastActivity);
+        var time = Nullable.Compare(b.Time, a.Time);
         if (time != 0) return time;
-        var chat = string.Compare(a.Chat.Id, b.Chat.Id, StringComparison.Ordinal);
-        return chat != 0 ? chat : string.Compare(a.Message?.Id, b.Message?.Id, StringComparison.Ordinal);
+        var chat = string.Compare(a.ChatId, b.ChatId, StringComparison.Ordinal);
+        return chat != 0 ? chat : string.Compare(a.MessageId, b.MessageId, StringComparison.Ordinal);
     }
 }

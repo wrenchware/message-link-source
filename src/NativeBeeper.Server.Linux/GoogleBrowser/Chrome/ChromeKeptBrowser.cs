@@ -29,7 +29,10 @@ internal sealed class ChromeKeptBrowser(PersistentChrome chrome, IChromeCookieSo
     /// <summary>The longest the store is waited on: past Chrome's own 30-second batch.</summary>
     public TimeSpan PollBudget { get; init; } = TimeSpan.FromSeconds(50);
 
-    /// <summary>How the last renewal ended for the timestamp cookie: <c>yes</c>, <c>no</c> or <c>none</c> (not known). Read by <see cref="ChromeRenewalLoop"/>.</summary>
+    /// <summary>
+    /// How the last renewal ended for the timestamp cookie: <c>yes</c> (one there now that was not before, a first one included), <c>no</c> (the same one), or <c>none</c> (none
+    /// after the renewal). Read by <see cref="ChromeRenewalLoop"/>, which adopts only a <c>yes</c>.
+    /// </summary>
     public string LastRotated { get; private set; } = "none";
 
     public async Task<GoogleRefreshResult> RefreshAsync(string service, string profileId, CancellationToken cancellationToken)
@@ -52,7 +55,7 @@ internal sealed class ChromeKeptBrowser(PersistentChrome chrome, IChromeCookieSo
                 if (!await chrome.EnsureAsync(profile.Path, cancellationToken).ConfigureAwait(false)) return new(null, "browser_slow");
                 var after = await WaitForStoreAsync(profile.Path, before?.Sidts, cancellationToken).ConfigureAwait(false);
                 if (after is null) return new(null, "browser_slow");
-                var rotated = after.Sidts is null ? "none" : before?.Sidts is null ? "none" : after.Sidts != before.Sidts ? "yes" : "no";
+                var rotated = after.Sidts is null ? "none" : after.Sidts != before?.Sidts ? "yes" : "no";
                 LastRotated = rotated;
                 log($"google chrome renewed rotated={rotated} sidts={after.SidtsLifetime} complete={(after.Complete ? "yes" : "no")} ms={clock.ElapsedMilliseconds}");
                 return after.Complete ? new(after.Cookies, "", after.SidtsLifetime) : new(null, after.Cookies.Count == 0 ? "sign_in_needed" : "missing_cookies", after.SidtsLifetime);
@@ -89,7 +92,7 @@ internal sealed class ChromeKeptBrowser(PersistentChrome chrome, IChromeCookieSo
                 if (!await chrome.EnsureAsync(profile.Path, cancellationToken, GoogleVoiceSignInRules.VoiceUrl).ConfigureAwait(false)) return new(null, "browser_slow");
                 var after = await WaitForStoreAsync(profile.Path, before?.Sidts, cancellationToken, ChromiumRenewalTarget.Voice).ConfigureAwait(false);
                 if (after is null) return new(null, "browser_slow");
-                var rotated = after.Sidts is null ? "none" : before?.Sidts is null ? "none" : after.Sidts != before.Sidts ? "yes" : "no";
+                var rotated = after.Sidts is null ? "none" : after.Sidts != before?.Sidts ? "yes" : "no";
                 log($"google chrome renewed service=voice rotated={rotated} sidts={after.SidtsLifetime} complete={(after.Complete ? "yes" : "no")} ms={clock.ElapsedMilliseconds}");
                 return after.Complete ? new(after.Cookies, "", after.SidtsLifetime) : new(null, after.Cookies.Count == 0 ? "sign_in_needed" : "missing_cookies", after.SidtsLifetime);
             }

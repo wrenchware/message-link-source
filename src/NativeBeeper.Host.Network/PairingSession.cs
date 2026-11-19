@@ -78,7 +78,15 @@ internal static class PairingSession
             await channel.SendAsync(Frames.Serialize(ResponseFrame.Failure(request.Id, Forbidden("This server has as many devices as it keeps. Revoke one first."))), cancellationToken).ConfigureAwait(false);
             return;
         }
-        await channel.SendAsync(Frames.Serialize(ResponseFrame.Success(request.Id, new PairClaimed(device.Id, ClientToken.Encode(device.Token)))), cancellationToken).ConfigureAwait(false);
+        try { await channel.SendAsync(Frames.Serialize(ResponseFrame.Success(request.Id, new PairClaimed(device.Id, ClientToken.Encode(device.Token)))), cancellationToken).ConfigureAwait(false); }
+        catch (Exception)
+        {
+            // Its token never left: kept, it would take one of the slots as a device nobody holds, "Never connected" until the owner revoked it. The code stays spent.
+            log("server pairing undone reason=send");
+            try { await devices.RevokeAsync(device.Id).ConfigureAwait(false); }
+            catch (Exception ex) { log($"server pairing undo failed type={ex.GetType().Name}"); }
+            throw;
+        }
     }
 
     private static ProtocolError Forbidden(string message) => new(ProtocolErrorCodes.Forbidden, message);

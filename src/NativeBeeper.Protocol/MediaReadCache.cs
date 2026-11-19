@@ -4,9 +4,10 @@ namespace NativeBeeper.Protocol;
 /// The bytes of a few media reads, kept for a short while so that the chunks of one read (<c>media.read</c>) are cut from one
 /// fetch instead of asking the provider again per chunk. Not a media cache: the disk cache under the routers keeps pictures for
 /// days, and this lives for the seconds a client takes to read them through. Bounded in bytes and in number; a read that fails is
-/// not kept; two callers asking for the same key at once share one fetch.
+/// not kept; two callers asking for the same key at once share one fetch. Disposed with its connection: what it held goes, and
+/// it keeps nothing after.
 /// </summary>
-public sealed class MediaReadCache(TimeProvider? time = null)
+public sealed class MediaReadCache(TimeProvider? time = null) : IDisposable
 {
     private sealed class Entry(string key)
     {
@@ -21,6 +22,10 @@ public sealed class MediaReadCache(TimeProvider? time = null)
     private readonly object gate = new();
     private readonly Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private long held;
+    // Wakes at the earliest expiry, so a read's bytes (a saved 200 MB video) go when their time is up, not at this connection's next read or its close.
+    private ITimer? timer;
+    private DateTimeOffset timerAt = DateTimeOffset.MaxValue;
+    private bool disposed;
 
     /// <summary>The most items held at once.</summary>
     public int MaxEntries { get; set; } = 8;
@@ -46,11 +51,13 @@ public sealed class MediaReadCache(TimeProvider? time = null)
             bool owner;
             lock (gate)
             {
+                if (disposed) break;
                 Purge();
                 if (entries.TryGetValue(key, out entry!))
                 {
                     owner = false;
                     if (entry.Ready) entry.Expires = clock.GetUtcNow() + Lifetime;
+                    Arm();
                 }
                 else
                 {
@@ -74,7 +81,9 @@ public sealed class MediaReadCache(TimeProvider? time = null)
                 }
                 lock (gate)
                 {
-                    if (bytes.LongLength > MaxBytes) entries.Remove(key);
+                    // Fetched past the connection's close: handed on, not kept, and no wake set for it.
+                    if (disposed) { }
+                    else if (bytes.LongLength > MaxBytes) entries.Remove(key);
                     else
                     {
                         entry.Size = bytes.LongLength;
@@ -82,6 +91,7 @@ public sealed class MediaReadCache(TimeProvider? time = null)
                         entry.Expires = clock.GetUtcNow() + Lifetime;
                         held += entry.Size;
                         Evict(entry);
+                        Arm();
                     }
                 }
                 entry.Done.TrySetResult(bytes);
@@ -91,6 +101,20 @@ public sealed class MediaReadCache(TimeProvider? time = null)
             try { return await entry.Done.Task.WaitAsync(cancellationToken).ConfigureAwait(false); }
             // The caller whose fetch this was gave up; this one did not, so it asks again.
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < 2) { }
+        }
+        return await fetch(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Lets go of every item and the wake: the bytes a closed connection read go now, not when the wake's 30 s are up, and nothing is kept after.</summary>
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            disposed = true;
+            entries.Clear();
+            held = 0;
+            timer?.Dispose();
+            (timer, timerAt) = (null, DateTimeOffset.MaxValue);
         }
     }
 
@@ -103,7 +127,37 @@ public sealed class MediaReadCache(TimeProvider? time = null)
             {
                 var soon = clock.GetUtcNow() + FinishedLifetime;
                 if (soon < entry.Expires) entry.Expires = soon;
+                Arm();
             }
+        }
+    }
+
+    // Caller holds the gate. Sets the wake for the earliest expiry; none when nothing is kept. A wake that comes early (an item asked for again since) purges
+    // nothing and is set again.
+    private void Arm()
+    {
+        var next = DateTimeOffset.MaxValue;
+        foreach (var entry in entries.Values) if (entry.Ready && entry.Expires < next) next = entry.Expires;
+        if (next == DateTimeOffset.MaxValue)
+        {
+            timer?.Dispose();
+            (timer, timerAt) = (null, DateTimeOffset.MaxValue);
+            return;
+        }
+        if (timer is not null && timerAt <= next) return;
+        var due = next - clock.GetUtcNow();
+        timer ??= clock.CreateTimer(static state => ((MediaReadCache)state!).Expire(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        timer.Change(due > TimeSpan.Zero ? due : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        timerAt = next;
+    }
+
+    private void Expire()
+    {
+        lock (gate)
+        {
+            timerAt = DateTimeOffset.MaxValue;
+            Purge();
+            Arm();
         }
     }
 
