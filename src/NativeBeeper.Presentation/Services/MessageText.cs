@@ -17,8 +17,16 @@ public static class MessageText
     private static readonly Regex Urls = new(
         "(?<url>https?://[^\\s<>\"']+)|(?:^|[\\s(\\[{:;,!?])(?:(?<mail>[a-z0-9][a-z0-9._%+-]{0,63}@" + Host + ")|(?<url>(?:www\\." + Host + "(?:/[^\\s<>\"']*)?|" + Host + "/[^\\s<>\"']*)))",
         RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+    // The host must be a name or an address Windows takes too: .NET accepts "http://…:65001" (a model's elided address) with "…" as its
+    // host, Windows' own Uri refuses it, and the Hyperlink given it threw, leaving the rest of a Hermes reply undrawn (2026-11-19).
     public static Uri? WebLink(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        uri.Scheme is "http" or "https" && !string.IsNullOrEmpty(uri.Host) && string.IsNullOrEmpty(uri.UserInfo) ? uri : null;
+        uri.Scheme is "http" or "https" && RealHost(uri) && string.IsNullOrEmpty(uri.UserInfo) ? uri : null;
+    // IdnHost itself throws on a host IDN refuses.
+    private static bool RealHost(Uri uri)
+    {
+        try { return Uri.CheckHostName(uri.IdnHost) != UriHostNameType.Unknown; }
+        catch (UriFormatException) { return false; }
+    }
     public static bool IsWeb(Uri link) => link.Scheme is "http" or "https";
     private static Uri? MailLink(string address) =>
         Uri.TryCreate("mailto:" + address, UriKind.Absolute, out var uri) && uri.Scheme == "mailto" ? uri : null;
