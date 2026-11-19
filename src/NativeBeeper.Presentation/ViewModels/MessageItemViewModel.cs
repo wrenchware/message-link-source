@@ -283,7 +283,8 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
             media.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true || media.Type == "img" ? "Photo" : media.Type == "video" ? "Video" : "File";
         var readableText = NativeBeeper.Presentation.Services.MetaAiMessages.Text(message);
         var text = string.IsNullOrWhiteSpace(readableText) ? mediaLabel ?? message.Type ?? "Message" : readableText;
-        text = NativeBeeper.Presentation.Services.MessageText.PlainText(text).Replace('\r', ' ').Replace('\n', ' ');
+        text = (!string.IsNullOrWhiteSpace(readableText) && NativeBeeper.Presentation.Services.MessageText.IsMarkdown(message)
+            ? NativeBeeper.Presentation.Services.MessageText.Readable(message) : NativeBeeper.Presentation.Services.MessageText.PlainText(text)).Replace('\r', ' ').Replace('\n', ' ');
         return text.Length > 160 ? text[..160] + "…" : text;
     }
 

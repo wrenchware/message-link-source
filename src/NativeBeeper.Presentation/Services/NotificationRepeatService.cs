@@ -111,7 +111,7 @@ public sealed class NotificationRepeatService : IDisposable
                     lock (gate)
                         if (!pending.TryGetValue(key, out var latest) || latest.Record.Id != record.Id) continue;
                     var title = chat.Type == "group" ? $"{message.SenderName ?? "New message"} · {chat.Title}" : chat.Title;
-                    var preview = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "New message" : MessageText.PlainText(message);
+                    var preview = string.IsNullOrWhiteSpace(message.Text) ? message.Attachments.Count > 0 ? "Attachment" : "New message" : MessageText.Readable(message);
                     await presenter.ShowMessageAsync(new(record, NotificationObserver.Clip(title, 100), NotificationObserver.Clip(preview, 240), chat.Network,
                         Attribution: chat.UnreadCount > 1 ? $"Still unread · {chat.UnreadCount} messages" : "Still unread", IsRepeat: true));
                     delivered++;

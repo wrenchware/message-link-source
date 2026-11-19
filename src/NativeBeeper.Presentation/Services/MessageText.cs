@@ -5,7 +5,7 @@ using HtmlAgilityPack;
 
 namespace NativeBeeper.Presentation.Services;
 
-public sealed record MessageTextRun(string Text, Uri? Link = null, bool Bold = false, bool Italic = false, bool Code = false);
+public sealed record MessageTextRun(string Text, Uri? Link = null, bool Bold = false, bool Italic = false, bool Code = false, bool Strike = false);
 
 // Parse data only: no HTML execution, stylesheets, images or external resources.
 public static class MessageText
@@ -29,14 +29,14 @@ public static class MessageText
     // override or isolate (which turns "Invoice[RLO]fdp.exe" round to read as a PDF) is nothing anyone types: where an
     // entity produced one it is dropped, and never reaches the bubble, search, a copy or a notification.
     private static string Decode(string raw) => raw.Contains('&') ? Entity.Replace(raw, entity => Spoken(WebUtility.HtmlDecode(entity.Value))) : raw;
-    private static string Spoken(string decoded) => decoded.Any(Unspoken) ? string.Concat(decoded.Where(c => !Unspoken(c))) : decoded;
+    internal static string Spoken(string decoded) => decoded.Any(Unspoken) ? string.Concat(decoded.Where(c => !Unspoken(c))) : decoded;
     private static bool Unspoken(char c) =>
         char.IsControl(c) && c is not ('\t' or '\n' or '\r') || (int)c is >= 0x202A and <= 0x202E || (int)c is >= 0x2066 and <= 0x2069;
 
     // An anchor's words stand for its link only when they do not name a different site. Words that read as an address
     // ("https://www.usps.com/track") over a link to somewhere else are the oldest phishing trick; they are shown as the
     // text they are, with an address in them linked to itself. Hosts compare without case or a leading "www.".
-    private static bool Misleading(string shown, Uri link)
+    internal static bool Misleading(string shown, Uri link)
     {
         var target = Site(link.IdnHost);
         foreach (Match match in Urls.Matches(shown))
@@ -92,38 +92,7 @@ public static class MessageText
         {
             if (value.Length == 0) return;
             if (link is not null || code || !autoLink) { runs.Add(new(value, link, bold, italic, code)); return; }
-            var position = 0;
-            foreach (Match match in Urls.Matches(value))
-            {
-                if (match.Groups["mail"] is { Success: true } mail)
-                {
-                    // Followed by a path it is not an address anyone writes to; it stays plain, as it always was.
-                    if (mail.Index + mail.Length < value.Length && value[mail.Index + mail.Length] == '/') continue;
-                    var mailbox = mail.Value.TrimEnd('.');
-                    if (mail.Index > position) runs.Add(new(value[position..mail.Index], null, bold, italic, code));
-                    runs.Add(new(mailbox, MailLink(mailbox), bold, italic, code));
-                    position = mail.Index + mailbox.Length;
-                    continue;
-                }
-                var address = match.Groups["url"];
-                var explicitScheme = address.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                    address.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                // Do not turn a suffix inside another URI scheme into a separate web link.
-                if (!explicitScheme && address.Index > 0 && value[address.Index - 1] == ':')
-                {
-                    var start = address.Index - 2;
-                    while (start >= 0 && char.IsLetter(value[start])) start--;
-                    var prefix = value[(start + 1)..(address.Index - 1)].ToLowerInvariant();
-                    if (prefix is "javascript" or "data" or "mailto" or "file" or "ftp" or "tel") continue;
-                }
-                var target = address.Value.TrimEnd('.', ',', ';', ':', '!', '?');
-                while (target.EndsWith(')') && target.Count(c => c == ')') > target.Count(c => c == '(')) target = target[..^1];
-                while (target.EndsWith(']') && target.Count(c => c == ']') > target.Count(c => c == '[')) target = target[..^1];
-                if (address.Index > position) runs.Add(new(value[position..address.Index], null, bold, italic, code));
-                runs.Add(new(target, WebLink(explicitScheme ? target : "https://" + target), bold, italic, code));
-                position = address.Index + target.Length;
-            }
-            if (position < value.Length) runs.Add(new(value[position..], null, bold, italic, code));
+            Linked(value, runs, bold, italic, code, strike: false);
         }
         void Break()
         { if (runs.Count > 0 && !runs[^1].Text.EndsWith('\n')) runs.Add(new("\n")); }
@@ -154,6 +123,42 @@ public static class MessageText
             if (block) Break();
         }
     }
+    // Words as runs in one style, each address and mail address in them a link of its own (Parse, HermesMarkdown).
+    internal static void Linked(string value, List<MessageTextRun> runs, bool bold, bool italic, bool code, bool strike)
+    {
+        var position = 0;
+        foreach (Match match in Urls.Matches(value))
+        {
+            if (match.Groups["mail"] is { Success: true } mail)
+            {
+                // Followed by a path it is not an address anyone writes to; it stays plain, as it always was.
+                if (mail.Index + mail.Length < value.Length && value[mail.Index + mail.Length] == '/') continue;
+                var mailbox = mail.Value.TrimEnd('.');
+                if (mail.Index > position) runs.Add(new(value[position..mail.Index], null, bold, italic, code, strike));
+                runs.Add(new(mailbox, MailLink(mailbox), bold, italic, code, strike));
+                position = mail.Index + mailbox.Length;
+                continue;
+            }
+            var address = match.Groups["url"];
+            var explicitScheme = address.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                address.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            // Do not turn a suffix inside another URI scheme into a separate web link.
+            if (!explicitScheme && address.Index > 0 && value[address.Index - 1] == ':')
+            {
+                var start = address.Index - 2;
+                while (start >= 0 && char.IsLetter(value[start])) start--;
+                var prefix = value[(start + 1)..(address.Index - 1)].ToLowerInvariant();
+                if (prefix is "javascript" or "data" or "mailto" or "file" or "ftp" or "tel") continue;
+            }
+            var target = address.Value.TrimEnd('.', ',', ';', ':', '!', '?');
+            while (target.EndsWith(')') && target.Count(c => c == ')') > target.Count(c => c == '(')) target = target[..^1];
+            while (target.EndsWith(']') && target.Count(c => c == ']') > target.Count(c => c == '[')) target = target[..^1];
+            if (address.Index > position) runs.Add(new(value[position..address.Index], null, bold, italic, code, strike));
+            runs.Add(new(target, WebLink(explicitScheme ? target : "https://" + target), bold, italic, code, strike));
+            position = address.Index + target.Length;
+        }
+        if (position < value.Length) runs.Add(new(value[position..], null, bold, italic, code, strike));
+    }
     public static string PlainText(string text) => string.Concat(Parse(text).Select(run => run.Text)).TrimEnd('\n');
 
     // A Hermes thread holds text as Hermes (or a report posted to it) wrote it: Markdown or plain words, never HTML. Every other body is parsed as HTML, so
@@ -165,6 +170,14 @@ public static class MessageText
     /// <summary>A message body as <see cref="Parse"/> reads it: literal in a Hermes thread, as sent everywhere else.</summary>
     public static string Markup(string? chatId, string? text) => text is null ? "" : IsLiteral(chatId) ? Literal(text) : text;
     public static string Markup(NativeBeeper.Core.Messaging.ChatMessage message) => Markup(message.ChatId, message.Text);
-    /// <summary>A message's words as a copy, a notification, a search result or the console shows them.</summary>
+    /// <summary>A message's words as a copy, a search result or the console shows them.</summary>
     public static string PlainText(NativeBeeper.Core.Messaging.ChatMessage message) => PlainText(Markup(message));
+    /// <summary>A reply Hermes wrote, which the bubble draws from its Markdown (HermesMarkdown).</summary>
+    public static bool IsMarkdown(NativeBeeper.Core.Messaging.ChatMessage message) =>
+        !message.IsOutgoing && !message.IsDeleted && !message.IsHidden && IsLiteral(message.ChatId) && !string.IsNullOrWhiteSpace(message.Text);
+    /// <summary>
+    /// A message's words to read at a glance, in the list's preview line and a notification: a Hermes reply without its Markdown marks.
+    /// A copy, search and mlink keep the words as written (PlainText).
+    /// </summary>
+    public static string Readable(NativeBeeper.Core.Messaging.ChatMessage message) => IsMarkdown(message) ? HermesMarkdown.PlainText(message.Text) : PlainText(message);
 }

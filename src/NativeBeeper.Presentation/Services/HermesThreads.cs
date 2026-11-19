@@ -62,13 +62,12 @@ public static class HermesThreads
     }
 
     /// <summary>
-    /// What the conversation says while someone is typing. A participant's status (Hermes: the tool it is using) is said in place of the typing
-    /// words; Hermes with none is working on its reply rather than typing.
+    /// What the conversation's dots say to a screen reader and on hover while someone is typing. Hermes is working on its reply rather than
+    /// typing; the tool it is using (its typing status) is not said in the apps, only in mlink (owner, 2026-11-18: a chat app shows dots).
     /// </summary>
     public static string TypingText(IReadOnlyList<TypingParticipant> people, bool hermes)
     {
         if (people.Count == 0) return "";
-        if (people.Select(p => p.Status).FirstOrDefault(status => !string.IsNullOrWhiteSpace(status)) is { } status) return Short(OneLine(status), 120);
         var names = people.Select(p => p.DisplayName).ToArray();
         if (hermes) return $"{names[0]} is working…";
         return names.Length switch
