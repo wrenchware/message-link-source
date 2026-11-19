@@ -57,6 +57,8 @@ public static partial class HermesMarkdown
     private static partial Regex Underline();
     [GeneratedRegex(@"^([-*+]|(\d{1,9})([.)]))( +|$)(.*)$")]
     private static partial Regex ListMarker();
+    [GeneratedRegex(@"^\[([ xX])\][ \t]+(.*)$")]
+    private static partial Regex TaskBox();
     [GeneratedRegex(@"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")]
     private static partial Regex Delimiter();
 
@@ -186,7 +188,10 @@ public static partial class HermesMarkdown
                 else lists.Add((indent, content));
                 var level = lists.Count - 1;
                 var marker = item.Groups[2].Success ? item.Groups[2].Value + item.Groups[3].Value : Bullets[Math.Min(level, Bullets.Length - 1)];
-                Start(MarkdownBlockKind.Item, level, marker, item.Groups[5].Value);
+                var words = item.Groups[5].Value;
+                // A task's box stands in for its bullet or number: "- [x] Done" is a ticked box, as GitHub draws it.
+                if (TaskBox().Match(words) is { Success: true } task) { marker = task.Groups[1].Value == " " ? "☐" : "☑"; words = task.Groups[2].Value; }
+                Start(MarkdownBlockKind.Item, level, marker, words);
                 blank = false;
                 continue;
             }
