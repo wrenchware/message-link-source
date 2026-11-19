@@ -125,7 +125,7 @@ internal static class GoogleVoiceModels
         var sender = message.Outgoing ? Qualify(key, "self") : Qualify(key, "person:" + (message.Sender ?? ""));
         var senderName = message.Outgoing ? "You" : names is not null && names.TryGetValue(sender, out var name) ? name : message.Sender;
         var attachments = (message.Attachments ?? []).Where(item => !item.Unsupported).Select(item => item.Voicemail
-            // Voicemail audio plays in place; the helper fetches it from Google only when it is played. Voice serves MP3.
+            // Voicemail audio plays in place; the helper fetches it from Google when a client asks, as its card comes on screen. Voice serves MP3.
             ? new MessageAttachment(VoicemailFileName(senderName, message.Timestamp, item.Mime ?? "audio/mpeg"), "audio", item.Mime ?? "audio/mpeg", null, true, false, false, QualifyMedia(key, item.Id),
                 DurationSeconds: item.Duration > 0 ? item.Duration : null)
             : new MessageAttachment(

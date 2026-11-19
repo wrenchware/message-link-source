@@ -285,7 +285,8 @@ public sealed class MessageItemViewModel : CommunityToolkit.Mvvm.ComponentModel.
         if (message.IsHidden) return "Message unavailable";
         var media = message.Attachments.FirstOrDefault();
         var mediaLabel = media is null ? null : media.IsGif ? "GIF" : media.IsSticker ? "Sticker" : media.IsVoiceNote ? "Voice message" :
-            media.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true || media.Type == "img" ? "Photo" : media.Type == "video" ? "Video" : "File";
+            media.MimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true || media.Type == "img" ? "Photo" : media.Type == "video" ? "Video" :
+            media.Type == "audio" ? NativeBeeper.Presentation.Services.RecordingLabel.Preview(media.Name, false) : "File";
         var readableText = NativeBeeper.Presentation.Services.MetaAiMessages.Text(message);
         var text = string.IsNullOrWhiteSpace(readableText) ? mediaLabel ?? message.Type ?? "Message" : readableText;
         text = (!string.IsNullOrWhiteSpace(readableText) && NativeBeeper.Presentation.Services.MessageText.IsMarkdown(message)

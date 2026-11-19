@@ -524,7 +524,7 @@ internal sealed class PushNotifier : IAsyncDisposable
             { IsVoiceNote: true } => "Voice message",
             { Type: "img" } => "Photo",
             { Type: "video" } => "Video",
-            { Type: "audio" } => "Audio",
+            { Type: "audio" } => NativeBeeper.Presentation.Services.RecordingLabel.Preview(attachment.Name, false),
             _ => "File: " + (attachment.Name ?? "file"),
         };
     }

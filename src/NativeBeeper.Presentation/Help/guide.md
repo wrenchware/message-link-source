@@ -373,7 +373,7 @@ Saved files are marked as coming from the internet, as a browser marks a downloa
 
 - **Contact cards** show the name, number and email, with **Message** and **Copy number**.
 - On Android, **+** → **Contact** sends one of your phone's contacts as a card: its name, numbers, email, company, address, website and photo, never its notes. Android 17 shares only the contact you pick; earlier versions ask once for access to your contacts. Google Voice sends photos only.
-- **Files** show their type and a **Download** button. A program or shortcut always shows as one, whatever type the sender gave it.
+- **Files** show their type and a **Download** button. A program or shortcut always shows as one, whatever type the sender gave it. A file the service sent without a name of its own shows its type instead, such as **ZIP file**, and saves as **Attachment** with that ending.
 - **Links** become a preview with a picture and description, unless you turn off *Link previews*.
   Previews of recent links are ready when you open a conversation, including links you send from your phone. None are fetched for a conversation in Spam.
 - Fetching a preview tells the link's site that the message was opened, and from where. So a link from someone you don't know shows a small **Load preview** instead, and fetches nothing until you click it. Someone counts as known when they're a saved contact on your phone (Google Messages) or you've written in that conversation. With [private reading](#private-reading) on for a service, every link there waits for **Load preview**, except your own.
@@ -471,7 +471,7 @@ Google Voice calls appear as cards rather than a text conversation.
 
 - A **missed call** or **voicemail** gets a row in the list. A call you answered or made, or one nobody picked up, doesn't, and never counts as unread: choose **Calls** under **Type** in the Services dropdown to see every call, or search for it. The phone app hides them too; searching there finds them.
 - A colored badge (red missed, blue voicemail, green connected), a headline such as "Missed voice call", and the full date.
-- **Voicemail** shows Google's transcript and a player. The audio downloads only when you press play. **Save** keeps it as a file named after the caller and the date.
+- **Voicemail** shows Google's transcript and a player with the recording's waveform and length. The audio downloads when the voicemail comes into view, so it plays at once. **Save** keeps it as a file named after the caller and the date.
 - **Send a message to *name*** opens the text conversation. If both Google Voice and your phone's Google Messages can reach them, Message Link asks which to use.
 - Message Link can't place or answer calls.
 
@@ -1053,7 +1053,7 @@ Everywhere: Message Link doesn't place or answer calls, and can rename a group o
 ### Google Voice {#service-google-voice}
 
 - **Add** each number on the server's page and sign in at voice.google.com. Each number has its own filter, notification switch and sign-out, and reconnects by itself if it stops.
-- **Works**: texts, photos up to 2 MB, read state both ways, archive, delete a conversation (from your Google Voice account), Not spam, call history, voicemail with transcripts (played and saved on demand), new chats to contacts or any number, and contact photos.
+- **Works**: texts, photos up to 2 MB, read state both ways, archive, delete a conversation (from your Google Voice account), Not spam, call history, voicemail with transcripts and waveforms (played and saved in place), new chats to contacts or any number, and contact photos.
 - **Doesn't**: voice messages, replies, reactions, edits, unsend, read receipts, groups, GIFs over 2 MB, marking spam, or placing calls. Spam stays out of every other view, count and notification.
 
 ### Instagram {#service-instagram}
