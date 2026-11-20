@@ -284,11 +284,10 @@ func publicPreviewURL(rawURL string) (*url.URL, error) {
 	if err != nil || u.User != nil || u.Opaque != "" || (u.Scheme != "http" && u.Scheme != "https") || !publicPreviewHost(u.Hostname()) {
 		return nil, errPreviewDestination
 	}
-	if port := u.Port(); port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return nil, errPreviewDestination
-		}
+	// Only the scheme's own port: a link someone sent can't make the server knock on another port of a public host (a
+	// mail server, an admin page), and a redirect is held to the same rule.
+	if port := u.Port(); port != "" && !(u.Scheme == "https" && port == "443") && !(u.Scheme == "http" && port == "80") {
+		return nil, errPreviewDestination
 	}
 	u.Fragment = ""
 	return u, nil

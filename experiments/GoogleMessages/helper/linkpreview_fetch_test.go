@@ -110,6 +110,7 @@ func TestLinkPreviewRejectsNonpublicURLsBeforeTransport(t *testing.T) {
 		"http://[::ffff:127.0.0.1]/a", "http://[fc00::1]/a", "http://[fe80::1%25zone]/a",
 		"http://[2001:db8::1]/a", "http://[2002:7f00:1::]/a", "https://public.example:0/a",
 		"https://public.example:65536/a", "https://public.example:bad/a",
+		"https://public.example:8443/a", "http://public.example:22/a", "https://public.example:80/a", "http://public.example:443/a",
 		"https://public.example/" + strings.Repeat("x", previewURLLimit),
 	} {
 		if _, err := fetcher.link(context.Background(), value); !errors.Is(err, errPreviewDestination) {
