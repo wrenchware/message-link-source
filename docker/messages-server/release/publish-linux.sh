@@ -53,8 +53,8 @@ publish() {
     [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "--version must be three numbers."
     [[ "$image" =~ ^[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}$ ]] || fail "--image must name the image by its digest."
     [ -n "$assets" ] && [ -d "$assets" ] || fail "--assets must be package-linux.sh's folder."
-    local files=("messages-server-$version-linux-x64.tar.gz" "messages-server-$version-linux-x64.tar.gz.sha256"
-                 messages-server-linux-x64.tar.gz messages-server-linux-x64.tar.gz.sha256 install-proxmox.sh)
+    local files=("messages-server-$version-linux-x64.tar.gz" "messages-server-$version-linux-x64.tar.gz.sig" "messages-server-$version-linux-x64.tar.gz.sha256"
+                 messages-server-linux-x64.tar.gz messages-server-linux-x64.tar.gz.sig messages-server-linux-x64.tar.gz.sha256 install-proxmox.sh)
     local file
     for file in "${files[@]}"; do [ -s "$assets/$file" ] || fail "$assets has no $file."; done
 
@@ -85,9 +85,11 @@ publish() {
                 [ "$digest" = "$have" ] || fail "the release at $tag already holds a different $file. Delete the release's files on GitHub and run this again."
             done
         done < "$work/existing"
-        # The packages before their .sha256, so a .sha256 never names a file not yet there.
+        # The packages and their signatures before their .sha256, so a .sha256 (what the nightly update looks at first) never
+        # names a file, or a signature, not yet there.
         local ordered=()
-        for file in "${missing[@]}"; do case "$file" in *.sha256) ;; *) ordered+=("$assets/$file") ;; esac; done
+        for file in "${missing[@]}"; do case "$file" in *.sha256|*.sig) ;; *) ordered+=("$assets/$file") ;; esac; done
+        for file in "${missing[@]}"; do case "$file" in *.sig) ordered+=("$assets/$file") ;; esac; done
         for file in "${missing[@]}"; do case "$file" in *.sha256) ordered+=("$assets/$file") ;; esac; done
         gh release upload "$tag" --repo "$repo" "${ordered[@]}"
         say "added ${missing[*]}."

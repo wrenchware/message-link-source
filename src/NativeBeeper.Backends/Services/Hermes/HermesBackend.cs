@@ -62,8 +62,13 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         this.clock = clock ?? TimeProvider.System;
         this.log = log ?? AppLog.Write;
         this.store.Log ??= this.log;
-        client = new HermesClient(http ?? new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10), PooledConnectionLifetime = TimeSpan.FromMinutes(10) })
-        { Timeout = Timeout.InfiniteTimeSpan });
+        // No redirects: a 307 would carry the turn and its pictures to another host. A buffered answer (models, approvals, errors, the session read)
+        // is a few kilobytes; the cap keeps an address that answers without end from filling the server's memory.
+        client = new HermesClient(http ?? new HttpClient(new SocketsHttpHandler
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(10), PooledConnectionLifetime = TimeSpan.FromMinutes(10), AllowAutoRedirect = false,
+        })
+        { Timeout = Timeout.InfiniteTimeSpan, MaxResponseContentBufferSize = 8 * 1024 * 1024 });
         realtime = new(256, line => this.log("hermes " + line));
     }
 

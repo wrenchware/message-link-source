@@ -107,9 +107,10 @@ public sealed record HistorySyncResult(string Revision, bool Reset, IReadOnlyLis
 
 /// <summary>
 /// The messages before the client's oldest, named by its time, sort key and id (the order every copy sorts by), at most <paramref name="Limit"/> (50 when left
-/// out, at most <see cref="WholeHistoryLimits.MaxPage"/>).
+/// out, at most <see cref="WholeHistoryLimits.MaxPage"/>). <paramref name="HeldOnly"/> (protocol 33): only what the server holds, never read further from the
+/// service; <c>More</c> then says the server holds more, and <c>Complete</c> whether the service has nothing past what it holds.
 /// </summary>
-public sealed record HistoryOlderParams(string ChatId, DateTimeOffset BeforeTimestamp, string BeforeSortKey, string BeforeId, int? Limit = null);
+public sealed record HistoryOlderParams(string ChatId, DateTimeOffset BeforeTimestamp, string BeforeSortKey, string BeforeId, int? Limit = null, bool? HeldOnly = null);
 
 /// <summary><paramref name="Messages"/> oldest first, directly before the one asked from; <paramref name="More"/> says there is still something before them.</summary>
 public sealed record HistoryOlderResult(IReadOnlyList<ChatMessage> Messages, bool More, bool Complete);

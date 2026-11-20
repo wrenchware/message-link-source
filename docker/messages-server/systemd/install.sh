@@ -148,6 +148,8 @@ ldconfig -p 2>/dev/null | grep -q 'libssl\.so\.3' || missing="$missing openssl"
 # A bundle (Debian, Ubuntu) or OpenSSL's hashed links (Fedora 44 has only these).
 [ -s /etc/ssl/certs/ca-certificates.crt ] || [ -s /etc/pki/tls/certs/ca-bundle.crt ] || ls /etc/ssl/certs/*.0 >/dev/null 2>&1 || missing="$missing certificates"
 [ -d /usr/share/zoneinfo ] || missing="$missing tzdata"
+# The nightly update checks each release's signature with ssh-keygen (update.sh).
+command -v ssh-keygen >/dev/null 2>&1 || missing="$missing ssh-keygen"
 apt_updated=no
 apt_update() { [ "$apt_updated" = yes ] || { apt-get update -qq; apt_updated=yes; }; }
 if [ -n "$missing" ]; then
@@ -160,12 +162,13 @@ if [ -n "$missing" ]; then
             [ -n "$icu" ] || fail "no ICU package (libicuNN) is offered here; install ICU, then run install.sh again."
             packages="$packages $icu" ;; esac
         case "$missing" in *openssl*) packages="$packages libssl3" ;; esac
+        case "$missing" in *ssh-keygen*) packages="$packages openssh-client" ;; esac
         # shellcheck disable=SC2086 # one word per package
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $packages
     elif command -v dnf >/dev/null 2>&1; then
-        dnf install -y -q libicu openssl-libs ca-certificates tzdata
+        dnf install -y -q libicu openssl-libs ca-certificates tzdata openssh-clients
     else
-        fail "install ICU, OpenSSL 3, CA certificates and time zone data with this system's package manager, then run install.sh again."
+        fail "install ICU, OpenSSL 3, CA certificates, time zone data and ssh-keygen (OpenSSH's client) with this system's package manager, then run install.sh again."
     fi
 fi
 

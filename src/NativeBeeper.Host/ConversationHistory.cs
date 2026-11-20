@@ -271,8 +271,14 @@ internal sealed partial class ConversationHistory : IWholeHistory, IChatReader, 
     {
         var limit = Math.Clamp(request.Limit ?? WholeHistoryLimits.DefaultPage, 1, WholeHistoryLimits.MaxPage);
         var chat = await FilledAsync(request.ChatId, cancellationToken).ConfigureAwait(false);
-        var page = await OlderPageAsync(chat, new Position(request.BeforeTimestamp.UtcTicks, request.BeforeSortKey ?? "", request.BeforeId ?? ""), limit, cancellationToken)
-            .ConfigureAwait(false);
+        var before = new Position(request.BeforeTimestamp.UtcTicks, request.BeforeSortKey ?? "", request.BeforeId ?? "");
+        if (request.HeldOnly == true)
+        {
+            // Export's count and copy: what the server holds and nothing more, so no service is asked anything past the fill above.
+            var held = await HeldBeforeAsync(chat.ChatId, chat.State, before, limit + 1, cancellationToken).ConfigureAwait(false);
+            return new(held.TakeLast(limit).ToArray(), held.Count > limit, chat.State.Complete);
+        }
+        var page = await OlderPageAsync(chat, before, limit, cancellationToken).ConfigureAwait(false);
         return new(page.Messages, page.More, chat.State.Complete);
     }
 

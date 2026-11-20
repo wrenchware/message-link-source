@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1171,4 +1172,8 @@ func serve(in io.Reader, out io.Writer) {
 	dispatch(in, o, a.callContext)
 }
 
-func main() { serve(os.Stdin, os.Stdout) }
+func main() {
+	// Runtime dumps can contain private protocol buffers. Never print them.
+	debug.SetTraceback("none")
+	serve(os.Stdin, os.Stdout)
+}

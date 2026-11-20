@@ -41,7 +41,7 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 		var result any
 		var code string
 		if deadline.Err() == nil {
-			result, code = call(deadline, r)
+			result, code = guardedCall(call, deadline, r)
 		} else {
 			code = "request_cancelled"
 		}
@@ -94,4 +94,16 @@ func dispatch(in io.Reader, out *output, call func(context.Context, request) (an
 	// EOF is teardown, not permission to finish queued contact-visible actions.
 	stop()
 	workers.Wait()
+}
+
+// A panic inside one request answers that request with a fixed code instead of ending the helper, and every other
+// request and the session with it. Neither the panic's value nor its stack leaves the process: either can carry
+// message text or protocol data.
+func guardedCall(call func(context.Context, request) (any, string), ctx context.Context, r request) (result any, code string) {
+	defer func() {
+		if recover() != nil {
+			result, code = nil, "internal_error"
+		}
+	}()
+	return call(ctx, r)
 }

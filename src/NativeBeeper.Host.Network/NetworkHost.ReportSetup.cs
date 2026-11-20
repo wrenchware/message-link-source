@@ -67,7 +67,7 @@ internal sealed partial class NetworkHost
         var hash = AgentReportRules.Hash(code!);
         var id = AgentReportRules.SetupTag(hash);
         var peer = context.Connection.RemoteIpAddress;
-        if (!(options.HomeCheck ?? ServerPage.FromHome)(peer))
+        if (!FromHome(context))
         {
             await ReportAnswerAsync(context, StatusCodes.Status404NotFound, "refused", "setup_address", id).ConfigureAwait(false);
             return;

@@ -126,10 +126,15 @@ namespace NativeBeeper.Protocol;
 /// <see cref="NativeBeeper.Core.Messaging.ChatMessage.Approval"/> (the command, why it was held, how it stands and until when), and <c>accounts.hermes.answerApproval</c>
 /// approves it once or denies it. Additive: a client below 32 reads the message's text (that Hermes needs approval) and never calls the method, and a host answers
 /// it as not supported to a connection that negotiated less.</para>
+/// <para>33 (owner, 2026-11-19) adds <see cref="HistoryOlderParams.HeldOnly"/>: an older read answered from the server's copy alone, never read further from the
+/// service, so Export conversation can count and write what the server holds without asking a service anything. A host below 33 ignores the field and reads on
+/// from the service, so a client sends it only to a host of 33.</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 32;
+    public const int Current = 33;
+    /// <summary>The first version that answers an older read from the server's copy alone (<see cref="HistoryOlderParams.HeldOnly"/>).</summary>
+    public const int HeldHistory = 33;
     /// <summary>The first version that answers Hermes's approvals (<see cref="ProtocolMethods.AccountsHermesAnswerApproval"/>).</summary>
     public const int HermesApprovals = 32;
     /// <summary>The first version with Hermes (<see cref="ProtocolMethods.AccountsHermesNewConversation"/>, <c>HostState.Hermes</c>) and the repeats (<see cref="ProtocolMethods.RepeatsCreate"/>).</summary>

@@ -55,7 +55,7 @@ internal sealed partial class NetworkHost
         var tag = AgentReportRules.Tag(token!);
         // The plain home check, without the relay's exception. A peer behind Docker's published port shows as the bridge's gateway, which FromHome refuses:
         // the page's Reports line says so, so a setup that can never work is seen without the logs.
-        if (!(options.HomeCheck ?? ServerPage.FromHome)(context.Connection.RemoteIpAddress))
+        if (!FromHome(context))
         {
             reports.ReportRefused(hash, "address");
             await ReportAnswerAsync(context, StatusCodes.Status404NotFound, "refused", "address", tag).ConfigureAwait(false);

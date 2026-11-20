@@ -107,7 +107,7 @@ public sealed class HermesClient(HttpClient http)
         {
             var root = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
             var first = (root?["data"] as JsonArray)?.FirstOrDefault();
-            return first?["id"]?.GetValue<string>() is { Length: > 0 and <= 100 } id ? id : null;
+            return first?["id"]?.GetValue<string>() is { Length: > 0 and <= 100 } id && !HasHidden(id) ? id : null;
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
         {
@@ -220,7 +220,7 @@ public sealed class HermesClient(HttpClient http)
         try { stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false); }
         catch (Exception exception) when (exception is HttpRequestException or IOException) { stream = Stream.Null; openFailed = new("interrupted"); }
         if (openFailed is not null) { yield return openFailed; yield break; }
-        using var reader = new StreamReader(stream, Encoding.UTF8);
+        using var reader = new StreamReader(new CappedStream(stream, MaxReplyBytes), Encoding.UTF8);
         string? eventName = null;
         var data = new StringBuilder();
         var finished = false;
@@ -250,12 +250,44 @@ public sealed class HermesClient(HttpClient http)
             var field = colon < 0 ? line : line[..colon];
             var value = colon < 0 ? "" : line[(colon + 1)..].TrimStart(' ');
             if (field == "event") eventName = value;
-            else if (field == "data") { if (data.Length > 0) data.Append('\n'); data.Append(value); }
+            else if (field == "data")
+            {
+                if (data.Length + value.Length > MaxEventChars) break; // one event larger than any reply: treated as cut off
+                if (data.Length > 0) data.Append('\n');
+                data.Append(value);
+            }
         }
         if (!finished && data.Length > 0)
             foreach (var parsed in Parse(eventName, data.ToString())) { if (parsed is HermesFinished) finished = true; yield return parsed; }
         // A stream that ended without [DONE] or a finish reason was cut off.
         if (!finished) yield return new HermesFinished("interrupted");
+    }
+
+    // A reply's whole stream and any one event in it. Far above a real reply; an address that answers without end ends the turn, not the server.
+    internal const long MaxReplyBytes = 64L * 1024 * 1024;
+    internal const int MaxEventChars = 4 * 1024 * 1024;
+
+    // Reads at most a fixed number of bytes, then fails as a broken connection does (IOException), which ReadAsync treats as cut off.
+    internal sealed class CappedStream(Stream inner, long limit) : Stream
+    {
+        private long left = limit;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => Take(inner.Read(buffer, offset, Room(count)));
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            Take(await inner.ReadAsync(buffer[..Room(buffer.Length)], cancellationToken).ConfigureAwait(false));
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        private int Room(int count) => count == 0 ? 0 : left > 0 ? (int)Math.Min(count, left) : throw new IOException("reply_too_large");
+        private int Take(int read) { left -= read; return read; }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
     }
 
     internal static string Body(string profile, string? text, IReadOnlyList<string> images)
@@ -338,12 +370,20 @@ public sealed class HermesClient(HttpClient http)
         var command = Text(json["command"]) ?? "";
         var cut = command.Length > MaxCommandLength;
         if (cut) command = command[..MaxCommandLength] + "…";
-        var description = Text(json["description"]) is { Length: > 0 } said ? said.Length > MaxDescriptionLength ? said[..MaxDescriptionLength] + "…" : said : null;
+        // A command with characters that don't show (controls, bidi overrides, zero-width marks) could read as something other than what runs:
+        // they are drawn as U+FFFD and, like a command cut short, it can only be denied.
+        if (HasHidden(command)) { command = Visible(command); cut = true; }
+        var description = Text(json["description"]) is { Length: > 0 } said ? Visible(said.Length > MaxDescriptionLength ? said[..MaxDescriptionLength] + "…" : said) : null;
         TimeSpan? wait = json["timeout_s"] is JsonValue t && t.TryGetValue<double>(out var seconds) && double.IsFinite(seconds) && seconds > 0
             ? TimeSpan.FromSeconds(Math.Min(seconds, TimeSpan.FromDays(1).TotalSeconds)) : null;
         var advised = json["smart_denied"] is JsonValue s && s.TryGetValue<bool>(out var denied) && denied;
         return new(run, request, generation, command, description, wait, advised, cut);
     }
+
+    // Line breaks and tabs stay; any other control or format character (Cc, Cf: bidi overrides, zero-width marks) is hidden or reorders text.
+    private static bool Hidden(char c) => c is not ('\n' or '\r' or '\t') && (char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format);
+    internal static bool HasHidden(string text) => text.Any(Hidden);
+    internal static string Visible(string text) => HasHidden(text) ? string.Concat(text.Select(c => Hidden(c) ? '\uFFFD' : c)) : text;
 
     // A run or request id goes into a route and a body: Hermes's own shapes only (chatcmpl-…, run_…, hex), nothing that could be a path.
     private static string? Id(string? value) => value is { Length: > 0 and <= 256 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or ':') ? value : null;

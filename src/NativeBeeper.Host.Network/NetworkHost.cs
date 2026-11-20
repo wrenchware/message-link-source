@@ -88,14 +88,15 @@ internal sealed partial class NetworkHost : IAsyncDisposable
     }
 
     // Holds a connection's place in the door (and its address's) until it is admitted or gone, whichever is first.
-    private sealed class DoorTicket(NetworkHost host, string source)
+    private sealed class DoorTicket(NetworkHost host, string source, bool relayed)
     {
         private int left;
         public long Arrived { get; } = System.Diagnostics.Stopwatch.GetTimestamp();
         public void Leave()
         {
             if (Interlocked.Exchange(ref left, 1) != 0) return;
-            Interlocked.Decrement(ref host.pending);
+            if (relayed) Interlocked.Decrement(ref host.relayPending);
+            else Interlocked.Decrement(ref host.pending);
             host.LeaveSource(source);
         }
     }
@@ -115,7 +116,8 @@ internal sealed partial class NetworkHost : IAsyncDisposable
     private readonly Timer pairingCheck;
     private readonly ServerPage? page;
     private WebApplication? app;
-    private int pending, dropped, refused, stopped;
+    // The tailnet relay's connections wait in a door of their own: machines on the home network that hold the port's places can't keep the phones out.
+    private int pending, relayPending, dropped, refused, stopped;
     private long admissions;
     private volatile bool draining;
     // Under its own lock: the push notifier can be added after the start, when pushes are turned on from the page.
@@ -161,6 +163,10 @@ internal sealed partial class NetworkHost : IAsyncDisposable
             : null;
         page = ServerPage.Create(options.PagePassword, keys, devices, pairing, joins, () => Fingerprint, admin, logs, options.Time, log,
             options.Tailnet, pushes, history, options.Backups, setup);
+        // A browser can't pin the page's self-signed certificate, so an impostor's warning would look like the real one. The fingerprint goes to the
+        // server's own output (docker logs), written as Chrome and Edge show it in the certificate viewer, for the owner to compare once.
+        if (page is not null && options.ShowCode is { } showPrint)
+            showPrint("server page certificate sha256=" + string.Join(' ', Fingerprint.ToUpperInvariant().Chunk(2).Select(pair => new string(pair))));
         // The Windows server on its own PC (SWITCHBOARD.md 10.7, ServerPage.Desktop.cs).
         if (page is not null)
         {
@@ -200,7 +206,7 @@ internal sealed partial class NetworkHost : IAsyncDisposable
     internal string PublicKeyPin => ReportInstaller.PublicKeyPin(certificate);
 
     /// <summary>How many connections are in the door now, and how many were let go unread because it was full.</summary>
-    public int Pending => Volatile.Read(ref pending);
+    public int Pending => Volatile.Read(ref pending) + Volatile.Read(ref relayPending);
     public int Dropped => Volatile.Read(ref dropped);
 
     /// <summary>How many requests have been refused at the door.</summary>
@@ -465,9 +471,11 @@ internal sealed partial class NetworkHost : IAsyncDisposable
 
     private async Task DoorAsync(ConnectionContext connection, ConnectionDelegate next)
     {
-        if (Interlocked.Increment(ref pending) > options.MaxPending)
+        var relayed = connection.Items.ContainsKey(RelayKey);
+        ref var waiting = ref relayed ? ref relayPending : ref pending;
+        if (Interlocked.Increment(ref waiting) > options.MaxPending)
         {
-            Interlocked.Decrement(ref pending);
+            Interlocked.Decrement(ref waiting);
             // Unread and unanswered: whoever fills the door does not get to take the rest of the server's time.
             Drop(connection, "pending");
             return;
@@ -476,11 +484,11 @@ internal sealed partial class NetworkHost : IAsyncDisposable
         var source = PairingCodes.Key((connection.RemoteEndPoint as IPEndPoint)?.Address);
         if (!EnterSource(source))
         {
-            Interlocked.Decrement(ref pending);
+            Interlocked.Decrement(ref waiting);
             Drop(connection, "pending_address");
             return;
         }
-        var ticket = new DoorTicket(this, source);
+        var ticket = new DoorTicket(this, source, relayed);
         connection.Items[DoorKey] = ticket;
         try { await next(connection).ConfigureAwait(false); }
         finally { ticket.Leave(); }
@@ -710,7 +718,20 @@ internal sealed partial class NetworkHost : IAsyncDisposable
 
     private static bool Relayed(HttpContext context) => context.Features.Get<IConnectionItemsFeature>()?.Items.ContainsKey(RelayKey) == true;
     // The private relay socket authenticates the tailnet path before TLS; an address or HTTP header cannot do that.
-    private bool FromTrustedNetwork(HttpContext context) => Relayed(context) || (options.HomeCheck ?? ServerPage.FromHome)(context.Connection.RemoteIpAddress);
+    private bool FromTrustedNetwork(HttpContext context) => Relayed(context) || FromHome(context);
+
+    // A request that came through a reverse proxy (SWAG, Nginx Proxy Manager, Cloudflare's tunnel) arrives from the proxy's private address whoever sent
+    // it, so the home check would let the internet in. The server is never meant to sit behind one (SWITCHBOARD.md); a request that says it did is refused.
+    private bool FromHome(HttpContext context)
+    {
+        if (ServerPage.Proxied(context.Request))
+        {
+            if (Interlocked.Exchange(ref proxiedLogged, 1) == 0) log("server network refused reason=proxied");
+            return false;
+        }
+        return (options.HomeCheck ?? ServerPage.FromHome)(context.Connection.RemoteIpAddress);
+    }
+    private int proxiedLogged;
 
     private async Task RefuseAsync(HttpContext context, int status, string reason, string? word = null)
     {

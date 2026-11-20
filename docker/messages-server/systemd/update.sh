@@ -6,8 +6,8 @@
 #   - a newer stable release, from the address in /etc/messages-server/update (MESSAGES_RELEASE_URL=https://.../
 #     messages-server-linux-x64.tar.gz, with its .sha256 at the same address plus .sha256). install.sh writes the
 #     stable release's address there; an empty one downloads nothing. The package is
-#     checked against its .sha256 before anything is stopped, and installed by its own install.sh, which keeps the
-#     data, keys, sign-ins, paired devices and Google's setting.
+#     checked against its .sha256 and its signature (.sig, by the release key below) before anything is stopped, and
+#     installed by its own install.sh, which keeps the data, keys, sign-ins, paired devices and Google's setting.
 #   - a newer stable Google Chrome, when Google is on here (install.sh --google): Chrome is replaced only while the
 #     server is stopped, since a running Chrome whose files were replaced cannot start its next renderer.
 #
@@ -18,6 +18,10 @@ set -eu
 app=/opt/messages-server
 settings=/etc/messages-server/update
 dropin=/etc/systemd/system/messages-server.service.d/google.conf
+
+# The key every release package is signed with (package-linux.sh). This script runs as root and installs what it downloads, and
+# the .sha256 comes from the same place as the package, so only the signature says the release's owner made it.
+signer='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIASDuy6t9lRx7d8PjcN7n7aYxvFR9AJkzDQA1z1huRWg'
 
 say() { echo "update: $*"; }
 fail() { echo "update: $*" >&2; exit 1; }
@@ -56,6 +60,7 @@ if [ -n "$url" ]; then
         *) fail "MESSAGES_RELEASE_URL in $settings is not an https:// address; nothing was updated." ;;
     esac
     command -v curl >/dev/null 2>&1 || fail "curl is missing; install it (apt-get install curl) for updates."
+    command -v ssh-keygen >/dev/null 2>&1 || fail "ssh-keygen is missing; install it (apt-get install openssh-client) for updates."
     curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --max-time 120 -o "$work/package.sha256" "$url.sha256" \
         || fail "could not fetch $url.sha256; nothing was updated."
     want=$(cut -d ' ' -f 1 "$work/package.sha256" | head -n 1 | tr 'A-F' 'a-f')
@@ -70,6 +75,11 @@ if [ -n "$url" ]; then
         curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --max-time 1800 -o "$work/package.tar.gz" "$url" \
             || fail "could not download $url; nothing was updated."
         echo "$want  $work/package.tar.gz" | sha256sum -c --status - || fail "the download does not match its .sha256; nothing was updated."
+        curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --max-time 120 -o "$work/package.tar.gz.sig" "$url.sig" \
+            || fail "could not fetch $url.sig; nothing was updated."
+        printf 'message-link-release %s\n' "$signer" > "$work/allowed-signers"
+        ssh-keygen -Y verify -f "$work/allowed-signers" -I message-link-release -n message-link-package -s "$work/package.tar.gz.sig" \
+            < "$work/package.tar.gz" >/dev/null 2>&1 || fail "the download is not signed by the release key; nothing was updated."
         mkdir "$work/package"
         tar -xzf "$work/package.tar.gz" -C "$work/package" --no-same-owner
         for folder in "$work/package"/messages-server-*-linux-x64; do

@@ -78,7 +78,11 @@ func (a *adapter) sendEncryptedMedia(ctx context.Context, key int64, staged []by
 	if kind.shape == "audio" {
 		kind.seconds = seconds
 	}
-	data, width, height := preparePicture(staged, mime)
+	data, width, height, ok := preparePicture(staged, mime)
+	if !ok {
+		logf("sendMedia chat=%s encrypted picture too large to prepare", tag(key))
+		return nil, "invalid_input"
+	}
 	logf("sendMedia chat=%s encrypted bytes=%d shape=%s dimensions=%v", tag(key), len(data), kind.shape, width != 0)
 	uploaded, err := crypto.client.Upload(ctx, data, kind.upload)
 	if err != nil {
@@ -146,7 +150,11 @@ func (a *adapter) sendEncryptedMediaBatch(ctx context.Context, key int64, staged
 	}
 	prepared := make([]preparedImage, 0, len(staged))
 	for index, original := range staged {
-		data, width, height := preparePicture(original, files[index].Mime)
+		data, width, height, ok := preparePicture(original, files[index].Mime)
+		if !ok {
+			logf("sendMediaBatch chat=%s encrypted picture too large to prepare index=%d", tag(key), index)
+			return nil, "invalid_input"
+		}
 		uploaded, err := crypto.client.Upload(ctx, data, whatsmeow.MediaImage)
 		if err != nil {
 			logf("sendMediaBatch chat=%s encrypted upload failed index=%d: %s", tag(key), index, scrub(err.Error()))
@@ -205,19 +213,32 @@ func mediaBatchMetadata(groupID string, size, index int) *waMsgApplication.Messa
 	}
 }
 
+// The largest picture decoded here to be re-encoded, the bounds a link preview's image is held to
+// (linkpreview_fetch.go). A header can claim any size, and decoding allocates for what it claims.
+const (
+	pictureMaxSide   = 16384
+	pictureMaxPixels = 40_000_000
+)
+
 // A picture's size, and the one encoding Messenger refuses. Anything that is not an image is handed back untouched.
-func preparePicture(data []byte, mime string) ([]byte, int, int) {
+// ok is false only for a PNG that needs re-encoding and is too large to decode: it is refused before anything is
+// uploaded, rather than sent in a colour model Messenger draws as a blank box.
+func preparePicture(data []byte, mime string) (_ []byte, width, height int, ok bool) {
 	if !strings.HasPrefix(strings.ToLower(mime), "image/") {
-		return data, 0, 0
+		return data, 0, 0, true
 	}
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return data, 0, 0
+		return data, 0, 0, true
 	}
 	// Messenger will not display a PNG in certain colour models. Re-encoding alone is not enough: the encoder keeps
 	// a paletted or grey picture in the model it found, so the pixels are copied into an NRGBA image first. A picture
 	// that arrives as a blank box is worse than one sent a few kilobytes larger.
 	if strings.EqualFold(mime, "image/png") && config.ColorModel != color.NRGBAModel {
+		if config.Width < 1 || config.Height < 1 || config.Width > pictureMaxSide || config.Height > pictureMaxSide ||
+			int64(config.Width)*int64(config.Height) > pictureMaxPixels {
+			return data, 0, 0, false
+		}
 		if decoded, err := png.Decode(bytes.NewReader(data)); err == nil {
 			bounds := decoded.Bounds()
 			plain := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
@@ -228,7 +249,7 @@ func preparePicture(data []byte, mime string) ([]byte, int, int) {
 			}
 		}
 	}
-	return data, config.Width, config.Height
+	return data, config.Width, config.Height, true
 }
 
 // 400 is the size Messenger's own clients expect a cover to be described as. The field is not optional in practice:

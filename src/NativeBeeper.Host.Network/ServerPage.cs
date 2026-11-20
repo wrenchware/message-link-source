@@ -257,6 +257,13 @@ internal sealed partial class ServerPage
         System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
             .SelectMany(n => n.GetIPProperties().GatewayAddresses).Select(g => g.Address).ToArray());
 
+    /// <summary>Whether a request carries a reverse proxy's forwarding headers: then its address is the proxy's, not the sender's.</summary>
+    public static bool Proxied(HttpRequest request) =>
+        ProxyHeaders.Any(name => request.Headers.ContainsKey(name));
+
+    private static readonly string[] ProxyHeaders =
+        ["Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP", "Via", "CF-Connecting-IP", "True-Client-IP"];
+
     internal static bool FromHome(IPAddress? address, IReadOnlyList<IPAddress> gateways)
     {
         if (address is null) return false;

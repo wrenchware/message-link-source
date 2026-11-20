@@ -16,7 +16,7 @@ internal sealed partial class HermesBackend
 {
     internal const string ApprovalText = "Hermes needs your approval to run a command.";
     internal const string WaitingStatus = "Waiting for your approval";
-    internal const string CutRefusal = "This command is too long to show in full here, so it can only be denied. To run it, approve it in Hermes.";
+    internal const string CutRefusal = "This command can't be shown in full here, so it can only be denied. To run it, approve it in Hermes.";
     /// <summary>The longest an answer waits for Hermes before its outcome is unknown.</summary>
     internal TimeSpan AnswerTimeout { get; init; } = TimeSpan.FromSeconds(20);
     /// <summary>How often the typing line is said again while a request waits: a client drops it after two minutes.</summary>

@@ -83,13 +83,13 @@ ghcr.io container showing "not available" in Unraid's Docker tab). `docker logou
 restores it at boot (as `/boot/config/go` did) goes too.
 
 Copy the new `install-unraid.sh` beside the existing `install.env` (the publisher also copies it). No source archive
-is needed for this mode. With Chrome's sandbox:
+is needed for this mode. Chrome runs in its own sandbox (README, Chrome's sandbox):
 
 ```sh
-bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --chrome-sandbox
+bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr
 ```
 
-Use `--ghcr` alone for Chrome without its sandbox. The script pulls and
+Add `--no-chrome-sandbox` for Chrome without its sandbox, on a kernel that can't give it one. The script pulls and
 checks install assets before replacing the running container, retains its data and keys, and saves a matching Unraid
 user template. That template keeps the LAN bind, Google options, limits and shutdown timeout when Unraid recreates
 the container. The sandbox profile stays at `/boot/config/plugins/dockerMan/messages-server/chrome-seccomp.json`.
@@ -288,12 +288,12 @@ no more than 64 open connections in all.
 
 ## Chrome's sandbox
 
-By default the image runs Chrome with `--no-sandbox`, because a container with every capability dropped cannot give
-Chrome the user namespaces its sandbox is made of. Chrome runs as the same account that can read the keys volume, so a page's
-code that broke out of a renderer would have every provider's secrets. `--chrome-sandbox` turns the sandbox on:
+Chrome runs as the same account that can read the keys volume, so a page's code that broke out of a renderer would have
+every provider's secrets. A container with every capability dropped can't give Chrome the user namespaces its sandbox is
+made of, so `install-unraid.sh` widens Docker's filter just enough, and does so by default (since 2026-11-19):
 
 ```sh
-bash /mnt/user/tmp/messages-server/install-unraid.sh --chrome-sandbox
+bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr
 ```
 
 What it changes, and nothing more: the container is started with `docker/messages-server/chrome-seccomp.json` (Docker's own
@@ -316,13 +316,17 @@ that broke out of a renderer would reach every sign-in on the server.
 
 **What you must do on Unraid:** nothing, if the kernel allows unprivileged user namespaces, which the script checks first
 (`cat /proc/sys/user/max_user_namespaces` must be above 0, as it is on Unraid's stock kernel). If it
-says they are off, leave the sandbox off.
+says they are off, enable them, or run it with `--no-chrome-sandbox` to keep Chrome without its sandbox.
 
-**To check it**: install with `--chrome-sandbox`; the install output shows the
+**Docker Compose** (`compose.yaml`) still runs Chrome without its sandbox (`MESSAGES_CHROMIUM_NO_SANDBOX: "1"`). To turn it
+on, remove that line and add `security_opt: ["seccomp=./chrome-seccomp.json"]` beside the other `security_opt` lines,
+with `chrome-seccomp.json` from this folder next to `compose.yaml`.
+
+**To check it**: install as above; the install output shows the
 `server google` lines. Wait about a minute after Chrome starts and look for `google chrome sandbox=active` in
 `docker logs messages-server`. Then sign in as usual and check that the Google pairing renews. If Chrome does not start, the log says
 why (`sandbox_unavailable`, or `google chrome start=failed`; Chrome's own message is in `last-chrome-error.log` on the keys volume).
-To go back, run the script again without `--chrome-sandbox`: it is the same data and the same sign-in.
+To go back, run the script again with `--no-chrome-sandbox`: it is the same data and the same sign-in.
 
 ## Pairing code and fingerprint
 
@@ -362,6 +366,19 @@ password itself. The page then walks you through Tailscale, your accounts, a pho
 screen each and every one skippable; a checklist on the front page keeps what is left until it is done or hidden. A
 restart prints a new code until the password is set. Forgot the password? Set `MESSAGES_ADMIN_PASSWORD` (below) and start
 the server again: it wins over the kept one.
+
+**Check the page's certificate once.** The page uses the server's own certificate, which a browser can't check, so it
+warns on the first visit. Someone else on the network could put up a page that warns the same way and collect the
+password. Before you type it the first time, compare the certificate's SHA-256 fingerprint (the lock or warning icon in
+the address bar, then the certificate's details) with the line the server prints at start: `server page certificate
+sha256=AB CD ...` (`docker logs messages-server 2>&1 | grep "page certificate"`). The certificate lives in the keys
+volume, so the fingerprint stays the same across updates; a browser that suddenly warns again about a different one is
+a reason to stop and check. Reached through Tailscale, the connection is already the tailnet's own.
+
+**Not behind a reverse proxy.** The page, asking to join and Hermes reports are for the home network and the tailnet only.
+A reverse proxy (SWAG, Nginx Proxy Manager, Cloudflare's tunnel) would make every visitor look local, so the server
+refuses any request that carries a proxy's forwarding headers (`server network refused reason=proxied`). Use the
+tailnet to reach it from outside.
 
 To set the password where the server is installed instead, set `MESSAGES_ADMIN_PASSWORD`: in Unraid, edit the container, choose **Add another Path, Port, Variable,
 Label or Device**, pick **Variable**, give it the key `MESSAGES_ADMIN_PASSWORD`, set **Password Mask** to Yes, enter the

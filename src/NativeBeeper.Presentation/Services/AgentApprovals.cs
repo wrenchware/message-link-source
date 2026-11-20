@@ -21,8 +21,8 @@ public static class AgentApprovals
     public static string? Reason(AgentApproval approval) => approval.Description is { Length: > 0 } why ? "Reason: " + why : null;
 
     public const string AdvisedText = "Hermes's safety check advised against running it.";
-    /// <summary>On a command too long to keep whole (AgentApproval.Cut): what is shown isn't all of it, so it can only be denied here.</summary>
-    public const string CutText = "This command is too long to show in full here, so it can only be denied. To run it, approve it in Hermes.";
+    /// <summary>On a command too long to keep whole, or with characters that don't show (AgentApproval.Cut): what is shown isn't all of it, so it can only be denied here.</summary>
+    public const string CutText = "This command can't be shown in full here, so it can only be denied. To run it, approve it in Hermes.";
 
     /// <summary>Whether Approve is offered: answerable, and the whole command is shown.</summary>
     public static bool Approvable(AgentApproval approval, DateTimeOffset now) => Answerable(approval, now) && !approval.Cut;

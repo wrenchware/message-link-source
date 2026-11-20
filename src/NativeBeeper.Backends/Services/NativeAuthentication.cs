@@ -91,7 +91,7 @@ internal sealed class NativeAuthenticationHandoff(string root, IStateProtector p
             if (!target.Valid() || !authorized()) throw new InvalidOperationException();
             var id = Guid.NewGuid().ToString("N");
             var ticket = new NativeAuthenticationTicket("messages-auth-" + id, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow + Lifetime);
-            pipe = new(ticket.Pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            pipe = new(ticket.Pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
             path = NativeAuthenticationWire.TicketPath(root, id);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var plain = JsonSerializer.SerializeToUtf8Bytes(ticket);

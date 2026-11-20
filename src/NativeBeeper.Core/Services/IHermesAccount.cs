@@ -44,7 +44,10 @@ public sealed record HermesAccountState(string? Address, IReadOnlyList<HermesAge
 
 /// <summary>A profile as entered: a key or <paramref name="Title"/> of null keeps the one already saved for that profile. A blank title names the thread
 /// after the profile ("Hermes" for the default, HermesThreads.DefaultTitle); a profile name is lowercase with no spaces, so the owner may give the thread one of their own.</summary>
-public sealed record HermesProfileInput(string Name, string? Key, string? Title = null);
+public sealed record HermesProfileInput(string Name, string? Key, string? Title = null)
+{
+    public override string ToString() => $"HermesProfileInput {{ Name = {Name}, Key = {(Key is { Length: > 0 } ? "set" : "none")} }}";
+}
 
 public interface IHermesAccount
 {

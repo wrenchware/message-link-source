@@ -58,6 +58,25 @@ public sealed partial class ProtocolDispatcher
 
     private sealed record MediaKey(MessageAttachment Attachment, bool Inline, bool Save);
 
+    /// <summary>
+    /// The most media fetches one connection runs at once. The cache bounds what it keeps, not fetches still running: without this, a client could start
+    /// as many whole-file reads as it has requests in flight (each up to <see cref="MaxCopyBytes"/>) and take the host's memory. Chunks of one item share
+    /// its one fetch, so only distinct items wait here.
+    /// </summary>
+    public const int MaxMediaFetches = 4;
+    private readonly SemaphoreSlim mediaFetches = new(MaxMediaFetches, MaxMediaFetches);
+
+    private async Task<byte[]> FetchMediaAsync(MediaReadParams parameters, CancellationToken cancellationToken)
+    {
+        await mediaFetches.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await (parameters.Save ? CopyOutAsync(parameters.Attachment, cancellationToken)
+                : services.Media!.ReadImageAsync(parameters.Attachment, cancellationToken, parameters.Inline)).ConfigureAwait(false);
+        }
+        finally { mediaFetches.Release(); }
+    }
+
     private async Task<byte[]> ReadMediaAsync(RequestFrame request, CancellationToken cancellationToken)
     {
         var parameters = ReadParams<MediaReadParams>(request);
@@ -68,8 +87,7 @@ public sealed partial class ProtocolDispatcher
         var key = OperationJournal.Fingerprint(ProtocolMethods.MediaRead, ProtocolJson.ToElement(new MediaKey(parameters.Attachment, parameters.Inline, parameters.Save)));
         // A backend's "media_unavailable" is the word a picture's tile and the viewer decide on (MediaAnswers), so it crosses as the code word it is
         // (Coded) and not as the generic internal error, which left a remote tile saying Failed for what is only "not yet" (2026-10-12).
-        var bytes = await readCache.GetAsync(key, token => Coded(() => parameters.Save ? CopyOutAsync(parameters.Attachment, token)
-            : services.Media!.ReadImageAsync(parameters.Attachment, token, parameters.Inline)), cancellationToken).ConfigureAwait(false);
+        var bytes = await readCache.GetAsync(key, token => Coded(() => FetchMediaAsync(parameters, token)), cancellationToken).ConfigureAwait(false);
         if (parameters.Offset > bytes.LongLength) throw Invalid("That is past the end.");
         var count = (int)Math.Min(parameters.Count, bytes.LongLength - parameters.Offset);
         if (parameters.Offset + count >= bytes.LongLength) readCache.Finish(key);

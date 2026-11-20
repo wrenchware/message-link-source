@@ -57,8 +57,8 @@ func TestPreparePictureReadsSizeAndFixesRefusedPNG(t *testing.T) {
 	if png.Encode(&encoded, paletted) != nil {
 		t.Fatal("could not build the test picture")
 	}
-	data, width, height := preparePicture(encoded.Bytes(), "image/png")
-	if width != 7 || height != 3 {
+	data, width, height, ok := preparePicture(encoded.Bytes(), "image/png")
+	if !ok || width != 7 || height != 3 {
 		t.Fatalf("size read as %dx%d", width, height)
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(data))
@@ -69,9 +69,21 @@ func TestPreparePictureReadsSizeAndFixesRefusedPNG(t *testing.T) {
 		t.Fatal("the refused colour model survived")
 	}
 	// Anything that is not a picture is handed on untouched and unmeasured.
-	same, w, h := preparePicture([]byte("not a picture"), "application/pdf")
-	if string(same) != "not a picture" || w != 0 || h != 0 {
+	same, w, h, ok := preparePicture([]byte("not a picture"), "application/pdf")
+	if !ok || string(same) != "not a picture" || w != 0 || h != 0 {
 		t.Fatalf("a document was altered: %q %dx%d", same, w, h)
+	}
+}
+
+// A PNG that would have to be decoded to be re-encoded, but claims more pixels than are ever decoded, is refused.
+func TestPreparePictureRefusesOversizedPNG(t *testing.T) {
+	wide := image.NewPaletted(image.Rect(0, 0, pictureMaxSide+1, 1), color.Palette{color.Black, color.White})
+	var encoded bytes.Buffer
+	if png.Encode(&encoded, wide) != nil {
+		t.Fatal("could not build the test picture")
+	}
+	if _, _, _, ok := preparePicture(encoded.Bytes(), "image/png"); ok {
+		t.Fatal("an oversized picture was accepted")
 	}
 }
 

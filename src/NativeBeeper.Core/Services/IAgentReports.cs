@@ -65,7 +65,11 @@ public interface IAgentReports
 
 /// <summary>What an add code's command sends besides the report token: the profile's API key, and where the server might reach Hermes (each <c>host:port</c>,
 /// tried after any address already saved), with <paramref name="PeerPort"/> the port to try at the address the request came from, when Hermes is reached there.</summary>
-public sealed record AgentAddRequest(string Key, IReadOnlyList<string> Addresses, int? PeerPort);
+public sealed record AgentAddRequest(string Key, IReadOnlyList<string> Addresses, int? PeerPort)
+{
+    // The key never reaches a string: a log line, debugger view or exception that prints the record shows the rest.
+    public override string ToString() => $"AgentAddRequest {{ Addresses = {Addresses.Count}, PeerPort = {PeerPort} }}";
+}
 
 /// <summary>A setup code as issued: the code (shown once), its one-way id and when it stops working.</summary>
 public sealed record AgentSetupIssue(string Code, string Id, DateTimeOffset Expires);

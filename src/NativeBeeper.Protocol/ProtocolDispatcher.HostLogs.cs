@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace NativeBeeper.Protocol;
 
-// host.logs (ProtocolMethods.HostLogs.cs): served only to a connection that negotiated version 18, by a host that keeps logs to give, and only to the owner
-// device (checked before the port is reached, as for the account move). A name off the fixed list never reaches the port at all. Nothing is logged but a refusal.
+// host.logs (ProtocolMethods.HostLogs.cs): served only to a connection that negotiated version 18, by a host that keeps logs to give, to any paired
+// device (ServerLogChecks): the logs carry fixed words, states and one-way tags only. A name off the fixed list never reaches the port at all. Nothing is logged but a refusal.
 public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddHostLogsRoutes(Dictionary<string, Route> routes)

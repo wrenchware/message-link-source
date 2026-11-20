@@ -100,7 +100,7 @@ class InstallerChecks(unittest.TestCase):
             saved = ET.parse(template).getroot() if template.exists() else None
             if saved is not None:
                 profiles = list((root / 'boot/config/plugins/dockerMan/messages-server').glob('*.json'))
-                if '--chrome-sandbox' in options:
+                if '--no-chrome-sandbox' not in options:
                     self.assertEqual(len(profiles), 1)
                     self.assertIn(str(profiles[0]), saved.findtext('ExtraParams'))
             return result, calls, saved
@@ -119,7 +119,7 @@ class InstallerChecks(unittest.TestCase):
                 self.assertIsNone(template)
 
     def test_ghcr_variants_keep_runtime_settings_and_template(self):
-        for options, tag in [((), 'latest'), (('--chrome-sandbox',), 'latest')]:
+        for options, tag in [((), 'latest'), (('--chrome-sandbox',), 'latest'), (('--no-chrome-sandbox',), 'latest')]:
             with self.subTest(options=options):
                 result, calls, template = self.run_install('--ghcr', *options,
                     extra={'MESSAGES_MEMORY': '5g', 'MESSAGES_PIDS_LIMIT': '2345', 'MESSAGES_CPUS': '1.5',
@@ -162,7 +162,8 @@ class InstallerChecks(unittest.TestCase):
                     self.assertIn(flag, parameters)
                 for key in ['MESSAGES_GOOGLE', 'MESSAGES_GOOGLE_CHROME', 'MESSAGES_CHROMIUM_HEADED', 'MESSAGES_NETWORK_ISOLATED']:
                     self.assertEqual(configs[key], '1')
-                self.assertEqual('MESSAGES_CHROMIUM_NO_SANDBOX' in configs, '--chrome-sandbox' not in options)
+                # Chrome's sandbox is the default (2026-11-19); only --no-chrome-sandbox turns it off.
+                self.assertEqual('MESSAGES_CHROMIUM_NO_SANDBOX' in configs, '--no-chrome-sandbox' in options)
 
     def test_tailnet_auth_key_goes_by_name_and_is_never_saved(self):
         key = 'tskey-auth-kSynthetic0CNTRL-secret'
@@ -587,16 +588,19 @@ import json, os, shutil, sys
 a = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as log:
     log.write(json.dumps(a) + '\n')
-if a[0] == 'pull':
-    sys.exit(0)
-if a[0] == 'create':
-    print('synthetic-container')
-elif a[0] == 'container' and a[1] == 'inspect':
-    print(os.environ.get('IMAGE_REVISION', ''))
-elif a[0] == 'cp':
-    assert a[1] == 'synthetic-container:/app/.', a
-    shutil.copytree(os.environ['IMAGE_APP'], a[2], symlinks=True, dirs_exist_ok=True)
-elif a[0] == 'rm':
+if a[:2] == ['buildx', 'create']:
+    assert '--driver' in a and a[a.index('--driver') + 1] == 'remote', a
+elif a[:3] == ['buildx', 'imagetools', 'inspect']:
+    revision = os.environ.get('IMAGE_REVISION', '')
+    labels = {'org.opencontainers.image.revision': revision} if revision else {}
+    print(json.dumps({'linux/amd64': {'config': {'Labels': labels}}}))
+elif a[:2] == ['buildx', 'build']:
+    output = a[a.index('--output') + 1]
+    assert output.startswith('type=local,dest='), a
+    dockerfile = open(a[a.index('-f') + 1]).read()
+    assert 'COPY --from=image /app/ /' in dockerfile, dockerfile
+    shutil.copytree(os.environ['IMAGE_APP'], output[len('type=local,dest='):], symlinks=True, dirs_exist_ok=True)
+elif a[:2] == ['buildx', 'rm']:
     pass
 else:
     sys.exit('unexpected docker ' + ' '.join(a))
@@ -711,8 +715,12 @@ class LinuxPackageChecks(unittest.TestCase):
         bin_dir.mkdir(exist_ok=True)
         (bin_dir / 'docker').write_text(PACKAGE_DOCKER)
         (bin_dir / 'docker').chmod(0o755)
+        key = folder / 'signing-key'
+        if not key.exists():
+            subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'synthetic', '-f', str(key)], check=True)
         env = {'PATH': str(bin_dir) + ':/usr/local/bin:/usr/bin:/bin', 'CALLS': str(folder / 'calls'), 'IMAGE_APP': str(app),
-               'IMAGE_REVISION': revision, 'GITHUB_OUTPUT': str(folder / 'output'), 'TMPDIR': str(folder)}
+               'IMAGE_REVISION': revision, 'GITHUB_OUTPUT': str(folder / 'output'), 'TMPDIR': str(folder),
+               'MESSAGES_PACKAGE_SIGNING_KEY': str(key)}
         env.update(extra_env or {})
         return subprocess.run(['bash', str(PACKAGE_SCRIPT), '--image', image, '--commit', COMMIT, '--time', str(COMMIT_TIME),
                                '--source', str(source), '--out', str(out)], env=env, capture_output=True, text=True)
@@ -727,8 +735,16 @@ class LinuxPackageChecks(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             name = 'messages-server-0.1.453-linux-x64'
             self.assertEqual(sorted(path.name for path in out.iterdir()),
-                             sorted([name + '.tar.gz', name + '.tar.gz.sha256', 'messages-server-linux-x64.tar.gz',
-                                     'messages-server-linux-x64.tar.gz.sha256', 'install-proxmox.sh']))
+                             sorted([name + '.tar.gz', name + '.tar.gz.sha256', name + '.tar.gz.sig', 'messages-server-linux-x64.tar.gz',
+                                     'messages-server-linux-x64.tar.gz.sha256', 'messages-server-linux-x64.tar.gz.sig', 'install-proxmox.sh']))
+            # Signed by the key it was given, as update.sh and install-proxmox.sh check it, under both names.
+            public = (folder / 'signing-key.pub').read_text().split()
+            (folder / 'allowed').write_text('message-link-release ' + public[0] + ' ' + public[1] + '\n')
+            for signed in [name + '.tar.gz', 'messages-server-linux-x64.tar.gz']:
+                with open(out / signed, 'rb') as body:
+                    verify = subprocess.run(['ssh-keygen', '-Y', 'verify', '-f', str(folder / 'allowed'), '-I', 'message-link-release',
+                                             '-n', 'message-link-package', '-s', str(out / (signed + '.sig'))], stdin=body, capture_output=True)
+                self.assertEqual(verify.returncode, 0, verify.stderr)
             archive = out / (name + '.tar.gz')
             data = archive.read_bytes()
             self.assertEqual(data[:3], b'\x1f\x8b\x08')
@@ -742,11 +758,17 @@ class LinuxPackageChecks(unittest.TestCase):
             self.assertEqual((out / 'install-proxmox.sh').read_bytes(),
                              (ROOT / 'docker/messages-server/proxmox/install-proxmox.sh').read_bytes().replace(b'\r\n', b'\n'))
             self.assertIn('version=0.1.453\npackage=' + name + '\nsha256=' + digest + '\n', (folder / 'output').read_text())
-            # Pulled and created as linux/amd64 by digest, and the container removed with its volumes.
+            # Read through BuildKit alone (the runner has no Docker socket): linux/amd64 by digest, and the builder removed after.
             calls = [json.loads(line) for line in (folder / 'calls').read_text().splitlines()]
-            self.assertEqual(calls[0], ['pull', '--quiet', '--platform', 'linux/amd64', PACKAGE_IMAGE])
-            self.assertEqual(calls[1], ['create', '--platform', 'linux/amd64', PACKAGE_IMAGE])
-            self.assertEqual(calls[-1], ['rm', '-f', '-v', 'synthetic-container'])
+            self.assertTrue(all(call[0] == 'buildx' for call in calls), calls)
+            self.assertEqual(calls[0][:2], ['buildx', 'create'])
+            self.assertEqual(calls[0][-1], 'unix:///run/buildkit/buildkitd.sock')
+            builder = calls[0][calls[0].index('--name') + 1]
+            self.assertEqual(calls[1], ['buildx', 'imagetools', 'inspect', '--builder', builder, PACKAGE_IMAGE, '--format', '{{ json .Image }}'])
+            build = calls[2]
+            self.assertEqual(build[:2], ['buildx', 'build'])
+            self.assertEqual(build[build.index('--platform') + 1], 'linux/amd64')
+            self.assertEqual(calls[-1], ['buildx', 'rm', builder])
 
             with tarfile.open(archive, 'r:gz') as tar:
                 members = tar.getmembers()
@@ -827,12 +849,35 @@ class LinuxPackageChecks(unittest.TestCase):
                 published = [path.name for path in out.iterdir()] if out.exists() else []
                 self.assertFalse([name for name in published if name.endswith('.sha256')], published)
 
+    def test_a_package_is_never_made_unsigned(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            app, _ = self.fake_app(folder)
+            source = self.fake_source(folder)
+            out = folder / 'out'
+            result = self.package(folder, app, source, out, extra_env={'MESSAGES_PACKAGE_SIGNING_KEY': ''})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('MESSAGES_PACKAGE_SIGNING_KEY', result.stderr)
+            self.assertFalse(out.exists() and any(out.iterdir()))
+
+    def test_the_updater_and_the_proxmox_installer_trust_one_release_key(self):
+        import re
+        keys = {path.name: re.findall(r"^signer='(ssh-ed25519 [A-Za-z0-9+/=]+)'$", path.read_text(), re.M)
+                for path in [ROOT / 'docker/messages-server/systemd/update.sh', ROOT / 'docker/messages-server/proxmox/install-proxmox.sh']}
+        self.assertTrue(all(len(found) == 1 for found in keys.values()), keys)
+        self.assertEqual(len({found[0] for found in keys.values()}), 1, keys)
+        update = (ROOT / 'docker/messages-server/systemd/update.sh').read_text()
+        # Checked after the .sha256 and before anything is stopped or installed.
+        self.assertLess(update.index('sha256sum -c'), update.index('ssh-keygen -Y verify'))
+        self.assertLess(update.index('ssh-keygen -Y verify'), update.index('systemctl stop messages-server'))
+
     def built_assets(self, folder, version='0.1.453', body=b'package'):
         assets = folder / 'assets'
         assets.mkdir()
         import hashlib
         for name in ['messages-server-' + version + '-linux-x64.tar.gz', 'messages-server-linux-x64.tar.gz']:
             (assets / name).write_bytes(body)
+            (assets / (name + '.sig')).write_text('signature of ' + name + '\n')
             (assets / (name + '.sha256')).write_text(hashlib.sha256(body).hexdigest() + '  ' + name + '\n')
         (assets / 'install-proxmox.sh').write_text('#!/usr/bin/env bash\n')
         return assets
@@ -890,7 +935,8 @@ class LinuxPackageChecks(unittest.TestCase):
             self.assertIn(PACKAGE_IMAGE, release['notes'])
             self.assertLessEqual(len(release['notes'].splitlines()), 2)
             self.assertEqual(set(release['assets']), {'messages-server-0.1.453-linux-x64.tar.gz', 'messages-server-0.1.453-linux-x64.tar.gz.sha256',
-                                                      'messages-server-linux-x64.tar.gz', 'messages-server-linux-x64.tar.gz.sha256', 'install-proxmox.sh'})
+                                                      'messages-server-0.1.453-linux-x64.tar.gz.sig', 'messages-server-linux-x64.tar.gz',
+                                                      'messages-server-linux-x64.tar.gz.sha256', 'messages-server-linux-x64.tar.gz.sig', 'install-proxmox.sh'})
             self.assertEqual(after['latest'], tag)
             kinds = [call[1] if call[0] == 'release' else 'api' for call in calls]
             self.assertLess(kinds.index('create'), kinds.index('upload'))

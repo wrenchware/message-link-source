@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -699,7 +700,11 @@ func serve(in io.Reader, out io.Writer) {
 	dispatch(in, o, a.callContext)
 }
 
-func main() { serve(os.Stdin, os.Stdout) }
+func main() {
+	// Runtime dumps can contain private protocol buffers. Never print them.
+	debug.SetTraceback("none")
+	serve(os.Stdin, os.Stdout)
+}
 
 // Cookies that Google issues for a short time or derives from the others. A saved session can outlive them, and sending
 // a stale one may be refused even though the long-lived session cookies are still good.

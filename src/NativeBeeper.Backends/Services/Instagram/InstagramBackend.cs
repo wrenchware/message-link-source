@@ -497,7 +497,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         // hand; the list is only ever told about a conversation because this read it a moment ago.
         if (DateTimeOffset.UtcNow - chatsReadAt <= ListFreshness
             && chats.FirstOrDefault(chat => chat.Id == native) is { } current) return known.Map(current);
-        if (IsConnected && helper is { } started)
+        if (IsConnected && helper is { } started && askedReads.TryTake(DateTimeOffset.UtcNow, "chat"))
         {
             try
             {
@@ -532,6 +532,8 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
         if (helper is not { } started || !IsConnected) throw NotConnected("read");
         async Task<InstagramMessagePage> AskAsync(CancellationToken token)
         {
+            if (!askedReads.TryTake(DateTimeOffset.UtcNow, olderThan is null ? "newest" : "older"))
+                throw new BackendException(BackendFailure.RateLimited, "Instagram conversations were read too often. Try again in a minute.");
             var result = await started.CallAsync("ui.messages",
                 new { chatId = known.NativeChat(chatId), olderThan = olderThan is null ? null : known.NativeChat(olderThan), count = 20 }, token);
             return result.Deserialize<InstagramMessagePage>(Json) ?? new([], false, null);
@@ -561,6 +563,7 @@ internal sealed partial class InstagramBackend : IBeeperBackend, IChatReader, IR
 
     // Newest-page reads shared and reused, and how many were answered without asking Instagram since the last ledger line.
     private readonly InstagramNewestReads newestReads = new();
+    private readonly InstagramAskedReads askedReads = new();
     private long threadsReused;
 
     // Something about a conversation was announced or changed by this app: its next newest-page read asks Instagram again.

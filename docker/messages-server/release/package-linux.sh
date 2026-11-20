@@ -6,6 +6,10 @@
 #   messages-server-linux-x64.tar.gz and its .sha256: the same package under the name a release's "latest" address gives,
 #     which install-proxmox.sh and the nightly update (update.sh) fetch
 #   install-proxmox.sh, from the same commit
+#   a .sig beside each package: an SSH signature (ssh-keygen -Y, namespace message-link-package) by the key in the file
+#     MESSAGES_PACKAGE_SIGNING_KEY names, which update.sh and install-proxmox.sh check against the public key they carry. The
+#     .sha256 comes from the same release as the package, so it shows the download is whole, not who made it; the signature
+#     does (security review, 2026-11-19).
 #
 # The programs are the image's own /app, not a rebuild, so a stable package holds exactly what ran as that nightly: the
 # server published self-contained, mlink, the four helpers, the tailnet door and the licences. The image's install folder
@@ -17,7 +21,9 @@
 #   package-linux.sh --image ghcr.io/<owner>/messages-server@sha256:<64 hex> --commit <40 hex> \
 #                    --time <the commit's time, Unix seconds> --source <checkout of that commit> --out <new folder>
 #
-# The image is public: it is pulled with no login, as a server pulls it.
+# The image is public: it is read with no login, as a server pulls it. It is read through BuildKit alone (MESSAGES_BUILDKIT, the
+# buildkit container's socket beside the runner): the runner has no Docker socket, which would hand every workflow step the host's
+# containers and the live server's keys (security review, 2026-11-19).
 set -euo pipefail
 
 fail() { echo "package-linux: $*" >&2; exit 1; }
@@ -44,6 +50,8 @@ done
 [[ "$when" =~ ^[0-9]{1,12}$ ]] || fail "--time must be the commit's time in Unix seconds."
 [ -n "$source" ] && [ -d "$source" ] || fail "--source must be a checkout of the image's commit."
 [ -n "$out" ] || fail "--out is needed."
+signing_key=${MESSAGES_PACKAGE_SIGNING_KEY:-}
+[ -n "$signing_key" ] && [ -s "$signing_key" ] || fail "MESSAGES_PACKAGE_SIGNING_KEY must name the package signing key's file; a package is never made unsigned."
 if [ -e "$out" ] && [ -n "$(ls -A "$out")" ]; then fail "$out is not empty."; fi
 
 project="$source/src/NativeBeeper.App/NativeBeeper.App.csproj"
@@ -65,24 +73,34 @@ required=(messages-server mlink messenger-helper instagram-helper gmessages-help
 install_files=(install.sh uninstall.sh update.sh messages-server.service messages-server-update.service messages-server-update.timer google.conf README.md)
 
 work=$(mktemp -d)
-container=""
+builder=""
 cleanup() {
-    if [ -n "$container" ]; then docker rm -f -v "$container" >/dev/null 2>&1 || true; fi
+    if [ -n "$builder" ]; then docker buildx rm "$builder" >/dev/null 2>&1 || true; fi
     rm -rf "$work"
 }
 trap cleanup EXIT
 stage="$work/stage/$name"
 mkdir -p "$stage"
 
-# ---- The image's /app, from linux/amd64 of the index, without starting it. ----
-docker pull --quiet --platform linux/amd64 "$image" >/dev/null
-container=$(docker create --platform linux/amd64 "$image")
-[ -n "$container" ] || fail "docker create gave no container."
-revision=$(docker container inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$container")
+# ---- The image's /app, from linux/amd64 of the index, without starting it: BuildKit copies it out as files. ----
+builder="messages-package-$$"
+docker buildx create --name "$builder" --driver remote "${MESSAGES_BUILDKIT:-unix:///run/buildkit/buildkitd.sock}" >/dev/null \
+    || fail "could not reach BuildKit at ${MESSAGES_BUILDKIT:-unix:///run/buildkit/buildkitd.sock}."
+config=$(docker buildx imagetools inspect --builder "$builder" "$image" --format '{{ json .Image }}') || fail "could not read $image."
+# An index answers one image per platform; a single image answers itself.
+revision=$(python3 -I -c '
+import json, sys
+image = json.loads(sys.stdin.read() or "null")
+if isinstance(image, dict) and "linux/amd64" in image: image = image["linux/amd64"]
+labels = ((image or {}).get("config") or {}).get("Labels") or {}
+print(labels.get("org.opencontainers.image.revision", ""))' <<<"$config")
 [ "$revision" = "$commit" ] || fail "the image was built from ${revision:-an unnamed commit}, not $commit."
-docker cp "$container:/app/." "$stage"
-docker rm -f -v "$container" >/dev/null
-container=""
+mkdir -p "$work/context"
+printf 'FROM %s AS image\nFROM scratch\nCOPY --from=image /app/ /\n' "$image" > "$work/Dockerfile"
+docker buildx build --builder "$builder" --platform linux/amd64 --provenance=false --sbom=false --pull \
+    --output "type=local,dest=$stage" -f "$work/Dockerfile" "$work/context" >/dev/null 2>&1 || fail "BuildKit could not copy /app out of $image."
+docker buildx rm "$builder" >/dev/null 2>&1 || true
+builder=""
 
 rm -rf "$stage/install"
 odd=$(find "$stage" ! -type f ! -type d | head -n 5)
@@ -168,6 +186,9 @@ hash=$(sha256sum "$archive" | cut -d ' ' -f 1)
 printf '%s  %s\n' "$hash" "$name.tar.gz" > "$archive.sha256"
 cp "$archive" "$out/messages-server-linux-x64.tar.gz"
 printf '%s  %s\n' "$hash" "messages-server-linux-x64.tar.gz" > "$out/messages-server-linux-x64.tar.gz.sha256"
+# One signature serves both names: it covers the bytes, not the name.
+ssh-keygen -Y sign -q -f "$signing_key" -n message-link-package "$archive" || fail "could not sign the package."
+cp "$archive.sig" "$out/messages-server-linux-x64.tar.gz.sig"
 sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$proxmox" > "$out/install-proxmox.sh"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then

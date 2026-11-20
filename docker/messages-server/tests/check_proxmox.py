@@ -128,10 +128,23 @@ elif name == 'uname':
 elif name == 'curl':
     url = a[-1]
     out = a[a.index('-o') + 1]
-    served = {os.environ['SERVED']: os.environ['PACKAGE'], os.environ['SERVED'] + '.sha256': os.environ['PACKAGE'] + '.sha256'}
+    served = {os.environ['SERVED']: os.environ['PACKAGE'], os.environ['SERVED'] + '.sha256': os.environ['PACKAGE'] + '.sha256',
+              os.environ['SERVED'] + '.sig': os.environ['PACKAGE'] + '.sig'}
     if url not in served:
         sys.exit(22)
     shutil.copyfile(served[url], out)
+elif name == 'ssh-keygen':
+    # A signature check: good when the allowed signer is the script's own release key and the .sig says it signed these bytes.
+    assert a[:2] == ['-Y', 'verify'], a
+    allowed = open(a[a.index('-f') + 1]).read()
+    script = open(os.environ['SCRIPT']).read()
+    key = [line for line in script.splitlines() if line.startswith("signer='")][0][len("signer='"):-1]
+    body = sys.stdin.buffer.read()
+    signature = open(a[a.index('-s') + 1]).read()
+    import hashlib
+    good = allowed == 'message-link-release ' + key + '\n' and a[a.index('-n') + 1] == 'message-link-package' \
+        and signature == 'signed ' + hashlib.sha256(body).hexdigest() + '\n'
+    sys.exit(0 if good else 255)
 elif name == 'whiptail':
     # Takes the shown default, or the call named in WHIPTAIL_CANCEL (1-based) returns Cancel. Answers go to stderr, as
     # whiptail's do. WHIPTAIL_ANSWERS gives answers by title.
@@ -150,7 +163,7 @@ elif name == 'whiptail':
         sys.stderr.write(a[a.index('--default-item') + 1])
 '''
 
-COMMANDS = ['pct', 'pveam', 'pvesm', 'pvesh', 'pveversion', 'whiptail', 'curl', 'ip', 'id', 'uname', 'chown']
+COMMANDS = ['pct', 'pveam', 'pvesm', 'pvesh', 'pveversion', 'whiptail', 'curl', 'ip', 'id', 'uname', 'chown', 'ssh-keygen']
 
 
 def package(folder, google=True):
@@ -169,6 +182,8 @@ def package(folder, google=True):
                 archive.addfile(info)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     Path(str(path) + '.sha256').write_text(f'{digest}  {path.name}\n')
+    # What the ssh-keygen stand-in takes as the release key's signature of these bytes.
+    Path(str(path) + '.sig').write_text(f'signed {digest}\n')
     return path, digest
 
 
@@ -199,7 +214,7 @@ class ProxmoxChecks(unittest.TestCase):
             target.write_text(content)
         env = {
             'PATH': f'{commands}:/usr/bin:/bin', 'STATE': str(state), 'CT_ROOT': str(root / 'ct'),
-            'SERVED': RELEASE, 'PACKAGE': str(built), 'TERM': 'xterm', 'HOME': str(root), 'TEST_ROOT': str(root),
+            'SERVED': RELEASE, 'PACKAGE': str(built), 'TERM': 'xterm', 'HOME': str(root), 'TEST_ROOT': str(root), 'SCRIPT': str(SCRIPT),
         }
         env.update(extra or {})
         arguments = ['bash', str(root / 'install-proxmox.sh'), *options]
@@ -230,7 +245,7 @@ class ProxmoxChecks(unittest.TestCase):
         result, calls, notes, root, _, digest = self.run_script('--yes')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         downloads = [call[-1] for call in calls if call[0] == 'curl']
-        self.assertEqual(downloads, [RELEASE, RELEASE + '.sha256'])
+        self.assertEqual(downloads, [RELEASE, RELEASE + '.sha256', RELEASE + '.sig'])
         [create] = self.created(calls)
         self.assertEqual(create[2], '105')
         self.assertEqual(create[3], 'local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst')
@@ -263,7 +278,7 @@ class ProxmoxChecks(unittest.TestCase):
         self.assertIn('`pct exec 105 -- update`', notes)
         self.assertIn('`pct exec 105 -- journalctl -u messages-server -f`', notes)
         out = result.stdout
-        self.assertIn(f'{CHECK} Message Link Server {VERSION}, checked against its .sha256', out)
+        self.assertIn(f'{CHECK} Message Link Server {VERSION}, checked against its .sha256 and its signature', out)
         self.assertIn(f'{CHECK} Made container 105', out)
         self.assertIn('Its page:      https://192.0.2.50:8787/', out)
         self.assertIn('Setup code:    ABCD-EFGH', out)
@@ -328,6 +343,16 @@ class ProxmoxChecks(unittest.TestCase):
             seed={'112/etc/messages-server/update': '# The nightly update.\nMESSAGES_RELEASE_URL=\n'})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f'MESSAGES_RELEASE_URL={RELEASE}\n', (root / 'ct/112/etc/messages-server/update').read_text())
+
+    def test_a_package_not_signed_by_the_release_key_changes_nothing(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        given, _ = package(folder.name)
+        Path(str(given) + '.sig').write_text('signed by someone else\n')
+        result, calls, *_ = self.run_script('--yes', '--tarball', str(given))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('not signed by the release key', result.stderr)
+        self.assertFalse([call for call in calls if call[0] == 'pct' and call[1] != 'list'])
 
     def test_a_mismatched_package_changes_nothing(self):
         folder = tempfile.TemporaryDirectory()

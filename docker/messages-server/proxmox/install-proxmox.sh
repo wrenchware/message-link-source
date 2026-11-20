@@ -199,6 +199,14 @@ invalid() { # invalid <message>: with whiptail, says so and the question is aske
 }
 
 # ---- The package ----
+# The key every release package is signed with (package-linux.sh, update.sh). The .sha256 comes from the same release as the
+# package; only the signature says the release's owner made it. A downloaded package must carry it; a file given with --tarball
+# (a test build) is checked when a .sig is beside it.
+signer='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIASDuy6t9lRx7d8PjcN7n7aYxvFR9AJkzDQA1z1huRWg'
+signed() {
+    printf 'message-link-release %s\n' "$signer" > "$work/allowed-signers"
+    ssh-keygen -Y verify -f "$work/allowed-signers" -I message-link-release -n message-link-package -s "$1" < "$package" >/dev/null 2>&1
+}
 package="$work/messages-server.tar.gz"
 if [ -z "$tarball" ]; then tarball="$RELEASE_URL"; fi
 # A package given with --tarball (a test build, usually newer than stable) is kept: the nightly update would put the
@@ -209,6 +217,7 @@ case "$tarball" in
         step "Downloading Message Link Server"
         curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$package" "$tarball" 2>>"$log" || fail "could not download $tarball."
         curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$work/package.sha256" "$tarball.sha256" 2>>"$log" || fail "could not download $tarball.sha256, which the package is checked against."
+        curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$work/package.sig" "$tarball.sig" 2>>"$log" || fail "could not download $tarball.sig, the package's signature."
         ;;
     http://*|ftp://*) fail "the package must come over https." ;;
     *)
@@ -216,6 +225,7 @@ case "$tarball" in
         [ -f "$tarball" ] || fail "no file $tarball."
         cp "$tarball" "$package"
         if [ -f "$tarball.sha256" ]; then cp "$tarball.sha256" "$work/package.sha256"; fi
+        if [ -f "$tarball.sig" ]; then cp "$tarball.sig" "$work/package.sig"; fi
         ;;
 esac
 sha=$(sha256sum "$package" | cut -d ' ' -f 1)
@@ -224,6 +234,11 @@ if [ -f "$work/package.sha256" ]; then
     want=$(cut -d ' ' -f 1 "$work/package.sha256" | head -n 1 | tr 'A-F' 'a-f')
     [ "$want" = "$sha" ] || fail "the package does not match its .sha256; nothing was changed."
     checked=", checked against its .sha256"
+fi
+if [ -f "$work/package.sig" ]; then
+    command -v ssh-keygen >/dev/null 2>&1 || fail "ssh-keygen is missing on this host; install openssh-client and run this again."
+    signed "$work/package.sig" || fail "the package is not signed by the release key; nothing was changed."
+    checked="$checked and its signature"
 fi
 top=$(tar -tzf "$package" 2>/dev/null | head -n 1 | cut -d / -f 1) || true
 [[ "$top" =~ ^messages-server-[0-9A-Za-z.+-]+-linux-x64$ ]] || fail "$tarball is not a Message Link Server package (messages-server-<version>-linux-x64.tar.gz)."
@@ -651,7 +666,7 @@ done_step "Container $ctid is running"
 wait_for_network
 step "Installing Debian's updates"
 quiet in_ct bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get upgrade -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
-    apt-get install -y -qq --no-install-recommends ca-certificates curl unattended-upgrades' \
+    apt-get install -y -qq --no-install-recommends ca-certificates curl openssh-client unattended-upgrades' \
     || fail "Debian's updates did not install."
 done_step "Debian is up to date"
 

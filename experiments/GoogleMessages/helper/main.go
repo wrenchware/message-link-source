@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -130,6 +131,13 @@ func (a *adapter) init(auth *libgm.AuthData) {
 
 // Everything libgm reports while connected. A method rather than a closure in init so a test can hand it an event.
 func (a *adapter) handleEvent(evt any) {
+	// This runs on libgm's own goroutine, where a panic would end the helper: an event it cannot handle is dropped,
+	// and only a fixed line says so, since the panic's value can carry message data.
+	defer func() {
+		if recover() != nil && a.out != nil {
+			a.out.write(response{Event: "library", Result: libraryLine{Level: "error", Message: "Event handler failed"}})
+		}
+	}()
 	if state, ok := classifyConnectionEvent(evt); ok {
 		a.noteConnection(state)
 	}
@@ -371,4 +379,8 @@ func serve(in io.Reader, out io.Writer) {
 	}()
 	dispatch(in, o, a.serveCall)
 }
-func main() { serve(os.Stdin, os.Stdout) }
+func main() {
+	// Runtime dumps can contain private protocol buffers. Never print them.
+	debug.SetTraceback("none")
+	serve(os.Stdin, os.Stdout)
+}

@@ -4,14 +4,14 @@
 # (tools\Publish-ServerBundle.ps1 puts both in a share). Run it from Unraid's terminal:
 #
 #   bash /mnt/user/tmp/messages-server/install-unraid.sh
-#   bash /mnt/user/tmp/messages-server/install-unraid.sh --chrome-sandbox   # with Chrome's own sandbox on (README, Chrome's sandbox)
-#   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --chrome-sandbox
+#   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr
+#   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --no-chrome-sandbox   # Chrome without its own sandbox (README, Chrome's sandbox)
 #
 # The one image is Debian with official Google Chrome (SWITCHBOARD.md stage 11; 4.3, 5.4): always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
-# Messages on. Chromium runs without its own sandbox there, chosen for the 5.4 test (2026-10-09):
-# the container drops every capability, so the sandbox cannot start, and the browser then loaded only Google's own sites
-# (docs/research/google-linux-renewal.md). Since 10.5 it also opens Facebook's and Instagram's sign-ins, so --chrome-sandbox
-# is the safer choice; the Community Applications template keeps the sandbox by default (docs/release.md). It also runs Chromium headed, with a window on a virtual display (Xvfb, one
+# Messages on. Chrome runs in its own sandbox by default since 2026-11-19 (security review; the owner's server had run it so
+# since 2026-10-14): it opens Google's, Facebook's and Instagram's sign-ins as the account that can read every key, so a page
+# that broke out of an unsandboxed renderer would have them all. --no-chrome-sandbox keeps the 5.4 test's choice
+# (2026-10-09, docs/research/google-linux-renewal.md) for a kernel without unprivileged user namespaces. It also runs Chromium headed, with a window on a virtual display (Xvfb, one
 # per browser run, inside the container): the headless browser loaded Google's page signed in but Google never rotated
 # its sign-in cookie (5.4, 2026-10-10). The log says headed=yes on `server google enabled` and each `google browser`
 # line, and the keeper's `browser early=` lines now appear in `docker logs`.
@@ -28,13 +28,15 @@ bundle="$here/messages-source.tar.gz"
 # rewritten by every publish, and sits on a share): a reinstall keeps the running container's (see below).
 [ -f "$here/install.env" ] && . "$here/install.env"
 
-chrome_sandbox=0
+chrome_sandbox=1
 ghcr=0
 for arg in "$@"; do
     case "$arg" in
+        # Still taken, from the days the sandbox was the choice to make: it is the default now.
         --chrome-sandbox) chrome_sandbox=1 ;;
+        --no-chrome-sandbox) chrome_sandbox=0 ;;
         --ghcr) ghcr=1 ;;
-        *) echo "Unknown option: $arg (the options are --chrome-sandbox and --ghcr)." >&2; exit 1 ;;
+        *) echo "Unknown option: $arg (the options are --ghcr and --no-chrome-sandbox)." >&2; exit 1 ;;
     esac
 done
 if [ "$ghcr" = 0 ]; then
@@ -56,18 +58,18 @@ if [ "$ghcr" = 1 ]; then
     fi
     image="$repository:$tag"
 fi
-# --chrome-sandbox: Chrome with its own sandbox on, not the owner's 2026-10-09 choice of no sandbox (docs/research/google-linux-renewal.md). Chrome runs as the account that can read the keys
+# Chrome with its own sandbox on (the default; --no-chrome-sandbox is the owner's 2026-10-09 choice of none, docs/research/google-linux-renewal.md). Chrome runs as the account that can read the keys
 # volume, so a page's code that broke out of a renderer would have everything; the sandbox is what stops that. It needs unprivileged user namespaces, which Docker's default seccomp profile
 # refuses a container with no capability, so the container is run with chrome-seccomp.json (Docker's default profile plus chroot, clone, setns and unshare) instead of getting
 # SYS_ADMIN or --privileged, and MESSAGES_CHROMIUM_NO_SANDBOX=1 is left out. The server then checks it can make a user namespace before it starts Chrome, and the log says
-# `google chrome sandbox=active` once a page's renderers are seen filtered. Without the option nothing changes. Checked here first, so a kernel that cannot do it is said before anything is built.
+# `google chrome sandbox=active` once a page's renderers are seen filtered. Checked here first, so a kernel that cannot do it is said before anything is built.
 seccomp_args=()
 if [ "$chrome_sandbox" = 1 ]; then
     userns="$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 0)"
     case "$userns" in ''|*[!0-9]*) userns=0 ;; esac
     if [ "$userns" -le 0 ] || [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 1)" = 0 ]; then
         echo "This server's kernel does not allow unprivileged user namespaces (user.max_user_namespaces=$userns), which Chrome's sandbox is built from." >&2
-        echo "Run without --chrome-sandbox to keep Chrome without its sandbox, or enable them in the kernel first (README, Chrome's sandbox)." >&2
+        echo "Enable them in the kernel first, or run again with --no-chrome-sandbox to keep Chrome without its sandbox (README, Chrome's sandbox)." >&2
         exit 1
     fi
     # The same environment without the switch that turns the sandbox off.
