@@ -45,7 +45,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 - **The welcome** is the first screen until something is set up. It says what Message Link is and offers three ways in:
   - **Sign in on this PC** opens Settings → Connections to sign in here; see [Connecting your services](#connecting).
   - **Connect to a Message Link Server** joins a server you already run, which keeps your accounts connected on a computer at home, for this PC and your phone alike; see [Using a Message Link Server](#messages-server).
-  - **Try sample conversations** shows Message Link with made-up people; see [Sample conversations](#sample-conversations).
+  - **Try sample conversations** opens a demo with example conversations; see [Sample conversations](#sample-conversations).
 - **Until something is set up**, whatever needs an account says so where you're looking, with **Sign in on this PC** beside it: **New chat** (<kbd>Ctrl+N</kbd>), search, the tray menu's **New chat** and the taskbar's tasks. The tray's **Open Message Link** brings back the welcome, and **Settings** opens Settings.
 - **Once an account connects** or you join a server, the welcome is gone for good. If you later sign out of everything, the conversation list offers **Add an account** instead.
 - **The welcome's last line** says Message Link is also available for Android, with a Message Link Server; **Learn more** opens the Message Link website.
@@ -68,7 +68,7 @@ Each service's details, limits and fixes are in [What each service can do](#serv
 
 **Try sample conversations** on the welcome lets you try Message Link before connecting anything.
 
-- Message Link closes and opens again over made-up people and chats on all four services: friends, family and groups, one person on two services linked into one conversation, three labels, and archived and spam conversations. A banner across the top says "Sample conversations — nothing here is real".
+- Message Link closes and opens again on a demo with example conversations on all four services: friends, family and groups, one person on two services linked into one conversation, three labels, and archived and spam conversations. A banner across the top says "Sample conversations — nothing here is real".
 - **Nothing is sent.** The message box says so instead of sending, and a reaction, a new chat or a new group says the same rather than happening. Settings won't sign in to a service, join a server or restore a backup here.
 - **Your own data stays closed.** The sample keeps its own temporary folder, which is removed when it ends. It shows no notifications, has no tray icon or taskbar menu, and doesn't start with Windows.
 - **Leave sample** in the banner opens Message Link again on the welcome. Closing the window ends the sample too.
