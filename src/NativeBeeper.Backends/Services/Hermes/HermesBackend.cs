@@ -35,6 +35,8 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
     private static readonly string[] ImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
     private readonly HermesStore store;
+    // Report tokens, setup and add codes, and their limits: who may post to a thread outside a turn.
+    private readonly HermesReportAccess access;
     private readonly HermesClient client;
     private readonly TimeProvider clock;
     private readonly Action<string> log;
@@ -62,6 +64,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         this.clock = clock ?? TimeProvider.System;
         this.log = log ?? AppLog.Write;
         this.store.Log ??= this.log;
+        access = new(this.store, this.clock, this.log, MaxProfiles);
         // No redirects: a 307 would carry the turn and its pictures to another host. A buffered answer (models, approvals, errors, the session read)
         // is a few kilobytes; the cap keeps an address that answers without end from filling the server's memory.
         client = new HermesClient(http ?? new HttpClient(new SocketsHttpHandler
@@ -118,17 +121,11 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         {
             // Taken as loaded only once the whole load is through: one that faulted after them reads both again.
             var settingsHeld = read is null ? settingsPending : store.SettingsHeld;
-            if (read is not null) settings = read;
+            if (read is not null) access.Commit(read, () => settings = read);
             var reportsHeld = reportsPending;
-            if (reportsPending)
-            {
-                reportTokens = await store.ReadReportTokensAsync().ConfigureAwait(false);
-                reportsHeld = store.ReportTokensHeld;
-            }
-            // Only against settings that loaded with profiles: an unreadable settings file reads as none, and pruning against that would revoke every live token
-            // for good (code review, 2026-11-15). Removing every profile forgets the tokens itself, before the settings are saved.
-            if (settings.Profiles.Count > 0 && reportTokens.Rows.Any(r => !settings.Profiles.Any(p => p.Name == r.Profile)))
-                await ForgetReportTokensAsync([.. reportTokens.Rows.Select(r => r.Profile).Where(name => !settings.Profiles.Any(p => p.Name == name)).Distinct()]).ConfigureAwait(false);
+            if (reportsPending) reportsHeld = await access.ReadTokensAsync().ConfigureAwait(false);
+            // Removing every profile forgets the tokens itself, before the settings are saved.
+            await access.PruneAsync().ConfigureAwait(false);
             if (read is not null)
                 foreach (var profile in settings.Profiles)
                     if (await store.ReadThreadAsync(profile.Name).ConfigureAwait(false) is { } thread)
@@ -202,19 +199,17 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
             foreach (var profile in kept)
                 if (addressChanged || settings.Profiles.FirstOrDefault(p => p.Name == profile.Name)?.Key != profile.Key) statuses.TryRemove(profile.Name, out _);
             foreach (var gone in removed) statuses.TryRemove(gone, out _);
-            // A removed profile's report token goes with it, first: a crash before the settings are saved must not leave a token that the same profile
-            // name added again would bring back (code review, 2026-11-15). Load drops any row whose profile is gone, too.
-            // Its waiting setup code too, or the profile added again under the same name within ten minutes would take it.
-            foreach (var gone in removed) DropSetupCodes(gone);
-            await ForgetReportTokensAsync(removed).ConfigureAwait(false);
+            // A removed profile's report token, codes and limits go with it, the token saved first (load drops any row whose profile is gone, too). A changed
+            // address or key keeps them: the token is the profile's.
+            await access.ProfilesGoneAsync(removed).ConfigureAwait(false);
             await store.SaveSettingsAsync(next).ConfigureAwait(false);
             var titled = kept.Where(p => settings.Profiles.Any(old => old.Name == p.Name) && (settings.Profiles.First(old => old.Name == p.Name).Title ?? DefaultTitle(p.Name))
                 != (p.Title ?? DefaultTitle(p.Name))).Select(p => p.Name).ToArray();
-            lock (setupLock)
+            access.Commit(next, () =>
             {
                 committed?.Invoke();
                 settings = next;
-            }
+            });
             // Hermes's messages carry the thread's name as their sender, and the server's history keeps them: a rename names each of them again, or the copy
             // there would keep the old name, its conversation not having moved since.
             foreach (var name in titled)
