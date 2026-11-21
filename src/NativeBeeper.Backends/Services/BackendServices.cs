@@ -49,6 +49,7 @@ public static class BackendServices
         collection.AddSingleton<IHermesAccount>(sp => sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>());
         collection.AddSingleton<IHermesPrompts>(sp => sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>());
         collection.AddSingleton<ProviderAccounts>();
+        collection.AddSingleton<ConversationOwners>();
         collection.AddSingleton<MessagingRouter>();
         collection.AddSingleton<DirectoryRouter>();
         collection.AddSingleton<TypingRouter>();

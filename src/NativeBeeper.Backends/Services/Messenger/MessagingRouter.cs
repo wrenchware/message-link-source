@@ -1,61 +1,29 @@
 using NativeBeeper.App.Services.GoogleMessages;
-using NativeBeeper.App.Services.GoogleVoice;
 using NativeBeeper.Core.Messaging;
 using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.App.Services.Messenger;
 
-// One chat list from every network. Anything with a Messenger id goes to the Messenger backend, anything with a Google
-// Voice id to the Voice accounts, and everything else stays with Google Messages. Messages, actions, deletion and provider
-// archive state all follow the owning conversation.
-internal sealed partial class MessagingRouter(GoogleMessagesBackend google, MessengerBackend messenger, GoogleVoiceBackend voice,
-    NativeBeeper.App.Services.Instagram.InstagramBackend instagram, NativeBeeper.Presentation.Services.PrivateReading? reading = null,
-    NativeBeeper.App.Services.Hermes.HermesBackend? hermes = null)
+// One chat list from every network, and every call about one conversation passed to the service that owns its id
+// (ConversationOwners), which answers it or refuses it in its own words. An id no service owns is refused there.
+internal sealed partial class MessagingRouter(ConversationOwners owners, NativeBeeper.Presentation.Services.PrivateReading? reading = null)
     : IChatReader, ILinkPreviewLoader, IMessageSender, IReadStateWriter, IMessageActions, IMessageMutations, IChatSettingsBackend, IChatDeletion, IProviderConnectionState, IMessagePeek,
       IHistoryWindowReader
 {
-    internal ProviderAccounts? Accounts { get; set; }
-    private GoogleMessagesBackend Google(string id) => Accounts?.Google(id) ?? google;
-    private MessengerBackend Messenger(string id) => Accounts?.Messenger(id) ?? messenger;
-    private NativeBeeper.App.Services.Instagram.InstagramBackend InstagramAccount(string id) => Accounts?.Instagram(id) ?? instagram;
+    internal ProviderAccounts? Accounts { get => owners.Accounts; set => owners.Accounts = value; }
+    private IConversationService Owner(string id) => owners.Of(id);
+
     // A window around a moment is read where history is kept on this PC: Messenger's helper, and Google Messages' archive
     // for a conversation it has crawled to the beginning. Instagram and Voice search only what this session loaded, which
     // paging back reaches.
-    public bool CanReadWindow(string chatId) => !Herm(chatId) && (Mine(chatId) || !Insta(chatId) && !Voice(chatId) && Google(chatId).CanReadWindow(chatId));
+    public bool CanReadWindow(string chatId) => Owner(chatId).CanReadWindow(chatId);
 
     public Task<HistoryWindow> ReadWindowAsync(string chatId, DateTimeOffset at, int older, int newer, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Task.FromException<HistoryWindow>(new NotSupportedException("This conversation can't open at that message."))
-            : Mine(chatId) ? Messenger(chatId).ReadWindowAsync(chatId, at, older, newer, cancellationToken)
-            : !Insta(chatId) && !Voice(chatId) && Google(chatId).CanReadWindow(chatId) ? Google(chatId).ReadWindowAsync(chatId, at, older, newer, cancellationToken)
-            : Task.FromException<HistoryWindow>(new NotSupportedException("This conversation can't open at that message."));
+        => Owner(chatId).ReadWindowAsync(chatId, at, older, newer, cancellationToken);
 
-    // Google's archive and Instagram's newest pages answer this. Messenger's and Voice's openings wait for their read as
-    // before: Messenger's comes from its helper's memory within milliseconds, and the messages it delivers as it connects
-    // reach a merge's saved copy through their events.
+    // Google's archive and Instagram's newest pages answer this. Messenger's and Voice's openings wait for their read.
     public Task<HeldHistory?> ReadHeldAsync(string chatId, DateTimeOffset after, int limit, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Task.FromResult<HeldHistory?>(null)
-            : Insta(chatId) ? InstagramAccount(chatId).ReadHeldAsync(chatId, after, limit, cancellationToken)
-            : !Mine(chatId) && !Voice(chatId) ? Google(chatId).ReadHeldAsync(chatId, after, limit, cancellationToken)
-            : Task.FromResult<HeldHistory?>(null);
-
-    private static bool Mine(string id) => MessengerModels.Owns(id);
-    private static bool Voice(string id) => GoogleVoiceModels.Owns(id);
-    private static bool Insta(string id) => NativeBeeper.App.Services.Instagram.InstagramIdentity.OwnsAny(id);
-    private static bool Herm(string id) => HermesIds.Owns(id);
-    // Hermes answers only for its own threads: text and pictures in, its reply out. Everything else is refused by name rather than
-    // left to fall through to Google Messages, and nothing here hands it another conversation (the owner's privacy line, 2026-11-14).
-    private NativeBeeper.App.Services.Hermes.HermesBackend H => hermes ?? throw Refused("Hermes isn't available here.");
-    internal static NativeBeeper.Core.Backend.BackendException Refused(string words) => new(NativeBeeper.Core.Backend.BackendFailure.Unsupported, words);
-    private static Task Herms(string what) => Task.FromException(Refused($"Hermes in Message Link cannot {what}."));
-    private static Task<T> Herms<T>(string what) => Task.FromException<T>(Refused($"Hermes in Message Link cannot {what}."));
-
-    // Instagram sends, replies, reacts, edits, takes back and marks read; changing a conversation's own settings and
-    // deleting one are not implemented. Each is named separately rather than left to fall through to Google Messages,
-    // which is what an unrecognized id does here.
-    private static Task Read(string what) =>
-        Task.FromException(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Message Link cannot {what}."));
-    private static Task<T> Read<T>(string what) =>
-        Task.FromException<T>(NativeBeeper.App.Services.Instagram.InstagramBackend.Refused($"Instagram in Message Link cannot {what}."));
+        => Owner(chatId).ReadHeldAsync(chatId, after, limit, cancellationToken);
 
     // Google Messages that was never paired on this PC is not set up: it has no conversations to add, nothing to connect
     // and nothing to report, whether or not any other network is signed in. It was expected whenever nothing else was,
@@ -64,26 +32,16 @@ internal sealed partial class MessagingRouter(GoogleMessagesBackend google, Mess
     // synchronization, which asks this again. A paired connection that is failing retains its cached rows and retry cursor.
     internal static bool GoogleMessagesExpected => GoogleSessionProfile.HasSavedSession;
 
-    public bool AnyConnected => (hermes?.AnyConnected ?? false) || (Accounts?.Googles.Any(g => g.CanReceive) ?? google.CanReceive) || (Accounts?.Messengers.Any(m => m.IsConnected) ?? messenger.IsConnected) || (Accounts?.Instagrams.Any(i => i.IsConnected) ?? instagram.IsConnected) || voice.AnyConnected;
-    public bool IsConnected(string chatId) => Herm(chatId) ? hermes?.IsConnected(chatId) == true : Insta(chatId) ? InstagramAccount(chatId).IsConnected
-        : Voice(chatId) ? voice.IsConnected(chatId) : Mine(chatId) ? Messenger(chatId).IsConnected : Google(chatId).CanReceive;
-    public bool IsScopeConnected(string scope) => AccountNamespace.KeyOf(scope) is not null ? IsConnected(scope) : scope switch
-    {
-        "google-direct:" => google.CanReceive,
-        "messenger:" => messenger.IsConnected,
-        "instagram:" => instagram.IsConnected,
-        HermesIds.Scope => hermes?.AnyConnected ?? false,
-        _ when Herm(scope) => hermes?.IsConnected(scope) == true,
-        _ => voice.IsScopeConnected(scope),
-    };
-    public bool IsConfigured(string scope) => Herm(scope) ? hermes?.Configured == true : scope.StartsWith("gvoice:", StringComparison.Ordinal) ? voice.IsConfigured(scope)
-        : scope.StartsWith("messenger:", StringComparison.Ordinal) ? Messenger(scope).SessionSaved
-        : scope.StartsWith("instagram:", StringComparison.Ordinal) ? InstagramAccount(scope).HasSavedSession : Google(scope).Files.SessionSaved;
-    public bool NeedsSignInOnly(string scope) => scope.StartsWith("google-direct:", StringComparison.Ordinal) && Google(scope).SignInExpired;
+    public bool AnyConnected => owners.Services.Any(service => service.AnyConnected);
+    public bool IsConnected(string chatId) => Owner(chatId).IsConnected(chatId);
+    public bool IsScopeConnected(string scope) => AccountNamespace.KeyOf(scope) is not null ? IsConnected(scope) : Owner(scope).IsScopeConnected(scope);
+    public bool IsConfigured(string scope) => Owner(scope).IsConfigured(scope);
+    public bool NeedsSignInOnly(string scope) => Owner(scope).NeedsSignInOnly(scope);
     private const string RetryGoogleFirst = "retry:first";
 
     private async Task<Page<ChatSummary>> LegacyChatsAsync(string? olderThan = null, CancellationToken cancellationToken = default)
     {
+        var (google, voice, instagram, messenger, hermes) = (owners.Google, owners.Voice, owners.Instagram, owners.Messenger, owners.Hermes);
         var expected = GoogleMessagesExpected;
         var empty = new Page<ChatSummary>([], false, null, null);
         var first = olderThan is null;
@@ -98,14 +56,14 @@ internal sealed partial class MessagingRouter(GoogleMessagesBackend google, Mess
         var googleTask = readGoogle ? NativeBeeper.Presentation.Services.PartialChatPages.ReadAsync(
             () => google.CanReceive ? google.GetChatsAsync(googleCursor == RetryGoogleFirst ? null : googleCursor, cancellationToken)
                 : Task.FromException<Page<ChatSummary>>(google.SignInSettling ? GoogleReadFailure.Renewing() : new InvalidOperationException("not_connected")),
-            "google-direct:", "Google Messages", googleCursor ?? RetryGoogleFirst, cancellationToken) : Task.FromResult(empty);
+            ServiceTags.GoogleMessages.Prefix, ServiceTags.GoogleMessages.Name, googleCursor ?? RetryGoogleFirst, cancellationToken) : Task.FromResult(empty);
         var voiceTask = voice.GetChatPageAsync(first ? null : combined!.Voice, cancellationToken);
         var instagramTask = first ? NativeBeeper.Presentation.Services.PartialChatPages.ReadAsync(
-            () => instagram.GetChatsAsync(null, cancellationToken), "instagram:", "Instagram", null, cancellationToken) : Task.FromResult(empty);
+            () => instagram.GetChatsAsync(null, cancellationToken), ServiceTags.Instagram.Prefix, ServiceTags.Instagram.Name, null, cancellationToken) : Task.FromResult(empty);
         var messengerTask = first ? NativeBeeper.Presentation.Services.PartialChatPages.ReadAsync(
-            () => messenger.GetChatsAsync(null, cancellationToken), "messenger:", "Messenger", null, cancellationToken) : Task.FromResult(empty);
+            () => messenger.GetChatsAsync(null, cancellationToken), ServiceTags.Messenger.Prefix, ServiceTags.Messenger.Name, null, cancellationToken) : Task.FromResult(empty);
         var hermesTask = first && hermes is not null ? NativeBeeper.Presentation.Services.PartialChatPages.ReadAsync(
-            () => hermes.GetChatsAsync(null, cancellationToken), HermesIds.Scope, HermesIds.Network, null, cancellationToken) : Task.FromResult(empty);
+            () => hermes.GetChatsAsync(null, cancellationToken), ServiceTags.Hermes.Prefix, ServiceTags.Hermes.Name, null, cancellationToken) : Task.FromResult(empty);
         await Task.WhenAll(googleTask, voiceTask, instagramTask, messengerTask, hermesTask);
         var chats = await googleTask;
         var (voiceChats, voiceNext, voiceFailed, voiceUnavailable) = await voiceTask;
@@ -125,102 +83,57 @@ internal sealed partial class MessagingRouter(GoogleMessagesBackend google, Mess
     }
 
     public async Task<ChatSummary> GetChatAsync(string chatId, CancellationToken cancellationToken = default)
-        => Observed(await (Herm(chatId) ? H.GetChatAsync(chatId, cancellationToken) : Insta(chatId) ? InstagramAccount(chatId).GetChatAsync(chatId, cancellationToken)
-            : Voice(chatId) ? voice.GetChatAsync(chatId, cancellationToken)
-            : Mine(chatId) ? Messenger(chatId).GetChatAsync(chatId, cancellationToken) : Google(chatId).GetChatAsync(chatId, cancellationToken)).ConfigureAwait(false));
+        => Observed(await Owner(chatId).GetChatAsync(chatId, cancellationToken).ConfigureAwait(false));
 
-    public async Task<Page<ChatMessage>> GetMessagesAsync(string chatId, string? olderThan = null, CancellationToken cancellationToken = default)
-    {
-        var page = await (Herm(chatId) ? H.GetMessagesAsync(chatId, olderThan, cancellationToken) : Insta(chatId) ? InstagramAccount(chatId).GetMessagesAsync(chatId, olderThan, cancellationToken)
-            : Voice(chatId) ? voice.GetMessagesAsync(chatId, olderThan, cancellationToken)
-            : Mine(chatId) ? Messenger(chatId).GetMessagesAsync(chatId, olderThan, cancellationToken) : Google(chatId).GetMessagesAsync(chatId, olderThan, cancellationToken));
-        // A page Google's or Instagram's helper has just read hands its messages out for this session, so their pictures
-        // can now be fetched (MediaNews): one waiting for exactly that asks again, and one refused after it is gone.
-        // Not Messenger's: its "unavailable" can be a Facebook address that expired and is being fetched again behind
-        // the answer, which a page read proves nothing about; its events and catch-up already say what it handed out.
-        if (!Herm(chatId) && (Insta(chatId) || !Voice(chatId) && !Mine(chatId)))
-            foreach (var read in page.Items.GroupBy(message => message.ChatId))
-                NativeBeeper.Presentation.Services.MediaNews.Read(read.Key, read.Select(message => message.Id));
-        return page;
-    }
+    public Task<Page<ChatMessage>> GetMessagesAsync(string chatId, string? olderThan = null, CancellationToken cancellationToken = default)
+        => Owner(chatId).GetMessagesAsync(chatId, olderThan, cancellationToken);
 
     public Task LoadLinkPreviewsAsync(string chatId, IReadOnlyList<string> messageIds, CancellationToken cancellationToken = default)
-        => Herm(chatId) || Insta(chatId) ? Task.CompletedTask
-            : Voice(chatId) ? Task.CompletedTask
-            : Mine(chatId) ? Messenger(chatId).LoadLinkPreviewsAsync(chatId, messageIds, cancellationToken)
-            : Google(chatId) is ILinkPreviewLoader previews ? previews.LoadLinkPreviewsAsync(chatId, messageIds, cancellationToken) : Task.CompletedTask;
+        => Owner(chatId).LoadLinkPreviewsAsync(chatId, messageIds, cancellationToken);
 
-    // Editing and taking back a message. Messenger can do both on either of its connections; Google Messages can
-    // remove a message but has no way to edit one, so that half stays refused by name. Google Voice can do neither.
     public Task EditAsync(string chatId, string messageId, string? originalText, string text, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms("edit a message") : Insta(chatId) ? InstagramAccount(chatId).EditAsync(chatId, messageId, originalText, text, cancellationToken)
-            : Voice(chatId) ? Task.FromException(GoogleVoiceBackend.Refused("Google Voice can't edit a sent message."))
-            : Mine(chatId) ? Messenger(chatId).EditAsync(chatId, messageId, originalText, text, cancellationToken)
-            : Google(chatId).EditAsync(chatId, messageId, originalText, text, cancellationToken);
+        => Owner(chatId).EditAsync(chatId, messageId, originalText, text, cancellationToken);
 
     public Task DeleteAsync(string chatId, string messageId, bool forEveryone, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms("remove a message") : Insta(chatId) ? InstagramAccount(chatId).DeleteAsync(chatId, messageId, forEveryone, cancellationToken)
-            : Voice(chatId) ? Task.FromException(GoogleVoiceBackend.Refused("Google Voice can't remove a sent message."))
-            : Mine(chatId) ? Messenger(chatId).DeleteAsync(chatId, messageId, forEveryone, cancellationToken)
-            : Google(chatId).DeleteAsync(chatId, messageId, forEveryone, cancellationToken);
+        => Owner(chatId).DeleteAsync(chatId, messageId, forEveryone, cancellationToken);
 
     public Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? H.GetSendPermissionAsync(chatId, cancellationToken) : Insta(chatId) ? InstagramAccount(chatId).GetSendPermissionAsync(chatId, cancellationToken)
-            : Voice(chatId) ? voice.GetSendPermissionAsync(chatId)
-            : Mine(chatId) ? Messenger(chatId).GetSendPermissionAsync(chatId, cancellationToken) : Google(chatId).GetSendPermissionAsync(chatId, cancellationToken);
+        => Owner(chatId).GetSendPermissionAsync(chatId, cancellationToken);
 
     public Task<SendReceipt> SendTextAsync(string chatId, string text, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? H.SendTextAsync(chatId, text, cancellationToken) : Insta(chatId) ? InstagramAccount(chatId).SendTextAsync(chatId, text, cancellationToken)
-            : Voice(chatId) ? voice.SendTextAsync(chatId, text, cancellationToken)
-            : Mine(chatId) ? Messenger(chatId).SendTextAsync(chatId, text, cancellationToken) : Google(chatId).SendTextAsync(chatId, text, cancellationToken);
+        => Owner(chatId).SendTextAsync(chatId, text, cancellationToken);
 
     public Task<ChatMessage> ResolveMessageAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? H.ResolveMessageAsync(chatId, messageId, cancellationToken) : Insta(chatId) ? InstagramAccount(chatId).ResolveMessageAsync(chatId, messageId, cancellationToken)
-            : Voice(chatId) ? voice.ResolveMessageAsync(chatId, messageId, cancellationToken)
-            : Mine(chatId) ? Messenger(chatId).ResolveMessageAsync(chatId, messageId, cancellationToken) : Google(chatId).ResolveMessageAsync(chatId, messageId, cancellationToken);
+        => Owner(chatId).ResolveMessageAsync(chatId, messageId, cancellationToken);
 
     // Routed like ResolveMessageAsync, but only ever into memory each backend already holds: no provider request, no
     // page, no conversation read. A merged id belongs to no service and has no messages of its own. A copy filed under
     // another conversation is not this one's.
-    public async ValueTask<ChatMessage?> PeekAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
-    {
-        if (NativeBeeper.Presentation.Services.MergedConversations.IsMerged(chatId)) return null;
-        ChatMessage? found;
-        try
-        {
-            found = Herm(chatId) ? hermes?.PeekMessage(chatId, messageId) : Insta(chatId) ? InstagramAccount(chatId).PeekMessage(messageId)
-                : Voice(chatId) ? voice.PeekMessage(chatId, messageId)
-                : Mine(chatId) ? await Messenger(chatId).PeekMessageAsync(chatId, messageId, cancellationToken)
-                : Google(chatId).PeekMessage(chatId, messageId);
-        }
-        catch (Exception) { return null; }
-        return found?.ChatId == chatId && found.Id == messageId ? found : null;
-    }
+    public ValueTask<ChatMessage?> PeekAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
+        => PeekAsync(chatId, messageId, whole: false, cancellationToken);
 
     // The same memory, whole copies only (IMessagePeek.PeekWholeAsync). Instagram leaves out the list's words for a photo
     // or a share; Google's, Voice's and Messenger's memory holds each message as their own resolve gives it, so theirs
-    // answer as above. Still never a request: Messenger's is its helper's own store, skipped when the pipe is busy.
-    // Instagram alone keeps some messages in part: the list's words for a photo or a share.
-    public bool HoldsPartialCopies(string chatId) => Insta(chatId);
-    public async ValueTask<ChatMessage?> PeekWholeAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
+    // answer as above.
+    public bool HoldsPartialCopies(string chatId) => Owner(chatId).HoldsPartialCopies;
+    public ValueTask<ChatMessage?> PeekWholeAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
+        => PeekAsync(chatId, messageId, whole: true, cancellationToken);
+
+    private async ValueTask<ChatMessage?> PeekAsync(string chatId, string messageId, bool whole, CancellationToken cancellationToken)
     {
         if (NativeBeeper.Presentation.Services.MergedConversations.IsMerged(chatId)) return null;
         ChatMessage? found;
         try
         {
-            found = Herm(chatId) ? hermes?.PeekMessage(chatId, messageId) : Insta(chatId) ? InstagramAccount(chatId).PeekWholeMessage(messageId)
-                : Voice(chatId) ? voice.PeekMessage(chatId, messageId)
-                : Mine(chatId) ? await Messenger(chatId).PeekMessageAsync(chatId, messageId, cancellationToken)
-                : Google(chatId).PeekMessage(chatId, messageId);
+            var owner = Owner(chatId);
+            found = whole ? await owner.PeekWholeAsync(chatId, messageId, cancellationToken) : await owner.PeekAsync(chatId, messageId, cancellationToken);
         }
         catch (Exception) { return null; }
         return found?.ChatId == chatId && found.Id == messageId ? found : null;
     }
 
     public Task<bool> CanMarkReadAsync(string chatId, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? hermes?.CanMarkReadAsync(chatId, cancellationToken) ?? Task.FromResult(false) : Insta(chatId) ? InstagramAccount(chatId).CanMarkReadAsync(chatId, cancellationToken)
-            : Voice(chatId) ? voice.CanMarkReadAsync(chatId)
-            : Mine(chatId) ? Messenger(chatId).CanMarkReadAsync(chatId, cancellationToken) : Google(chatId).CanMarkReadAsync(chatId, cancellationToken);
+        => Owner(chatId).CanMarkReadAsync(chatId, cancellationToken);
 
     // Every read marker reaches a service through here, and every one the app means to send comes through
     // PrivateReadingGate first. One for a private-reading service that did not is refused and logged, not sent.
@@ -229,12 +142,11 @@ internal sealed partial class MessagingRouter(GoogleMessagesBackend google, Mess
     // Whether the service was told (false: private reading kept it). A read it took is remembered for the drift check.
     private async Task<bool> TellReadAsync(string chatId, string messageId, CancellationToken cancellationToken)
     {
+        var owner = Owner(chatId);
         // Hermes keeps its read state here alone and tells no service, so private reading has nothing to hold back.
-        if (Herm(chatId)) { await H.MarkReadAsync(chatId, messageId, cancellationToken).ConfigureAwait(false); return true; }
+        if (!owner.TellsReads) { await owner.MarkReadAsync(chatId, messageId, cancellationToken).ConfigureAwait(false); return true; }
         if (NativeBeeper.Presentation.Services.PrivateReadingGate.Refuses(reading, chatId, "read")) return false;
-        await (Insta(chatId) ? InstagramAccount(chatId).MarkReadAsync(chatId, messageId, cancellationToken)
-            : Voice(chatId) ? voice.MarkReadAsync(chatId, cancellationToken)
-            : Mine(chatId) ? Messenger(chatId).MarkReadAsync(chatId, messageId, cancellationToken) : Google(chatId).MarkReadAsync(chatId, messageId, cancellationToken)).ConfigureAwait(false);
+        await owner.MarkReadAsync(chatId, messageId, cancellationToken).ConfigureAwait(false);
         Drift.Accepted(chatId, messageId);
         return true;
     }
@@ -245,46 +157,23 @@ internal sealed partial class MessagingRouter(GoogleMessagesBackend google, Mess
 
     private ChatSummary Observed(ChatSummary chat) { Drift.Observe(chat); return chat; }
 
-    public bool HasLocalActionOptions => ((IMessageActions)google).HasLocalActionOptions;
+    public bool HasLocalActionOptions => ((IMessageActions)owners.Google).HasLocalActionOptions;
 
     public Task<MessageActionOptions> GetOptionsAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Task.FromResult(new MessageActionOptions(false, [], [])) : Insta(chatId) ? InstagramAccount(chatId).GetOptionsAsync(chatId, messageId, cancellationToken)
-            : Voice(chatId) ? Task.FromResult(new MessageActionOptions(false, [], []))
-            : Mine(chatId) ? Messenger(chatId).GetOptionsAsync(chatId, messageId, cancellationToken) : Google(chatId).GetOptionsAsync(chatId, messageId, cancellationToken);
+        => Owner(chatId).GetOptionsAsync(chatId, messageId, cancellationToken);
 
     public Task<SendReceipt> ReplyAsync(string chatId, string messageId, string text, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms<SendReceipt>("reply to a message") : Insta(chatId) ? InstagramAccount(chatId).ReplyAsync(chatId, messageId, text, cancellationToken)
-            : Voice(chatId) ? Task.FromException<SendReceipt>(GoogleVoiceBackend.Refused("Google Voice doesn't support replies."))
-            : Mine(chatId) ? Messenger(chatId).ReplyAsync(chatId, messageId, text, cancellationToken) : Google(chatId).ReplyAsync(chatId, messageId, text, cancellationToken);
+        => Owner(chatId).ReplyAsync(chatId, messageId, text, cancellationToken);
 
     public Task ReactAsync(string chatId, string messageId, string reaction, bool remove, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms("react to a message") : Insta(chatId) ? InstagramAccount(chatId).ReactAsync(chatId, messageId, reaction, remove, cancellationToken)
-            : Voice(chatId) ? Task.FromException(GoogleVoiceBackend.Refused("Google Voice doesn't support reactions."))
-            : Mine(chatId) ? Messenger(chatId).ReactAsync(chatId, messageId, reaction, remove, cancellationToken) : Google(chatId).ReactAsync(chatId, messageId, reaction, remove, cancellationToken);
+        => Owner(chatId).ReactAsync(chatId, messageId, reaction, remove, cancellationToken);
 
-    public async Task<ChatSettings> GetSettingsAsync(string chatId, CancellationToken cancellationToken = default)
-        // Instagram's own archive is not an operation this build performs, so the conversation is described without
-        // offering to change it.
-        => Herm(chatId) ? new ChatSettings(await H.GetChatAsync(chatId, cancellationToken), false)
-            : Insta(chatId) ? new ChatSettings(await InstagramAccount(chatId).GetChatAsync(chatId, cancellationToken), false)
-            : Voice(chatId) ? new ChatSettings(await voice.GetChatAsync(chatId, cancellationToken), true)
-            : Mine(chatId) ? await Messenger(chatId).GetSettingsAsync(chatId, cancellationToken) : await Google(chatId).GetSettingsAsync(chatId, cancellationToken);
+    public Task<ChatSettings> GetSettingsAsync(string chatId, CancellationToken cancellationToken = default)
+        => Owner(chatId).GetSettingsAsync(chatId, cancellationToken);
 
     public Task<ChatSummary> SetAsync(string chatId, ChatSetting setting, bool value, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms<ChatSummary>("change what a conversation is") : Insta(chatId) ? Read<ChatSummary>("change what a conversation is")
-            : Voice(chatId) ? setting switch
-            {
-                ChatSetting.Archived => voice.SetArchivedAsync(chatId, value, cancellationToken),
-                ChatSetting.Spam when !value => voice.RemoveSpamAsync(chatId, cancellationToken),
-                ChatSetting.Spam => Task.FromException<ChatSummary>(GoogleVoiceBackend.Refused("Message Link can remove a Google Voice conversation from spam, but cannot mark one as spam.")),
-                _ => Task.FromException<ChatSummary>(GoogleVoiceBackend.Refused("That setting is kept on this PC only, not on Google Voice.")),
-            }
-            : Mine(chatId) ? Messenger(chatId).SetAsync(chatId, setting, value, cancellationToken) : Google(chatId).SetAsync(chatId, setting, value, cancellationToken);
+        => Owner(chatId).SetAsync(chatId, setting, value, cancellationToken);
 
     public Task DeleteChatAsync(string chatId, CancellationToken cancellationToken = default)
-        => Herm(chatId) ? Herms("delete a conversation") : Insta(chatId) ? Read("delete a conversation")
-            : Voice(chatId) ? voice.DeleteChatAsync(chatId, cancellationToken)
-            : Mine(chatId)
-            ? Messenger(chatId).DeleteChatAsync(chatId, cancellationToken)
-            : Google(chatId).DeleteChatAsync(chatId, cancellationToken);
+        => Owner(chatId).DeleteChatAsync(chatId, cancellationToken);
 }

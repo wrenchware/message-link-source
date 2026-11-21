@@ -1,26 +1,19 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using NativeBeeper.App.Services.GoogleMessages;
-using NativeBeeper.App.Services.Instagram;
 using NativeBeeper.Core.Services;
 
 namespace NativeBeeper.App.Services.Messenger;
 
 // Typing from every network into the one indicator, and this account's typing out to whichever network owns the
-// conversation.
-internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBackend messenger, InstagramBackend instagram,
-    NativeBeeper.Presentation.Services.ComposerActivity typing, NativeBeeper.Presentation.Services.PrivateReading? reading = null,
-    NativeBeeper.App.Services.Hermes.HermesBackend? hermes = null) : ITypingService, IComposerActivitySink
+// conversation (ConversationOwners). An id nobody owns goes nowhere: an Instagram conversation used to fall through to
+// Google Messages, whose id parsing threw on every typing burst.
+internal sealed class TypingRouter(ConversationOwners owners,
+    NativeBeeper.Presentation.Services.ComposerActivity typing, NativeBeeper.Presentation.Services.PrivateReading? reading = null) : ITypingService, IComposerActivitySink
 {
-    internal ProviderAccounts? Accounts { get; set; }
-    private GoogleMessagesBackend Google(string id) => Accounts?.Google(id) ?? google;
-    private MessengerBackend Messenger(string id) => Accounts?.Messenger(id) ?? messenger;
-    private NativeBeeper.App.Services.Instagram.InstagramBackend InstagramAccount(string id) => Accounts?.Instagram(id) ?? instagram;
+    internal ProviderAccounts? Accounts { get => owners.Accounts; set => owners.Accounts = value; }
     public bool CanReceive => Sources().Any(source => source.CanReceive);
     public bool CanSend => Sources().Any(source => source.CanSend);
-    // Hermes only ever reports its own working line into its threads; nothing is sent to it.
-    private IEnumerable<ITypingService> Sources() => (Accounts is null ? new ITypingService[] { google, messenger, instagram } : Accounts.Googles.Cast<ITypingService>().Concat(Accounts.Messengers).Concat(Accounts.Instagrams))
-        .Concat(hermes is null ? [] : [hermes]);
+    private IEnumerable<ITypingService> Sources() => owners.Services.SelectMany(service => service.TypingSources);
 
     // Every actual composer edit yields Google history indexing, including edits inside the five-second window
     // where the remote typing notification is deliberately throttled. Both are noted: Google yields its background
@@ -28,13 +21,7 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
     // that one. Messenger and Instagram put off telling the other end the typing stopped.
     public void NoteComposerActivity(string? chatId)
     {
-        foreach (var account in Accounts?.Googles ?? new[] { google }) account.NoteComposerActivity(chatId);
-        try
-        {
-            if (chatId is not null && InstagramIdentity.OwnsAny(chatId)) InstagramAccount(chatId).NoteComposerActivity(chatId);
-            else if (chatId is not null && MessengerModels.Owns(chatId)) Messenger(chatId).NoteComposerActivity(chatId);
-        }
-        catch (NativeBeeper.Core.Backend.BackendException) { /* A removed account can remain open in a client until its next refresh. */ }
+        foreach (var service in owners.Services) service.NoteComposerActivity(chatId);
         typing.Note(chatId);
     }
 
@@ -44,16 +31,10 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
     public Task SetTypingAsync(string chatId, bool isTyping, CancellationToken cancellationToken = default)
     {
         if (isTyping && NativeBeeper.Presentation.Services.PrivateReadingGate.Refuses(reading, chatId, "typing")) return Task.CompletedTask;
-        var route = TypingRoute.Of(chatId);
-        if (isTyping && route is TypingProvider.Instagram or TypingProvider.Messenger or TypingProvider.Google)
-            NativeBeeper.Presentation.Services.TypingPings.Shared.Sent(chatId);
-        return route switch
-        {
-            TypingProvider.Instagram => InstagramAccount(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
-            TypingProvider.Messenger => Messenger(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
-            TypingProvider.Google => Google(chatId).SetTypingAsync(chatId, isTyping, cancellationToken),
-            _ => Task.CompletedTask,
-        };
+        var owner = owners.Of(chatId);
+        if (!owner.SendsTyping) return Task.CompletedTask;
+        if (isTyping) NativeBeeper.Presentation.Services.TypingPings.Shared.Sent(chatId);
+        return owner.SetTypingAsync(chatId, isTyping, cancellationToken);
     }
 
     public async IAsyncEnumerable<TypingUpdate> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -67,12 +48,13 @@ internal sealed class TypingRouter(GoogleMessagesBackend google, MessengerBacken
         }
         var pumps = new Dictionary<ITypingService, Task>();
         void Changed() { lock (pumps) foreach (var source in Sources()) if (!pumps.ContainsKey(source)) pumps.Add(source, Pump(source)); }
-        if (Accounts is not null) Accounts.Changed += Changed;
+        var accounts = Accounts;
+        if (accounts is not null) accounts.Changed += Changed;
         Changed();
         try
         {
             await foreach (var update in merged.Reader.ReadAllAsync(cancellationToken)) yield return update;
         }
-        finally { if (Accounts is not null) Accounts.Changed -= Changed; stop.Cancel(); Task[] tasks; lock (pumps) tasks = pumps.Values.ToArray(); await Task.WhenAll(tasks); }
+        finally { if (accounts is not null) accounts.Changed -= Changed; stop.Cancel(); Task[] tasks; lock (pumps) tasks = pumps.Values.ToArray(); await Task.WhenAll(tasks); }
     }
 }

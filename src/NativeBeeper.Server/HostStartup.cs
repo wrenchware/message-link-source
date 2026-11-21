@@ -76,10 +76,9 @@ internal sealed partial class HostStartup : IDisposable
         collection.AddSingleton(sp => new HostClientState(AppPaths.Combine("LastKnownClient-v1", "state.protected"), sp.GetRequiredService<IStateProtector>(), AppLog.Write));
         collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<HostClientState>());
         collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<HostClientState>());
-        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
-        collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
+        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<HostClientState>().Reading)));
+        collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<ComposerActivity>(),
+            sp.GetRequiredService<HostClientState>().Reading)));
         // The avatar reader AddBackends registers reads chats through the port the window decorates; here nothing decorates it.
         collection.AddSingleton<IChatReader>(sp => sp.GetRequiredService<MessagingRouter>());
         // The renewal's browser is WebView2 on the shell's STA thread, the app's own code (NativeBeeper.Windows.Browser). Building it loads nothing:
@@ -101,7 +100,8 @@ internal sealed partial class HostStartup : IDisposable
         step.Took("voice");
         var googleFeed = new GatedRealtimeFeed(google, runs: () => MessagingRouter.GoogleMessagesExpected);
         var feed = new GatedRealtimeFeed(new CompositeRealtimeFeed(() => true,
-            ("google-direct:", googleFeed), ("messenger:", messenger), ("gvoice:", voice), ("instagram:", instagram), (HermesIds.Scope, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())),
+            (ServiceTags.GoogleMessages.Prefix, googleFeed), (ServiceTags.Messenger.Prefix, messenger), (ServiceTags.GoogleVoice.Prefix, voice), (ServiceTags.Instagram.Prefix, instagram),
+            (ServiceTags.Hermes.Prefix, services.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())),
             googleFeed);
         // The host restores its own accounts only with --restore. The slots exist from here, before the pipe opens, so a client that asks for a restore
         // ahead of the host's own begins waits for it (RestoreOnce).

@@ -38,8 +38,8 @@ public sealed class PrivateReading
 
     /// <summary>
     /// The service a conversation id belongs to, by the prefixes every backend qualifies its ids with. Anything else is
-    /// Google Messages, because that is where the router sends an id nobody else owns, so it is what a read of it would
-    /// reach.
+    /// held to Google Messages' choice: the server refuses such an id (ConversationOwners), so a read of it reaches no
+    /// service either way, and the gate still decides before the refusal, as it did.
     /// </summary>
     public static ReadService Of(string chatId) =>
         chatId.StartsWith("gvoice:", StringComparison.Ordinal) ? ReadService.GoogleVoice

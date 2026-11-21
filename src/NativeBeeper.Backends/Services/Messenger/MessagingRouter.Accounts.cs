@@ -42,7 +42,7 @@ internal sealed partial class MessagingRouter
             var key = account.Registration.Key;
             if (cursors is not null && !cursors.ContainsKey(key)) continue;
             IChatReader reader = (IChatReader?)account.Google ?? (IChatReader?)account.Messenger ?? account.Instagram!;
-            var prefix = account.Google is not null ? "google-direct:" : account.Messenger is not null ? "messenger:" : "instagram:";
+            var prefix = (account.Google is not null ? ServiceTags.GoogleMessages : account.Messenger is not null ? ServiceTags.Messenger : ServiceTags.Instagram).Prefix;
             tasks.Add(Read(key, (cursor, token) => reader.GetChatsAsync(cursor == "retry:first" ? null : cursor, token), account.Slot.Ids.Qualify(prefix), account.Registration.Service));
         }
         var pages = await Task.WhenAll(tasks);

@@ -64,10 +64,9 @@ internal sealed partial class LinuxHostStartup : IDisposable
         collection.AddSingleton(sp => new HostClientState(Path.Combine(root, "LastKnownClient-v1", "state.protected"), sp.GetRequiredService<IStateProtector>(), AppLog.Write));
         collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<HostClientState>());
         collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<HostClientState>());
-        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<GoogleVoiceBackend>(), sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
-        collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<GoogleMessagesBackend>(), sp.GetRequiredService<MessengerBackend>(),
-            sp.GetRequiredService<InstagramBackend>(), sp.GetRequiredService<ComposerActivity>(), sp.GetRequiredService<HostClientState>().Reading, sp.GetRequiredService<NativeBeeper.App.Services.Hermes.HermesBackend>())));
+        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<HostClientState>().Reading)));
+        collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<ComposerActivity>(),
+            sp.GetRequiredService<HostClientState>().Reading)));
         collection.AddSingleton<IChatReader>(sp => sp.GetRequiredService<MessagingRouter>());
         step.Took("registrations");
         var services = collection.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });

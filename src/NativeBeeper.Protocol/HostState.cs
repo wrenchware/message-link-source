@@ -93,8 +93,9 @@ public static class ProviderScopes
     public static string Voice(string key) => VoicePrefix + key + ":";
 
     /// <summary>
-    /// The scope that owns a conversation id, as the routers decide it (Instagram, then Voice, then Messenger, and everything else is
-    /// Google's). Null for a Voice id whose account key is malformed, which no connection owns.
+    /// The scope that owns a conversation id, by the prefixes the routers' lookup uses (Instagram, then Voice, then Messenger, and everything
+    /// else counted as Google's here, as clients have always drawn it; the server itself refuses an id no service owns). Null for a Voice id
+    /// whose account key is malformed, which no connection owns.
     /// </summary>
     public static string? OfChat(string chatId)
     {
