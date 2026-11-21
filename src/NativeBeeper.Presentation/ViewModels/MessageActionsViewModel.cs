@@ -6,7 +6,7 @@ using NativeBeeper.Presentation.Services;
 namespace NativeBeeper.Presentation.ViewModels;
 
 public sealed partial class MessageActionsViewModel(IMessageActions backend, IAccessTokenStore tokens, ComposerViewModel composer,
-    IMessageMutations? mutations = null) : ObservableObject, INoticeSource
+    IMessageMutations? mutations = null, DialogGate? dialogs = null) : ObservableObject, INoticeSource
 {
     private bool busy, live;
     private string status = "";

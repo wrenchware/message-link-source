@@ -23,17 +23,6 @@ public interface IStoreUpdatePort
     Task<string> DownloadAsync(CancellationToken cancellationToken);
 }
 
-/// <summary>What the app is doing right now, as far as an update's restart is concerned. Read on the interface thread.</summary>
-public sealed record UpdateQuietness(
-    bool WindowShown,
-    TimeSpan HiddenFor,
-    bool Busy,
-    bool SigningIn,
-    bool Sending,
-    bool UnsavedDrafts,
-    bool BackupRunning,
-    bool ShuttingDown);
-
 public enum StoreUpdateStage { Idle, Checking, Downloading, Ready, Installing }
 
 /// <summary>The timers, short in the harness.</summary>
@@ -53,32 +42,20 @@ public sealed record StoreUpdateTiming(TimeSpan FirstCheck, TimeSpan Interval, T
 
 public static class StoreUpdatePolicy
 {
-    // What keeps an update's restart from happening now, as a log word, or null when nothing does. Asked by the schedule
-    // (byPerson false), which also waits for the window to have been in the tray a while, so a person who just hid it is
-    // not surprised by it coming back in a new version; and by Settings' Restart to update (byPerson true), whose window is
-    // open by definition. Nothing here is ever overridden: a mandatory update waits for the same moment.
-    public static string? Blocker(UpdateQuietness now, bool byPerson, TimeSpan hiddenLongEnough)
-    {
-        if (now.ShuttingDown) return "shutting_down";
-        if (now.Sending) return "sending";
-        if (now.BackupRunning) return "backup";
-        if (now.SigningIn) return "signing_in";
-        if (now.Busy) return "busy";
-        if (now.UnsavedDrafts) return "unsaved";
-        if (byPerson) return null;
-        if (now.WindowShown) return "window_shown";
-        if (now.HiddenFor < hiddenLongEnough) return "hidden_recently";
-        return null;
-    }
+    // What keeps an update's restart from happening now (LeavePolicy). Asked by the schedule (byPerson false) and by
+    // Settings' Restart to update (byPerson true), whose window is open by definition.
+    public static string? Blocker(LeaveFacts now, bool byPerson, TimeSpan hiddenLongEnough) =>
+        LeavePolicy.Blocker(now, byPerson ? LeaveWay.RestartToUpdate : LeaveWay.Update, hiddenLongEnough);
 
     // Settings' words for a Restart to update that has to wait.
     public static string Explain(string reason) => reason switch
     {
         "sending" => "Message Link is still sending. Try again when your messages have gone.",
+        "changing" => "A change to a message is still being sent. Try again when it finishes.",
         "backup" => "A backup or restore is running. Try again when it finishes.",
         "signing_in" => "A sign-in is in progress. Try again when it finishes.",
         "unsaved" => "A message or photo you haven't sent can't be kept over a restart. Send or remove it, then try again.",
-        "busy" or "in_progress" => "Message Link is busy. Try again in a moment.",
+        "busy" or "in_progress" or "photo" => "Message Link is busy. Try again in a moment.",
         _ => "The update can't be installed right now. Try again later.",
     };
 }
@@ -87,14 +64,14 @@ public static class StoreUpdatePolicy
 public sealed class StoreUpdates
 {
     private readonly IStoreUpdatePort port;
-    private readonly Func<Task<UpdateQuietness>> quiet;
+    private readonly Func<Task<LeaveFacts>> quiet;
     // The App's install: null when the quit is under way (this run is ending), otherwise why it was refused.
     private readonly Func<string, Task<string?>> install;
     private readonly Action<string> log;
     private readonly StoreUpdateTiming timing;
     private string? lastDeferral;
 
-    public StoreUpdates(IStoreUpdatePort port, Func<Task<UpdateQuietness>> quiet, Func<string, Task<string?>> install, Action<string> log, StoreUpdateTiming? timing = null)
+    public StoreUpdates(IStoreUpdatePort port, Func<Task<LeaveFacts>> quiet, Func<string, Task<string?>> install, Action<string> log, StoreUpdateTiming? timing = null)
     {
         this.port = port;
         this.quiet = quiet;

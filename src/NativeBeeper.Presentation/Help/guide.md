@@ -618,7 +618,7 @@ To tell them after all: **Send read receipt** in the conversation menu, **Mark r
 - **Minimize to the system tray** (off by default) hides the taskbar button when you minimize.
 - Click the tray icon to open Message Link. Its tooltip says "Message Link · 3 unread conversations".
 - The tray menu: **Open Message Link**, up to five unread conversations (and "N more unread…"), **New chat**, **Open console**, **Pause notifications** (or Resume), **Settings** and **Quit Message Link**.
-- Quitting with unsaved text asks "Keep your unsaved messages?"; Message Link won't quit in the middle of a send.
+- Quitting with unsaved text asks "Keep your unsaved messages?", and quitting while an edit, delete or reaction is still on its way, or while a backup is being restored, asks first too. Message Link won't quit in the middle of a send.
 - On a PC that runs its own Message Link Server (see [This PC's own Message Link Server](#own-server)), the menu also has **Manage server**, and **Stop Message Link Server** after **Quit Message Link**. **Quit Message Link** closes Message Link only: the server keeps your accounts connected and keeps reaching your phone. **Stop Message Link Server** closes Message Link, then the server, once nothing is still sending.
 
 ### The taskbar {#taskbar}

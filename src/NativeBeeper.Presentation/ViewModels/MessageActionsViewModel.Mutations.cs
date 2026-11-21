@@ -13,11 +13,14 @@ public sealed partial class MessageActionsViewModel
     public event Action<ChatMessage, string?, bool?>? ChangeSubmitting;
     /// <summary>Raised when the service refused the change: the conversation shows the message as the service has it again.</summary>
     public event Action<ChatMessage>? ChangeFailed;
-    public bool IsDialogOpen { get; private set; }
+    /// <summary>The app's one dialog at a time (DialogGate): the main window and every conversation take it too.</summary>
+    public DialogGate Dialogs { get; } = dialogs ?? new DialogGate();
+    /// <summary>One of these actions' dialogs is open.</summary>
+    public bool IsDialogOpen => Dialogs.IsHeldBy(this);
     public bool HasEditDrafts => editDrafts.Count > 0;
     public void ClearState() { editDrafts.Clear(); uncertainChanges.Clear(); uncertainReactions.Clear(); pending.Clear(); Status = ""; }
-    public bool BeginDialog() { if (IsDialogOpen || IsBusy) return false; IsDialogOpen = true; return true; }
-    public void EndDialog() => IsDialogOpen = false;
+    /// <summary>Null while any dialog is open or a change is on its way; dispose it when the dialog closes.</summary>
+    public DialogGate.Lease? BeginDialog() => IsBusy ? null : Dialogs.TryTake(this);
     public string? SavedEdit(ChatMessage message, string? profile) => editDrafts.GetValueOrDefault((profile, message.ChatId, message.Id));
     public Task<MessageMutationOutcome> EditAsync(ChatMessage message, string text, string? profile) => ChangeAsync(message, text, null, profile);
     public Task<MessageMutationOutcome> DeleteAsync(ChatMessage message, bool everyone, string? profile) => ChangeAsync(message, null, everyone, profile);
