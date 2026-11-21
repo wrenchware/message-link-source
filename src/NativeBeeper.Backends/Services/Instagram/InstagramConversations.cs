@@ -47,6 +47,10 @@ internal sealed class InstagramConversations(InstagramBackend instagram, Func<Pr
     public bool HoldsPartialCopies => true;
     public Task<bool> CanMarkReadAsync(string chatId, CancellationToken cancellationToken) => Instagram(chatId).CanMarkReadAsync(chatId, cancellationToken);
     public bool TellsReads => true;
+    // Every read is a request on the real account; Instagram announces only what arrives, and a poll names only the
+    // newest of what arrived since the last.
+    public HistoryFacts HistoryFacts { get; } = new(ReadsCostBudget: true, EchoesOwnSends: false, EventsNameEveryArrival: false);
+    public bool TryTakeUnaskedRead(string chatId) => Instagram(chatId).TryTakeHistoryRead(DateTimeOffset.UtcNow);
     public Task MarkReadAsync(string chatId, string messageId, CancellationToken cancellationToken) => Instagram(chatId).MarkReadAsync(chatId, messageId, cancellationToken);
 
     public Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken) => Instagram(chatId).GetSendPermissionAsync(chatId, cancellationToken);

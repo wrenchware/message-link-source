@@ -223,7 +223,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         log($"hermes configured profiles={kept.Count} added={added.Length} removed={removed.Length}");
         if (removed.Length > 0) realtime.TryWrite(new(RealtimeKind.ChatDeleted, null, [.. removed.Select(HermesIds.Chat)], null, clock.GetUtcNow()));
         if (kept.Count > 0) realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [.. kept.Select(p => HermesIds.Chat(p.Name))], null, clock.GetUtcNow()));
-        // In batches of 64, the most ids the server's history takes from one event (ConversationHistory.MaxEventIds) before reading the conversation again.
+        // In batches of 64, the most ids the server's history takes from one event (HistoryCopy.MaxEventIds) before reading the conversation again.
         foreach (var (chatId, ids) in renamed)
             foreach (var batch in ids.Chunk(64)) realtime.TryWrite(new(RealtimeKind.MessageChanged, chatId, batch, false, clock.GetUtcNow()));
         Raise();

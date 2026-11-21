@@ -165,8 +165,7 @@ internal sealed class ProtocolHost : IDisposable
         var source = accounts?.Over(options.ProviderFeed) ?? options.ProviderFeed;
         // A server's whole history sees each event first, nearest the providers: the messages it names are in the copy before anything else reads them (stage 8).
         var history = options.WholeHistory is { } historyStore
-            ? new ConversationHistory(historyStore, messaging, messaging, messaging, messaging, messaging, messaging, log,
-                chatId => !chatId.StartsWith("instagram:", StringComparison.Ordinal) || (accounts?.Instagram(chatId) ?? options.Instagram).TryTakeHistoryRead(DateTimeOffset.UtcNow))
+            ? new ConversationHistory(historyStore, messaging, messaging, messaging, messaging, messaging, messaging, log, messaging)
             : null;
         if (history is not null) source = history.Over(source);
         // The identity the host serves, made below: the key its shared rows are filed under, which the incoming unarchive reads the merges by.

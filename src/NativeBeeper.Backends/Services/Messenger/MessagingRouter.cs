@@ -8,7 +8,7 @@ namespace NativeBeeper.App.Services.Messenger;
 // (ConversationOwners), which answers it or refuses it in its own words. An id no service owns is refused there.
 internal sealed partial class MessagingRouter(ConversationOwners owners, NativeBeeper.Presentation.Services.PrivateReading? reading = null)
     : IChatReader, ILinkPreviewLoader, IMessageSender, IReadStateWriter, IMessageActions, IMessageMutations, IChatSettingsBackend, IChatDeletion, IProviderConnectionState, IMessagePeek,
-      IHistoryWindowReader
+      IHistoryWindowReader, IHistoryFacts
 {
     internal ProviderAccounts? Accounts { get => owners.Accounts; set => owners.Accounts = value; }
     private IConversationService Owner(string id) => owners.Of(id);
@@ -116,6 +116,9 @@ internal sealed partial class MessagingRouter(ConversationOwners owners, NativeB
     // or a share; Google's, Voice's and Messenger's memory holds each message as their own resolve gives it, so theirs
     // answer as above.
     public bool HoldsPartialCopies(string chatId) => Owner(chatId).HoldsPartialCopies;
+
+    public HistoryFacts FactsOf(string chatId) => Owner(chatId).HistoryFacts;
+    public bool TryTakeUnaskedRead(string chatId) => Owner(chatId).TryTakeUnaskedRead(chatId);
     public ValueTask<ChatMessage?> PeekWholeAsync(string chatId, string messageId, CancellationToken cancellationToken = default)
         => PeekAsync(chatId, messageId, whole: true, cancellationToken);
 

@@ -37,6 +37,10 @@ internal interface IConversationService
     /// <summary>Whether its read markers reach a service, so they pass PrivateReadingGate first and ReadDrift after.</summary>
     bool TellsReads { get; }
     Task MarkReadAsync(string chatId, string messageId, CancellationToken cancellationToken);
+    /// <summary>What the server's whole history reads and fills by (its budget, its echo of sends, its events).</summary>
+    HistoryFacts HistoryFacts => HistoryFacts.Plain;
+    /// <summary>One read nobody asked for, out of the account's budget where it has one.</summary>
+    bool TryTakeUnaskedRead(string chatId) => true;
 
     // ---- sending and actions (MessagingRouter) ----
     Task<SendPermission> GetSendPermissionAsync(string chatId, CancellationToken cancellationToken);
