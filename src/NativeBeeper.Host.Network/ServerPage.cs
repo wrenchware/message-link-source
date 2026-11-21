@@ -58,8 +58,8 @@ internal sealed partial class ServerPage
     /// <summary>The most of the server's log the page shows: its end.</summary>
     public const int LogTail = 64 * 1024;
 
-    // Sign-ins that keep failing wait as pairing codes do: free for a few, then doubling to PairingCodes.LongestWait; every source waits a moment after any wrong one.
-    private const int MaxSources = 1024;
+    // The most sessions remembered as having typed the password a moment ago.
+    private const int MaxTyped = 1024;
 
     // What sign-ins are made with: a MAC of the password given in the environment, or of the stored hash (ServerPage.Setup.cs). Changed once, when first run sets it.
     private volatile byte[] credential;
@@ -76,8 +76,8 @@ internal sealed partial class ServerPage
     private readonly TimeProvider time;
     private readonly Action<string> log;
     private readonly object gate = new();
-    private readonly Dictionary<string, (int Wrong, DateTimeOffset Next)> sources = new(StringComparer.Ordinal);
-    private DateTimeOffset nextAnywhere;
+    // Password tries that keep failing wait as pairing codes do (TryPacing): free for a few, then doubling; every source waits a moment after any try.
+    private readonly TryPacing passwordTries;
     // Sessions that typed the password, and until when it stands for them (PasswordGrace). Under the gate; in memory only, so a restart asks again.
     private readonly Dictionary<string, DateTimeOffset> typed = new(StringComparer.Ordinal);
     internal TimeSpan PasswordGrace { get; set; } = TimeSpan.FromMinutes(10);
@@ -100,6 +100,7 @@ internal sealed partial class ServerPage
         this.keysFolder = keysFolder; this.generation = generation; this.passwordCheck = passwordCheck; this.joins = joins;
         this.secret = secret; this.devices = devices; this.pairing = pairing; this.fingerprint = fingerprint; this.admin = admin; this.logs = logs; this.time = time; this.log = log;
         this.tailnet = tailnet; this.pushes = pushes?.Switch.Folder is null ? null : pushes;
+        passwordTries = new(time, PacingRules.Password);
         this.stored = stored;
         this.setup = setup;
         tailscale = setup?.Tailscale;
@@ -278,10 +279,6 @@ internal sealed partial class ServerPage
         return address.IsIPv6LinkLocal || address.IsIPv6UniqueLocal;
     }
 
-    /// <summary>Whether a request is one of the page's (any other path stays the door's 404).</summary>
-    public static bool Serves(string? path) => path is "/" or "/login" or "/logout" or "/pair" or "/devices/details" or "/devices/remove" or "/devices/rename" or "/accounts/remove" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or "/joins/approve" or "/joins/deny" or "/joins/pause" or "/push"
-        or "/push/test" or "/mirror" or LogoPath or PicturesPath or FontPath || IsManagePath(path) || IsBackupPath(path) || IsSetupPath(path) || IsTailnetPath(path) || IsDesktopPath(path) || IsSignInPath(path) || IsHermesPath(path);
-
     /// <summary>The page's logo, shown before signing in too (it is the app's own icon, nothing of the server's).</summary>
     public const string LogoPath = "/logo.png";
 
@@ -300,239 +297,6 @@ internal sealed partial class ServerPage
         using var copy = new MemoryStream();
         stream.CopyTo(copy);
         return copy.ToArray();
-    }
-
-    /// <summary>Answers one request of the page, and closes its connection.</summary>
-    public async Task HandleAsync(HttpContext context, bool draining)
-    {
-        var request = context.Request;
-        var response = context.Response;
-        Secure(response);
-        if (draining)
-        {
-            await PlainAsync(context, StatusCodes.Status503ServiceUnavailable, "The server is stopping.").ConfigureAwait(false);
-            return;
-        }
-        var path = request.Path.Value;
-        var get = HttpMethods.IsGet(request.Method);
-        var post = HttpMethods.IsPost(request.Method);
-        if (get && path is LogoPath or PicturesPath or FontPath)
-        {
-            response.StatusCode = StatusCodes.Status200OK;
-            response.ContentType = path == FontPath ? "font/woff2" : "image/png";
-            response.Headers.CacheControl = path == FontPath ? "max-age=31536000, immutable" : "max-age=86400";
-            var bytes = path == LogoPath ? Logo.Value : path == FontPath ? Font.Value : Pictures.Value;
-            response.ContentLength = bytes.Length;
-            await response.Body.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
-            return;
-        }
-        if (!get && !post || get && path is "/logout" or "/hermes/reports/off" or "/joins/deny" or "/joins/pause" or "/mirror" or "/push/test" || post && (path is "/" or "/devices/details" or "/log" or LogTailPath or JoinWatchPath or JoinReviewPath or LogoPath or PicturesPath or FontPath or ReportScriptPath or PluginPath or SetupWatchPath || IsManagePath(path)))
-        {
-            await PlainAsync(context, StatusCodes.Status405MethodNotAllowed, "There's nothing at this address.").ConfigureAwait(false);
-            return;
-        }
-        // A form comes from this page or not at all: its own origin (which a browser always names on a POST), and no larger than a form.
-        // Read from the cookie alone, before any body: the upload's larger limit is for a signed-in browser only, so nobody else can hold one of the door's
-        // places for minutes dripping 64 KiB (review, 2026-10-17).
-        var session = Session(request);
-        // A signed-in browser on the Windows server's own PC, or one that typed the password a moment ago, is not asked for it again, so its forms leave the field out
-        // (ServerPage.Desktop.cs).
-        if (session is not null && (DesktopTrust && OnThisPc(context) || RecentlyTyped(session))) context.Items[PasswordGivenItem] = true;
-        IFormCollection? form = null;
-        if (post)
-        {
-            if (!SameOrigin(request))
-            {
-                await PlainAsync(context, StatusCodes.Status403Forbidden, "That request came from another website, so the server ignored it.").ConfigureAwait(false);
-                return;
-            }
-            // The notifications form alone carries files.
-            // The restore's review of the devices, with a box for each, is larger than a form of one button.
-            var most = path == "/push" && session is not null ? MaxUpload : IsBackupPath(path) && session is not null ? MaxBackupForm : IsHermesPath(path) && session is not null ? MaxHermesForm : MaxBody;
-            if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = most;
-            if (!request.HasFormContentType || request.ContentLength is not { } length || length < 0 || length > most)
-            {
-                await PlainAsync(context, StatusCodes.Status400BadRequest, "The server couldn't read that form. Go back and try again.").ConfigureAwait(false);
-                return;
-            }
-            try { form = await request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false); }
-            catch (Exception failure) when (failure is InvalidDataException or IOException or BadHttpRequestException)
-            {
-                await PlainAsync(context, StatusCodes.Status400BadRequest, "The server couldn't read that form. Go back and try again.").ConfigureAwait(false);
-                return;
-            }
-        }
-
-        // The server's first run (ServerPage.Setup.cs): until a password is chosen, the setup screen is all the page shows.
-        if (await FirstRunAsync(context, path, form).ConfigureAwait(false)) return;
-
-        // A link to a place on the page (`/?section=storage`) goes there once signed in; the sign-in form carries the section along, so it survives it.
-        var section = Section((post ? form!["section"] : request.Query["section"]).ToString());
-        if (path == "/login")
-        {
-            if (session is not null) { Redirect(response, SectionPath(section)); return; }
-            if (get)
-            {
-                // Messages opening its own server's page on this PC (ServerPage.Desktop.cs).
-                if (TryOnceSignIn(context)) return;
-                // A sign-out the server could not keep is said, so the owner knows a restart would undo it.
-                var unsaved = request.Query["signed_out"] == "unsaved" ? "Signed out, but the server couldn't save it, so starting the server again would undo it. Change the password to sign every browser out for good." : null;
-                await PageAsync(context, StatusCodes.Status200OK, "Sign in", SignInBody(unsaved, section)).ConfigureAwait(false);
-                return;
-            }
-            await SignInAsync(context, form!, section).ConfigureAwait(false);
-            return;
-        }
-        if (session is null)
-        {
-            // A form without a sign-in does nothing; a page asks for one.
-            if (post) await PlainAsync(context, StatusCodes.Status403Forbidden, "Sign in first.").ConfigureAwait(false);
-            else Redirect(response, path == "/" && section is not null ? "/login?section=" + section : "/login");
-            return;
-        }
-        if (get && path == "/" && section is not null)
-        {
-            Redirect(response, SectionPath(section));
-            return;
-        }
-        if (post && !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(form!["form"].ToString()), Encoding.ASCII.GetBytes(FormToken(session))))
-        {
-            await PlainAsync(context, StatusCodes.Status403Forbidden, "That form is out of date. Go back, reload the page and try again.").ConfigureAwait(false);
-            return;
-        }
-        var token = FormToken(session);
-        context.Items[NavItem] = Nav(path ?? "/", token);
-        switch (path)
-        {
-            case "/logout":
-                var kept = SignOutEverywhere();
-                response.Cookies.Delete(CookieName, Cookie(DateTimeOffset.UnixEpoch));
-                Redirect(response, kept ? "/login" : "/login?signed_out=unsaved");
-                return;
-            case "/pair":
-                if (DesktopJoinUnavailable)
-                {
-                    await PageAsync(context, StatusCodes.Status200OK, "Add a PC", "<section>" + DesktopJoinHelp + "</section>").ConfigureAwait(false);
-                    return;
-                }
-                // A code lets a device read everything: the password itself is asked for, not only the sign-in a copied cookie would be.
-                if (get)
-                {
-                    await PageAsync(context, StatusCodes.Status200OK, "Add a PC", AskBody("/pair", token, PairAsk, "Show the line", null)).ConfigureAwait(false);
-                    return;
-                }
-                var pairFromSetup = FromSetup(request, form);
-                if (!await PasswordAgainAsync(context, form!, "pair", "Add a PC", problem => AskBody("/pair", token, PairAsk, "Show the line", problem, before: pairFromSetup ? FromSetupField : "")).ConfigureAwait(false)) return;
-                var code = pairing.Issue();
-                await PageAsync(context, StatusCodes.Status200OK, "Add a PC", PairBody(request, code, pairFromSetup)).ConfigureAwait(false);
-                return;
-            case "/devices/details":
-                await DeviceDetailsAsync(context, request.Query["id"].ToString()).ConfigureAwait(false);
-                return;
-            case "/devices/remove":
-                await RemoveDeviceAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
-                return;
-            case "/devices/rename":
-                await RenameDeviceAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
-                return;
-            case "/accounts/remove":
-                await RemoveAccountAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
-                return;
-            case JoinWatchPath:
-                await JoinWatchAsync(context).ConfigureAwait(false);
-                return;
-            case JoinReviewPath:
-                Redirect(response, JoinReviewTarget());
-                return;
-            case "/joins/approve":
-                await ApproveJoinAsync(context, get ? request.Query["id"].ToString() : form!["id"].ToString(), form, token).ConfigureAwait(false);
-                return;
-            case "/joins/deny":
-                // Turning a device away gives nothing to anyone, so the sign-in is enough; letting one in asks for the password again.
-                Redirect(response, joins.Deny(form!["id"].ToString(), "page").Denied ? "/?done=declined" : "/?done=join_gone");
-                return;
-            case "/joins/pause":
-                try { joins.SetPaused(form!["paused"] == "yes"); }
-                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
-                {
-                    await PlainAsync(context, StatusCodes.Status500InternalServerError, "Couldn't save whether requests are paused. Try again.").ConfigureAwait(false);
-                    return;
-                }
-                Redirect(response, "/");
-                return;
-            case { } manage when IsManagePath(manage):
-                await ManageAsync(context, manage, token).ConfigureAwait(false);
-                return;
-            case "/log":
-                response.Headers.ContentSecurityPolicy = LogPolicy;
-                await PageAsync(context, StatusCodes.Status200OK, "Log", await LogBodyAsync(context.RequestAborted).ConfigureAwait(false)).ConfigureAwait(false);
-                return;
-            case LogTailPath:
-                await LogTailAsync(context).ConfigureAwait(false);
-                return;
-            case "/mirror":
-                // Reads each service's most recently active conversations again, as the walk does every half hour: nothing is sent or marked read.
-                if (history is not null)
-                    try { await history.MirrorAsync(new HistoryMirrorParams(Start: true), context.RequestAborted).ConfigureAwait(false); }
-                    catch (Exception failure) when (failure is not OperationCanceledException) { log($"server page mirror failed type={failure.GetType().Name}"); }
-                Redirect(response, "/manage/sync?done=mirror");
-                return;
-            case "/push" when pushes is not null:
-                await PushAsync(context, form, token, pushes).ConfigureAwait(false);
-                return;
-            case "/push/test" when pushes is not null:
-                await PushTestAsync(context, form!, pushes).ConfigureAwait(false);
-                return;
-            case "/push" or "/push/test":
-                Redirect(response, "/");
-                return;
-            case { } walkthrough when IsSetupPath(walkthrough):
-                await WalkthroughAsync(context, walkthrough, form, token).ConfigureAwait(false);
-                return;
-            case "/signin/desktop" when post:
-                await DesktopSignInPostAsync(context, form!).ConfigureAwait(false);
-                return;
-            case SignInPath:
-                await SignInViewAsync(context, form, token).ConfigureAwait(false);
-                return;
-            case { } door when IsTailnetPath(door):
-                await TailnetAsync(context, door, form, token).ConfigureAwait(false);
-                return;
-            case "/backups" when backups is not null && post:
-                await BackupsAsync(context, form!).ConfigureAwait(false);
-                return;
-            case "/backups/password" when backups is not null:
-                await BackupPasswordAsync(context, form, token).ConfigureAwait(false);
-                return;
-            case "/restore" when backups is not null:
-                await RestoreAsync(context, form, token).ConfigureAwait(false);
-                return;
-            case "/restore/review" when backups is not null && post:
-                await RestoreReviewAsync(context, form!, token).ConfigureAwait(false);
-                return;
-            case "/reset" when backups is not null:
-                await ResetAsync(context, form, token).ConfigureAwait(false);
-                return;
-            case "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset":
-                Redirect(response, "/");
-                return;
-            case { } addPath when Hermes is not null && Reports is not null && IsAddPath(addPath):
-                await AddAssistantAsync(context, addPath, form, token).ConfigureAwait(false);
-                return;
-            case { } reportsPath when Hermes is not null && Reports is not null && IsReportsPath(reportsPath):
-                await ReportsAsync(context, reportsPath, form, token).ConfigureAwait(false);
-                return;
-            case "/hermes" when Hermes is not null:
-                await HermesAsync(context, form, token).ConfigureAwait(false);
-                return;
-            case { } hermesPath when IsHermesPath(hermesPath):
-                Redirect(response, "/");
-                return;
-            default:
-                var home = await HomeBodyAsync(request, token, request.Query["done"].ToString(), context.RequestAborted).ConfigureAwait(false);
-                await PageAsync(context, StatusCodes.Status200OK, SiteName, home.Body, home.Refresh, home.RefreshTo).ConfigureAwait(false);
-                return;
-        }
     }
 
     // ---- Signing in, and the password asked again ----
@@ -560,35 +324,21 @@ internal sealed partial class ServerPage
 
     private Try CheckPassword(string source, string presented, string purpose)
     {
-        var now = time.GetUtcNow();
-        DateTimeOffset claimed;
-        lock (gate)
+        // Too soon, or a new source while every place is held by sources still waiting: not looked at, so a guess made then told nothing.
+        if (!passwordTries.TryClaim(source, out var claim))
         {
-            if (now < nextAnywhere || sources.TryGetValue(source, out var held) && now < held.Next)
-            {
-                Sampled(ref pacedTries, "paced", purpose);
-                return Try.Paced;
-            }
-            nextAnywhere = claimed = now + PairingCodes.GlobalSpacing;
+            lock (gate) Sampled(ref pacedTries, "paced", purpose);
+            return Try.Paced;
         }
-        // Too soon was not looked at, so a guess made then told nothing; this one is.
         var right = !settingUp && (stored is { } kept ? kept.Verify(presented) : CryptographicOperations.FixedTimeEquals(Mac(secret, "password|" + presented), credential));
-        lock (gate)
+        if (right)
         {
-            if (right)
-            {
-                sources.Remove(source);
-                // The owner's next step (a code just after signing in) does not wait on the moment this try claimed.
-                if (nextAnywhere == claimed) nextAnywhere = now;
-                return Try.Right;
-            }
-            // A source quiet for an hour past its wait starts again: an owner who mistyped last week does not wait five minutes now.
-            var wrong = (sources.TryGetValue(source, out var held) && now - held.Next < TimeSpan.FromHours(1) ? held.Wrong : 0) + 1;
-            if (sources.Count >= MaxSources && !sources.ContainsKey(source)) sources.Remove(sources.MinBy(pair => pair.Value.Next).Key);
-            sources[source] = (wrong, now + PairingCodes.Wait(wrong));
-            Sampled(ref wrongTries, "wrong", purpose);
-            return Try.Wrong;
+            passwordTries.Right(claim);
+            return Try.Right;
         }
+        passwordTries.Wrong(claim);
+        lock (gate) Sampled(ref wrongTries, "wrong", purpose);
+        return Try.Wrong;
     }
 
     // Under the gate.
@@ -653,7 +403,7 @@ internal sealed partial class ServerPage
         lock (gate)
         {
             foreach (var ended in typed.Where(pair => pair.Value <= now).Select(pair => pair.Key).ToList()) typed.Remove(ended);
-            if (typed.Count >= MaxSources) typed.Remove(typed.MinBy(pair => pair.Value).Key);
+            if (typed.Count >= MaxTyped) typed.Remove(typed.MinBy(pair => pair.Value).Key);
             // Never shortened: a step taken inside the longer window counts as typing it again.
             typed[session] = typed.TryGetValue(session, out var until) && until > now + grace ? until : now + grace;
         }

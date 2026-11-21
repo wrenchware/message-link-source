@@ -20,7 +20,8 @@ internal sealed partial class NetworkHost
     // A report token's hash and an address; an add code's command also sends the API key (512 characters at most) and up to four addresses.
     private const int MaxRedeemBody = 4096;
 
-    internal static bool IsSetupPath(string? path) => path is SetupShellPath or SetupPythonPath or SetupProbePath or SetupRedeemPath;
+    // The setup command's own paths on the door (the page's first-run and walkthrough screens are its routes, ServerPage.Setup.cs).
+    internal static bool IsReportSetupPath(string? path) => path is SetupShellPath or SetupPythonPath or SetupProbePath or SetupRedeemPath;
 
     private async Task ReportSetupAsync(HttpContext context)
     {

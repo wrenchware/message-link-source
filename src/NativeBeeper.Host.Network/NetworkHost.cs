@@ -543,7 +543,7 @@ internal sealed partial class NetworkHost : IAsyncDisposable
             await ReportAsync(context).ConfigureAwait(false);
             return;
         }
-        if (IsSetupPath(request.Path.Value))
+        if (IsReportSetupPath(request.Path.Value))
         {
             await ReportSetupAsync(context).ConfigureAwait(false);
             return;

@@ -12,7 +12,7 @@ namespace NativeBeeper.Host.Network;
 /// printed line is the only place a code is written; what a peer presented never is.
 /// <para>
 /// Wrong codes do not burn it: anyone on the home network could otherwise spend the owner's code with a few wrong tries, and a new one used to need a
-/// restart (which reconnects the accounts). Guessing is paced instead. A code is checked at most once per <see cref="GlobalSpacing"/> from anywhere, and
+/// restart (which reconnects the accounts). Guessing is paced instead (<see cref="TryPacing"/>, as the page's password is). A code is checked at most once per <see cref="GlobalSpacing"/> from anywhere, and
 /// each source (an IPv4 address, or an IPv6 /64, which one machine can fill with addresses) waits <see cref="SourceSpacing"/> after a wrong code, doubling
 /// from the <see cref="FreeWrong"/>th wrong one up to <see cref="LongestWait"/>. A try made too soon is not looked at, so it tells the peer nothing and
 /// costs the code nothing. At the global pace a peer gets at most 600 guesses at a 31^10 (about 8 * 10^14) code before it expires.
@@ -43,26 +43,20 @@ internal sealed class PairingCodes(TimeProvider time, Action<string> log, Action
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
     /// <summary>The least time between two codes checked, from any source.</summary>
-    public static readonly TimeSpan GlobalSpacing = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan GlobalSpacing = TryPacing.GlobalSpacing;
     /// <summary>The least time a source waits after a wrong code, for its first <see cref="FreeWrong"/> wrong codes.</summary>
-    public static readonly TimeSpan SourceSpacing = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan SourceSpacing = TryPacing.SourceSpacing;
     /// <summary>Wrong codes from one source before its wait starts doubling (a person mistyping gets these at the plain pace).</summary>
-    public const int FreeWrong = 3;
+    public const int FreeWrong = TryPacing.FreeWrong;
     /// <summary>The longest a source is made to wait.</summary>
-    public static readonly TimeSpan LongestWait = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan LongestWait = TryPacing.LongestWait;
     /// <summary>How many sources are remembered at once; past it, a new source waits until one is forgotten.</summary>
-    public const int MaxSources = 1024;
-
-    private sealed class Source
-    {
-        public int Wrong;
-        public DateTimeOffset Next, Last;
-    }
+    public const int MaxSources = TryPacing.MaxSources;
 
     private readonly object gate = new();
-    private readonly Dictionary<string, Source> sources = new(StringComparer.Ordinal);
+    private readonly TryPacing pacing = new(time, PacingRules.Code);
     private byte[]? code;
-    private DateTimeOffset expires, nextCheck;
+    private DateTimeOffset expires;
 
     /// <summary>Whether a code is open now (issued, not taken and not past its time).</summary>
     public bool Open
@@ -124,50 +118,27 @@ internal sealed class PairingCodes(TimeProvider time, Action<string> log, Action
                 log($"{loggedWords} closed reason=expired");
                 return null;
             }
-            var from = Remember(Key(source), now);
-            if (from is null || now < nextCheck || now < from.Next)
+            if (!pacing.TryClaim(Key(source), out var claim))
             {
                 // Not compared at all: nothing is learnt, and nothing about the waits moves, so knocking faster does not lengthen anyone's.
                 paced = true;
                 return null;
             }
-            nextCheck = now + GlobalSpacing;
-            from.Last = now;
             if (candidate is not null && CryptographicOperations.FixedTimeEquals(candidate, code))
             {
+                pacing.Right(claim);
                 var taken = code;
                 code = null;
                 log($"{loggedWords} closed reason=taken");
                 return taken;
             }
-            from.Wrong++;
-            from.Next = now + Wait(from.Wrong);
+            pacing.Wrong(claim);
             return null;
         }
     }
 
     /// <summary>How long a source waits after its <paramref name="wrong"/>th wrong code.</summary>
-    public static TimeSpan Wait(int wrong) =>
-        wrong <= FreeWrong ? SourceSpacing : TimeSpan.FromTicks(Math.Min(LongestWait.Ticks, SourceSpacing.Ticks << Math.Min(wrong - FreeWrong, 20)));
-
-    // A source is forgotten once it has been quiet for a code's lifetime and its wait is over; until then its wrong codes count.
-    private Source? Remember(string key, DateTimeOffset now)
-    {
-        if (sources.TryGetValue(key, out var known))
-        {
-            if (now - known.Last > Lifetime && now >= known.Next) known.Wrong = 0;
-            return known;
-        }
-        if (sources.Count >= MaxSources)
-        {
-            foreach (var stale in sources.Where(pair => now - pair.Value.Last > Lifetime && now >= pair.Value.Next).Select(pair => pair.Key).ToArray()) sources.Remove(stale);
-            // Still full: whoever filled it does not get to make room by knocking from somewhere new.
-            if (sources.Count >= MaxSources) return null;
-        }
-        var added = new Source { Last = now, Next = now };
-        sources[key] = added;
-        return added;
-    }
+    public static TimeSpan Wait(int wrong) => TryPacing.Wait(wrong);
 
     /// <summary>
     /// What a peer's address counts as: the address itself for IPv4 (an IPv4-mapped IPv6 address included), its /64 for IPv6, except a tailnet device's

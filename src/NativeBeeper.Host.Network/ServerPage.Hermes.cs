@@ -21,7 +21,13 @@ internal sealed partial class ServerPage
     // More rows than a form can usefully hold are not read.
     private const int MaxHermesRows = NativeBeeper.App.Services.Hermes.HermesBackend.MaxProfiles + 2;
 
-    private static bool IsHermesPath(string? path) => path is "/hermes" || IsReportsPath(path) || IsAddPath(path);
+    private static IEnumerable<Route> HermesRoutes =>
+    [
+        new("/hermes", Verbs.Both, (page, call) => page.HermesAsync(call.Context, call.Form, call.Token)) { Body = MaxHermesForm, Present = page => page.Hermes is not null },
+    ];
+
+    // Reports and adding an assistant need both of Hermes's parts.
+    private static bool HasHermesReports(ServerPage page) => page.Hermes is not null && page.Reports is not null;
 
     // Hermes Agent's own app icon, the sixth picture in the page's sprite (THIRD_PARTY_NOTICES.md).
     private const string HermesMark = "<span class=\"ic hm\" aria-hidden=\"true\"></span>";

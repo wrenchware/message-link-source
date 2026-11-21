@@ -19,6 +19,15 @@ internal sealed partial class ServerPage
 
     private const string GeneralPage = "settings/general", KeysPage = "settings/serviceaccounts/adminsdk";
 
+    // The notifications form alone carries files.
+    private static IEnumerable<Route> PushRoutes =>
+    [
+        new("/push", Verbs.Both, (page, call) => page.PushAsync(call.Context, call.Form, call.Token, page.pushes!))
+            { Body = MaxUpload, Present = page => page.pushes is not null, Place = "/manage/notifications" },
+        new("/push/test", Verbs.Post, (page, call) => page.PushTestAsync(call.Context, call.Form!, page.pushes!))
+            { Present = page => page.pushes is not null, Place = "/manage/notifications" },
+    ];
+
     // A project id as Google makes them, before it goes into a link; one read from files the server already kept is checked here too.
     private static string? ProjectOf(string? id) =>
         id is { Length: >= 4 and <= 64 } && id.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-') ? id : null;

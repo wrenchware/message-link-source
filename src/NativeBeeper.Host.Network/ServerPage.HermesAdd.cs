@@ -16,7 +16,8 @@ internal sealed partial class ServerPage
 {
     internal const string AddPath = "/hermes/add", AddWatchPath = "/hermes/add/setup";
 
-    private static bool IsAddPath(string? path) => path is AddPath or AddWatchPath;
+    private static IEnumerable<Route> AddRoutes => [.. new[] { AddPath, AddWatchPath }.Select(path =>
+        new Route(path, Verbs.Both, (page, call) => page.AddAssistantAsync(call.Context, call.Path, call.Form, call.Token)) { Body = MaxHermesForm, Present = HasHermesReports })];
 
     private async Task AddAssistantAsync(HttpContext context, string path, IFormCollection? form, string token)
     {

@@ -13,6 +13,16 @@ internal sealed partial class ServerPage
     /// <summary>What was written to the log since a place in it, as JSON, for the log page's script.</summary>
     public const string LogTailPath = "/log/tail";
 
+    private static IEnumerable<Route> LogRoutes =>
+    [
+        new("/log", Verbs.Get, async (page, call) =>
+        {
+            call.Response.Headers.ContentSecurityPolicy = LogPolicy;
+            await PageAsync(call.Context, StatusCodes.Status200OK, "Log", await page.LogBodyAsync(call.Context.RequestAborted).ConfigureAwait(false)).ConfigureAwait(false);
+        }) { Place = "/log" },
+        new(LogTailPath, Verbs.Get, (page, call) => page.LogTailAsync(call.Context)),
+    ];
+
     // The end of the log, whole lines only.
     private async Task<HostLogChunk?> LogEndAsync(CancellationToken cancellationToken)
     {

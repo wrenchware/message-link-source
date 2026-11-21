@@ -22,7 +22,12 @@ internal sealed partial class ServerPage
     /// <summary>The port the server's door listens on, once it does (the Windows server's report code names it).</summary>
     internal Func<int>? ListenPort { get; set; }
 
-    private static bool IsReportsPath(string? path) => path is "/hermes/reports" or "/hermes/reports/off" or ReportCodePath or SetupWatchPath or ReportScriptPath or PluginPath;
+    private static IEnumerable<Route> ReportRoutes =>
+    [.. new (string Path, Verbs Verbs)[]
+        {
+            ("/hermes/reports", Verbs.Both), ("/hermes/reports/off", Verbs.Post), (ReportCodePath, Verbs.Both), (SetupWatchPath, Verbs.Get), (ReportScriptPath, Verbs.Get), (PluginPath, Verbs.Get),
+        }.Select(route => new Route(route.Path, route.Verbs, (page, call) => page.ReportsAsync(call.Context, call.Path, call.Form, call.Token))
+            { Body = MaxHermesForm, Present = HasHermesReports })];
 
     // The files of integrations/hermes-messagelink, embedded under "hermes-messagelink/" (NativeBeeper.Host.Network.csproj), in the ml-report download.
     internal static readonly string[] ReportScriptFiles = ["ml-report", "mlreport_client.py", "SKILL.md", "README.md", "LICENSE"];

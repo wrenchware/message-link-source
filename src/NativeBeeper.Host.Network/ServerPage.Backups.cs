@@ -26,7 +26,18 @@ internal sealed partial class ServerPage
     private readonly object restoreGate = new();
     private (string Id, string File, string Password, RestorePreview Preview, DateTimeOffset At, string PreparedFile)? restoreChoice;
 
-    private static bool IsBackupPath(string? path) => path is "/backups" or "/backups/password" or "/restore" or "/restore/review" or "/reset";
+    // A backup's forms, the restore's review of the devices with a box for each among them, are larger than a form of one button. GET of a form's own path goes home.
+    private static IEnumerable<Route> BackupRoutes =>
+    [
+        new("/backups", Verbs.Both, (page, call) => call.Post ? page.BackupsAsync(call.Context, call.Form!) : Gone(call)) { Body = MaxBackupForm, Present = HasBackups, Place = "/manage/backups" },
+        new("/backups/password", Verbs.Both, (page, call) => page.BackupPasswordAsync(call.Context, call.Form, call.Token)) { Body = MaxBackupForm, Present = HasBackups, Place = "/manage/backups" },
+        new("/restore", Verbs.Both, (page, call) => page.RestoreAsync(call.Context, call.Form, call.Token)) { Body = MaxBackupForm, Present = HasBackups, Place = "/manage/backups" },
+        new("/restore/review", Verbs.Both, (page, call) => call.Post ? page.RestoreReviewAsync(call.Context, call.Form!, call.Token) : Gone(call))
+            { Body = MaxBackupForm, Present = HasBackups, Place = "/manage/backups" },
+        new("/reset", Verbs.Both, (page, call) => page.ResetAsync(call.Context, call.Form, call.Token)) { Body = MaxBackupForm, Present = HasBackups },
+    ];
+
+    private static bool HasBackups(ServerPage page) => page.backups is not null;
 
     // What became of a folder typed on the card, said on the card: at the top of the page, above where it jumps to, it went unseen and the box looked as if nothing had happened (2026-11-02).
     private static string? FolderWords(string? done) => done switch

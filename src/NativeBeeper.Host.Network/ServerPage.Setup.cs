@@ -102,7 +102,20 @@ internal sealed partial class ServerPage
 
     private static string StoredCheck(byte[] secret, StoredPassword stored) => Convert.ToHexStringLower(Mac(secret, "check|stored|" + stored.Line))[..16];
 
-    private static bool IsSetupPath(string? path) => path is "/setup" or "/setup/password" or "/welcome" or "/phone" or "/checklist/hide" or "/checklist/show";
+    // The first run's screens (answered by FirstRunAsync while the page waits for its password, turned away once it has one), and the walkthrough's.
+    private static IEnumerable<Route> SetupRoutes =>
+    [
+        new("/setup", Verbs.Both, (page, call) => Gone(call)) { Stage = Stage.Open },
+        new("/setup/password", Verbs.Both, (page, call) => Gone(call)) { Stage = Stage.Open },
+        .. new[] { "/welcome", "/phone", "/checklist/hide", "/checklist/show" }.Select(path =>
+            new Route(path, Verbs.Both, (page, call) => page.WalkthroughAsync(call.Context, call.Path, call.Form, call.Token))),
+    ];
+
+    private static Task Gone(Call call)
+    {
+        Redirect(call.Response, "/");
+        return Task.CompletedTask;
+    }
 
     // The walkthrough's screen last opened, so the front page's Continue setup goes back to it (step 1 included). In memory: after a restart it goes to the first left.
     private volatile string? lastStep;
@@ -117,15 +130,9 @@ internal sealed partial class ServerPage
 
     // ---- The first run: the setup code, then the password ----
 
-    // Handles every request while the page waits for its password (true), and turns the setup screens away once it has one.
-    private async Task<bool> FirstRunAsync(HttpContext context, string? path, IFormCollection? form)
+    // Handles every request while the page waits for its password.
+    private async Task FirstRunAsync(HttpContext context, string? path, IFormCollection? form)
     {
-        if (!settingUp)
-        {
-            if (path is not ("/setup" or "/setup/password")) return false;
-            Redirect(context.Response, "/");
-            return true;
-        }
         var post = form is not null;
         switch (path)
         {
@@ -134,17 +141,17 @@ internal sealed partial class ServerPage
                 var renewed = false;
                 if (!setupCodes!.Open) { setupCodes.Issue(); renewed = true; }
                 await PageAsync(context, StatusCodes.Status200OK, "Set up", SetupCodeBody(renewed ? "The last setup code ran out, so the server printed a new one just now." : null)).ConfigureAwait(false);
-                return true;
+                return;
             case "/setup":
                 await SetupCodeAsync(context, form!).ConfigureAwait(false);
-                return true;
+                return;
             case "/setup/password" when post:
                 await SetupPasswordAsync(context, form!).ConfigureAwait(false);
-                return true;
+                return;
             default:
                 if (post) await PlainAsync(context, StatusCodes.Status403Forbidden, "Set the server up first.").ConfigureAwait(false);
                 else Redirect(context.Response, "/setup");
-                return true;
+                return;
         }
     }
 

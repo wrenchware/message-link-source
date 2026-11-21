@@ -17,7 +17,8 @@ internal sealed partial class ServerPage
     private const string TailscaleAccessControls = "https://login.tailscale.com/admin/acls/file";
     private const string TailscaleLock = "https://login.tailscale.com/admin/settings/tailnet-lock";
 
-    private static bool IsTailnetPath(string? path) => path is "/tailnet/signout" or "/tailnet/oauth" or "/tailnet/oauth/remove" or "/tailnet/fix" or "/tailnet/turn";
+    private static IEnumerable<Route> TailnetRoutes => [.. new[] { "/tailnet/signout", "/tailnet/oauth", "/tailnet/oauth/remove", "/tailnet/fix", "/tailnet/turn" }.Select(path =>
+        new Route(path, Verbs.Both, (page, call) => page.TailnetAsync(call.Context, call.Path, call.Form, call.Token)) { Place = "/manage/tailscale" })];
 
     // Whether the page should look again soon: the door is starting, or waits to be signed in or approved.
     private bool TailnetWaiting => tailnet is { Enabled: true } board && board.Latest is not { Running: true };

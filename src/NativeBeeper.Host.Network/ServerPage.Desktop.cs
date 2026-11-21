@@ -50,7 +50,11 @@ internal sealed partial class ServerPage
     private static readonly (string Service, string Name)[] DesktopServices =
         [("google-messages", "Google Messages"), ("messenger", "Messenger"), ("google-voice", "Google Voice"), ("instagram", "Instagram")];
 
-    private static bool IsDesktopPath(string? path) => path is "/signin/desktop";
+    // Its GET is the front page.
+    private static IEnumerable<Route> DesktopRoutes =>
+    [
+        new("/signin/desktop", Verbs.Both, (page, call) => call.Post ? page.DesktopSignInPostAsync(call.Context, call.Form!) : page.HomeAsync(call)),
+    ];
 
     // The Accounts card's Connect buttons, for a signed-in browser on this PC only: the window opens on this PC's desktop, so a browser elsewhere is not offered it.
     // Once an account is connected the rest wait behind one button, and a service connected and well isn't offered again; Google Voice takes more than one number.

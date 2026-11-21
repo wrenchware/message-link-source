@@ -41,20 +41,6 @@ internal sealed partial class ServerPage
     private const string InfoGlyph = "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 11v5.5M12 7.6v.1\"/>";
     private const string OutGlyph = "<path d=\"M9.5 20.5h-4a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1h4M15.5 16.5 20 12l-4.5-4.5M20 12H9.5\"/>";
 
-    // Which entry a path belongs to: a page under one of them (the tailnet's steps, a backup's restore) keeps its entry lit.
-    private static string Place(string path) => path switch
-    {
-        "/manage/notifications" or "/push" or "/push/test" => "/manage/notifications",
-        "/manage/tailscale" or "/manage/tailscale/about" => "/manage/tailscale",
-        _ when IsTailnetPath(path) => "/manage/tailscale",
-        "/manage/sync" or "/mirror" => "/manage/sync",
-        "/manage/backups" => "/manage/backups",
-        _ when IsBackupPath(path) && path != "/reset" => "/manage/backups",
-        "/manage/storage" => "/manage/storage",
-        "/log" => "/log",
-        _ => "/",
-    };
-
     // The page's list of places, as the PC's Settings has down its side: the front page, each subject with a page of its own, the log, and signing out.
     private string Nav(string path, string token)
     {
@@ -103,7 +89,12 @@ internal sealed partial class ServerPage
 
     // ---- The pages under /manage ----
 
-    private static bool IsManagePath(string? path) => path is "/manage/notifications" or "/manage/tailscale" or "/manage/tailscale/about" or "/manage/backups" or "/manage/storage" or "/manage/sync" or "/manage/hermes";
+    private static IEnumerable<Route> ManageRoutes =>
+    [.. new (string Path, string Place)[]
+        {
+            ("/manage/notifications", "/manage/notifications"), ("/manage/tailscale", "/manage/tailscale"), ("/manage/tailscale/about", "/manage/tailscale"),
+            ("/manage/backups", "/manage/backups"), ("/manage/storage", "/manage/storage"), ("/manage/sync", "/manage/sync"), ("/manage/hermes", "/"),
+        }.Select(route => new Route(route.Path, Verbs.Get, (page, call) => page.ManageAsync(call.Context, call.Path, call.Token)) { Place = route.Place })];
 
     private async Task ManageAsync(HttpContext context, string path, string token)
     {

@@ -38,7 +38,7 @@ internal sealed partial class ServerPage
     /// <summary>The host's services, whose browser sign-ins the page offers. Without them (a host given none) every service says where to connect it instead.</summary>
     internal void OfferSignIn(ProtocolServices services) => signInServices = services;
 
-    private static bool IsSignInPath(string? path) => path is SignInPath;
+    private static IEnumerable<Route> SignInRoutes => [new(SignInPath, Verbs.Both, (page, call) => page.SignInViewAsync(call.Context, call.Form, call.Token))];
 
     // A new service is one line here (and a card in Settings). Many: it takes more than one account, so its button adds one rather than signing the one in again.
     // Only Google Voice does today: its helper runs one process per account, and the other services' ports hold one account each (ROADMAP.md, Several accounts on one service).

@@ -17,6 +17,33 @@ internal sealed partial class ServerPage
     /// <summary>Where the PC sends its browser as it asks to join: the one request waiting, or the front page when there is none yet or several.</summary>
     public const string JoinReviewPath = "/joins/review";
 
+    private static IEnumerable<Route> JoinRoutes =>
+    [
+        new(JoinWatchPath, Verbs.Get, (page, call) => page.JoinWatchAsync(call.Context)),
+        new(JoinReviewPath, Verbs.Get, (page, call) =>
+        {
+            Redirect(call.Response, page.JoinReviewTarget());
+            return Task.CompletedTask;
+        }),
+        new("/joins/approve", Verbs.Both, (page, call) => page.ApproveJoinAsync(call.Context, call.Field("id"), call.Form, call.Token)),
+        // Turning a device away gives nothing to anyone, so the sign-in is enough; letting one in asks for the password again.
+        new("/joins/deny", Verbs.Post, (page, call) =>
+        {
+            Redirect(call.Response, page.joins.Deny(call.Form!["id"].ToString(), "page").Denied ? "/?done=declined" : "/?done=join_gone");
+            return Task.CompletedTask;
+        }),
+        new("/joins/pause", Verbs.Post, async (page, call) =>
+        {
+            try { page.joins.SetPaused(call.Form!["paused"] == "yes"); }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+            {
+                await PlainAsync(call.Context, StatusCodes.Status500InternalServerError, "Couldn't save whether requests are paused. Try again.").ConfigureAwait(false);
+                return;
+            }
+            Redirect(call.Response, "/");
+        }),
+    ];
+
     private const string JoinSection = "join";
 
     /// <summary>Set by the host: whether a device has a connection open now. One that has is another device of the same name, never an old entry of the one asking.</summary>
