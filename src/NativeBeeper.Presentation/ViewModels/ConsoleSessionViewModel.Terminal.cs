@@ -160,13 +160,14 @@ public sealed partial class ConsoleSessionViewModel
         Command("chats");
         var word = filter.Trim().ToLowerInvariant();
         var network = ConversationTargets.ServiceOf(word) is { } label ? label.Split(" · ")[0] : null;
-        var rows = targets.Entries().Where(c => word switch
+        var rows = (word == "spam" ? targets.Spam() : targets.Entries()).Where(c => word switch
         {
             "" or "all" or "*" => !c.Members.All(m => m.IsArchived),
             "unread" => c.Members.Any(m => m.UnreadCount > 0 || m.IsMarkedUnread),
             "pinned" => c.Members.Any(m => m.IsPinned),
             "muted" => mutedHere.GetValueOrDefault(c.DisplayId, c.Members.Any(m => m.IsMuted)),
             "archive" or "archived" => c.Members.Any(m => m.IsArchived),
+            "spam" => true,
             _ when network is not null => c.Networks.Contains(network),
             _ => c.Title.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase),
         }).OrderByDescending(c => c.Members.Any(m => m.IsPinned)).ThenByDescending(c => c.LastActivity ?? DateTimeOffset.MinValue).ToArray();

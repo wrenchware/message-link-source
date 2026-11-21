@@ -95,6 +95,11 @@ public sealed class ConversationTargets : IDisposable
     /// merges change.</summary>
     public IReadOnlyList<ChatTarget> Entries() => [.. Built().Select(entry => entry.Target)];
 
+    /// <summary>The conversations in Spam, which <see cref="Entries"/> and every name leave out: for /ls spam and /notspam alone.</summary>
+    public IReadOnlyList<ChatTarget> Spam() =>
+        [.. loaded().Where(row => row.IsSpam && row.MergedIntoChatId is null && !MergedConversations.IsMerged(row.Id) && !string.IsNullOrWhiteSpace(row.Title))
+            .Select(row => Target(row, [row], row.Title.Trim(), row.Title.Trim()))];
+
     private Entry[] Built()
     {
         var source = loaded();

@@ -906,7 +906,7 @@ public sealed partial class ConsoleSessionViewModel : ObservableObject, IDisposa
     }
 
     private static readonly HashSet<string> CommandNames = ["r", "w", "read", "mute", "unmute", "filter", "events", "search", "history", "help", "clear", "exit", "unknown", "chats", "to", "route", "status", "commands", "fortune", "apps", "top", "banner", "logs", "matrix", "thread", "diag", "mirror", "whoami", "uptime", "neofetch", "cowsay", "date", "echo", "theme", "alias", "unalias", "watch", "shell", "history_event", "app",
-        "reply", "react", "unreact", "like", "edit", "unsend", "archive", "unarchive", "pin", "unpin", "unread", "delete", "label", "unlabel",
+        "reply", "react", "unreact", "like", "edit", "unsend", "archive", "unarchive", "pin", "unpin", "unread", "delete", "block", "notspam", "label", "unlabel",
         "snooze", "copy", "save", "remind", "msgs", "grep", "guide", "manual", "new", "repeat", "approve", "deny"];
     private void Command(string name) => log("console command name=" + (CommandNames.Contains(name) ? name : "unknown"));
 

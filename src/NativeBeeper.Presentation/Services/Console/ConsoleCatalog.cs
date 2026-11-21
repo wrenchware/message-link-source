@@ -34,7 +34,7 @@ public static class ConsoleCatalog
         _ => "FUN",
     };
 
-    private static readonly string[] ChatViews = ["all", "unread", "pinned", "muted", "archived", "google", "messenger", "voice", "instagram", "hermes"];
+    private static readonly string[] ChatViews = ["all", "unread", "pinned", "muted", "archived", "spam", "google", "messenger", "voice", "instagram", "hermes"];
     private static readonly string[] TopPages = ["overview", "workers", "queues", "cache", "perf"];
 
     public static IReadOnlyList<ConsoleCommandInfo> All { get; } =
@@ -130,6 +130,15 @@ public static class ConsoleCatalog
              "for everyone where that is all its service offers."],
             ["/delete 3", "/delete 3 yes", "/delete m2"], Names: true, SeeAlso: ["unsend", "archive"], Acts: true,
             Seen: "It can't be undone. A conversation goes from your account on the service; a message deleted for everyone goes for them too."),
+        new("block", "manage", "/block name|N|. [yes]", "block a number and report it as spam",
+            ["The conversation menu's Block and report spam, for one person's Google Messages conversation. Two steps: /block 3",
+             "says what will happen; /block 3 yes, typed within 60 seconds, does it. /notspam undoes it."],
+            ["/block 3", "/block 3 yes"], Names: true, SeeAlso: ["notspam"], Acts: true,
+            Seen: "Your phone blocks the number and Google gets a spam report."),
+        new("notspam", "manage", "/notspam name|N|.", "move a conversation out of Spam",
+            ["The conversation menu's Not spam, for Google Messages and Google Voice. On Google Messages it also unblocks the number.",
+             "/ls spam numbers the conversations in Spam."],
+            ["/notspam 2"], Names: true, SeeAlso: ["block"], Acts: true, Seen: "Changes your account on the service."),
         new("label", "manage", "/label name|N|. label", "put one of your labels on a conversation",
             ["Labels are kept in Message Link (the conversation menu's Labels). Quote a name with spaces: /label \"Alex Smith\" Family."],
             ["/label 3 Family", "/label . Work"], Names: true, SeeAlso: ["unlabel"], Acts: true),
@@ -148,7 +157,7 @@ public static class ConsoleCatalog
 
         // ---- look ----
         new("ls", "look", "/ls [view|name]", "list conversations, numbered, in the scroll",
-            ["view is all (or *), unread, pinned, muted, archived or a service. Numbers work with /to N, /msgs N, /thread N.",
+            ["view is all (or *), unread, pinned, muted, archived, spam or a service. Numbers work with /to N, /msgs N, /thread N.",
              "| grep finds conversation names; for words in messages, use /msgs * | grep words."],
             ["/ls unread", "/ls messenger", "/ls * | grep Smith"], Options: ChatViews, SeeAlso: ["chats", "msgs"]),
         new("msgs", "look", "/msgs [name|N|.|*] [count]", "a conversation's recent messages, numbered m1, m2 …",

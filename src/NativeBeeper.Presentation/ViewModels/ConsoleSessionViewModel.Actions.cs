@@ -6,25 +6,25 @@ using NativeBeeper.Presentation.Services;
 namespace NativeBeeper.Presentation.ViewModels;
 
 // Acting on a conversation or a message from the console: /msgs and the message references it numbers, then the
-// conversation menu's actions (archive, pin, unread, delete, labels, snooze) and the message menu's (react, reply, edit,
+// conversation menu's actions (archive, pin, unread, delete, block, not spam, labels, snooze) and the message menu's (react, reply, edit,
 // unsend, delete, copy, save, remind). Every one goes through the host, which calls the same action the menu does, with
 // the same checks; nothing is retried, and an uncertain outcome is said to be unknown. /msgs reads the server's copy of a
 // conversation it names (over every conversation, only what is already held) and marks nothing read. The log gets the command, the provider and the outcome; never words or names.
 public sealed partial class ConsoleSessionViewModel
 {
     public const int MsgsDefault = 10, MsgsMax = 50, MsgsAllDefault = 20, MsgsAllMax = 200;
-    /// <summary>How long a /delete or /unsend waits for its "yes".</summary>
+    /// <summary>How long a /delete, /unsend or /block waits for its "yes".</summary>
     public static readonly TimeSpan ConfirmWindow = TimeSpan.FromSeconds(60);
 
     // A message the console can act on: the provider conversation it is in, and the named conversation shown for it.
     private sealed record MessageRef(ChatSummary Chat, ChatMessage Message, ChatTarget? Target);
     // The last /msgs: what m1, m2 … mean.
     private IReadOnlyList<MessageRef> messageRefs = [];
-    // A /delete or /unsend waiting for its yes: the words typed, the thing they named, and when.
+    // A /delete, /unsend or /block waiting for its yes: the words typed, the thing they named, and when.
     private sealed record Confirmation(string Verb, string Typed, string Key, DateTimeOffset At);
     private Confirmation? confirming;
 
-    private static readonly HashSet<string> ChatVerbs = ["archive", "unarchive", "pin", "unpin", "unread", "label", "unlabel", "snooze"];
+    private static readonly HashSet<string> ChatVerbs = ["archive", "unarchive", "pin", "unpin", "unread", "notspam", "label", "unlabel", "snooze"];
 
     private async Task ActAsync(ConsoleCommand.Act act, bool direct)
     {
@@ -33,7 +33,7 @@ public sealed partial class ConsoleSessionViewModel
         switch (act.Verb)
         {
             case "msgs": await MsgsAsync(act.Ref, act.Rest); return;
-            case "delete" or "unsend": await DeleteAsync(act); return;
+            case "delete" or "unsend" or "block": await DeleteAsync(act); return;
             case "new": await HermesNewAsync(); return;
             case "repeat": await RepeatAsync(act.Rest); return;
             case "approve" or "deny": await HermesAnswerAsync(act.Verb, act.Rest); return;
@@ -324,11 +324,24 @@ public sealed partial class ConsoleSessionViewModel
             }
             : target.Members[0];
 
-    private static bool KeptHere(ChatSummary row) => MergedConversations.IsMerged(row.Id) || row.Network == "Instagram";
+    // A conversation in Spam, which names leave out everywhere else: a number from /ls spam, ., or a name among Spam's conversations.
+    private ChatTarget? NamedSpam(string typed)
+    {
+        var text = typed.Trim();
+        if (text == "." || (text.Length is > 0 and <= 4 && text.All(char.IsAsciiDigit))) return Named(text);
+        var name = ConsoleCommandParser.SplitName(text).Name.Trim();
+        var spam = targets.Spam();
+        var found = spam.Where(t => t.Title.Equals(name, StringComparison.CurrentCultureIgnoreCase)).ToArray();
+        if (found.Length == 0) found = [.. spam.Where(t => t.Title.Contains(name, StringComparison.CurrentCultureIgnoreCase))];
+        if (found.Length == 1) return found[0];
+        Fail(found.Length == 0 ? $"Nothing in Spam is called “{name}”. /ls spam numbers what's there."
+            : $"Several conversations in Spam match “{name}”. /ls spam numbers them; use the number.");
+        return null;
+    }
 
     private async Task ChatActAsync(string verb, string typed, string rest)
     {
-        if (Named(typed) is not { } target || target.Members.Count == 0) return;
+        if ((verb == "notspam" ? NamedSpam(typed) : Named(typed)) is not { } target || target.Members.Count == 0) return;
         if (IsHermes(target) && HermesRefusal(verb) is { } notHermes) { Fail(notHermes); return; }
         var row = RowOf(target);
         var provider = string.Join("|", target.Networks.Select(ConsoleLineFormatter.Provider).Distinct());
@@ -338,13 +351,16 @@ public sealed partial class ConsoleSessionViewModel
             case "archive" or "unarchive":
             {
                 var archived = verb == "archive";
+                if (ConversationActions.Offers(row).Archive == ArchivePlace.None) { Fail(ConversationActions.NotOffered(verb, target.Title, row)); return; }
                 if (row.IsArchived == archived) { Out(archived ? $"{target.Title} is already archived." : $"{target.Title} isn't archived.", ConsoleTone.Dim); return; }
-                var where = KeptHere(row) ? "in Message Link" : "on " + Service(row);
-                var why = row.Network == "Instagram" && !MergedConversations.IsMerged(row.Id) ? " (Instagram can't archive from Message Link)" : "";
                 Report(verb, provider, await Safely(() => host.SetArchivedAsync(row, archived)),
-                    (archived ? "Archived " : "Unarchived ") + target.Title + " " + where + why + ".", "Not changed. Check your phone before trying again.");
+                    ConversationActions.ArchiveDone(target.Title, row, archived), "Not changed. Check your phone before trying again.");
                 return;
             }
+            case "notspam":
+                if (!ConversationActions.Offers(row).NotSpam) { Fail(ConversationActions.NotOffered(verb, target.Title, row)); return; }
+                Report(verb, provider, await Safely(() => host.SetSpamAsync(row, false)), ConversationActions.NotSpamDone(target.Title), "Not changed.");
+                return;
             case "pin" or "unpin":
             {
                 var pinned = verb == "pin";
@@ -383,12 +399,12 @@ public sealed partial class ConsoleSessionViewModel
         }
     }
 
-    // ---- /delete and /unsend: say what will happen, then do it on "yes" ----
+    // ---- /delete, /unsend and /block: say what will happen, then do it on "yes" ----
 
     private async Task DeleteAsync(ConsoleCommand.Act act)
     {
         var typed = act.Ref!.Trim();
-        var message = act.Verb == "unsend" || ConsoleCommandParser.IsMessageRef(typed, numbers: false) || IsMessageRow(typed);
+        var message = act.Verb == "unsend" || act.Verb != "block" && (ConsoleCommandParser.IsMessageRef(typed, numbers: false) || IsMessageRow(typed));
         string key, question, provider;
         Func<Task<ConsoleActionResult>> action;
         string done, failed;
@@ -420,23 +436,19 @@ public sealed partial class ConsoleSessionViewModel
         else
         {
             if (Named(typed) is not { } target || target.Members.Count == 0) return;
-            if (IsHermes(target)) { Fail(HermesRefusal("delete_chat")!); return; }
+            var block = act.Verb == "block";
+            if (IsHermes(target)) { Fail(HermesRefusal(block ? "block" : "delete_chat")!); return; }
             var row = RowOf(target);
-            string? asked;
-            try { asked = host.DeleteChatQuestion(row); }
-            catch (Exception) { asked = null; }
-            if (asked is null)
-            {
-                Fail(MergedConversations.IsMerged(row.Id) ? $"{target.Title} links several conversations; delete each one from its own conversation."
-                    : $"{Service(row)} conversations can't be deleted from Message Link.");
-                return;
-            }
+            // The menu's own dialog, word for word, where the menu offers it.
+            var offered = block ? ConversationActions.Offers(row).Block : ConversationActions.Offers(row).Delete;
+            if (!offered) { Fail(ConversationActions.NotOffered(act.Verb, target.Title, row)); return; }
             key = "chat\n" + row.Id;
-            question = "Delete this conversation? " + asked;
+            question = block ? ConversationActions.BlockTitle + " " + ConversationActions.BlockQuestion
+                : ConversationActions.DeleteTitle + " " + ConversationActions.DeleteQuestion(row);
             provider = ConsoleLineFormatter.Provider(Service(row));
-            action = () => host.DeleteChatAsync(row);
-            done = $"Deleted {target.Title}.";
-            failed = "The delete outcome is unknown. Check your phone before trying again.";
+            action = block ? () => host.SetSpamAsync(row, true) : () => host.DeleteChatAsync(row);
+            done = block ? ConversationActions.BlockDone(target.Title) : ConversationActions.DeleteDone(target.Title);
+            failed = block ? "Not blocked." : ConversationActions.DeleteUnknownWords;
         }
         var now = clock.GetUtcNow();
         if (!act.Confirmed)
@@ -445,7 +457,7 @@ public sealed partial class ConsoleSessionViewModel
             log($"console confirm name={act.Verb} kind={(message ? "message" : "chat")} provider={provider}");
             Out(question, ConsoleTone.Warn);
             Out(new ConsoleSpan("Type ", ConsoleTone.Dim), new ConsoleSpan($"/{act.Verb} {typed} yes", ConsoleTone.Strong),
-                new ConsoleSpan($" within {((int)ConfirmWindow.TotalSeconds).ToString(CultureInfo.CurrentCulture)} seconds to {(act.Verb == "unsend" ? "unsend" : "delete")} it.", ConsoleTone.Dim));
+                new ConsoleSpan($" within {((int)ConfirmWindow.TotalSeconds).ToString(CultureInfo.CurrentCulture)} seconds to {act.Verb} it.", ConsoleTone.Dim));
             return;
         }
         Confirmation? waiting;
@@ -455,7 +467,7 @@ public sealed partial class ConsoleSessionViewModel
         if (now - waiting.At > ConfirmWindow)
         { log($"console confirm name={act.Verb} outcome=expired"); Fail($"That waited more than {((int)ConfirmWindow.TotalSeconds).ToString(CultureInfo.CurrentCulture)} seconds. Type /{act.Verb} {typed} again."); return; }
         if (waiting.Key != key)
-        { log($"console confirm name={act.Verb} outcome=changed"); Fail($"{typed} means something else now (the list changed). Nothing was deleted. Type /{act.Verb} {typed} again."); return; }
+        { log($"console confirm name={act.Verb} outcome=changed"); Fail($"{typed} means something else now (the list changed). Nothing was {(act.Verb == "block" ? "blocked" : "deleted")}. Type /{act.Verb} {typed} again."); return; }
         Report(act.Verb, provider, await Safely(action), done, failed);
     }
 

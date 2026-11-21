@@ -660,7 +660,7 @@ Opening a conversation, the tour and pausing notifications are in the Message Li
 
 > **Safe:** Only four things send: plain text you type, `/r`, `/reply` and `/w`. They go through the same careful path as the message box. A send is never chained, piped, aliased or repeated by `!!`, and the console never shows you as typing. Once its line has scrolled, a send's outcome is printed on a line of its own: "sent", or a note when it was not sent or its outcome is unknown. Nothing is sent again by itself, except a repeat you set up with `/repeat`, which the server sends to Hermes at its times until you cancel it.
 
-> **Real people see these:** `/react`, `/like`, `/unreact`, `/reply`, `/edit`, `/unsend` and `/delete` act on real conversations: a reaction, a reply or an edit is seen by everyone in the conversation, and a delete changes your account and can't be undone. Each runs only when you type it on a line of its own, never from a chain, a pipe, an alias or `!!`, and never twice by itself.
+> **Real people see these:** `/react`, `/like`, `/unreact`, `/reply`, `/edit`, `/unsend`, `/delete` and `/block` act on real conversations: a reaction, a reply or an edit is seen by everyone in the conversation, a delete changes your account and can't be undone, and a block reports the number to Google. Each runs only when you type it on a line of its own, never from a chain, a pipe, an alias or `!!`, and never twice by itself.
 
 ### The screen {#console-screen}
 
@@ -702,6 +702,8 @@ To send a line that starts with a slash, start it with `//`; one that starts wit
 | `/pin name`, `/unpin name` | Pins in Message Link |
 | `/unread name` | Marks it unread in Message Link, as **Mark as unread** does; the service isn't told |
 | `/delete name` | Deletes a conversation where its menu offers **Delete…** (in two steps, below) |
+| `/block name` | **Block and report spam**, for one person's Google Messages conversation (in two steps, below) |
+| `/notspam name` | **Not spam**: moves a Google Messages or Google Voice conversation out of Spam, and unblocks a Google Messages number. `/ls spam` numbers what's there |
 | `/label name Family`, `/unlabel name Family` | Puts one of your labels on it, or takes it off |
 | `/snooze name 1h` | **Remind me later**: `30m`, `1h`, `tonight`, `tomorrow`, a time like `17:30`, or `off` |
 | `/copy m3`, `/save m3`, `/remind m3 tonight` | Copies a message's words, keeps it in Saved Messages, or reminds you about it later |
@@ -716,7 +718,7 @@ A conversation is named as everywhere else: a name, a number from the last `/ls`
 - a `/search` result number, or `#4`.
 - `^`: the newest message from the person the prompt shows; `^2` the one before it.
 
-`/delete` and `/unsend` take two steps. `/delete 3` prints exactly what will happen, in the words of the app's own Delete, and nothing else; `/delete 3 yes`, typed within 60 seconds for the same thing, does it. A message is deleted as its menu's **Delete for me** does, or **Delete for everyone** where that is all its service offers. Where a service can't do something (Google Voice can't react, Instagram conversations can't be deleted from Message Link), nothing is sent and the console says so. A change whose outcome is unknown is reported, never tried again by itself.
+`/delete`, `/unsend` and `/block` take two steps. `/delete 3` prints exactly what will happen, in the words of the app's own Delete, and nothing else; `/delete 3 yes`, typed within 60 seconds for the same thing, does it. A message is deleted as its menu's **Delete for me** does, or **Delete for everyone** where that is all its service offers. Where a service can't do something (Google Voice can't react, Instagram conversations can't be deleted from Message Link), nothing is sent and the console says so. A change whose outcome is unknown is reported, never tried again by itself.
 
 Add `--help` (or `-h`) to any command, such as `/delete 3 --help`, to see its manual page without running it.
 
@@ -724,7 +726,7 @@ Add `--help` (or `-h`) to any command, such as `/delete 3 --help`, to see its ma
 
 | Command | What it does |
 |---|---|
-| `/ls [view]` | Numbered list of conversations: all (or `*`), unread, pinned, muted, archived, a service or a name |
+| `/ls [view]` | Numbered list of conversations: all (or `*`), unread, pinned, muted, archived, spam, a service or a name |
 | `/msgs [name] [count]` | A conversation's recent messages, numbered `m1`, `m2` …, from the server's copy. `/msgs *` lists every conversation's, one line each: `/msgs * \| grep "dinner"` finds a word in any of them |
 | `/search words` | Numbered search results with the words highlighted; add `@messenger` and so on to narrow it. It looks deeper than `/msgs` |
 | `/grep words` | Finds lines already in the scroll, with the same rules as `\| grep` |

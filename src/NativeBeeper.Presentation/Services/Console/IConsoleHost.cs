@@ -128,7 +128,7 @@ public interface IConsoleHost
 
     // ---- Conversation actions: the conversation menu's own, with its checks (MainWindow.ChatMenu) ----
     // Each is an explicit command the user typed on a line of its own; none is retried. A host that does not know one
-    // leaves it unavailable.
+    // leaves it unavailable. Archive, delete and spam run through ConversationActions, which also says what is offered and its words.
 
     /// <summary>Archive or unarchive: on the service, except Instagram and linked conversations, kept in Message Link.</summary>
     Task<ConsoleActionResult> SetArchivedAsync(ChatSummary chat, bool archived) => ConsoleActionResult.NotHere;
@@ -136,10 +136,10 @@ public interface IConsoleHost
     Task<ConsoleActionResult> SetPinnedAsync(ChatSummary chat, bool pinned) => ConsoleActionResult.NotHere;
     /// <summary>The menu's Mark as unread, in Message Link only.</summary>
     Task<ConsoleActionResult> MarkUnreadAsync(ChatSummary chat) => ConsoleActionResult.NotHere;
-    /// <summary>The words the menu's Delete… asks with for this conversation; null where the menu offers no Delete.</summary>
-    string? DeleteChatQuestion(ChatSummary chat) => null;
-    /// <summary>The menu's Delete, once the user has said yes to <see cref="DeleteChatQuestion"/>.</summary>
+    /// <summary>The menu's Delete, once the user has said yes to <see cref="ConversationActions.DeleteQuestion"/>.</summary>
     Task<ConsoleActionResult> DeleteChatAsync(ChatSummary chat) => ConsoleActionResult.NotHere;
+    /// <summary>The menu's Block and report spam (<paramref name="spam"/> true, once the user has said yes) or Not spam.</summary>
+    Task<ConsoleActionResult> SetSpamAsync(ChatSummary chat, bool spam) => ConsoleActionResult.NotHere;
     /// <summary>The menu's Remind me later (a snooze, in Message Link); null calls it off.</summary>
     Task<ConsoleActionResult> SnoozeAsync(ChatSummary chat, DateTimeOffset? until) => ConsoleActionResult.NotHere;
     /// <summary>Your labels, by name; empty where there are none or labels are not available.</summary>

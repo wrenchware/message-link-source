@@ -19,6 +19,7 @@ public sealed partial class ConsoleSessionViewModel
         "reply" => "Hermes conversations don't take replies to a message. Type your message instead.",
         "archive" or "unarchive" => "Hermes conversations can't be archived.",
         "delete_chat" => "Hermes conversations can't be deleted.",
+        "block" or "notspam" => "Hermes conversations have no spam.",
         _ => null,
     };
 

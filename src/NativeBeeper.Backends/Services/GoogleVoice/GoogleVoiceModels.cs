@@ -83,12 +83,9 @@ internal static class GoogleVoiceModels
             IsSpam: chat.Spam, IsCallHistory: !chat.Id.StartsWith("t.", StringComparison.Ordinal) && others.Length == 1);
     }
 
-    // Deleting a conversation (2026-10-04): what the confirmation says, and what each helper answer means. Voice removes it
+    // Deleting a conversation (2026-10-04): what each helper answer means (its confirmation is ConversationActions.DeleteQuestion). Voice removes it
     // from this account only, so the people in it keep theirs. Only these answers mean it certainly was not deleted; any
     // other may have reached Google, and is reported as unknown and never asked again.
-    internal static string DeleteConfirmation(string title) =>
-        $"“{title}” will be deleted from your Google Voice account. The people in it keep their copy. This can't be undone.";
-
     internal static bool DeleteOutcomeUnknown(string code) => code is not ("delete_rejected" or "auth_required" or "invalid_input"
         or "login_required" or "not_connected" or "request_cancelled" or "unknown_method");
 

@@ -37,10 +37,10 @@ public abstract record ConsoleCommand
     public sealed record Tool(string Name, string Rest) : ConsoleCommand;
     /// <summary>
     /// A command that acts on a conversation or a message, or reads a conversation's messages: archive, unarchive, pin,
-    /// unpin, unread, delete, unsend, react, unreact, like, edit, copy, save, remind, label, unlabel, snooze, msgs, and Hermes's new and repeat.
+    /// unpin, unread, block, notspam, delete, unsend, react, unreact, like, edit, copy, save, remind, label, unlabel, snooze, msgs, and Hermes's new and repeat.
     /// Verb is the catalogue's word. Ref names the conversation or message as typed (quotes kept, so a name keeps its
     /// spaces); null when none was typed. Rest is what follows it: a reaction, text, a time, a label or a count.
-    /// Confirmed: the line ended in "yes", the second step of /delete and /unsend.
+    /// Confirmed: the line ended in "yes", the second step of /delete, /unsend and /block.
     /// </summary>
     public sealed record Act(string Verb, string? Ref, string Rest = "", bool Confirmed = false) : ConsoleCommand;
     /// <summary>/reply mN text: a quoted reply to a message. Ref is the message reference, Text what to send.</summary>
@@ -78,16 +78,21 @@ public static class ConsoleCommandParser
                     return quoteText.Length == 0 ? new ConsoleCommand.Invalid($"Type the reply after the message: /reply {quoteRef} text", "reply")
                         : new ConsoleCommand.QuotedReply(quoteRef, quoteText);
                 return new ConsoleCommand.Reply(rest);
-            case "archive" or "unarchive" or "pin" or "unpin" or "unread":
+            case "archive" or "unarchive" or "pin" or "unpin" or "unread" or "notspam":
                 return rest.Length == 0 ? new ConsoleCommand.Invalid($"Say which conversation: /{word.ToLowerInvariant()} name, N or .", word.ToLowerInvariant())
                     : new ConsoleCommand.Act(word.ToLowerInvariant(), rest);
-            case "delete" or "unsend":
+            case "delete" or "unsend" or "block":
             {
                 var verb = word.ToLowerInvariant();
                 var yes = rest.EndsWith(" yes", StringComparison.OrdinalIgnoreCase) || rest.Equals("yes", StringComparison.OrdinalIgnoreCase);
                 var what = yes ? rest[..^3].Trim() : rest;
                 if (what.Length == 0)
-                    return new ConsoleCommand.Invalid(verb == "delete" ? "Say what to delete: /delete name, N, . or a message (m3, ^)" : "Say which of your messages: /unsend m3", verb);
+                    return new ConsoleCommand.Invalid(verb switch
+                    {
+                        "delete" => "Say what to delete: /delete name, N, . or a message (m3, ^)",
+                        "block" => "Say which conversation: /block name, N or .",
+                        _ => "Say which of your messages: /unsend m3",
+                    }, verb);
                 return new ConsoleCommand.Act(verb, what, "", yes);
             }
             case "react":
