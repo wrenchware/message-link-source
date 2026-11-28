@@ -1,0 +1,753 @@
+// mautrix-meta - A Matrix-Facebook Messenger and Instagram DM puppeting bridge.
+// Copyright (C) 2026 Killian Lelong
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package instameow
+
+import (
+	"bytes"
+	"cmp"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/tidwall/gjson"
+	"go.mau.fi/util/l10n"
+	"maunium.net/go/mautrix/bridgev2"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/httpclient"
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+)
+
+type instagramAuthPlatformOperation struct{ name, docID, field string }
+
+var (
+	instagramAPCode                         = instagramAuthPlatformOperation{"AuthPlatformCodeEntryViewQuery", "34414353874878894", "xfb_auth_platform_enter_code_content"}
+	instagramAPPicker                       = instagramAuthPlatformOperation{"AuthPlatformChallengePickerViewQuery", "26777000331897324", "xfb_auth_platform_challenges"}
+	instagramAPAnother                      = instagramAuthPlatformOperation{"useAuthPlatformTryAnotherWayMutation", "9378248908953318", "xfb_auth_platform_try_another_way"}
+	instagramAPSelect                       = instagramAuthPlatformOperation{"useAuthPlatformSelectChallengeMutation", "9771607989592788", "xfb_auth_platform_select_challenge"}
+	instagramAPSubmit                       = instagramAuthPlatformOperation{"useAuthPlatformSubmitCodeMutation", "25017097917894476", "xfb_auth_platform_submit_code"}
+	instagramAPResend                       = instagramAuthPlatformOperation{"useAuthPlatformSendCodeAgainMutation", "29612122925068775", "xfb_auth_platform_send_code_again"}
+	instagramAPApprove                      = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDeviceViewQuery", "27305034922459648", "xfb_auth_platform_afad_content"}
+	instagramAPApprovalState                = instagramAuthPlatformOperation{"AuthPlatformApproveFromAnotherDevicePollingMutation", "24626773746933809", "xfb_auth_platform_afad_approval_state"}
+	instagramAPPasskey                      = instagramAuthPlatformOperation{"AuthPlatformPasskeyViewQuery", "25777997685217823", "xfb_auth_platform_passkey_auth_options"}
+	ErrInstagramWebCheckpointCAPTCHA        = errors.New("instagram web checkpoint requires an interactive CAPTCHA")
+	ErrInstagramPasskeyRequired             = errors.New("instagram requires a passkey and offered no other way")
+	errInstagramAuthPlatformLoggedOut       = fmt.Errorf("%w: terminal page is logged out", ErrInstagramWebLoginRejected)
+	ErrInstagramAuthPlatformApprovalExpired = errors.New("instagram login approval expired")
+)
+
+type instagramAuthPlatformChoice struct {
+	label              string
+	challenge, contact int
+}
+
+type instagramAuthPlatformState struct {
+	referrer                 string
+	url                      *url.URL
+	expectedUserID, channel  string
+	notice, noticeHint       l10n.Message
+	tryAnotherWay, enterCode bool
+	mutationID               int
+	choices                  []instagramAuthPlatformChoice
+	captcha                  *instagramAuthPlatformCaptcha
+	canResend                bool
+	resendCooldown           time.Duration
+	resendAfter              time.Time
+	approving                bool
+	approvalCode             string
+	approvalDevice           string
+	approvalInterval         time.Duration
+}
+
+type instagramAuthPlatformWebviewHandoff struct {
+	url string
+}
+
+func (e *instagramAuthPlatformWebviewHandoff) Error() string {
+	return ErrInstagramWebCheckpointUnsupported.Error()
+}
+func (e *instagramAuthPlatformWebviewHandoff) Unwrap() error {
+	return ErrInstagramWebCheckpointUnsupported
+}
+
+func InstagramWebChallengeURL(err error) (string, bool) {
+	var challenge *instagramAuthPlatformWebviewHandoff
+	if !errors.As(err, &challenge) {
+		return "", false
+	}
+	return challenge.url, true
+}
+
+func InstagramWebRedirectChallengeURL(err error) (string, bool) {
+	if !errors.Is(err, httpclient.ErrChallengeRequired) && !errors.Is(err, httpclient.ErrCheckpointRequired) &&
+		!errors.Is(err, httpclient.ErrConsentRequired) {
+		return "", false
+	}
+	redirectURL := httpclient.GetErrorRedirectURL(err)
+	if redirectURL == "" {
+		return "", false
+	}
+	switch instagramWebCheckpointURLKind(redirectURL) {
+	case "auth_platform", "legacy_checkpoint", "other_instagram":
+		return redirectURL, true
+	default:
+		return "", false
+	}
+}
+
+func resolveInstagramAuthPlatformURL(base, raw string) (*url.URL, bool) {
+	reference, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil, false
+	}
+	target := mustParseURL(base).ResolveReference(reference)
+	params, err := url.ParseQuery(target.RawQuery)
+	if err != nil || target.Scheme != "https" || target.User != nil ||
+		(target.Port() != "" && target.Port() != "443") || !strings.EqualFold(target.Hostname(), "www.instagram.com") || target.RawPath != "" {
+		return nil, false
+	}
+	switch target.Path {
+	case "/auth_platform/", "/auth_platform/codeentry/", "/auth_platform/challengepicker/", "/auth_platform/recaptcha/", "/auth_platform/afad/", "/auth_platform/passkey/":
+		if len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
+			return nil, false
+		}
+	case "/", "/accounts/onetap/", "/accounts/edit/", "/direct/inbox/", "/accounts/login/", "/accounts/suspended/":
+	default:
+		return nil, false
+	}
+	target.Fragment = ""
+	return target, true
+}
+
+func resolveInstagramAuthPlatformWebviewURL(base, raw string) (*url.URL, bool) {
+	reference, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil, false
+	}
+	target := mustParseURL(base).ResolveReference(reference)
+	params, err := url.ParseQuery(target.RawQuery)
+	if err != nil || target.Scheme != "https" || target.User != nil ||
+		(target.Port() != "" && target.Port() != "443") || !strings.EqualFold(target.Hostname(), "www.instagram.com") || target.RawPath != "" ||
+		!strings.HasPrefix(target.Path, "/auth_platform/") || len(params["apc"]) != 1 || params.Get("apc") == "" || len(params["device_id"]) > 1 {
+		return nil, false
+	}
+	for _, segment := range strings.Split(target.Path, "/") {
+		if segment == "." || segment == ".." {
+			return nil, false
+		}
+	}
+	target.Fragment = ""
+	return target, true
+}
+
+func (c *Client) instagramAuthPlatformUnsupportedRoute(base, raw string) error {
+	target, ok := resolveInstagramAuthPlatformWebviewURL(base, raw)
+	if !ok {
+		return ErrInstagramWebCheckpointUnsupported
+	}
+	c.webAuthPlatform = nil
+	return &instagramAuthPlatformWebviewHandoff{url: target.String()}
+}
+
+func instagramAuthPlatformAccountError(target *url.URL) error {
+	switch target.Path {
+	case "/accounts/suspended/":
+		return httpclient.ErrAccountSuspended
+	case "/accounts/login/":
+		return errInstagramAuthPlatformLoggedOut
+	default:
+		return nil
+	}
+}
+
+func instagramAuthPlatformURLDiagnostics(base, raw string) map[string]any {
+	summary := map[string]any{"checkpoint_url_kind": "invalid", "url_empty": strings.TrimSpace(raw) == ""}
+	reference, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return summary
+	}
+	target := mustParseURL(base).ResolveReference(reference)
+	pathKind := map[string]string{
+		"/": "root", "/auth_platform/": "auth_platform", "/auth_platform/codeentry/": "codeentry",
+		"/auth_platform/challengepicker/": "picker", "/auth_platform/recaptcha/": "recaptcha", "/auth_platform/afad/": "afad", "/auth_platform/passkey/": "passkey",
+		"/accounts/onetap/": "onetap", "/accounts/edit/": "edit", "/direct/inbox/": "inbox",
+		"/accounts/login/": "login", "/web/unsupported_version/": "unsupported_version",
+		"/oauth/oidc/": "oidc", "/consent/": "consent", "/privacy/consent/": "privacy_consent",
+		"/accounts/suspended/": "suspended",
+	}[target.Path]
+	params, queryErr := url.ParseQuery(target.RawQuery)
+	summary["checkpoint_url_kind"] = instagramWebCheckpointURLKind(target.String())
+	summary["path_kind"] = cmp.Or(pathKind, "other")
+	summary["origin_allowed"] = target.Scheme == "https" && target.User == nil &&
+		(target.Port() == "" || target.Port() == "443") && strings.EqualFold(target.Hostname(), "www.instagram.com")
+	summary["escaped_path"] = target.RawPath != ""
+	summary["query_parse_error"] = queryErr != nil
+	summary["apc_count"] = min(2, len(params["apc"]))
+	summary["apc_empty"] = params.Get("apc") == ""
+	summary["device_id_count"] = min(2, len(params["device_id"]))
+	return summary
+}
+
+func (c *Client) startInstagramAuthPlatform(ctx context.Context, rawURL, expectedUserID string) (*InstagramWebTwoFactorChallenge, error) {
+	target, ok := resolveInstagramAuthPlatformURL("https://www.instagram.com/", rawURL)
+	if !ok || !strings.HasPrefix(target.Path, "/auth_platform/") {
+		c.log.Debug().Str("checkpoint_url_kind", instagramWebCheckpointURLKind(rawURL)).Msg("Unsupported Instagram web checkpoint URL")
+		return nil, ErrInstagramWebCheckpointUnsupported
+	}
+	expectedUserID = cmp.Or(expectedUserID, c.cookies.Get(cookies.IGCookieDSUserID))
+	if expectedUserID != "" {
+		if userID, err := strconv.ParseUint(expectedUserID, 10, 64); err != nil || userID == 0 {
+			return nil, ErrInstagramWebCheckpointUnsupported
+		}
+	}
+	c.webAuthPlatform = &instagramAuthPlatformState{url: mustParseURL(c.GetEndpoint("login")), expectedUserID: expectedUserID}
+	if err := c.advanceInstagramAuthPlatform(ctx, target.String()); err != nil {
+		c.webAuthPlatform = nil
+		if challengeURL, ok := InstagramWebChallengeURL(err); ok {
+			return &InstagramWebTwoFactorChallenge{ChallengeURL: challengeURL}, nil
+		}
+		return nil, err
+	} else if c.webAuthPlatform == nil {
+		return nil, nil
+	}
+	return &InstagramWebTwoFactorChallenge{AuthPlatform: true}, nil
+}
+
+func (c *Client) advanceInstagramAuthPlatform(ctx context.Context, rawURL string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s := c.webAuthPlatform
+	// Redirects keep the initiating document's referrer until a new page loads.
+	s.referrer = s.url.String()
+	triedPasskey := false
+	for range 5 {
+		target, ok := resolveInstagramAuthPlatformURL(s.url.String(), rawURL)
+		if !ok {
+			return c.instagramAuthPlatformUnsupportedRoute(s.url.String(), rawURL)
+		} else if err := instagramAuthPlatformAccountError(target); err != nil {
+			return err
+		}
+		s.url = target
+		response, body, err := c.instagramWebCheckpointRequest(ctx, target.String(), http.MethodGet, nil, true, "auth_platform_render")
+		if err != nil {
+			return err
+		} else if response == nil {
+			return ErrInstagramWebCheckpointRequestFailed
+		}
+		// Some client transports follow redirects themselves. Validate their final URL too.
+		if response.Request != nil && response.Request.URL != nil {
+			baseURL := target.String()
+			target, ok = resolveInstagramAuthPlatformURL(baseURL, response.Request.URL.String())
+			if !ok {
+				return c.instagramAuthPlatformUnsupportedRoute(baseURL, response.Request.URL.String())
+			} else if err := instagramAuthPlatformAccountError(target); err != nil {
+				return err
+			}
+			s.url = target
+		}
+		if response.StatusCode >= 300 && response.StatusCode < 400 {
+			rawURL = response.Header.Get("Location")
+			if _, valid := resolveInstagramAuthPlatformURL(s.url.String(), rawURL); !valid {
+				c.log.Debug().Int("status_code", response.StatusCode).Str("redirect_source", "location").
+					Fields(instagramAuthPlatformURLDiagnostics(s.url.String(), rawURL)).Msg("Rejected Instagram AuthPlatform redirect")
+				if !strings.HasPrefix(s.url.Path, "/auth_platform/") && instagramWebCheckpointURLKind(rawURL) == "other_instagram" && c.instagramAuthPlatformLoggedIn() {
+					c.webAuthPlatform = nil
+					return nil
+				}
+			}
+			continue
+		} else if response.StatusCode != http.StatusOK {
+			return ErrInstagramWebCheckpointUnsupported
+		}
+		if !strings.HasPrefix(target.Path, "/auth_platform/") {
+			// Instagram treats any e parameter on the login homepage as a rejection.
+			if target.Path == "/" && target.Query().Has("e") && instagramWebLoginResponseKind(body) == "html" {
+				c.webAuthPlatform = nil
+				return ErrInstagramWebLoginRejected
+			}
+			if instagramWebLoginResponseKind(body) != "html" || !c.instagramAuthPlatformLoggedIn() {
+				if instagramWebLoginResponseKind(body) == "html" && c.cookies.Get(cookies.IGCookieDSUserID) == "" && c.cookies.Get(cookies.IGCookieSessionID) == "" {
+					return errInstagramAuthPlatformLoggedOut
+				}
+				return ErrInstagramWebCheckpointUnsupported
+			}
+			c.webAuthPlatform = nil
+			return nil
+		}
+		if err = c.refreshInstagramAuthPlatformConfig(body); err != nil {
+			return err
+		}
+		if target.Path == "/auth_platform/recaptcha/" {
+			return c.prepareInstagramAuthPlatformCaptcha(body)
+		} else if target.Path == "/auth_platform/passkey/" {
+			if triedPasskey {
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
+			}
+			triedPasskey = true
+			apc := target.Query().Get("apc")
+			if data, err := c.instagramAuthPlatformRequest(ctx, instagramAPPasskey, nil, ""); err == nil {
+				apc = cmp.Or(data.Get("encrypted_ap_context").String(), apc)
+			} else if !errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return err
+			}
+			data, err := c.instagramAuthPlatformRequest(ctx, instagramAPAnother, map[string]any{"encrypted_ap_context": apc}, "")
+			if errors.Is(err, ErrInstagramWebCheckpointUnsupported) {
+				return c.instagramAuthPlatformUnsupportedRoute(target.String(), target.String())
+			} else if err != nil {
+				return err
+			} else if rawURL = data.Get("redirect_uri").String(); rawURL == "" {
+				c.webAuthPlatform = nil
+				return ErrInstagramPasskeyRequired
+			}
+			s.referrer = s.url.String()
+			continue
+		}
+		s.captcha = nil
+		s.channel, s.choices, s.enterCode, s.tryAnotherWay = "", nil, false, false
+		s.notice, s.noticeHint = l10n.Message{}, l10n.Message{}
+		s.canResend, s.resendCooldown, s.resendAfter = false, 0, time.Time{}
+		s.approving, s.approvalCode, s.approvalDevice, s.approvalInterval = false, "", "", 0
+		op := instagramAPCode
+		if target.Path == "/auth_platform/challengepicker/" {
+			op = instagramAPPicker
+		} else if target.Path == "/auth_platform/afad/" {
+			op = instagramAPApprove
+		} else if target.Path != "/auth_platform/codeentry/" {
+			return ErrInstagramWebCheckpointUnsupported
+		}
+		data, err := c.instagramAuthPlatformRequest(ctx, op, nil, "")
+		if err != nil {
+			return err
+		}
+		if op == instagramAPCode {
+			s.channel = instagramAuthPlatformChannel(data.Get("challenge_name").String())
+			if s.channel == "SMS" && strings.Contains(data.Get("screen_content_heading").String(), "WhatsApp") {
+				s.channel = "WhatsApp or SMS"
+			}
+			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
+			s.configureCodeResend(data)
+			if s.channel == "" || (data.Get("error_message").String() != "" && data.Get("error_style").String() != "INLINE") {
+				return ErrInstagramWebCheckpointUnsupported
+			}
+			if data.Get("error_message").String() != "" {
+				s.notice, s.noticeHint = msgStepAPProblemInstructions.Message(), msgStepAPProblemHintInstructions.Message()
+			}
+		} else if op == instagramAPApprove {
+			if s.approvalInterval <= 0 {
+				return ErrInstagramWebCheckpointUnsupported
+			}
+			s.approving = true
+			s.tryAnotherWay = data.Get("should_show_try_another_way").Bool()
+			s.approvalCode = data.Get("verification_code").String()
+			s.approvalDevice = instagramAuthPlatformApprovalDevice(data.Get("screen_content_body").String())
+		} else {
+			for _, option := range data.Get("challenge_options").Array() {
+				channel, index := instagramAuthPlatformChannel(option.Get("challenge_name").String()), option.Get("index")
+				if option.Get("challenge_name").String() == "APPROVE_FROM_ANOTHER_DEVICE" && s.approvalInterval > 0 {
+					channel = "Approve on another device"
+				}
+				contacts := option.Get("obfuscated_contact_points")
+				if channel == "" || !contacts.IsArray() || index.Type != gjson.Number || index.Int() < 0 || index.Int() > 1<<31-1 || index.Float() != float64(index.Int()) {
+					continue
+				}
+				for contact := range max(1, len(contacts.Array())) {
+					if len(s.choices) >= 32 {
+						return ErrInstagramWebCheckpointUnsupported
+					}
+					// Provisioning logs login steps: never copy contact details or provider text here.
+					label := channel + " (option " + strconv.Itoa(len(s.choices)+1) + ")"
+					s.choices = append(s.choices, instagramAuthPlatformChoice{label, int(index.Int()), contact})
+				}
+			}
+			if len(s.choices) == 0 {
+				return ErrInstagramWebCheckpointUnsupported
+			}
+		}
+		return nil
+	}
+	return ErrInstagramWebCheckpointUnsupported
+}
+
+func (c *Client) instagramAuthPlatformLoggedIn() bool {
+	c.ensureInstagramWebUserID()
+	userID := c.cookies.Get(cookies.IGCookieDSUserID)
+	expectedUserID := c.webAuthPlatform.expectedUserID
+	return len(c.cookies.GetMissingCookieNames()) == 0 && instagramWebUserIDFromSessionID(c.cookies.Get(cookies.IGCookieSessionID)) == userID &&
+		(expectedUserID == "" || expectedUserID == userID)
+}
+
+func instagramAuthPlatformChannel(method string) string {
+	return map[string]string{"EMAIL": "email", "SMS": "SMS", "SOWA": "WhatsApp"}[method]
+}
+
+func instagramAuthPlatformApprovalDevice(body string) string {
+	device, ok := strings.CutPrefix(body, "We sent a notification to your ")
+	if !ok {
+		return ""
+	}
+	device, _, _ = strings.Cut(device, "\n")
+	device, _, _ = strings.Cut(device, ". ")
+	device = strings.TrimSuffix(strings.TrimSpace(device), ".")
+	if device == "" || utf8.RuneCountInString(device) > 64 {
+		return ""
+	}
+	return device
+}
+
+func (s *instagramAuthPlatformState) configureCodeResend(data gjson.Result) {
+	// The browser starts this cooldown on entering the page, not just on resend.
+	cooldown := data.Get("resend_code_cooldown")
+	s.canResend = data.Get("resend_code_link").Type == gjson.String && data.Get("resend_code_link").String() != "" &&
+		cooldown.Type == gjson.Number && cooldown.Int() >= 0 && cooldown.Int() <= 86400 && cooldown.Float() == float64(cooldown.Int())
+	if s.canResend {
+		s.resendCooldown = time.Duration(cooldown.Int()) * time.Second
+		s.resendAfter = time.Now().Add(s.resendCooldown)
+	}
+}
+
+func (s *instagramAuthPlatformState) step() *bridgev2.LoginStep {
+	return s.stepWithInstructions(l10n.Message{}, l10n.Message{})
+}
+
+// withResendHint is used instead of instructions when the code entry step can go back to resend a code.
+func (s *instagramAuthPlatformState) stepWithInstructions(instructions, withResendHint l10n.Message) *bridgev2.LoginStep {
+	if instructions.IsZero() {
+		instructions, withResendHint = s.notice, s.noticeHint
+	}
+	channelParams := l10n.Params{"channel": s.channel}
+	if s.approving {
+		if s.approvalDevice != "" {
+			instructions = orMessage(instructions, msgStepAPApproveDeviceInstructions.Render(l10n.Params{"device": s.approvalDevice}))
+		}
+		params := &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeNothing, CanCancel: s.tryAnotherWay}
+		if s.approvalCode != "" {
+			params.Type, params.Data = bridgev2.LoginDisplayTypeCode, s.approvalCode
+		}
+		return &bridgev2.LoginStep{
+			Type:                 bridgev2.LoginStepTypeDisplayAndWait,
+			StepID:               "fi.mau.meta.instagram.auth_platform.approve",
+			Instructions:         orMessage(instructions, msgStepAPApproveInstructions.Message()),
+			DisplayAndWaitParams: params,
+		}
+	}
+	field := bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "method", Name: msgFieldAPMethodName.Message()}
+	if len(s.choices) != 0 {
+		instructions = orMessage(instructions, msgStepAPMethodInstructions.Message())
+		for _, choice := range s.choices {
+			field.Options = append(field.Options, bridgev2.UnlocalizedOptions(choice.label)...)
+		}
+	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
+		instructions = orMessage(instructions, msgStepAPActionInstructions.Render(channelParams))
+		field.ID, field.Name = "action", msgFieldAPActionName.Message()
+		field.Options = []bridgev2.LoginInputOption{{Value: "Enter code", Label: msgFieldAPActionOptionEnter.Message()}}
+		if s.canResend {
+			field.Options = append(field.Options, bridgev2.LoginInputOption{Value: "Resend code", Label: msgFieldAPActionOptionResend.Message()})
+		}
+		if s.tryAnotherWay {
+			field.Options = append(field.Options, bridgev2.LoginInputOption{Value: "Try another method", Label: msgFieldAPActionOptionAnother.Message()})
+		}
+	} else {
+		if instructions.IsZero() {
+			instructions = msgStepAPCodeInstructions.Render(channelParams)
+			withResendHint = msgStepAPCodeHintInstructions.Render(channelParams)
+		}
+		if s.canResend && !withResendHint.IsZero() {
+			instructions = withResendHint
+		}
+		field = bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldType2FACode, ID: "verification_code", Name: msgFieldAPVerificationCodeName.Message(), Pattern: "^.{5,8}$"}
+	}
+	return &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.meta.instagram.auth_platform." + field.ID,
+		Instructions: instructions, UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{field}, CanCancel: (s.tryAnotherWay || s.canResend) && s.enterCode}}
+}
+
+// DoInstagramWebAuthPlatformSteps continues the provider's checkpoint, never a new password login.
+func (c *Client) DoInstagramWebAuthPlatformSteps(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
+	s := c.webAuthPlatform
+	if s == nil {
+		return nil, ErrInstagramWebCheckpointUnsupported
+	}
+	if s.captcha != nil {
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
+	}
+	op, values := instagramAPSubmit, map[string]any{}
+	if s.approving {
+		if input == nil {
+			return s.step(), nil
+		} else if input["back"] != "true" || !s.tryAnotherWay {
+			return c.waitForInstagramAuthPlatformApproval(ctx)
+		}
+		op = instagramAPAnother
+	} else if len(s.choices) != 0 {
+		for _, choice := range s.choices {
+			if input["method"] == choice.label {
+				values["challenge_index"], values["contact_point_index"] = choice.challenge, choice.contact
+				break
+			}
+		}
+		if len(values) == 0 {
+			return s.step(), nil
+		}
+		op = instagramAPSelect
+	} else if (s.tryAnotherWay || s.canResend) && !s.enterCode {
+		if input["action"] == "Enter code" {
+			s.enterCode = true
+		} else if input["action"] == "Resend code" && s.canResend {
+			return c.resendInstagramAuthPlatformCode(ctx)
+		} else if input["action"] == "Try another method" && s.tryAnotherWay {
+			op = instagramAPAnother
+		}
+		if op != instagramAPAnother {
+			return s.step(), nil
+		}
+	} else {
+		if input["back"] == "true" && (s.tryAnotherWay || s.canResend) {
+			s.enterCode = false
+			return s.step(), nil
+		}
+		code := strings.TrimSpace(input["verification_code"])
+		if n := utf8.RuneCountInString(code); n < 5 || n > 8 {
+			return s.step(), nil
+		}
+		values["code"] = code
+	}
+	data, err := c.instagramAuthPlatformRequest(ctx, op, values, "")
+	if errors.Is(err, ErrInstagramWebCheckpointRequestFailed) && op == instagramAPSubmit {
+		c.log.Warn().Err(err).Msg("Instagram verification code submission did not complete")
+		return s.stepWithInstructions(msgStepAPRequestFailedInstructions.Message(), msgStepAPRequestFailedHintInstructions.Message()), nil
+	} else if err != nil {
+		return nil, err
+	}
+	redirect := data.Get("redirect_uri").String()
+	if data.Get("error_style").String() == "INLINE" && redirect == "" && op == instagramAPSubmit {
+		return s.stepWithInstructions(msgStepAPCodeRejectedInstructions.Message(), msgStepAPCodeRejectedHintInstructions.Message()), nil
+	} else if redirect == "" || data.Get("error_message").String() != "" || data.Get("ap_error_code").Type != gjson.Null {
+		return nil, ErrInstagramWebCheckpointUnsupported
+	}
+	return c.followInstagramAuthPlatformRedirect(ctx, redirect)
+}
+
+func (c *Client) followInstagramAuthPlatformRedirect(ctx context.Context, redirect string) (*bridgev2.LoginStep, error) {
+	if err := c.advanceInstagramAuthPlatform(ctx, redirect); err != nil {
+		return nil, err
+	} else if c.webAuthPlatform == nil {
+		return nil, nil
+	} else if c.webAuthPlatform.captcha != nil {
+		return c.instagramAuthPlatformCaptchaStep(msgStepWebCaptchaInstructions)
+	}
+	return c.webAuthPlatform.step(), nil
+}
+
+func (c *Client) waitForInstagramAuthPlatformApproval(ctx context.Context) (*bridgev2.LoginStep, error) {
+	for {
+		data, err := c.instagramAuthPlatformRequest(ctx, instagramAPApprovalState, nil, "")
+		if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+			return nil, bridgev2.ErrLoginStepCancelled
+		} else if err != nil {
+			return nil, err
+		}
+		switch data.Get("state").String() {
+		case "ALLOWED", "DENIED":
+			if redirect := data.Get("redirect_uri").String(); redirect != "" {
+				return c.followInstagramAuthPlatformRedirect(ctx, redirect)
+			}
+			return nil, ErrInstagramWebCheckpointUnsupported
+		case "EXPIRED":
+			return nil, ErrInstagramAuthPlatformApprovalExpired
+		}
+		select {
+		case <-time.After(c.webAuthPlatform.approvalInterval):
+		case <-ctx.Done():
+			if errors.Is(context.Cause(ctx), bridgev2.ErrLoginStepCancelled) {
+				return nil, bridgev2.ErrLoginStepCancelled
+			}
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func (c *Client) resendInstagramAuthPlatformCode(ctx context.Context) (*bridgev2.LoginStep, error) {
+	s := c.webAuthPlatform
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if remaining := time.Until(s.resendAfter); remaining > 0 {
+		seconds := int((remaining + time.Second - 1) / time.Second)
+		return s.stepWithInstructions(msgStepAPResendWaitInstructions.Render(l10n.Params{"seconds": seconds}), l10n.Message{}), nil
+	}
+	// Consume the cooldown before I/O, including ambiguous failures. Never retry a
+	// send automatically: the provider may already have dispatched the message.
+	s.resendAfter = time.Now().Add(max(s.resendCooldown, time.Second))
+	data, err := c.instagramAuthPlatformRequest(ctx, instagramAPResend, map[string]any{}, "")
+	if errors.Is(err, context.Canceled) {
+		return nil, err
+	} else if errors.Is(err, httpclient.ErrRateLimited) {
+		s.canResend = false
+		s.notice, s.noticeHint = msgStepAPRateLimitedInstructions.Message(), l10n.Message{}
+	} else if err != nil || (data.Get("success").Type != gjson.True && data.Get("success").Type != gjson.False) {
+		s.notice, s.noticeHint = msgStepAPResendUnconfirmedInstructions.Message(), msgStepAPResendUnconfirmedHintInstructions.Message()
+	} else if data.Get("success").Type == gjson.False || data.Get("error_message").String() != "" {
+		s.notice, s.noticeHint = msgStepAPResendFailedInstructions.Message(), msgStepAPResendFailedHintInstructions.Message()
+	} else {
+		channelParams := l10n.Params{"channel": s.channel}
+		s.notice, s.noticeHint = msgStepAPResendAcceptedInstructions.Render(channelParams), msgStepAPResendAcceptedHintInstructions.Render(channelParams)
+		s.enterCode = true
+	}
+	return s.step(), nil
+}
+
+func (c *Client) instagramAuthPlatformRequest(ctx context.Context, op instagramAuthPlatformOperation, input map[string]any, userAgent string) (gjson.Result, error) {
+	s := c.webAuthPlatform
+	params := s.url.Query()
+	rq := c.http.NewHTTPQuery()
+	variables := map[string]any{"apc": params.Get("apc")}
+	if input != nil {
+		s.mutationID++
+		input["actor_id"], input["client_mutation_id"] = "0", strconv.Itoa(s.mutationID)
+		if input["encrypted_ap_context"] == nil {
+			input["encrypted_ap_context"] = params.Get("apc")
+		}
+		variables = input
+		rq.Crn = "comet.igweb.PolarisAuthPlatformCodeEntryRoute"
+		if op == instagramAPSelect {
+			rq.Crn = "comet.igweb.PolarisAuthPlatformChallengePickerRoute"
+		}
+	}
+	if op == instagramAPResend || op == instagramAPApprovalState {
+		// Keep Relay's mutation identity fields; only the optional device is nullable.
+		variables["device_id"] = nil
+	}
+	if deviceID := params.Get("device_id"); deviceID != "" {
+		variables["device_id"] = deviceID
+	}
+	if input != nil {
+		variables = map[string]any{"input": variables}
+	}
+	// CAPTCHA mutations use root variables, unlike the code-entry input object.
+	if op == instagramAPCaptchaSubmit || op == instagramAPCaptchaRender {
+		variables = map[string]any{"encrypted_context": params.Get("apc"), "device_id": nil}
+		if deviceID := params.Get("device_id"); deviceID != "" {
+			variables["device_id"] = deviceID
+		}
+		if op == instagramAPCaptchaSubmit {
+			variables["captcha_response"] = input["captcha_response"]
+		} else {
+			variables["render_succeeded"] = true
+		}
+		rq.Crn = ""
+	}
+	encoded, err := json.Marshal(variables)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("%w: %v", ErrInstagramWebCheckpointRequestFailed, err)
+	}
+	rq.FbAPIReqFriendlyName, rq.DocID, rq.Variables = op.name, op.docID, string(encoded)
+	config := c.configs.BrowserConfigTable
+	sprinkle := config.SprinkleConfig
+	csrfToken := cmp.Or(c.cookies.Get(cookies.IGCookieCSRFToken), config.InstagramSecurityConfig.CSRFToken)
+	if sprinkle.ParamName != "jazoest" || (!sprinkle.ShouldRandomize && sprinkle.Version <= 0) || rq.Lsd == "" || csrfToken == "" {
+		return gjson.Result{}, ErrInstagramWebCheckpointRequestFailed
+	}
+	c.log.Debug().Str("auth_platform_operation", op.name).Msg("Submitting Instagram verification request")
+	body, err := c.instagramWebGraphQLRequest(ctx, rq, s.url.String(), csrfToken, userAgent)
+	if err != nil {
+		return gjson.Result{}, err
+	}
+	body = bytes.TrimPrefix(bytes.TrimSpace(body), httpclient.AntiJSPrefix)
+	if !gjson.ValidBytes(body) {
+		return gjson.Result{}, ErrInstagramWebCheckpointUnsupported
+	}
+	root := gjson.ParseBytes(body)
+	data := root.Get("data." + op.field)
+	if (!data.IsObject() && !(op == instagramAPCaptchaRender && data.Type == gjson.True)) || len(root.Get("errors").Array()) != 0 || root.Get("error").Exists() {
+		return gjson.Result{}, ErrInstagramWebCheckpointUnsupported
+	} else if data.Get("error_style").String() == "RATE_LIMIT_BANNER" {
+		return gjson.Result{}, httpclient.ErrRateLimited
+	}
+	if approval := root.Get("data.xfb_auth_platform_afad_polling_interval"); approval.IsObject() {
+		interval := approval.Get("polling_interval")
+		s.approvalInterval = 0
+		if approval.Get("is_eligible").Type == gjson.True && interval.Type == gjson.Number && interval.Int() > 0 && interval.Int() <= 60 && interval.Float() == float64(interval.Int()) {
+			s.approvalInterval = time.Duration(interval.Int()) * time.Second
+		}
+	}
+	return data, nil
+}
+
+// Read inert configuration only. The general module loader can log raw scripts containing APC.
+func (c *Client) refreshInstagramAuthPlatformConfig(body []byte) error {
+	if len(body) > 4<<20 {
+		return ErrInstagramWebCheckpointUnsupported
+	}
+	config := *c.configs.BrowserConfigTable
+	config.LSD, config.DTSGInitData, config.DTSGInitialData = types.LSD{}, types.DTSGInitData{}, types.DTSGInitialData{}
+	config.SiteData, config.SprinkleConfig = types.SiteData{}, types.SprinkleConfig{}
+	config.InstagramSecurityConfig = types.InstagramSecurityConfig{}
+	fields := map[string]any{"LSD": &config.LSD, "DTSGInitData": &config.DTSGInitData, "DTSGInitialData": &config.DTSGInitialData,
+		"SiteData": &config.SiteData, "SprinkleConfig": &config.SprinkleConfig, "CurrentUserInitialData": &config.CurrentUserInitialData,
+		"InstagramWebPushInfo": &config.InstagramWebPushInfo, "PolarisSiteData": &config.PolarisSiteData,
+		"InstagramSecurityConfig": &config.InstagramSecurityConfig}
+	found, invalid := map[string]bool{}, false
+	var visit func(any, int)
+	visit = func(value any, depth int) {
+		if depth > 64 {
+			invalid = true
+			return
+		}
+		switch value := value.(type) {
+		case []any:
+			if len(value) >= 3 {
+				name, _ := value[0].(string)
+				if field := fields[name]; field != nil {
+					if _, ok := value[2].(map[string]any); !ok {
+						invalid = true
+						return
+					}
+					data, _ := json.Marshal(value[2])
+					if json.Unmarshal(data, field) != nil {
+						invalid = true
+					}
+					found[name] = true
+					return
+				}
+			}
+			for _, child := range value {
+				visit(child, depth+1)
+			}
+		case map[string]any:
+			for _, child := range value {
+				visit(child, depth+1)
+			}
+		}
+	}
+	err := visitInstagramJSONScripts(body, func(data []byte) error {
+		var value any
+		if json.Unmarshal(data, &value) == nil {
+			visit(value, 0)
+		}
+		return nil
+	})
+	if err != nil || invalid || config.LSD.Token == "" || !found["SiteData"] || config.SiteData.ClientRevision <= 0 ||
+		!found["SprinkleConfig"] || config.SprinkleConfig.ParamName != "jazoest" || (!config.SprinkleConfig.ShouldRandomize && config.SprinkleConfig.Version <= 0) {
+		return ErrInstagramWebCheckpointUnsupported
+	}
+	*c.configs.BrowserConfigTable = config
+	c.configs.LSDToken, c.configs.CometReq = config.LSD.Token, strconv.FormatInt(config.SiteData.CometEnv, 10)
+	return nil
+}
+
+func orMessage(msg, fallback l10n.Message) l10n.Message {
+	if msg.IsZero() {
+		return fallback
+	}
+	return msg
+}

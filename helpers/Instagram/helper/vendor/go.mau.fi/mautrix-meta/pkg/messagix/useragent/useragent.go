@@ -1,0 +1,40 @@
+package useragent
+
+const DPR = "1"
+const BrowserName = "Chrome"
+const ChromeVersion = "157"
+const ChromeVersionFull = ChromeVersion + ".0.8103.78"
+const UserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Safari/537.36"
+const SecCHUserAgent = `"Not-A.Brand";v="99", "Google Chrome";v="` + ChromeVersion + `", "Chromium";v="` + ChromeVersion + `"`
+const SecCHFullVersionList = `"Not-A.Brand";v="99.0.0.0", "Google Chrome";v="` + ChromeVersionFull + `", "Chromium";v="` + ChromeVersionFull + `"`
+const OSName = "Linux"
+const OSVersion = ""
+const SecCHPlatform = `"` + OSName + `"`
+const SecCHPlatformVersion = `"` + OSVersion + `"`
+const SecCHMobile = "?0"
+const SecCHModel = `""`
+const SecCHPrefersColorScheme = "light"
+
+const IGAndroidAppVersion = "454.0.0.54.77"
+const IGAndroidBuildNumber = "1105698528"
+const IGAndroidOSVersion = "14"
+const IGAndroidUserAgent = "Instagram " + IGAndroidAppVersion + " Android (34/" + IGAndroidOSVersion + "; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; " + IGAndroidBuildNumber + ")"
+const IGAndroidCapabilities = "3brTv10C"
+const IGAndroidAppID = "567067343352427"
+
+const MessengerLiteIOSAppID = "437626316973788"
+const MessengerLiteIOSAccessToken = MessengerLiteIOSAppID + "|3e1a7033ae7883bfb31f35375bad9c7a"
+const MessengerLiteIOSUserAgent = "LightSpeed [FBAN/MessengerLiteForiOS;FBAV/586.0.0.32.108;FBBV/1105932679;FBDV/iPhone10,3;FBMD/iPhone;FBSN/iOS;FBSV/16.7.2;FBSS/3;FBCR/;FBID/phone;FBLC/en_US;FBOP/0]"
+
+const MessengerLiteAndroidAppID = "256002347743983"
+const MessengerLiteAndroidAccessToken = MessengerLiteAndroidAppID + "|374e60f8b9bb6b8cbb30f78030438895"
+const MessengerLiteAndroidMajorVersion = "587"
+const MessengerLiteAndroidOSVersion = "16"
+const MessengerLiteAndroidDevice = "Pixel 7"
+const MessengerLiteAndroidUserAgent = "Dalvik/2.1.0 (Linux; U; Android " + MessengerLiteAndroidOSVersion + "; " + MessengerLiteAndroidDevice + " Build/BP2A.250805.005) [FBAN/Orca-Android;FBAV/" + MessengerLiteAndroidMajorVersion + ".0.0.54.96;FBPN/com.facebook.orca;FBLC/en_US;FBBV/1111334203;FBCR/Tello;FBMF/Google;FBBD/google;FBDV/" + MessengerLiteAndroidDevice + ";FBSV/" + MessengerLiteAndroidOSVersion + ";FBCA/arm64-v8a:null;FBDM/{density=2.625,width=1080,height=2400};FB_FW/1;]"
+const MessengerLiteAndroidBuild = 347415355
+const MobileChromeUserAgent = "Mozilla/5.0 (Linux; Android " + MessengerLiteAndroidOSVersion + "; " + MessengerLiteAndroidDevice + ") AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + ChromeVersion + ".0.0.0 Mobile Safari/537.36"
+
+const IGDUserAgent = "WMI Web"
+
+const ASBDID = "359341"

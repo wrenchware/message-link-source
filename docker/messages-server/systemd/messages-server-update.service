@@ -1,0 +1,13 @@
+# The nightly update of Message Link Server installed by install.sh (messages-server-update.timer starts it). update.sh takes
+# the newest stable release from the address in /etc/messages-server/update, and with Google on also the newest
+# stable Google Chrome. Run it by hand with: systemctl start messages-server-update
+[Unit]
+Description=Message Link Server update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/messages-server/update.sh
+# A download, a check and the server's own stop (up to 60 s) and start.
+TimeoutStartSec=30min

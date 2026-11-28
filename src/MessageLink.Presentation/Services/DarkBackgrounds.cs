@@ -1,0 +1,34 @@
+namespace MessageLink.Presentation.Services;
+
+// Settings → Appearance → Background: the dark theme's surfaces as one choice. Each set moves the conversation list and
+// title bar (Shell), the conversation panel (History), the incoming bubble and the title search box together, so they
+// keep the same steps between them; the text levels are white at fixed opacities and read alike on every set. The light
+// and high-contrast themes never change. Stored by id; an id this build does not know is the default.
+public sealed record DarkBackground(string Id, string Name, Rgba Shell, Rgba History, Rgba Incoming, Rgba Search, Rgba Outline);
+
+public static class DarkBackgrounds
+{
+    public const string DefaultId = "dark";
+
+    public static readonly IReadOnlyList<DarkBackground> All =
+    [
+        new(DefaultId, "Dark", new(0x20, 0x20, 0x20), new(0x14, 0x14, 0x14), new(0x2A, 0x2A, 0x2A), new(0x1A, 0x1A, 0x1A), new(0x46, 0x46, 0x46)),
+        // Microsoft Teams' dark surfaces (owner, 2026-11-25), the one set with the conversation lighter than the list and
+        // the search box lighter than the title bar, as the light theme now is. Listed second, under the default.
+        new("charcoal", "Charcoal", new(0x12, 0x12, 0x12), new(0x1F, 0x1F, 0x1F), new(0x29, 0x29, 0x29), new(0x24, 0x24, 0x24), new(0x52, 0x52, 0x52)),
+        // The surfaces up to 0.1.376.
+        new("gray", "Gray", new(0x29, 0x29, 0x29), new(0x19, 0x19, 0x19), new(0x30, 0x30, 0x30), new(0x20, 0x20, 0x20), new(0x50, 0x50, 0x50)),
+        new("near-black", "Near black", new(0x17, 0x17, 0x17), new(0x0D, 0x0D, 0x0D), new(0x24, 0x24, 0x24), new(0x12, 0x12, 0x12), new(0x3C, 0x3C, 0x3C)),
+        new("slate", "Slate", new(0x25, 0x2A, 0x31), new(0x17, 0x1B, 0x21), new(0x2D, 0x33, 0x3B), new(0x1D, 0x22, 0x28), new(0x4A, 0x52, 0x60)),
+        new("navy", "Navy", new(0x1B, 0x1F, 0x28), new(0x10, 0x13, 0x1A), new(0x26, 0x2B, 0x36), new(0x16, 0x1A, 0x22), new(0x40, 0x47, 0x57)),
+        new("midnight", "Midnight", new(0x13, 0x17, 0x20), new(0x0A, 0x0D, 0x13), new(0x1E, 0x23, 0x2F), new(0x0F, 0x12, 0x19), new(0x35, 0x3C, 0x4B)),
+        new("graphite", "Graphite", new(0x2A, 0x28, 0x26), new(0x1A, 0x19, 0x18), new(0x33, 0x31, 0x2E), new(0x21, 0x20, 0x1E), new(0x55, 0x52, 0x4E)),
+        new("moss", "Moss", new(0x26, 0x2A, 0x27), new(0x18, 0x1B, 0x19), new(0x2F, 0x34, 0x30), new(0x1E, 0x22, 0x20), new(0x4B, 0x52, 0x4D)),
+    ];
+
+    public static DarkBackground Default => All[0];
+
+    public static bool Exists(string? id) => All.Any(set => set.Id == id);
+
+    public static DarkBackground Find(string? id) => All.FirstOrDefault(set => set.Id == id) ?? Default;
+}

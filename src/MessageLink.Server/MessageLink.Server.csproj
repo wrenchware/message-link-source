@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- What a host owns when it serves the backends over the protocol: the dispatcher's services, the event log, the state
+       publisher, the journal and the upload store (SWITCHBOARD.md stage 3). Plain net10.0 with no Windows or WinUI
+       reference, so the app's loopback, the local server and a Linux host all call the same ProtocolHost.Create; what only
+       Windows can do arrives as a port. -->
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MessageLink" />
+    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="MessageLink.Server.Network" />
+    <InternalsVisibleTo Include="messages-server" />
+    <InternalsVisibleTo Include="MessageLink.ContractTests" />
+    <InternalsVisibleTo Include="messages-sample-server" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MessageLink.Core/MessageLink.Core.csproj" />
+    <ProjectReference Include="../MessageLink.Protocol/MessageLink.Protocol.csproj" />
+    <ProjectReference Include="../MessageLink.Backends/MessageLink.Backends.csproj" />
+    <ProjectReference Include="../MessageLink.Presentation/MessageLink.Presentation.csproj" />
+    <!-- The server composition (ServerComposition) opens the stores and builds the container every server runs. -->
+    <ProjectReference Include="../MessageLink.Storage/MessageLink.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
+    <PackageReference Include="SMBLibrary" Version="1.5.8.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../third_party/SMBLibrary/*" Link="licenses/SMBLibrary/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,72 @@
+# Message Link Server as a systemd service on a Linux host without Docker (Ubuntu, Debian, a Proxmox LXC): install.sh beside
+# this file puts it in /etc/systemd/system. The same server and limits as the container (docker/messages-server/Dockerfile,
+# compose.yaml); settings the owner chooses go in /etc/messages-server/environment, never in this file.
+[Unit]
+Description=Message Link Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=messages-server
+Group=messages-server
+# The data root and the keys, kept apart as the container's two volumes are (README, "Where things live"). systemd makes
+# both, private to the account, before every start; the server itself never creates either. The backups folder is the
+# container's /backups: the server's own backups go there (a Proxmox install can bind-mount a host folder onto it).
+StateDirectory=messages-server/data messages-server/keys messages-server/backups
+StateDirectoryMode=0700
+Environment=MESSAGES_DATA=/var/lib/messages-server/data
+Environment=MESSAGES_KEYS=/var/lib/messages-server/keys
+Environment=MESSAGES_BACKUPS=/var/lib/messages-server/backups
+# Resume the accounts signed in here at start (paced: at most 4 an hour, backing off after crashes).
+Environment=MESSAGES_RESTORE=1
+# Google Messages and Voice are off here; install.sh --google adds messages-server.service.d/google.conf, which turns them
+# on beside the server's own Google Chrome and gives Chrome's sandbox the user namespaces it is built from.
+Environment=HOME=/var/lib/messages-server/data
+Environment=DOTNET_EnableDiagnostics=0
+Environment=ASPNETCORE_HTTP_PORTS=
+EnvironmentFile=-/etc/messages-server/environment
+ExecStart=/opt/messages-server/messages-server
+UMask=0077
+
+# SIGTERM runs the server's shutdown: pending sends finish and every helper closes. Give it the container's 60 s.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=60
+# A crash starts it again (the server paces its own logins after crashes). A refused start (2: an argument it does not
+# read; 3: a missing or foreign keys folder, or another server holding the data) would only be refused again.
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=2 3
+
+# What the container's limits are (README, "Limits"): memory with no swap beyond it, and threads.
+MemoryMax=2G
+MemorySwapMax=0
+TasksMax=1024
+
+# The container's isolation, as far as a service can have it: no privileges, no capabilities, nothing of the system
+# writable but its own folder. Not MemoryDenyWriteExecute: .NET compiles code at run time.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# invisible, not noaccess: the server reads its own Chrome's processes in /proc to prove Chrome's sandbox is on.
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

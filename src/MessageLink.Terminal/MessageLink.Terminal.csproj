@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- mlink (SWITCHBOARD.md stage 13): the chat console as a terminal program of its own, a client of Message Link Server over the protocol. Plain
+       net10.0 for Windows x64 and Linux x64; what only Windows can do (DPAPI, the console's VT mode, the named pipe's owner check) sits behind
+       OperatingSystem.IsWindows(). Everything a person can see says "Message Link". The types the harness
+       checks are public: the files linked from the app below are internal here too, and the harness compiles its own copies of them. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Plain net10.0 for Linux (the server image, the tarball). Windows' build targets the app's own Windows framework, so its packages resolve to the
+         same Windows builds the app ships (CommunityToolkit.Mvvm, SQLitePCLRaw's provider) and every file it shares with the app's folder is
+         byte-identical, as installer\Publish-App.ps1 requires; it uses no Windows API through it. EnableWindowsTargeting lets the image's Linux
+         restore read the lock file's Windows half. -->
+    <TargetFrameworks>net10.0;net10.0-windows10.0.22621.0</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <AssemblyName>mlink</AssemblyName>
+    <RootNamespace>MessageLink.Terminal</RootNamespace>
+    <Product>Message Link</Product>
+    <AssemblyTitle>Message Link</AssemblyTitle>
+    <Description>Message Link in a terminal</Description>
+    <Company>wrenchware</Company>
+    <!-- One version for the app and every program built beside it (SWITCHBOARD.md decisions), read from the app's project as the servers read it. -->
+    <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../MessageLink.App/MessageLink.App.csproj')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>
+    <!-- CS0649: the replica's row watch is set by the app's private-reading wiring, which mlink does not link (it reads only when asked: /read). -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+    <ApplicationIcon Condition="Exists('../MessageLink.App/Assets/AppIcon.ico')">../MessageLink.App/Assets/AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MessageLink.Core/MessageLink.Core.csproj" />
+    <ProjectReference Include="../MessageLink.Protocol/MessageLink.Protocol.csproj" />
+    <ProjectReference Include="../MessageLink.Presentation/MessageLink.Presentation.csproj" />
+    <ProjectReference Include="../MessageLink.Storage/MessageLink.Storage.csproj" />
+    <!-- For the app's data root and pipe suffix (AppPaths), the key-file protector off Windows, and the files the replica's rows fall back on. No
+         provider in it is ever made here. -->
+    <ProjectReference Include="../MessageLink.Backends/MessageLink.Backends.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The app's replica of the server's shared rows (merges, labels, read state, snoozes, chat preferences, saved messages), plain C# on purpose. -->
+    <Compile Include="../MessageLink.App/Services/ReplicatedStateStore.cs" Link="Linked/ReplicatedStateStore.cs" />
+    <Compile Include="../MessageLink.App/Services/ReplicaRows.cs" Link="Linked/ReplicaRows.cs" />
+    <!-- Another device's changes to those rows reaching the conversation list with no reload, as the window's list follows them. -->
+    <Compile Include="../MessageLink.App/Services/SharedListChanges.cs" Link="Linked/SharedListChanges.cs" />
+  </ItemGroup>
+</Project>

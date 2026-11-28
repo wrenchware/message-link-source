@@ -1,0 +1,244 @@
+package bloks
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"go.mau.fi/mautrix-meta/pkg/messagix/types"
+)
+
+// Messenger iOS 586.0.0.32.108
+const BloksVersionIOS = "a69ac729dd977640534a01bb673d0939aebf53a4edb26ae3f1c13d333c6ae509"
+
+// Messenger Android 587.0.0.54.96
+const BloksVersionAndroid = "0988a0bca6bd75558029bf6c02c26ab1a3b2a8532d9a4a7c46e68e1361949153"
+
+// Instagram Android 454.0.0.54.77
+const BloksVersionInstagramAndroid = "8e8a63073c08f2c7e6701e497d777db5d8d7ad32a5788ce6b1094f20cad0c9f1"
+
+func FormatDeviceID(p types.Platform, id uuid.UUID) string {
+	if p == types.MessengerLiteAndroid {
+		return id.String()
+	}
+	return strings.ToUpper(id.String())
+}
+
+func GetBloksVersion(p types.Platform) (string, error) {
+	switch p {
+	case types.MessengerLiteIOS:
+		return BloksVersionIOS, nil
+	case types.MessengerLiteAndroid:
+		return BloksVersionAndroid, nil
+	case types.Instagram:
+		return BloksVersionInstagramAndroid, nil
+	default:
+		return "", fmt.Errorf("platform %s does not have a bloks version", p.String())
+	}
+}
+
+type ExtraStringification[T any] struct {
+	Body T
+
+	// Set this to skip the special behavior on marshal and
+	// unmarshal, and instead treat the wrapper struct like it is not
+	// present.
+	SkipExtraStringification bool
+}
+
+func (extra *ExtraStringification[T]) UnmarshalJSON(data []byte) error {
+	if !extra.SkipExtraStringification {
+		var first string
+		err := json.Unmarshal(data, &first)
+		if err != nil {
+			return err
+		}
+		data = []byte(first)
+	}
+	return json.Unmarshal(data, extra.Body)
+}
+
+func (extra *ExtraStringification[T]) MarshalJSON() ([]byte, error) {
+	var obj any = &extra.Body
+	if !extra.SkipExtraStringification {
+		first, err := json.Marshal(&extra.Body)
+		if err != nil {
+			return nil, err
+		}
+		obj = string(first)
+	}
+	return json.Marshal(obj)
+}
+
+type BloksParamsInner map[string]any
+
+type BloksBkContext struct {
+	PixelRatio   float64 `json:"pixel_ratio"`
+	BloksVersion string  `json:"bloks_version"`
+}
+
+type BloksNtContext struct {
+	DebugToolingMetadataToken any                  `json:"debug_tooling_metadata_token"`
+	IsFlipperEnabled          bool                 `json:"is_flipper_enabled"`
+	ThemeParams               []BloksNtThemeParams `json:"theme_params"`
+}
+
+type BloksNtThemeParams struct {
+	DesignSystemName string   `json:"design_system_name"`
+	Value            []string `json:"value"`
+}
+
+type BloksParamsMiddle struct {
+	Params ExtraStringification[BloksParamsInner] `json:"params"`
+}
+
+type BloksParamsOuter struct {
+	BloksVersioningId string `json:"bloks_versioning_id"`
+	AppID             string `json:"app_id"`
+
+	Params ExtraStringification[BloksParamsMiddle] `json:"params"`
+}
+
+type BloksRequestOuter struct {
+	BkContext *BloksBkContext   `json:"bk_context,omitempty"`
+	NtContext *BloksNtContext   `json:"nt_context,omitempty"`
+	Params    *BloksParamsOuter `json:"params,omitempty"`
+	Scale     string            `json:"scale,omitempty"`
+}
+
+func NewBloksRequest(doc *BloksDoc, appID string, inner BloksParamsInner) *BloksRequestOuter {
+	outer := &BloksRequestOuter{
+		Params: &BloksParamsOuter{
+			BloksVersioningId: doc.Version,
+			AppID:             appID,
+			Params: ExtraStringification[BloksParamsMiddle]{BloksParamsMiddle{
+				Params: ExtraStringification[BloksParamsInner]{inner, false},
+			}, false},
+		},
+	}
+	if doc.UseNT {
+		outer.NtContext = &BloksNtContext{
+			DebugToolingMetadataToken: nil,
+			IsFlipperEnabled:          false,
+			ThemeParams: []BloksNtThemeParams{
+				{
+					DesignSystemName: "XMDS",
+					Value:            []string{"three_neutral_gray"},
+				},
+				{
+					DesignSystemName: "FDS",
+					Value:            []string{},
+				},
+			},
+		}
+		outer.Scale = "3"
+		outer.Params.Params.Body.Params.SkipExtraStringification = true
+	} else {
+		outer.BkContext = &BloksBkContext{
+			PixelRatio:   3,
+			BloksVersion: doc.Version,
+		}
+	}
+	return outer
+}
+
+type BloksResponse struct {
+	Data   BloksResponseData    `json:"data"`
+	Errors []BloksResponseError `json:"errors"`
+}
+
+type BloksResponseError struct {
+	Message        string   `json:"message"`
+	Severity       string   `json:"severity"`
+	MIDs           []string `json:"mids"`
+	DebugLink      string   `json:"debug_link"`
+	Code           int      `json:"code"`
+	APIErrorCode   int      `json:"api_error_code"`
+	Summary        string   `json:"summary"`
+	Description    string   `json:"description"`
+	DescriptionRaw string   `json:"description_raw"`
+	IsSilent       bool     `json:"is_silent"`
+	IsTransient    bool     `json:"is_transient"`
+	IsNotCritical  bool     `json:"is_not_critical"`
+	RequiresReauth bool     `json:"requires_reauth"`
+	AllowUserRetry bool     `json:"allow_user_retry"`
+	DebugInfo      any      `json:"debug_info"`
+	QueryPath      any      `json:"query_path"`
+	FBTraceID      string   `json:"fbtrace_id"`
+	WWWRequestID   string   `json:"www_request_id"`
+	Path           []string `json:"path"`
+}
+
+type BloksResponseData struct {
+	//lint:ignore SA5008 handled with custom unmarshaler
+	BloksApp *BloksAppData `json:"1$bloks_app(bk_context:$bk_context,params:$params)"`
+	//lint:ignore SA5008 handled with custom unmarshaler
+	BloksAction *BloksActionData `json:"1$bloks_action(bk_context:$bk_context,params:$params)"`
+
+	// normal shit
+	BloksAppFB    *BloksAppDataFB    `json:"fb_bloks_app"`
+	BloksActionFB *BloksActionDataFB `json:"fb_bloks_action"`
+}
+
+// Workaround https://github.com/golang/go/issues/15000
+// Could also upgrade to json/v2 and use single quotes in the struct
+// tag, once that is released and stabilized
+func (b *BloksResponseData) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+	v := reflect.ValueOf(b)
+	t := reflect.TypeOf(BloksResponseData{})
+	for i := 0; i < t.NumField(); i++ {
+		key := t.Field(i).Tag.Get("json")
+		if raw[key] == nil {
+			continue
+		}
+		err := json.Unmarshal(raw[key], v.Elem().Field(i).Addr().Interface())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type BloksAppDataFB struct {
+	RootComponent BloksComponent `json:"root_component"`
+}
+
+type BloksAppData struct {
+	Screen BloksScreenContent `json:"screen_content"`
+}
+
+type BloksScreenContent struct {
+	Component BloksComponent `json:"component"`
+}
+
+type BloksComponent struct {
+	Bundle BloksAppBundle `json:"bundle"`
+}
+
+type BloksAppBundle struct {
+	Tree string `json:"bloks_bundle_tree"` // BloksBundle struct
+}
+
+type BloksActionDataFB struct {
+	RootAction BloksActionData `json:"root_action"`
+}
+
+type BloksActionData struct {
+	Action BloksAction `json:"action"`
+}
+
+type BloksAction struct {
+	Bundle BloksActionBundle `json:"action_bundle"`
+}
+
+type BloksActionBundle struct {
+	BundleAction string `json:"bloks_bundle_action"` // BloksBundle struct
+}

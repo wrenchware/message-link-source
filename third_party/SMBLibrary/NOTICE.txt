@@ -1,0 +1,14 @@
+SMBLibrary 1.5.8.1
+Copyright (C) 2014-2026 Tal Aloni and contributors.
+Licensed under the GNU Lesser General Public License, version 3 or later.
+
+This distribution uses the unmodified, dynamically linked SMBLibrary NuGet package.
+The LGPL and incorporated GPL texts are included here. You may replace SMBLibrary.dll
+with a compatible modified version, and reverse engineer this application for debugging
+modifications to that library as permitted by the LGPL.
+
+Corresponding source, including build projects, is supplied in source-1.5.8.1.zip.
+Upstream: https://github.com/TalAloni/SMBLibrary
+Revision: 582635541d2ec0c84eac5f66cbebd41e2d35c7ae (SMBLibrary 1.5.8.1)
+Package: https://www.nuget.org/packages/SMBLibrary/1.5.8.1
+No changes to the library are included.

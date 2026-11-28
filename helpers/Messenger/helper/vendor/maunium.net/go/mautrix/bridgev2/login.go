@@ -1,0 +1,574 @@
+// Copyright (c) 2024 Tulir Asokan
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+package bridgev2
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"regexp"
+	"slices"
+	"strings"
+
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/l10n"
+
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
+)
+
+// ErrLoginStepCancelled is used as the cancellation cause when the user goes
+// back from a cancellable login step. It does not mean that the whole login
+// process was cancelled.
+var ErrLoginStepCancelled = RespError{
+	ErrCode:    "FI.MAU.LOGIN_STEP_CANCELLED",
+	Err:        "Login step was cancelled",
+	StatusCode: http.StatusConflict,
+}
+
+var ErrLoginCancelled = RespError{
+	ErrCode:    "FI.MAU.BRIDGE.LOGIN_CANCELLED",
+	Err:        "Login process was cancelled",
+	StatusCode: http.StatusGone,
+}
+
+var ErrLoginTimedOut = RespError{
+	ErrCode:    "FI.MAU.BRIDGE.LOGIN_TIMED_OUT",
+	Err:        "Login process timed out",
+	StatusCode: http.StatusGone,
+}
+
+var ErrMissingClientCapability = RespError{
+	ErrCode:    "FI.MAU.BRIDGE.MISSING_CLIENT_CAPABILITY",
+	Err:        "This login requires a capability that the client doesn't support",
+	StatusCode: http.StatusBadRequest,
+}
+
+func MissingClientCapabilityError(capability ClientCapability) RespError {
+	return ErrMissingClientCapability.WithMessage("This login requires the %s capability, which the client doesn't support", capability)
+}
+
+type ClientCapability string
+
+const (
+	ClientCapabilityWebAuthn  ClientCapability = "webauthn"
+	ClientCapabilityHTTP      ClientCapability = "client_http"
+	ClientCapabilityWebSocket ClientCapability = "client_websocket"
+)
+
+type ClientCapabilities []ClientCapability
+
+func (cc ClientCapabilities) Has(capability ClientCapability) bool {
+	return slices.Contains(cc, capability)
+}
+
+// CheckLoginStep returns a missing capability error if the step can't be completed by a client with these capabilities.
+func (cc ClientCapabilities) CheckLoginStep(step *LoginStep) error {
+	if step != nil && step.Type == LoginStepTypeWebAuthn && !cc.Has(ClientCapabilityWebAuthn) {
+		return MissingClientCapabilityError(ClientCapabilityWebAuthn)
+	}
+	return nil
+}
+
+func (cc ClientCapabilities) HasAll(capabilities ...ClientCapability) bool {
+	for _, capability := range capabilities {
+		if !cc.Has(capability) {
+			return false
+		}
+	}
+	return true
+}
+
+// LoginProcess represents a single occurrence of a user logging into the remote network.
+type LoginProcess interface {
+	// Start starts the process and returns the first step.
+	//
+	// For example, a network using QR login may connect to the network, fetch a QR code,
+	// and return a DisplayAndWait-type step.
+	//
+	// This will only ever be called once.
+	Start(ctx context.Context) (*LoginStep, error)
+	// Cancel stops the login process and cleans up any resources.
+	// No other methods will be called after cancel.
+	//
+	// Errors from other methods are always treated as fatal, but Cancel may still be called afterward.
+	Cancel()
+}
+
+type LoginProcessWithOverride interface {
+	LoginProcess
+	// StartWithOverride starts the process with the intent of re-authenticating an existing login.
+	//
+	// The call to this is mutually exclusive with the call to the default Start method.
+	//
+	// The user login being overridden will still be logged out automatically
+	// in case the complete step returns a different login.
+	StartWithOverride(ctx context.Context, override *UserLogin) (*LoginStep, error)
+}
+
+type FingerprintingRoundTripper interface {
+	http.RoundTripper
+	SetFingerprint(fingerprint string)
+}
+
+type LoginStartParams struct {
+	Override      *UserLogin
+	HTTP          FingerprintingRoundTripper
+	WebSocketHTTP FingerprintingRoundTripper
+	// ClientCapabilities lists the login features the client supports.
+	// Use [ClientCapabilities.Has] to check it, and store it in the login process if later steps need it.
+	ClientCapabilities ClientCapabilities
+}
+
+type LoginProcessWithParams interface {
+	LoginProcess
+	// StartWithParams is a replacement for both Start and StartWithOverride.
+	StartWithParams(ctx context.Context, params LoginStartParams) (*LoginStep, error)
+}
+
+type LoginProcessDisplayAndWait interface {
+	LoginProcess
+	// Wait waits for the remote login flow to advance. When a step with
+	// CanCancel is cancelled through the provisioning API, ctx is cancelled and
+	// context.Cause(ctx) is ErrLoginStepCancelled. The implementation should
+	// stop waiting and return ErrLoginStepCancelled.
+	Wait(ctx context.Context) (*LoginStep, error)
+}
+
+type LoginProcessUserInput interface {
+	LoginProcess
+	SubmitUserInput(ctx context.Context, input map[string]string) (*LoginStep, error)
+}
+
+// LoginProcessStepCancel is implemented by login processes which return
+// cancellable steps. CancelStep should perform the back action and return the
+// step that the client should display next.
+type LoginProcessStepCancel interface {
+	LoginProcess
+	CancelStep(ctx context.Context) (*LoginStep, error)
+}
+
+type LoginProcessCookies interface {
+	LoginProcess
+	SubmitCookies(ctx context.Context, cookies map[string]string) (*LoginStep, error)
+}
+
+type LoginProcessWebAuthn interface {
+	LoginProcess
+	SubmitWebAuthnResponse(ctx context.Context, response json.RawMessage) (*LoginStep, error)
+}
+
+type LoginFlow struct {
+	Name        l10n.Message `json:"name"`
+	Description l10n.Message `json:"description"`
+	ID          string       `json:"id"`
+
+	RequiredClientCapabilities []ClientCapability `json:"required_client_capabilities,omitempty"`
+}
+
+type LoginStepType string
+
+const (
+	LoginStepTypeUserInput      LoginStepType = "user_input"
+	LoginStepTypeCookies        LoginStepType = "cookies"
+	LoginStepTypeClientHTTP     LoginStepType = "client_http"
+	LoginStepTypeDisplayAndWait LoginStepType = "display_and_wait"
+	LoginStepTypeWebAuthn       LoginStepType = "webauthn"
+	LoginStepTypeComplete       LoginStepType = "complete"
+)
+
+type LoginDisplayType string
+
+const (
+	LoginDisplayTypeQR      LoginDisplayType = "qr"
+	LoginDisplayTypeEmoji   LoginDisplayType = "emoji"
+	LoginDisplayTypeCode    LoginDisplayType = "code"
+	LoginDisplayTypeNothing LoginDisplayType = "nothing"
+)
+
+type LoginStep struct {
+	// The type of login step
+	Type LoginStepType `json:"type"`
+	// A unique ID for this step. The ID should be same for every login using the same flow,
+	// but it should be different for different bridges and step types.
+	//
+	// For example, Telegram's QR scan followed by a 2-factor password
+	// might use the IDs `fi.mau.telegram.qr` and `fi.mau.telegram.2fa_password`.
+	StepID string `json:"step_id"`
+	// A unique ID for submitting the step. This is randomly generated for every step.
+	// It's used to allow safely retrying requests.
+	TxnID string `json:"txn_id"`
+	// Instructions contains human-readable instructions for completing the login step.
+	Instructions l10n.Message `json:"instructions"`
+
+	// Exactly one of the following structs must be filled depending on the step type.
+
+	DisplayAndWaitParams *LoginDisplayAndWaitParams `json:"display_and_wait,omitempty"`
+	CookiesParams        *LoginCookiesParams        `json:"cookies,omitempty"`
+	ClientHTTPParams     *LoginClientHTTPParams     `json:"client_http,omitempty"`
+	UserInputParams      *LoginUserInputParams      `json:"user_input,omitempty"`
+	WebAuthnParams       *LoginWebAuthnParams       `json:"webauthn,omitempty"`
+	CompleteParams       *LoginCompleteParams       `json:"complete,omitempty"`
+}
+
+func (ls *LoginStep) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("type", string(ls.Type)).
+		Str("step_id", ls.StepID).
+		Str("txn_id", ls.TxnID).
+		Str("instructions", ls.Instructions.Text)
+	if ls.DisplayAndWaitParams != nil {
+		e.Any("display_and_wait", ls.DisplayAndWaitParams)
+	}
+	if ls.CookiesParams != nil {
+		e.Object("cookies", ls.CookiesParams)
+	}
+	if ls.ClientHTTPParams != nil {
+		e.Object("client_http", ls.ClientHTTPParams)
+	}
+	if ls.UserInputParams != nil {
+		e.Any("user_input", ls.UserInputParams)
+	}
+	if ls.WebAuthnParams != nil {
+		e.Any("webauthn", ls.WebAuthnParams)
+	}
+	if ls.CompleteParams != nil {
+		e.Any("complete", ls.CompleteParams)
+	}
+}
+
+type LoginClientHTTPParams struct {
+	RequestID string      `json:"request_id"`
+	StreamID  string      `json:"stream_id,omitempty"`
+	Method    string      `json:"method"`
+	URL       string      `json:"url"`
+	Headers   http.Header `json:"headers,omitempty"`
+	Body      []byte      `json:"body,omitempty"`
+
+	Fingerprint         string `json:"fingerprint,omitempty"`
+	AcceptsGzipResponse bool   `json:"accepts_gzip_response,omitzero"`
+}
+
+func (lchp *LoginClientHTTPParams) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("request_id", lchp.RequestID).
+		Str("method", lchp.Method).
+		Str("url", lchp.URL).
+		Int("header_count", len(lchp.Headers)).
+		Int("body_length", len(lchp.Body)).
+		Str("fingerprint", lchp.Fingerprint).
+		Bool("accepts_gzip_response", lchp.AcceptsGzipResponse)
+}
+
+const ClientHTTPResponseGzipContentType = "application/vnd.mautrix.client-http-response+gzip"
+
+type LoginClientHTTPResponse struct {
+	StreamID    string      `json:"stream_id,omitempty"`
+	StatusCode  int         `json:"status_code,omitzero"`
+	FinalURL    string      `json:"final_url,omitempty"`
+	Headers     http.Header `json:"headers,omitempty"`
+	Trailers    http.Header `json:"trailers,omitempty"`
+	Body        []byte      `json:"body,omitempty"`
+	Error       string      `json:"error,omitempty"`
+	Fingerprint string      `json:"fingerprint,omitempty"`
+}
+
+func (lchr *LoginClientHTTPResponse) IsValid() bool {
+	if lchr.Error != "" {
+		return true
+	}
+	return lchr.StatusCode >= 100 && lchr.StatusCode <= 599
+}
+
+type LoginWebAuthnParams struct {
+	// The origin URL where the credential should be extracted from.
+	URL string `json:"url,omitempty"`
+
+	// Standard parameters for https://developer.mozilla.org/en-US/docs/Web/API/CredentialsContainer/get
+	// Only publicKey seems to be used in practice, so the other options aren't allowed yet.
+	PublicKey json.RawMessage `json:"publicKey,omitempty"`
+}
+
+type LoginDisplayAndWaitParams struct {
+	// The type of thing to display (QR, emoji or text code)
+	Type LoginDisplayType `json:"type"`
+	// The thing to display (raw data for QR, unicode emoji for emoji, plain string for code, omitted for nothing)
+	Data string `json:"data,omitempty"`
+	// An image containing the thing to display. If present, this is recommended over using data directly.
+	// For emojis, the URL to the canonical image representation of the emoji
+	ImageURL string `json:"image_url,omitempty"`
+	// If set, the client may allow the user to go back from this step. The
+	// context passed to Wait will be cancelled with ErrLoginStepCancelled.
+	CanCancel bool `json:"can_cancel,omitzero"`
+}
+
+type LoginCookieFieldSourceType string
+
+const (
+	LoginCookieTypeCookie        LoginCookieFieldSourceType = "cookie"
+	LoginCookieTypeLocalStorage  LoginCookieFieldSourceType = "local_storage"
+	LoginCookieTypeRequestHeader LoginCookieFieldSourceType = "request_header"
+	LoginCookieTypeRequestBody   LoginCookieFieldSourceType = "request_body"
+	LoginCookieTypeRedirectURL   LoginCookieFieldSourceType = "redirect_url"
+	LoginCookieTypeSpecial       LoginCookieFieldSourceType = "special"
+)
+
+type LoginCookieFieldSource struct {
+	// The type of source.
+	Type LoginCookieFieldSourceType `json:"type"`
+	// The name of the field. The exact meaning depends on the type of source.
+	// Cookie:         cookie name
+	// Local storage:  key in local storage
+	// Request header: header name
+	// Request body:   field name inside body after it's parsed (as JSON or multipart form data)
+	// Redirect URL:   unused
+	// Special:        a namespaced identifier that clients can implement special handling for
+	Name string `json:"name"`
+
+	// For request header, body & redirect URL types, a regex matching request or redirect target URLs where the value can be extracted from.
+	RequestURLRegex string `json:"request_url_regex,omitempty"`
+	// For cookie types, the domain the cookie is present on.
+	CookieDomain string `json:"cookie_domain,omitempty"`
+}
+
+type LoginCookieField struct {
+	// The key in the map that is submitted to the connector.
+	ID       string `json:"id"`
+	Required bool   `json:"required"`
+	// The sources that can be used to acquire the field value. Only one of these needs to be used.
+	Sources []LoginCookieFieldSource `json:"sources"`
+	// A regex pattern that the client can use to validate value client-side.
+	Pattern string `json:"pattern,omitempty"`
+}
+
+type LoginCookie struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+	// Path defaults to / if empty.
+	Path     string `json:"path,omitempty"`
+	Secure   bool   `json:"secure,omitzero"`
+	HTTPOnly bool   `json:"http_only,omitzero"`
+}
+
+type LoginCookiesParams struct {
+	URL       string `json:"url"`
+	UserAgent string `json:"user_agent,omitempty"`
+
+	// Cookies the client should set in the webview before loading the URL, used to continue a login
+	// session that was partially completed elsewhere (e.g. a captcha or checkpoint challenge).
+	InitialCookies []LoginCookie `json:"initial_cookies,omitempty"`
+	// The fields that are needed for this cookie login.
+	Fields []LoginCookieField `json:"fields"`
+	// A JavaScript snippet that can extract some or all of the fields.
+	// The snippet will evaluate to a promise that resolves when the relevant fields are found.
+	// Fields that are not present in the promise result must be extracted another way.
+	ExtractJS string `json:"extract_js,omitempty"`
+	// A regex pattern that the URL should match before the client closes the webview.
+	//
+	// The client may submit the login if the user closes the webview after all cookies are collected
+	// even if this URL is not reached, but it should only automatically close the webview after
+	// both cookies and the URL match.
+	WaitForURLPattern string `json:"wait_for_url_pattern,omitempty"`
+	// If true, the client should load the URL and run ExtractJS in a webview that is not shown to the user.
+	Hidden bool `json:"hidden,omitzero"`
+	// If true, running ExtractJS is mandatory. Clients that are unable to do so should fail the login.
+	JSRequired bool `json:"js_required,omitzero"`
+}
+
+func (lcp *LoginCookiesParams) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("url", lcp.URL).
+		Str("user_agent", lcp.UserAgent).
+		Int("initial_cookie_count", len(lcp.InitialCookies)).
+		Any("fields", lcp.Fields).
+		Str("extract_js", lcp.ExtractJS).
+		Str("wait_for_url_pattern", lcp.WaitForURLPattern).
+		Bool("hidden", lcp.Hidden)
+}
+
+type LoginInputFieldType string
+
+const (
+	LoginInputFieldTypeUsername    LoginInputFieldType = "username"
+	LoginInputFieldTypePassword    LoginInputFieldType = "password"
+	LoginInputFieldTypePhoneNumber LoginInputFieldType = "phone_number"
+	LoginInputFieldTypeEmail       LoginInputFieldType = "email"
+	LoginInputFieldType2FACode     LoginInputFieldType = "2fa_code"
+	LoginInputFieldTypeToken       LoginInputFieldType = "token"
+	LoginInputFieldTypeURL         LoginInputFieldType = "url"
+	LoginInputFieldTypeDomain      LoginInputFieldType = "domain"
+	LoginInputFieldTypeSelect      LoginInputFieldType = "select"
+	LoginInputFieldTypeCaptchaCode LoginInputFieldType = "captcha_code"
+)
+
+type LoginInputDataField struct {
+	// The type of input field as a hint for the client.
+	Type LoginInputFieldType `json:"type"`
+	// The ID of the field to be used as the key in the map that is submitted to the connector.
+	ID string `json:"id"`
+	// The name of the field shown to the user.
+	Name l10n.Message `json:"name"`
+	// The description of the field shown to the user.
+	Description l10n.Message `json:"description,omitzero"`
+	// A default value that the client can pre-fill the field with.
+	DefaultValue string `json:"default_value,omitempty"`
+	// Placeholder text that the client can show in the field when it's empty.
+	// If not set, clients may use a default placeholder based on the field type.
+	Placeholder l10n.Message `json:"placeholder,omitzero"`
+	// For username, email, phone number and password fields, the web domain (e.g. instagram.com)
+	// that the client should associate the field with for password manager autofill.
+	AutofillDomain string `json:"autofill_domain,omitempty"`
+	// If true, the field is optional and can be omitted when submitting.
+	Optional bool `json:"optional,omitzero"`
+	// A regex pattern that the client can use to validate input client-side.
+	Pattern string `json:"pattern,omitempty"`
+	// Minimum and maximum input length as a hint for the client
+	MinLength int `json:"min_length,omitzero"`
+	MaxLength int `json:"max_length,omitzero"`
+	// For fields of type select, the valid options.
+	// Pattern may also be filled with a regex that matches the same options.
+	Options []LoginInputOption `json:"options,omitempty"`
+	// A function that validates the input and optionally cleans it up before it's submitted to the connector.
+	Validate func(string) (string, error) `json:"-"`
+}
+
+// LoginInputOption is a select field option. Value is submitted, Label is shown.
+type LoginInputOption struct {
+	Value string       `json:"value"`
+	Label l10n.Message `json:"label"`
+}
+
+// UnmarshalJSON also accepts the bare string used by provisioning v3.
+func (opt *LoginInputOption) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var val string
+		if err := json.Unmarshal(data, &val); err != nil {
+			return err
+		}
+		*opt = LoginInputOption{Value: val, Label: l10n.Unlocalized(val)}
+		return nil
+	}
+	type plain LoginInputOption
+	return json.Unmarshal(data, (*plain)(opt))
+}
+
+// UnlocalizedOptions makes options whose labels are their values.
+func UnlocalizedOptions(values ...string) []LoginInputOption {
+	opts := make([]LoginInputOption, len(values))
+	for i, val := range values {
+		opts[i] = LoginInputOption{Value: val, Label: l10n.Unlocalized(val)}
+	}
+	return opts
+}
+
+var numberCleaner = strings.NewReplacer("-", "", " ", "", "(", "", ")", "")
+
+func isOnlyNumbers(input string) bool {
+	for _, r := range input {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func CleanNonInternationalPhoneNumber(phone string) (string, error) {
+	phone = numberCleaner.Replace(phone)
+	if !isOnlyNumbers(strings.TrimPrefix(phone, "+")) {
+		return "", fmt.Errorf("phone number must only contain numbers")
+	}
+	return phone, nil
+}
+
+func CleanPhoneNumber(phone string) (string, error) {
+	phone = numberCleaner.Replace(phone)
+	if len(phone) < 2 {
+		return "", fmt.Errorf("phone number must start with + and contain numbers")
+	} else if phone[0] != '+' {
+		return "", fmt.Errorf("phone number must start with +")
+	} else if !isOnlyNumbers(phone[1:]) {
+		return "", fmt.Errorf("phone number must only contain numbers")
+	}
+	return phone, nil
+}
+
+func noopValidate(input string) (string, error) {
+	return input, nil
+}
+
+func (f *LoginInputDataField) FillDefaultValidate() {
+	if f.Validate == nil {
+		switch f.Type {
+		case LoginInputFieldTypePhoneNumber:
+			f.Validate = CleanPhoneNumber
+		case LoginInputFieldTypeEmail:
+			f.Validate = func(email string) (string, error) {
+				if !strings.ContainsRune(email, '@') {
+					return "", fmt.Errorf("invalid email")
+				}
+				return email, nil
+			}
+		default:
+			if f.Pattern != "" {
+				f.Validate = func(s string) (string, error) {
+					match, err := regexp.MatchString(f.Pattern, s)
+					if err != nil {
+						return "", err
+					} else if !match {
+						return "", fmt.Errorf("doesn't match regex `%s`", f.Pattern)
+					} else {
+						return s, nil
+					}
+				}
+			} else {
+				f.Validate = noopValidate
+			}
+		}
+	}
+	if f.Optional {
+		validate := f.Validate
+		f.Validate = func(input string) (string, error) {
+			if input == "" {
+				return "", nil
+			}
+			return validate(input)
+		}
+	}
+}
+
+type LoginUserInputParams struct {
+	// The fields that the user needs to fill in.
+	Fields []LoginInputDataField `json:"fields"`
+
+	// Attachments to display alongside the input fields.
+	Attachments []*LoginUserInputAttachment `json:"attachments"`
+
+	// If set, the client may allow the user to go back from this step. The login
+	// process must implement LoginProcessStepCancel.
+	CanCancel bool `json:"can_cancel,omitzero"`
+}
+
+type LoginUserInputAttachment struct {
+	Type     event.MessageType            `json:"type,omitempty"`
+	FileName string                       `json:"filename,omitempty"`
+	Content  []byte                       `json:"content,omitempty"`
+	Info     LoginUserInputAttachmentInfo `json:"info,omitzero"`
+}
+
+type LoginUserInputAttachmentInfo struct {
+	MimeType string `json:"mimetype,omitempty"`
+	Width    int    `json:"w,omitzero"`
+	Height   int    `json:"h,omitzero"`
+	Size     int    `json:"size,omitzero"`
+}
+
+type LoginCompleteParams struct {
+	UserLoginID networkid.UserLoginID `json:"user_login_id"`
+	UserLogin   *UserLogin            `json:"-"`
+}
+
+type LoginSubmit struct {
+}

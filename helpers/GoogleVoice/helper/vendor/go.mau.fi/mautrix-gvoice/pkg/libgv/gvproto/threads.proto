@@ -1,0 +1,160 @@
+syntax = "proto3";
+package threads;
+option go_package = "../gvproto";
+
+enum ThreadFolder {
+    UNKNOWN_THREAD_FOLDER = 0;
+    ALL_THREADS = 1;
+    TEXT_THREADS = 2;
+    ALL_CALL_THREADS = 3; // uncertain
+    ALL_VOICEMAIL_THREADS = 4; // uncertain
+    ALL_SPAM_THREADS = 5; // uncertain
+    ALL_ARCHIVED_THREADS = 6;
+}
+
+enum ContactSpammerStatus {
+    UNKNOWN_CONTACT_SPAMMER_STATUS = 0;
+    USER_UNMARKED_SPAM = 4;
+}
+
+message Thread {
+    string ID = 1;
+    bool read = 2;
+    repeated Message messages = 3;
+    string paginationToken = 4;
+    repeated Contact contacts = 5;
+    repeated ThreadFolder folders = 6;
+    bool isText = 8;
+    repeated string phoneNumbers = 9;
+    repeated Contact suspectedSpamContacts = 12;
+}
+
+message ThreadAttributes {
+    string threadID = 1;
+    bool isBlocked = 2;
+    bool isSpammer = 3;
+    bool read = 4;
+    repeated ThreadFolder folders = 5;
+    bool archived = 6;
+    string groupName = 7;
+    ContactSpammerStatus contactSpammerStatus = 8;
+}
+
+message Message {
+    enum Type {
+        MISSED_CALL = 0;
+        INCOMING_CALL = 1;
+        VOICEMAIL = 2;
+        RECORDED_CALL = 4;
+        OUTGOING_CALL = 7;
+        SMS_IN = 10;
+        SMS_OUT = 11;
+        OUTGOING_CALL_CANCELLED = 14;
+    }
+    enum CoarseType {
+        CALL_TYPE_MISSED = 0;
+        CALL_TYPE_INCOMING = 1;
+        CALL_TYPE_OUTGOING = 2;
+        CALL_TYPE_VOICEMAIL = 3;
+        CALL_TYPE_RECORDED = 4;
+        CALL_TYPE_SMS_IN = 5;
+        CALL_TYPE_SMS_OUT = 6;
+    }
+
+    enum Status {
+        UNREAD = 0;
+        READ = 1;
+    }
+
+    enum TranscriptStatus {
+        UNKNOWN_STATUS = 0;
+        RECEIVED = 1;
+    }
+
+    message UserFeedback {
+        enum Status {
+            UNKNOWN_STATUS = 0;
+            NOT_APPLICABLE = 1;
+        }
+
+        Status status = 2;
+    }
+
+    message Transcript {
+        float confidence = 1;
+        repeated TranscriptToken tokens = 2;
+    }
+
+    message TranscriptToken {
+        bytes text = 1;
+        float confidence = 4;
+    }
+
+    string ID = 1;
+    int64 timestamp = 2;
+    string destinationID = 3;
+    Contact contact = 4;
+    Type type = 5;
+    Status status = 6;
+    Transcript transcript = 7;
+    float durationSeconds = 9;
+    string text = 10;
+    string mediaURL = 12;
+    CoarseType coarseType = 13;
+    TranscriptStatus transcriptStatus = 14;
+    MMSMessage MMS = 15;
+    string phoneNumberKeyToThreadContact = 16;
+    bool isArtificialErrorMessage = 17;
+    int64 transactionID = 18;
+    UserFeedback userFeedback = 19;
+}
+
+message MMSMessage {
+    string text = 1;
+    string subject = 2;
+    repeated Attachment attachments = 3;
+    repeated Contact participants = 4;
+    string senderPhoneNumber = 5;
+    repeated string phoneNumberKeyToThreadContact = 6;
+}
+
+message Attachment {
+    enum Status {
+        UNKNOWN_STATUS = 0;
+        AVAILABLE = 1;
+        NOT_SUPPORTED = 3;
+    }
+
+    enum MediaType {
+        UNKNOWN_TYPE = 0;
+        AUDIO = 1;
+        VIDEO = 2;
+        PHOTO = 3;
+    }
+
+    message Metadata {
+        enum SizeSpec {
+            UNKNOWN = 0;
+            ORIGINAL = 1;
+            S128 = 2;
+            S512 = 3;
+            S1280 = 4;
+        }
+
+        SizeSpec size = 1;
+        int32 width = 2;
+        int32 height = 3;
+    }
+
+    string mimeType = 1;
+    string ID = 2;
+    Status status = 3;
+    repeated Metadata metadata = 4;
+    MediaType mediaType = 5;
+}
+
+message Contact {
+    string name = 1;
+    string phoneNumber = 2;
+    bool blocked = 7;
+}

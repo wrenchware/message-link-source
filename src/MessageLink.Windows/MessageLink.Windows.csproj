@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- What only Windows can do for the backends' ports: DPAPI, the media player and imaging (SWITCHBOARD.md stage 3), and the Google
+       renewal's browser (SWITCHBOARD.md 3.1c): GoogleBrowserRecovery and WebViewGoogleBrowser, which load a kept Google sign-in profile
+       in WebView2 on a thread the host gives them through IStaQueue. The app (over its DispatcherQueue) and MessageLinkServer.exe (over
+       its own STA thread) both use it. It uses the Windows SDK's own WinRT projection and WebView2 and nothing of WinUI or the Windows
+       App SDK, so a MessageLinkServer.exe without the Windows App SDK loads the same code; a harness check fails if this project ever
+       names the Windows App SDK or WinUI. (It was two projects until 2026-11, one of them free of WebView2; both programs referenced
+       both, so they were merged.) -->
+  <!-- The namespace is MessageLink.WindowsPlatform, not MessageLink.Windows: a MessageLink.Windows namespace would make every
+       Windows.Foundation or Windows.UI in the app's MessageLink.* namespaces resolve to it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <!-- The WinRT form of WebView2 (the CsWinRT projection and runtimes\win-x64\native_uap\Microsoft.Web.WebView2.Core.dll), the pair the app
+         already publishes: with the App SDK's package dir set the package turns this on by itself, outside the App SDK it is set by hand
+         (here and in every program that references this library without the App SDK). WebView2UseWinRT=true does not build on .NET 10
+         (NETSDK1130). A spike proved this pairing (SWITCHBOARD.md 3.1). -->
+    <WebView2EnableCsWinRTProjection>true</WebView2EnableCsWinRTProjection>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MessageLink" />
+    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="MessageLink.ContractTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The version Microsoft.WindowsAppSDK 2.7.0 brings (src/MessageLink.App/packages.lock.json), so the app's own copy is this one. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+    <ProjectReference Include="../MessageLink.Core/MessageLink.Core.csproj" />
+    <ProjectReference Include="../MessageLink.Presentation/MessageLink.Presentation.csproj" />
+    <ProjectReference Include="../MessageLink.Backends/MessageLink.Backends.csproj" />
+  </ItemGroup>
+</Project>

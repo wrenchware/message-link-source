@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Wrenchware. MIT License; see LICENSE.
+"""Send a report to a Message Link server.
+
+    ml-report "text"            send the text
+    ml-report < file            send standard input
+    ml-report --key <id> "text" send at most once for this key (1-64 of A-Z a-z 0-9 . _ -)
+    ml-report check             test the connection code
+    ml-report -- check          send the word "check"
+
+The connection code is read from the environment only, so it never shows in a process list: MESSAGE_LINK_REPORTS,
+which Hermes passes to commands, else MESSAGELINK_CODE (the Hermes plugin's setting, which Hermes keeps from commands). Exit codes: 0 delivered (or already delivered) or check passed; 1 refused or failed; 2 setup problem (the code is
+missing or malformed, the server's certificate doesn't match, or the server can't be reached).
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import mlreport_client  # noqa: E402
+
+ENV = "MESSAGE_LINK_REPORTS"
+# The plugin's name for the same code. Hermes keeps it from commands (a platform secret), so it counts only where ml-report
+# runs outside Hermes.
+OTHER_ENV = "MESSAGELINK_CODE"
+USAGE = 'usage: ml-report [--key <id>] "text" | ml-report check (text on standard input when none is given)'
+
+
+def say(line):
+    sys.stderr.write("ml-report: " + line + "\n")
+    sys.stderr.flush()
+
+
+def main(argv):
+    key = None
+    words = []
+    is_check = False
+    options = True
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if options and arg == "--":
+            options = False
+        elif options and arg in ("-h", "--help"):
+            sys.stdout.write(__doc__.lstrip("\n"))
+            return 0
+        elif options and arg == "--key":
+            if i + 1 >= len(argv):
+                say("--key needs a value. " + USAGE)
+                return 2
+            key = argv[i + 1]
+            i += 1
+        elif options and arg.startswith("--key="):
+            key = arg[len("--key="):]
+        elif options and arg.startswith("-") and arg != "-":
+            say("unknown option %s. %s" % (arg, USAGE))
+            return 2
+        else:
+            if options and not words and arg == "check" and i == len(argv) - 1 and key is None:
+                is_check = True
+            words.append(arg)
+        i += 1
+
+    code = os.environ.get(ENV, "") or os.environ.get(OTHER_ENV, "")
+    if not code.strip():
+        say("%s isn't set. Set up reports from the Message Link server's page, "
+            "or put the connection code in the profile's .env and let commands see it." % ENV)
+        return 2
+
+    try:
+        if is_check:
+            mlreport_client.check(code)
+            say("the connection code works.")
+            return 0
+        if words:
+            text = " ".join(words)
+        else:
+            if sys.stdin is None or sys.stdin.isatty():
+                say("no text. " + USAGE)
+                return 2
+            raw = sys.stdin.buffer.read(mlreport_client.MAX_BODY + 1)
+            if len(raw) > mlreport_client.MAX_BODY:
+                say("the report is larger than %d KiB." % (mlreport_client.MAX_BODY // 1024))
+                return 1
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                say("the text on standard input isn't UTF-8.")
+                return 1
+        result = mlreport_client.send(code, text, key=key)
+        say("delivered." if result.status == "delivered" else "already delivered (same key and text).")
+        return 0
+    except mlreport_client.ReportError as error:
+        say(str(error) + ".")
+        return mlreport_client.exit_code(error)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

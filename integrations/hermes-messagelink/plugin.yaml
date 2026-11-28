@@ -1,0 +1,19 @@
+name: messagelink
+label: Message Link
+kind: platform
+version: 1.0.0
+description: >
+  Delivers messages from Hermes, such as hermes send and scheduled jobs, into
+  this profile's conversation in Message Link. It only sends: chatting with
+  Hermes stays in Message Link.
+author: Wrenchware
+requires_env:
+  - name: MESSAGELINK_CODE
+    description: "Connection code from the Message Link server's page"
+    prompt: "Message Link connection code"
+    password: true
+optional_env:
+  - name: MESSAGELINK_HOME_CHANNEL
+    description: "Where scheduled jobs deliver: home"
+    prompt: "Home channel (home)"
+    password: false

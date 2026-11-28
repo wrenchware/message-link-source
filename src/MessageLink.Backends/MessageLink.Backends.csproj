@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything that talks to Google Messages, Messenger, Google Voice and Instagram: the providers, their routers and
+       the helper transport. Plain net10.0 with no Windows API outside OperatingSystem.IsWindows() guards, so a server can
+       host it (SWITCHBOARD.md). Namespaces are the ones they had inside the app, and the app and harness see its internals. -->
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MessageLink" />
+    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="messages-server" />
+    <InternalsVisibleTo Include="MessageLink.ContractTests" />
+    <!-- mlink, the terminal client (SWITCHBOARD.md stage 13): the app's data root and pipe suffix, the key-file protector and the replica's fallback files. -->
+    <InternalsVisibleTo Include="mlink" />
+    <InternalsVisibleTo Include="MessageLink.Server" />
+    <!-- The server page's Backups card words a backup's size and failures as the PC backup does (stage 10). -->
+    <InternalsVisibleTo Include="MessageLink.Server.Network" />
+    <InternalsVisibleTo Include="MessageLink.Windows" />
+    <!-- The sample server runs the real Hermes backend over a made-up Hermes in its own process. -->
+    <InternalsVisibleTo Include="messages-sample-server" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.15" />
+    <ProjectReference Include="../MessageLink.Core/MessageLink.Core.csproj" />
+    <ProjectReference Include="../MessageLink.Presentation/MessageLink.Presentation.csproj" />
+    <ProjectReference Include="../MessageLink.Storage/MessageLink.Storage.csproj" />
+  </ItemGroup>
+  <!-- helpers/Messenger/MessageLink.Messenger.Diagnostics links the helper transport (Services/GoogleMessages/Helper*.cs) from here. -->
+</Project>

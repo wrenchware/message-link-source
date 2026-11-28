@@ -1,0 +1,48 @@
+# Build context for docker/messages-server/Dockerfile (built from the repository root). An allowlist: only the source
+# the image builds from is sent to Docker. Toolchains, caches, build outputs, installers, logs, sessions and data
+# folders stay on this machine. The classic builder reads only this root file, so it lives here, not beside the
+# Dockerfile.
+**
+!Directory.Build.props
+!Directory.Build.targets
+!global.json
+!THIRD_PARTY_NOTICES.md
+!src
+!helpers
+# The Hermes report scripts the server's page offers (docker/messages-server/Dockerfile).
+!integrations/hermes-messagelink
+!third_party/mautrix-meta
+# The Google Messages helper's patched library, for docker/messages-server/Dockerfile.
+!third_party/mautrix-gmessages
+# SMBLibrary's licence texts, replacement notice and exact source (LGPL-3.0), which the server's publish copies to licenses/SMBLibrary.
+!third_party/SMBLibrary
+# Google Chrome's managed policy for the Dockerfile (copied to /etc/opt/chrome/policies/managed).
+!docker/messages-server/chrome-policy.json
+# The GHCR installer extracts these from the image without a source bundle or starting the server.
+!docker/messages-server/chrome-seccomp.json
+!assets/app-icon.png
+
+# Never sent, even from inside the allowed folders.
+**/bin
+**/obj
+**/.vs
+**/*.exe
+**/*.dll
+**/*.log
+**/data
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.key
+**/*.pem
+**/*.pfx
+**/*.protected
+**/.env
+**/.env.*
+
+# Excluded by the first line already; named so nobody re-includes them by accident.
+.git
+.local
+artifacts
+server
+installer

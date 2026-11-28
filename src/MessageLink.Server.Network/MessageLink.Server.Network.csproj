@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The host's door on the network (SWITCHBOARD.md stage 4, the first Unraid test): Kestrel on one TCP port, HTTPS only, one WebSocket
+       endpoint carrying the protocol's text frames to a dispatcher per connection, a self-signed certificate the client pins, and per-device
+       tokens given out by pairing. Only this project and the Linux server reference ASP.NET Core; the Windows app never does (a harness check
+       holds it to that), and its client end of this transport is NetworkEndpoint, in Protocol, on ClientWebSocket alone. -->
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="messages-server" />
+    <!-- The Windows server hosts the same door on 127.0.0.1 and the tailnet (SWITCHBOARD.md 10.7). -->
+    <InternalsVisibleTo Include="MessageLinkServer" />
+    <InternalsVisibleTo Include="MessageLink.ContractTests" />
+    <!-- The sample-data server (tools/MessageLink.SampleServer, SWITCHBOARD.md 7.2): this door in front of made-up people. -->
+    <InternalsVisibleTo Include="messages-sample-server" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The server page's logo (ServerPage, /logo.png): assets/app-icon.png at 128 px, built in so every host has it, the tarball and Windows included. -->
+    <EmbeddedResource Include="Assets/logo.png" LogicalName="server-page-logo.png" />
+    <EmbeddedResource Include="Assets/page-pictures.png" LogicalName="server-page-pictures.png" />
+    <EmbeddedResource Include="Assets/inter.woff2" LogicalName="server-page-font.woff2" />
+    <!-- The Hermes report scripts and plugin the page offers as downloads (ServerPage.Reports.cs); published with the source under MIT. Not tests/. -->
+    <EmbeddedResource Include="../../integrations/hermes-messagelink/*" LogicalName="hermes-messagelink/%(Filename)%(Extension)" />
+    <!-- Reports set up in one command (ServerPage.ReportSetup.cs): the installer the command downloads, with the files above built into it. -->
+    <EmbeddedResource Include="../../integrations/hermes-messagelink/setup/*" LogicalName="hermes-messagelink/setup/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MessageLink.Core/MessageLink.Core.csproj" />
+    <ProjectReference Include="../MessageLink.Protocol/MessageLink.Protocol.csproj" />
+    <ProjectReference Include="../MessageLink.Server/MessageLink.Server.csproj" />
+  </ItemGroup>
+</Project>

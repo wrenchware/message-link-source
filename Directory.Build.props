@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14.0</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet audit stays on and a known vulnerable package (NU1901-NU1904) still fails the build. Only an advisory
+         service that cannot be reached (NU1900) or returns no data (NU1905) remains a visible warning, so an outage of
+         that service cannot block a build or an installer. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1905</WarningsNotAsErrors>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Nothing in this app subscribes to INotifyPropertyChanging. Leaving the toolkit's support on makes every
+         SetProperty allocate a second event-args object nobody reads, and here every collection is a full
+         blocking one, so allocation is what typing lag is made of. -->
+    <MvvmToolkitEnableINotifyPropertyChangingSupport>false</MvvmToolkitEnableINotifyPropertyChangingSupport>
+  </PropertyGroup>
+</Project>

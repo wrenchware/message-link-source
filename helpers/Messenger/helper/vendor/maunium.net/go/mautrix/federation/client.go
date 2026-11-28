@@ -1,0 +1,697 @@
+// Copyright (c) 2024 Tulir Asokan
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+package federation
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
+
+	"github.com/rs/zerolog"
+	"go.mau.fi/util/exhttp"
+	"go.mau.fi/util/exslices"
+	"go.mau.fi/util/jsontime"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto/canonicaljson"
+	"maunium.net/go/mautrix/federation/signutil"
+	"maunium.net/go/mautrix/id"
+)
+
+type Client struct {
+	HTTP        *http.Client
+	ExtHTTP     *http.Client
+	Dialer      *net.Dialer
+	AllowIP     func(net.IP) bool
+	AllowServer func(string) bool
+	ServerName  string
+	UserAgent   string
+	Key         *SigningKey
+
+	ResponseSizeLimit int64
+}
+
+func NewClient(serverName string, key *SigningKey, cache ResolutionCache, httpSettings exhttp.ClientSettings) *Client {
+	dialer := &net.Dialer{Timeout: httpSettings.DialTimeout}
+	srt := NewServerResolvingTransport(cache, dialer.DialContext, httpSettings)
+	c := &Client{
+		HTTP: &http.Client{
+			Transport: srt,
+			Timeout:   httpSettings.GlobalTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Federation requests do not allow redirects.
+				return http.ErrUseLastResponse
+			},
+		},
+		ExtHTTP:    httpSettings.WithDial(dialer.DialContext).Compile(),
+		Dialer:     dialer,
+		UserAgent:  mautrix.DefaultUserAgent,
+		ServerName: serverName,
+		Key:        key,
+		AllowIP:    DefaultAllowIP,
+
+		ResponseSizeLimit: mautrix.DefaultResponseSizeLimit,
+	}
+	c.ExtHTTP.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// External requests (like media download redirects) can redirect further themselves,
+		// but only allow secure URLs.
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("attempted to redirect to non-https URL")
+		}
+		return nil
+	}
+	dialer.ControlContext = c.controlConn
+	srt.ResolveOpts = &ResolveServerNameOpts{HTTPClient: c.ExtHTTP}
+	return c
+}
+
+func DefaultAllowIP(ip net.IP) bool {
+	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLinkLocalMulticast()
+}
+
+func (c *Client) Version(ctx context.Context, serverName string) (resp *RespServerVersion, err error) {
+	err = c.MakeRequest(ctx, serverName, false, http.MethodGet, URLPath{"v1", "version"}, nil, &resp)
+	return
+}
+
+var ErrMismatchingServerName = errors.New("mismatching server name")
+
+func (c *Client) ServerKeys(ctx context.Context, serverName string) (resp *ServerKeyResponse, err error) {
+	err = c.MakeRequest(ctx, serverName, false, http.MethodGet, KeyURLPath{"v2", "server"}, nil, &resp)
+	if err == nil && resp.ServerName != serverName {
+		err = fmt.Errorf("%w: %q != %q", ErrMismatchingServerName, serverName, resp.ServerName)
+	}
+	return
+}
+
+func (c *Client) QueryKeys(ctx context.Context, serverName string, req *ReqQueryKeys) (resp *QueryKeysResponse, err error) {
+	err = c.MakeRequest(ctx, serverName, false, http.MethodPost, KeyURLPath{"v2", "query"}, req, &resp)
+	return
+}
+
+type PDU = json.RawMessage
+type EDU = json.RawMessage
+
+type ReqSendTransaction struct {
+	Destination string `json:"destination"`
+	TxnID       string `json:"-"`
+
+	Origin         string             `json:"origin"`
+	OriginServerTS jsontime.UnixMilli `json:"origin_server_ts"`
+	PDUs           []PDU              `json:"pdus"`
+	EDUs           []EDU              `json:"edus,omitempty"`
+}
+
+type PDUProcessingResult struct {
+	Error string `json:"error,omitempty"`
+}
+
+type RespSendTransaction struct {
+	PDUs map[id.EventID]PDUProcessingResult `json:"pdus"`
+}
+
+func (c *Client) SendTransaction(ctx context.Context, req *ReqSendTransaction) (resp *RespSendTransaction, err error) {
+	err = c.MakeRequest(ctx, req.Destination, true, http.MethodPut, URLPath{"v1", "send", req.TxnID}, req, &resp)
+	return
+}
+
+type RespGetEventAuthChain struct {
+	AuthChain []PDU `json:"auth_chain"`
+}
+
+func (c *Client) GetEventAuthChain(ctx context.Context, serverName string, roomID id.RoomID, eventID id.EventID) (resp *RespGetEventAuthChain, err error) {
+	err = c.MakeRequest(ctx, serverName, true, http.MethodGet, URLPath{"v1", "event_auth", roomID, eventID}, nil, &resp)
+	return
+}
+
+type ReqBackfill struct {
+	ServerName   string
+	RoomID       id.RoomID
+	Limit        int
+	BackfillFrom []id.EventID
+}
+
+type RespBackfill struct {
+	Origin         string             `json:"origin"`
+	OriginServerTS jsontime.UnixMilli `json:"origin_server_ts"`
+	PDUs           []PDU              `json:"pdus"`
+}
+
+func (c *Client) Backfill(ctx context.Context, req *ReqBackfill) (resp *RespBackfill, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName: req.ServerName,
+		Method:     http.MethodGet,
+		Path:       URLPath{"v1", "backfill", req.RoomID},
+		Query: url.Values{
+			"limit": {strconv.Itoa(req.Limit)},
+			"v":     exslices.CastToString[string](req.BackfillFrom),
+		},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+type ReqGetMissingEvents struct {
+	ServerName     string       `json:"-"`
+	RoomID         id.RoomID    `json:"-"`
+	EarliestEvents []id.EventID `json:"earliest_events"`
+	LatestEvents   []id.EventID `json:"latest_events"`
+	Limit          int          `json:"limit,omitzero"`
+	MinDepth       int          `json:"min_depth,omitzero"`
+}
+
+type RespGetMissingEvents struct {
+	Events []PDU `json:"events"`
+}
+
+func (c *Client) GetMissingEvents(ctx context.Context, req *ReqGetMissingEvents) (resp *RespGetMissingEvents, err error) {
+	err = c.MakeRequest(ctx, req.ServerName, true, http.MethodPost, URLPath{"v1", "get_missing_events", req.RoomID}, req, &resp)
+	return
+}
+
+func (c *Client) GetEvent(ctx context.Context, serverName string, eventID id.EventID) (resp *RespBackfill, err error) {
+	err = c.MakeRequest(ctx, serverName, true, http.MethodGet, URLPath{"v1", "event", eventID}, nil, &resp)
+	return
+}
+
+type RespGetState struct {
+	AuthChain []PDU `json:"auth_chain"`
+	PDUs      []PDU `json:"pdus"`
+}
+
+func (c *Client) GetState(ctx context.Context, serverName string, roomID id.RoomID, eventID id.EventID) (resp *RespGetState, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName: serverName,
+		Method:     http.MethodGet,
+		Path:       URLPath{"v1", "state", roomID},
+		Query: url.Values{
+			"event_id": {string(eventID)},
+		},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+type RespGetStateIDs struct {
+	AuthChain []id.EventID `json:"auth_chain_ids"`
+	PDUs      []id.EventID `json:"pdu_ids"`
+}
+
+func (c *Client) GetStateIDs(ctx context.Context, serverName string, roomID id.RoomID, eventID id.EventID) (resp *RespGetStateIDs, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName: serverName,
+		Method:     http.MethodGet,
+		Path:       URLPath{"v1", "state_ids", roomID},
+		Query: url.Values{
+			"event_id": {string(eventID)},
+		},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) TimestampToEvent(ctx context.Context, serverName string, roomID id.RoomID, timestamp time.Time, dir mautrix.Direction) (resp *mautrix.RespTimestampToEvent, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName: serverName,
+		Method:     http.MethodGet,
+		Path:       URLPath{"v1", "timestamp_to_event", roomID},
+		Query: url.Values{
+			"dir": {string(dir)},
+			"ts":  {strconv.FormatInt(timestamp.UnixMilli(), 10)},
+		},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) QueryProfile(ctx context.Context, userID id.UserID) (resp *mautrix.RespUserProfile, err error) {
+	err = c.Query(ctx, userID.Homeserver(), "profile", url.Values{"user_id": {userID.String()}}, &resp)
+	return
+}
+
+func (c *Client) QueryDirectory(ctx context.Context, roomAlias id.RoomAlias) (resp *mautrix.RespAliasResolve, err error) {
+	_, _, homeserver := id.ParseCommonIdentifier(roomAlias)
+	err = c.Query(ctx, homeserver, "directory", url.Values{"room_alias": {roomAlias.String()}}, &resp)
+	return
+}
+
+func (c *Client) Query(ctx context.Context, serverName, queryType string, queryParams url.Values, respStruct any) (err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   serverName,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "query", queryType},
+		Query:        queryParams,
+		Authenticate: true,
+		ResponseJSON: respStruct,
+	})
+	return
+}
+
+func queryToValues(query map[string]string) url.Values {
+	values := make(url.Values, len(query))
+	for k, v := range query {
+		values[k] = []string{v}
+	}
+	return values
+}
+
+func (c *Client) PublicRooms(ctx context.Context, serverName string, req *mautrix.ReqPublicRooms) (resp *mautrix.RespPublicRooms, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   serverName,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "publicRooms"},
+		Query:        queryToValues(req.Query()),
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+type RespOpenIDUserInfo struct {
+	Sub id.UserID `json:"sub"`
+}
+
+func (c *Client) GetOpenIDUserInfo(ctx context.Context, serverName, accessToken string) (resp *RespOpenIDUserInfo, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   serverName,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "openid", "userinfo"},
+		Query:        url.Values{"access_token": {accessToken}},
+		ResponseJSON: &resp,
+	})
+	if resp != nil && resp.Sub.Homeserver() != serverName {
+		if err == nil {
+			err = fmt.Errorf("user ID %s does not belong to server %s", resp.Sub, serverName)
+		}
+		resp = nil
+	}
+	return
+}
+
+type ReqMakeJoin struct {
+	RoomID            id.RoomID
+	UserID            id.UserID
+	Via               string
+	SupportedVersions []id.RoomVersion
+}
+
+type RespMakeJoin struct {
+	RoomVersion id.RoomVersion `json:"room_version,omitempty"`
+	Event       PDU            `json:"event"`
+}
+
+type ReqSendJoin struct {
+	RoomID      id.RoomID
+	EventID     id.EventID
+	OmitMembers bool
+	Event       PDU
+	Via         string
+}
+
+type ReqSendKnock struct {
+	RoomID  id.RoomID
+	EventID id.EventID
+	Event   PDU
+	Via     string
+}
+
+type RespSendJoin struct {
+	AuthChain      []PDU    `json:"auth_chain"`
+	Event          PDU      `json:"event,omitempty"`
+	MembersOmitted bool     `json:"members_omitted,omitzero"`
+	ServersInRoom  []string `json:"servers_in_room,omitempty"`
+	State          []PDU    `json:"state"`
+}
+
+type RespSendKnock struct {
+	KnockRoomState []PDU `json:"knock_room_state"`
+}
+
+type ReqSendInvite struct {
+	RoomID          id.RoomID      `json:"-"`
+	UserID          id.UserID      `json:"-"`
+	EventID         id.EventID     `json:"-"`
+	Event           PDU            `json:"event"`
+	InviteRoomState []PDU          `json:"invite_room_state"`
+	RoomVersion     id.RoomVersion `json:"room_version"`
+}
+
+type RespSendInvite struct {
+	Event PDU `json:"event"`
+}
+
+type ReqMakeLeave struct {
+	RoomID id.RoomID
+	UserID id.UserID
+	Via    string
+}
+
+type ReqSendLeave struct {
+	RoomID  id.RoomID
+	EventID id.EventID
+	Event   PDU
+	Via     string
+}
+
+type (
+	ReqMakeKnock  = ReqMakeJoin
+	RespMakeKnock = RespMakeJoin
+	RespMakeLeave = RespMakeJoin
+)
+
+func (c *Client) MakeJoin(ctx context.Context, req *ReqMakeJoin) (resp *RespMakeJoin, err error) {
+	versions := make([]string, len(req.SupportedVersions))
+	for i, v := range req.SupportedVersions {
+		versions[i] = string(v)
+	}
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.Via,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "make_join", req.RoomID, req.UserID},
+		Query:        url.Values{"ver": versions},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) MakeKnock(ctx context.Context, req *ReqMakeKnock) (resp *RespMakeKnock, err error) {
+	versions := make([]string, len(req.SupportedVersions))
+	for i, v := range req.SupportedVersions {
+		versions[i] = string(v)
+	}
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.Via,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "make_knock", req.RoomID, req.UserID},
+		Query:        url.Values{"ver": versions},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) SendJoin(ctx context.Context, req *ReqSendJoin) (resp *RespSendJoin, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName: req.Via,
+		Method:     http.MethodPut,
+		Path:       URLPath{"v2", "send_join", req.RoomID, req.EventID},
+		Query: url.Values{
+			"omit_members": {strconv.FormatBool(req.OmitMembers)},
+		},
+		Authenticate: true,
+		RequestJSON:  req.Event,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) SendKnock(ctx context.Context, req *ReqSendKnock) (resp *RespSendKnock, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.Via,
+		Method:       http.MethodPut,
+		Path:         URLPath{"v1", "send_knock", req.RoomID, req.EventID},
+		Authenticate: true,
+		RequestJSON:  req.Event,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) SendInvite(ctx context.Context, req *ReqSendInvite) (resp *RespSendInvite, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.UserID.Homeserver(),
+		Method:       http.MethodPut,
+		Path:         URLPath{"v2", "invite", req.RoomID, req.EventID},
+		Authenticate: true,
+		RequestJSON:  req,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) MakeLeave(ctx context.Context, req *ReqMakeLeave) (resp *RespMakeLeave, err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.Via,
+		Method:       http.MethodGet,
+		Path:         URLPath{"v1", "make_leave", req.RoomID, req.UserID},
+		Authenticate: true,
+		ResponseJSON: &resp,
+	})
+	return
+}
+
+func (c *Client) SendLeave(ctx context.Context, req *ReqSendLeave) (err error) {
+	_, _, err = c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   req.Via,
+		Method:       http.MethodPut,
+		Path:         URLPath{"v2", "send_leave", req.RoomID, req.EventID},
+		Authenticate: true,
+		RequestJSON:  req.Event,
+	})
+	return
+}
+
+type URLPath []any
+
+func (fup URLPath) FullPath() []any {
+	return append([]any{"_matrix", "federation"}, []any(fup)...)
+}
+
+type KeyURLPath []any
+
+func (fkup KeyURLPath) FullPath() []any {
+	return append([]any{"_matrix", "key"}, []any(fkup)...)
+}
+
+type RequestParams struct {
+	ServerName   string
+	Method       string
+	Path         mautrix.PrefixableURLPath
+	Query        url.Values
+	Authenticate bool
+	RequestJSON  any
+
+	ResponseJSON any
+	DontReadBody bool
+}
+
+func (c *Client) MakeRequest(ctx context.Context, serverName string, authenticate bool, method string, path mautrix.PrefixableURLPath, reqJSON, respJSON any) error {
+	_, _, err := c.MakeFullRequest(ctx, RequestParams{
+		ServerName:   serverName,
+		Method:       method,
+		Path:         path,
+		Authenticate: authenticate,
+		RequestJSON:  reqJSON,
+		ResponseJSON: respJSON,
+	})
+	return err
+}
+
+func (c *Client) MakeFullRequest(ctx context.Context, params RequestParams) (body []byte, resp *http.Response, retErr error) {
+	req, err := c.compileRequest(ctx, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	start := time.Now()
+	resp, err = c.HTTP.Do(req)
+	dur := time.Since(start)
+	defer func() {
+		c.logRequestDone(req, resp, err, dur, params.ServerName)
+	}()
+	if err != nil {
+		return nil, nil, mautrix.HTTPError{
+			Request:  req,
+			Response: resp,
+
+			Message:      "request error",
+			WrappedError: err,
+		}
+	}
+	if !params.DontReadBody {
+		defer resp.Body.Close()
+	}
+	if resp.StatusCode >= 300 {
+		body, err = mautrix.ParseErrorResponse(req, resp)
+		return body, resp, err
+	} else if params.ResponseJSON != nil || !params.DontReadBody {
+		if resp.ContentLength > c.ResponseSizeLimit {
+			return body, resp, mautrix.HTTPError{
+				Request:  req,
+				Response: resp,
+
+				Message:      "not reading response",
+				WrappedError: fmt.Errorf("%w (%.2f MiB)", mautrix.ErrResponseTooLong, float64(resp.ContentLength)/1024/1024),
+			}
+		}
+		body, err = io.ReadAll(io.LimitReader(resp.Body, c.ResponseSizeLimit+1))
+		if err == nil && len(body) > int(c.ResponseSizeLimit) {
+			err = mautrix.ErrBodyReadReachedLimit
+		}
+		if err != nil {
+			return body, resp, mautrix.HTTPError{
+				Request:  req,
+				Response: resp,
+
+				Message:      "failed to read response body",
+				WrappedError: err,
+			}
+		}
+		if resp.ContentLength == -1 {
+			resp.ContentLength = int64(len(body))
+		}
+		if params.ResponseJSON != nil {
+			err = json.Unmarshal(body, params.ResponseJSON)
+			if err != nil {
+				return body, resp, mautrix.HTTPError{
+					Request:  req,
+					Response: resp,
+
+					Message:      "failed to unmarshal response JSON",
+					ResponseBody: string(body),
+					WrappedError: err,
+				}
+			}
+		}
+	}
+	return body, resp, nil
+}
+
+func (c *Client) logRequestDone(req *http.Request, resp *http.Response, err error, duration time.Duration, serverName string) {
+	if c == nil {
+		return
+	}
+	var evt *zerolog.Event
+	logLevel := zerolog.DebugLevel
+	if errors.Is(err, context.Canceled) {
+		logLevel = zerolog.WarnLevel
+	} else if err != nil {
+		logLevel = zerolog.ErrorLevel
+	}
+	evt = zerolog.Ctx(req.Context()).WithLevel(logLevel).
+		Str("dest_server_name", serverName).
+		Str("method", req.Method).
+		Str("url", req.URL.String()).
+		Dur("duration", duration)
+	if resp != nil {
+		evt.Int("status_code", resp.StatusCode).
+			Int64("response_length", resp.ContentLength).
+			Str("response_mime", resp.Header.Get("Content-Type"))
+		if serverRequestID := resp.Header.Get("X-Beeper-Request-ID"); serverRequestID != "" {
+			evt.Str("beeper_request_id", serverRequestID)
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		evt.Err(err).Msg("Request canceled")
+	} else if err != nil {
+		evt.Err(err).Msg("Request failed")
+	} else {
+		evt.Msg("Request completed")
+	}
+}
+
+var ErrNotConfiguredForAuth = errors.New("client not configured for authentication")
+var ErrServerNameFiltered = errors.New("refusing to make a request")
+
+func (c *Client) compileRequest(ctx context.Context, params RequestParams) (*http.Request, error) {
+	if !id.ValidateServerName(params.ServerName) {
+		return nil, ErrInvalidServerName
+	}
+	if c.AllowServer != nil && !c.AllowServer(params.ServerName) {
+		return nil, fmt.Errorf("%w to %s", ErrServerNameFiltered, params.ServerName)
+	}
+	reqURL := mautrix.BuildURL(&url.URL{
+		Scheme: "matrix-federation",
+		Host:   params.ServerName,
+	}, params.Path.FullPath()...)
+	reqURL.RawQuery = params.Query.Encode()
+	var reqJSON json.RawMessage
+	var reqBody io.Reader
+	if params.RequestJSON != nil {
+		var err error
+		reqJSON, err = json.Marshal(params.RequestJSON)
+		if err != nil {
+			return nil, mautrix.HTTPError{
+				Message:      "failed to marshal JSON",
+				WrappedError: err,
+			}
+		}
+		reqBody = bytes.NewReader(reqJSON)
+	}
+	req, err := http.NewRequestWithContext(ctx, params.Method, reqURL.String(), reqBody)
+	if err != nil {
+		return nil, mautrix.HTTPError{
+			Message:      "failed to create request",
+			WrappedError: err,
+		}
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+	if params.RequestJSON != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if params.Authenticate {
+		if c.ServerName == "" || c.Key == nil {
+			return nil, mautrix.HTTPError{WrappedError: ErrNotConfiguredForAuth}
+		}
+		auth, err := (&signableRequest{
+			Method:      req.Method,
+			URI:         reqURL.RequestURI(),
+			Origin:      c.ServerName,
+			Destination: params.ServerName,
+			Content:     reqJSON,
+		}).Sign(c.Key)
+		if err != nil {
+			return nil, mautrix.HTTPError{
+				Message:      "failed to sign request",
+				WrappedError: err,
+			}
+		}
+		req.Header.Set("Authorization", auth)
+	}
+	return req, nil
+}
+
+type signableRequest struct {
+	Method      string          `json:"method"`
+	URI         string          `json:"uri"`
+	Origin      string          `json:"origin"`
+	Destination string          `json:"destination"`
+	Content     json.RawMessage `json:"content,omitempty"`
+}
+
+func (r *signableRequest) Verify(key id.SigningKey, sig string) error {
+	message, err := canonicaljson.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %w", err)
+	}
+	return signutil.VerifyJSONCanonical(key, sig, message)
+}
+
+func (r *signableRequest) Sign(key *SigningKey) (string, error) {
+	sig, err := key.SignJSON(r)
+	if err != nil {
+		return "", err
+	}
+	return XMatrixAuth{
+		Origin:      r.Origin,
+		Destination: r.Destination,
+		KeyID:       key.ID,
+		Signature:   sig,
+	}.String(), nil
+}

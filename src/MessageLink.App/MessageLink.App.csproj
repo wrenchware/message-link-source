@@ -1,0 +1,98 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- The Windows App Runtime ships inside the app, so a PC needs nothing installed first. Framework-dependent, a
+         clean Windows 11 with .NET but without the runtime package quit at launch with no message at all (0x80670016,
+         Windows Sandbox, 2026-10-02). Only app notifications use the runtime's OS features, and they need no Singleton
+         package, but they do need one file the self-contained layout leaves out (WindowsAppRuntimeInsights below). The
+         publish also takes .NET self-contained (installer\Publish-App.ps1). -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Published code is compiled ahead of time, so a launch runs it instead of compiling it first. Measured on this
+         machine: window construction 315–335 ms to 231–269 ms and process start to window 1658–1681 ms to 1539–1566 ms
+         (dev copy), for 18.5 MB more on disk. Applies to publish only; development builds are unchanged. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The installed app is called Message Link, and so is everything a person can see of it: the program is MessageLink.exe
+         (Task Manager's Details tab, Restart Manager), its resource index MessageLink.pri, its data folder (the package's
+         LocalState; %LOCALAPPDATA%\Message Link outside a package, AppPaths). Code, namespaces, XAML classes and project names
+         are MessageLink.App; RootNamespace is set so the generated XAML code does not follow the assembly name. Before the
+         name the program was Messages.exe, and launch moves what named it
+         (NotificationRegistration). -->
+    <AssemblyName>MessageLink</AssemblyName>
+    <RootNamespace>MessageLink.App</RootNamespace>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <Product>Message Link</Product>
+    <AssemblyTitle>Message Link</AssemblyTitle>
+    <Company>wrenchware</Company>
+    <Version>0.1.505</Version>
+    <!-- Program.cs provides Main so a second launch can redirect to the running app. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- Only explicitly requested development bundles default to isolated data. Normal releases reuse saved accounts. -->
+    <DefineConstants Condition="'$(MergedDevelopmentBuild)' == 'true'">$(DefineConstants);MERGED_DEVELOPMENT_BUILD</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
+    <ProjectReference Include="../MessageLink.Presentation/MessageLink.Presentation.csproj" />
+    <ProjectReference Include="../MessageLink.Backends/MessageLink.Backends.csproj" />
+    <ProjectReference Include="../MessageLink.Protocol/MessageLink.Protocol.csproj" />
+    <ProjectReference Include="../MessageLink.Server/MessageLink.Server.csproj" />
+    <ProjectReference Include="../MessageLink.Windows/MessageLink.Windows.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
+
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../helpers/GoogleMessages/helper/bin/gmessages-helper.exe" Link="gmessages-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/GoogleMessages/helper/bin/gmessages-helper.exe')" />
+    <Content Include="../../helpers/GoogleMessages/helper/UPSTREAM_LICENSE.txt" Link="GOOGLE_MESSAGES_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../helpers/Messenger/helper/bin/messenger-helper.exe" Link="messenger-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/Messenger/helper/bin/messenger-helper.exe')" />
+    <Content Include="../../helpers/GoogleVoice/helper/bin/gvoice-helper.exe" Link="gvoice-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/GoogleVoice/helper/bin/gvoice-helper.exe')" />
+    <Content Include="../../helpers/Instagram/helper/bin/instagram-helper.exe" Link="instagram-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/Instagram/helper/bin/instagram-helper.exe')" />
+    <!-- This PC's own Tailscale node (Services/Tailnet), built by helpers\Tailnet\Build.ps1; its modules' licences are in THIRD_PARTY_NOTICES.md. -->
+    <Content Include="../../helpers/Tailnet/pc/bin/windows-amd64/tailnet-helper.exe" Link="tailnet-helper.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/Tailnet/pc/bin/windows-amd64/tailnet-helper.exe')" />
+    <Content Include="../../helpers/Messenger/helper/UPSTREAM_LICENSE.txt" Link="MESSENGER_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../../helpers/Messenger/helper/UPSTREAM_LICENSE.txt')" />
+    <!-- The Messenger and Instagram helpers both link the modified mautrix-meta; Voice links mautrix-gvoice. Each is AGPL
+         with its own exceptions file, and the publish requires all of them (THIRD_PARTY_NOTICES.md). -->
+    <Content Include="../../third_party/mautrix-meta/LICENSE.exceptions" Link="MAUTRIX_META_LICENSE_EXCEPTIONS.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../helpers/GoogleVoice/helper/UPSTREAM_LICENSE.txt" Link="GOOGLE_VOICE_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../helpers/GoogleVoice/helper/UPSTREAM_LICENSE_EXCEPTIONS.txt" Link="GOOGLE_VOICE_LICENSE_EXCEPTIONS.txt" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\MessageLink.Storage\MessageLink.Storage.csproj" />
+    <Content Include="Assets\PoweredByGiphy.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\AppIcon.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\EmptyConversation.png" CopyToOutputDirectory="PreserveNewest"/>
+    <!-- The setup pages' made-up sender: the Store screenshots' "Maya Chen" face (tools\StorePackage\Get-StorePictures.ps1, Unsplash License), 144 px. -->
+    <Content Include="Assets\SetupSamplePhoto.jpg" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\ServiceMessenger.png;Assets\ServiceGoogleMessages.png;Assets\ServiceGoogleVoice.png;Assets\ServiceInstagram.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\AvatarBadge*.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\AvatarHermes.png" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\Sounds\*.wav" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="Assets\AppIconUnread.ico;Assets\Badge*.ico" CopyToOutputDirectory="PreserveNewest"/>
+    <Content Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+  <!-- Windows App SDK 2.4.0 self-contained leaves Microsoft.WindowsAppRuntime.Insights.Resource.dll out of the app (it is
+       in no NuGet package's runtimes folder, still so in 2.7.0 despite 2.6.4's note on this file), and without it AppNotificationManager.Register fails with 0x8007007E, so
+       no notification is ever shown. Proved 2026-10-07 with a bare console app: self-contained fails, framework-dependent
+       registers, and self-contained plus this one file registers. Every release from 0.1.362 (the switch to
+       self-contained) to 0.1.381 shipped without notifications. The file is taken from the same SDK's own runtime MSIX,
+       already restored, so it always matches the runtime the app carries. -->
+  <Target Name="WindowsAppRuntimeInsights" BeforeTargets="AssignTargetPaths" Condition="'$(WindowsAppSDKSelfContained)' == 'true'">
+    <PropertyGroup>
+      <!-- Set by the Microsoft.WindowsAppSDK.Runtime package's props to its own folder. -->
+      <_RuntimeMsix>$(MicrosoftWindowsAppSDKPackageDir)tools\MSIX\win10-$(PlatformTarget)\Microsoft.WindowsAppRuntime.2.msix</_RuntimeMsix>
+      <_RuntimeInsightsDir>$(IntermediateOutputPath)winappruntime\</_RuntimeInsightsDir>
+      <_RuntimeInsights>$(_RuntimeInsightsDir)Microsoft.WindowsAppRuntime.Insights.Resource.dll</_RuntimeInsights>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_RuntimeMsix)')" Text="The Windows App SDK runtime MSIX was not found at $(_RuntimeMsix); notifications need a file from it." />
+    <Unzip SourceFiles="$(_RuntimeMsix)" DestinationFolder="$(_RuntimeInsightsDir)" Include="Microsoft.WindowsAppRuntime.Insights.Resource.dll" SkipUnchangedFiles="true" />
+    <Error Condition="!Exists('$(_RuntimeInsights)')" Text="Microsoft.WindowsAppRuntime.Insights.Resource.dll is not in $(_RuntimeMsix); Windows notifications cannot register without it." />
+    <ItemGroup>
+      <None Include="$(_RuntimeInsights)" Link="Microsoft.WindowsAppRuntime.Insights.Resource.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>
