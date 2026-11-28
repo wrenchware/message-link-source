@@ -178,8 +178,9 @@ func TestBackupAccountsForEveryStoreTable(t *testing.T) {
 		"encrypted_message": true, "encrypted_media": true, "encrypted_share": true, "message_attachment": true,
 		"encrypted_reaction": true, "receipt_watermark": true}
 	// store_owner says whose store it is and is checked, not carried; receipt_waiting names messages this computer
-	// never had; archived_v3 holds the archive walk's markers, made when the first walk ends.
-	leftOut := map[string]bool{"store_owner": true, "receipt_waiting": true, "archived_v3": true}
+	// never had; archived_v3 holds the archive walk's markers, made when the first walk ends; vacuum_owed says this
+	// file still has to be rebuilt.
+	leftOut := map[string]bool{"store_owner": true, "receipt_waiting": true, "archived_v3": true, "vacuum_owed": true}
 	a.kept.markComplete(context.Background(), 7)
 	rows, err := a.kept.db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
 	backupMust(t, err)

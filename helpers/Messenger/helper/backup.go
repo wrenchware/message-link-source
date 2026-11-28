@@ -76,7 +76,8 @@ import (
 // build that predates them ignores the section.
 //
 // Deliberately not in it: e2ee.db (the device identity and Signal sessions — restored anywhere else they clone this
-// computer's device), encrypted.on, the session and its cookies, the archive walk markers, rows hung on a message that
+// computer's device), encrypted.on, the session and its cookies, the archive walk markers, the store's own rebuild
+// mark (vacuum_owed), rows hung on a message that
 // is not there to show them, and receipts still waiting for a message this computer never had (receipt_waiting),
 // which are given up after a week anyway.
 const backupFormat = "messagelink.messenger.history"

@@ -371,14 +371,15 @@ func openMessageStore(ctx context.Context, path string) (*messageStore, error) {
 		`CREATE INDEX IF NOT EXISTS media_thread_at ON encrypted_media(thread, at)`,
 		`CREATE INDEX IF NOT EXISTS media_message ON encrypted_media(message)`,
 		`CREATE INDEX IF NOT EXISTS attachment_message ON message_attachment(message)`,
-		// Attachments of messages taken back before forget removed them too: their names and addresses stayed on
-		// disk, were unsealed at every start and counted as orphans by a backup.
-		`DELETE FROM message_attachment WHERE message IN (SELECT id FROM deleted_message)`,
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
+	}
+	if err := oweFirstRebuild(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	store := &messageStore{db: db, path: path}
 	if err := store.protectExisting(ctx); err != nil {
@@ -413,9 +414,18 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 	}
 	defer tx.Rollback()
 	migrated := false
+	vacuum := "false"
+	// Attachments of messages taken back before forget removed them too: their names and addresses stayed on disk,
+	// were unsealed at every start and counted as orphans by a backup. Removed here because a removed cell can still
+	// hold legacy plaintext, which then owes the rebuild below as a rewritten one does.
+	purge, err := tx.ExecContext(ctx, `DELETE FROM message_attachment WHERE message IN (SELECT id FROM deleted_message)`)
+	if err != nil {
+		return err
+	}
+	purged, _ := purge.RowsAffected()
 	defer func() {
 		if err == nil {
-			logf("kept store protect sealed=%d empty=%d vacuum=%v ms=%d foreign=%d resealed=%d", sealedCells, emptyCells, migrated, time.Since(started).Milliseconds(), foreignCells, resealedCells)
+			logf("kept store protect sealed=%d empty=%d vacuum=%s ms=%d foreign=%d resealed=%d", sealedCells, emptyCells, vacuum, time.Since(started).Milliseconds(), foreignCells, resealedCells)
 		}
 	}()
 	for table, columns := range specs {
@@ -509,19 +519,93 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 			}
 		}
 	}
+	// UPDATE and DELETE alone can leave old plaintext in SQLite free pages or a journal, so they owe a rebuild. The debt
+	// is written with them: a start that stops after the commit leaves nothing to migrate, and without the mark the
+	// next one would never rebuild.
+	owed := migrated || purged > 0
+	if owed {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO vacuum_owed (slot, since) VALUES (1, ?) ON CONFLICT(slot) DO NOTHING`, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	if !migrated {
+	if !owed {
+		var marks int
+		if e := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vacuum_owed`).Scan(&marks); e != nil {
+			// Rebuilt rather than skipped: a rebuild that was not owed costs time, one skipped leaves plaintext.
+			logf("kept store vacuum mark could not be read")
+			owed = true
+		} else {
+			owed = marks > 0
+		}
+	}
+	if !owed {
 		return nil
 	}
-	// UPDATE alone can leave old plaintext in SQLite free pages or a journal. Rebuild and truncate before the store is
-	// accepted so a copied database cannot recover the pre-migration values.
-	if _, err = m.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+	// A rebuild that fails (a busy store, a full disk) leaves the mark for the next start and does not fail this open:
+	// the cells themselves are sealed already.
+	if keptVacuum(ctx, m.db) != nil {
+		vacuum = "failed"
+		return nil
+	}
+	vacuum = "true"
+	if _, e := m.db.ExecContext(ctx, `DELETE FROM vacuum_owed`); e != nil {
+		logf("kept store vacuum mark could not be cleared, the next start rebuilds again")
+	}
+	return nil
+}
+
+// A store made before the mark existed may hold an earlier build's migration that stopped before its rebuild, which
+// nothing left in it can show. The table is made with one mark in it, so every such store is rebuilt once.
+func oweFirstRebuild(ctx context.Context, db *sql.DB) error {
+	var tables int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'vacuum_owed'`).Scan(&tables); err != nil {
 		return err
 	}
-	_, err = m.db.ExecContext(ctx, `VACUUM`)
-	return err
+	if tables > 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Set in the transaction that rewrites or removes cells, cleared once the store has been rebuilt (protectExisting).
+	if _, err = tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS vacuum_owed (slot INTEGER PRIMARY KEY CHECK(slot=1), since INTEGER NOT NULL)`); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO vacuum_owed (slot, since) VALUES (1, ?) ON CONFLICT(slot) DO NOTHING`, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Rebuilds the store, so a copied database cannot recover values from before a migration. The store keeps SQLite's
+// rollback journal, where the checkpoints do nothing. They are there for a copy left in write-ahead mode, whose
+// rebuilt pages reach the database file only at the checkpoint after VACUUM. A variable so a test can stand in for a
+// start that stops before the rebuild ends.
+var keptVacuum = func(ctx context.Context, db *sql.DB) error {
+	if err := truncateLog(ctx, db); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, `VACUUM`); err != nil {
+		return err
+	}
+	return truncateLog(ctx, db)
+}
+
+// A checkpoint a reader held up answers busy rather than failing, and has left old pages where they were.
+func truncateLog(ctx context.Context, db *sql.DB) error {
+	var busy, logPages, moved int
+	if err := db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logPages, &moved); err != nil {
+		return err
+	}
+	if busy != 0 {
+		return errors.New("checkpoint busy")
+	}
+	return nil
 }
 
 // The attachments a message carries, written down beside it. Nothing is downloaded here: what is kept is what the row
