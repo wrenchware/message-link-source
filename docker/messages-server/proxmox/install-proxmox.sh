@@ -243,7 +243,7 @@ fi
 top=$(tar -tzf "$package" 2>/dev/null | head -n 1 | cut -d / -f 1) || true
 [[ "$top" =~ ^messages-server-[0-9A-Za-z.+-]+-linux-x64$ ]] || fail "$tarball is not a Message Link Server package (messages-server-<version>-linux-x64.tar.gz)."
 for member in install.sh messages-server messages-tailnet; do
-    tar -tzf "$package" "$top/$member" >/dev/null 2>&1 || fail "$tarball has no $member: use a package from 10.11 or later."
+    tar -tzf "$package" "$top/$member" >/dev/null 2>&1 || fail "$tarball has no $member; use a newer package."
 done
 if [ "$google" = yes ] && ! tar -tzf "$package" "$top/gmessages-helper" >/dev/null 2>&1; then
     fail "$tarball has no Google helpers; use a newer package, or add --no-google."
