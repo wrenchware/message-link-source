@@ -932,11 +932,12 @@ func (a *adapter) callContext(ctx context.Context, r request) (any, string) {
 		}
 		found, ok := a.chats.chatByKey(key)
 		if !ok {
+			line, refused := a.chats.refusal(key)
 			// Once a run per conversation: the server's history check asks for the same ones several times at start.
 			if _, seen := a.refusedChats.LoadOrStore(key, true); !seen {
-				logf("%s", a.chats.refusal(key))
+				logf("%s", line)
 			}
-			return nil, "unknown_chat"
+			return nil, refused
 		}
 		return found, ""
 	case "ui.message":

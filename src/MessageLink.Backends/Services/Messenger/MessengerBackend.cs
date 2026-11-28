@@ -682,6 +682,16 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
                 }
             }
             catch (OperationCanceledException) { throw; }
+            // Deleted here or on another of the account's devices at a time nothing was told (three conversations the server's
+            // history kept and asked for at every start, 2026-11-28): forgotten as a deletion heard live is, which is what makes
+            // the server's history let it go.
+            catch (InvalidOperationException deleted) when (deleted.Message == "chat_deleted")
+            {
+                MessengerLog.Write($"chat deleted on Messenger chat={MessengerLog.Tag(chatId)} outcome=forgotten");
+                ForgetChat(native, DateTimeOffset.UtcNow);
+                throw new MessageLink.Core.Backend.BackendException(MessageLink.Core.Backend.BackendFailure.Unavailable,
+                    "That Messenger conversation was deleted.");
+            }
             catch (Exception) { /* Fall back to the conversation already known. */ }
         }
         if (!IsConnected && !restored && SessionSaved && !chats.Any(chat => chat.Id == native)) await RestoreChatsAsync();

@@ -396,6 +396,10 @@ func (s *store) adoptKeyPeople() []int64 {
 	defer s.mu.Unlock()
 	var adopted []int64
 	for key, current := range s.threads {
+		if s.adoptEncryptedPeerLocked(key, current) {
+			adopted = append(adopted, key)
+			continue
+		}
 		if current.kind != table.UNKNOWN_THREAD_TYPE || len(current.participants) > 0 {
 			continue
 		}
@@ -407,6 +411,38 @@ func (s *store) adoptKeyPeople() []int64 {
 		}
 	}
 	return adopted
+}
+
+// An encrypted one-to-one kept with nobody in it but this account and no name stays hidden for good (visible), because
+// the picture-and-name lookup (faces) asks only about people in a conversation. One of the four the server could not
+// read, 2026-11-28, was such a conversation with four messages. Whoever else sent its messages is its other person, if
+// there is exactly one; then faces names them. Call with the lock held.
+func (s *store) adoptEncryptedPeerLocked(key int64, current *thread) bool {
+	if s.self == 0 || current.deleted || current.kind != table.ENCRYPTED_OVER_WA_ONE_TO_ONE || current.name != "" {
+		return false
+	}
+	for id := range current.participants {
+		if id != 0 && id != s.self {
+			return false
+		}
+	}
+	peer := int64(0)
+	for _, sent := range s.messages[key] {
+		if sent.sender == 0 || sent.sender == s.self || sent.sender == peer {
+			continue
+		}
+		if peer != 0 {
+			return false
+		}
+		peer = sent.sender
+	}
+	if peer == 0 {
+		return false
+	}
+	current.participants[peer] = struct{}{}
+	current.participants[s.self] = struct{}{}
+	logf("encrypted one-to-one peer from its messages chat=%s", tag(key))
+	return true
 }
 
 // Returns which conversations and messages the rows touched.

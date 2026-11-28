@@ -110,16 +110,18 @@ func (s *store) visible(t *thread) bool {
 // Why ui.chat holds no such conversation, as one line of counts and states. Four conversations the server asks for at
 // every start were refused this way from 0.1.445 on without anyone telling which of visible's reasons it was. server= is
 // the tag the server's own lines give the conversation, so the two logs can be matched. paired says the key is an
-// encrypted address another conversation was paired with (its messages moved there); pairs says it is one.
-func (s *store) refusal(key int64) string {
+// encrypted address another conversation was paired with (its messages moved there); pairs says it is one. Also returns
+// ui.chat's code: chat_deleted for a conversation deleted here or on another device, which the app forgets as it does a
+// deletion it hears live (three of the four, 2026-11-28: deleted before the server was told), unknown_chat otherwise.
+func (s *store) refusal(key int64) (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, held := s.threads[key]
-	reason := "absent"
+	reason, code := "absent", "unknown_chat"
 	if held {
 		reason = "nameless"
 		if current.deleted {
-			reason = "deleted"
+			reason, code = "deleted", "chat_deleted"
 		}
 	}
 	_, paired := s.hybrid[key]
@@ -133,21 +135,35 @@ func (s *store) refusal(key int64) string {
 	line := fmt.Sprintf("ui.chat refused chat=%s server=%s reason=%s paired=%t pairs=%t messages=%d",
 		tag(key), serverTag(key), reason, paired, pairs, len(s.messages[key]))
 	if !held {
-		return line
+		return line, code
 	}
-	known := 0
+	known, others := 0, 0
 	for id := range current.participants {
 		if id != s.self && s.contacts[id] != "" {
 			known++
+		}
+		if id != 0 && id != s.self {
+			others++
+		}
+	}
+	// Who sent its messages: this account, and how many others (the nameless one-to-one of 2026-11-28 had nobody in it but
+	// this account, which may be a conversation with oneself).
+	own, senders := 0, map[int64]bool{}
+	for _, sent := range s.messages[key] {
+		switch {
+		case s.self != 0 && sent.sender == s.self:
+			own++
+		case sent.sender != 0:
+			senders[sent.sender] = true
 		}
 	}
 	folder := current.folder
 	if folder != "" && folder != "inbox" && folder != "archived" {
 		folder = "other"
 	}
-	return line + fmt.Sprintf(" kind=%d unresolved=%t named=%t participants=%d known=%d activity=%t cutoff=%t folder=%s",
-		current.kind, current.unresolved, current.name != "", len(current.participants), known, current.lastActivity > 0,
-		current.deletedAt > 0, folder)
+	return line + fmt.Sprintf(" kind=%d unresolved=%t named=%t participants=%d others=%d known=%d own=%d senders=%d activity=%t cutoff=%t folder=%s",
+		current.kind, current.unresolved, current.name != "", len(current.participants), others, known, own, len(senders),
+		current.lastActivity > 0, current.deletedAt > 0, folder), code
 }
 
 // The pinned upstream bridge also uses GetGroupInfo when an encrypted group arrives without ordinary metadata.
