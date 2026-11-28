@@ -26,7 +26,7 @@ internal sealed record ServerScheduled(TimeProvider? Clock = null, Func<ValueTas
 /// commit. A command is made against the rev of the row its client drew.</para>
 /// <para><b>At most once (S4).</b> The engine commits the row <c>Sending</c> with <c>attempt: n</c> before it calls the outlet; the outlet then sends through the
 /// <see cref="OperationJournal"/> under the fixed id <c>sched:&lt;id&gt;:&lt;n&gt;</c>. A server that dies after the row was committed finds it <c>Sending</c> at its next
-/// start and records it as a send that may not have gone (a shared <c>outbox:</c> row every client draws, unknown, and never sent again); the journal, which flushed the operation as running before the provider was asked,
+/// start and records it as a send that may not have gone (a shared <c>refused:</c> row every client draws, unknown, and never sent again); the journal, which flushed the operation as running before the provider was asked,
 /// calls it <c>outcome_unknown</c> to <c>ops.status</c>. A Send now of a message that was refused is attempt <c>n + 1</c>, another id. Nothing here asks twice.</para>
 /// <para><b>One at a time.</b> The engine runs on one thread (<see cref="ServerSerialContext"/>), and each message's commands run one after another: of two clients
 /// acting on one message the second finds its rev gone and is answered <c>conflict</c>, and an edit, cancel or Send now of a message that is sending is answered
@@ -266,10 +266,10 @@ internal sealed class ServerScheduledSends : IScheduledCommands, IDisposable
         await engine.SendNowAsync(item.Id).ConfigureAwait(true) ? new ScheduledAnswer(ScheduledStatuses.Done, item.Id, await rows.RevOfAsync(item.Id).ConfigureAwait(true)) : Sending();
 
     /// <summary>
-    /// Removes the shared record of a send that may not have gone (<c>outbox:</c>), for every client. It sends and asks nothing: the send is never made again whatever the
+    /// Removes the shared record of a send that may not have gone (<c>refused:</c>), for every client. It sends and asks nothing: the send is never made again whatever the
     /// person does with its record. One already gone is done (the journal answers a repeat, and two clients dismissing at once both succeed).
     /// </summary>
-    public Task<Done> DismissAsync(OutboxDismissParams request, CancellationToken cancellationToken = default) => serial.Run(async () =>
+    public Task<Done> DismissAsync(RefusedDismissParams request, CancellationToken cancellationToken = default) => serial.Run(async () =>
     {
         if (request.OperationId is not { Length: > 0 and <= 300 }) throw new ProtocolException(new ProtocolError(ProtocolErrorCodes.InvalidRequest, "The request's params are missing or not valid."));
         await rows.DismissUnsettledAsync(request.OperationId).ConfigureAwait(true);
@@ -462,7 +462,7 @@ internal sealed class ServerScheduledSends : IScheduledCommands, IDisposable
     /// <remarks>
     /// An accepted send stays <c>Sending</c> in the schedule (drawn on every client as on its way) until the provider shows the message under the receipt's id,
     /// by the same lookups the app's outbox makes, a few seconds at most; then the row is removed with its receipt. A send the provider certainly refused is
-    /// kept as not sent with its words (the engine's KeepsRejected). A send whose outcome is unknown is recorded the same way (an <c>outbox:</c> row, dismissed by <c>outbox.dismiss</c>),
+    /// kept as not sent with its words (the engine's KeepsRejected). A send whose outcome is unknown is recorded the same way (a <c>refused:</c> row, dismissed by <c>outbox.dismiss</c>),
     /// and never made again.
     /// </remarks>
     private sealed class Outlet : IScheduledSendOutlet, IDisposable

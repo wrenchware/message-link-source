@@ -106,7 +106,7 @@ internal sealed partial class TerminalHost : IConsoleHost
     // The server's scheduled sends and its record of sends that may not have gone are rows of the replica, which its own events keep: read again when they move.
     private void OnRemoteChanged(object? sender, SharedRowsChange change)
     {
-        if (change.Keys.Any(key => key.StartsWith(SharedCategories.Scheduled + ":", StringComparison.Ordinal) || key.StartsWith(SharedCategories.Outbox + ":", StringComparison.Ordinal)))
+        if (change.Keys.Any(key => key.StartsWith(SharedCategories.Scheduled + ":", StringComparison.Ordinal) || key.StartsWith(SharedCategories.Refused + ":", StringComparison.Ordinal)))
             _ = RefreshQueueAsync();
     }
 
@@ -128,11 +128,11 @@ internal sealed partial class TerminalHost : IConsoleHost
                 items.Add(new(item.State switch { ScheduledSendState.Waiting => "scheduled", ScheduledSendState.Sending => "sending", _ => "not sent" },
                     item.ChatId, item.Text, item.CreatedAt, item.Due));
             }
-            foreach (var (key, value, _) in await parts.Replica.ReadPrefixWithRevAsync(SharedCategories.Outbox + ":"))
+            foreach (var (key, value, _) in await parts.Replica.ReadPrefixWithRevAsync(SharedCategories.Refused + ":"))
             {
                 SharedUnsettledSend? send = null;
                 try { send = JsonSerializer.Deserialize<SharedUnsettledSend>(value); } catch (JsonException) { }
-                if (send is not { OperationId.Length: > 0, ChatId.Length: > 0 } || key != SharedCategories.KeyOf(profile, SharedCategories.Outbox, send.OperationId)) continue;
+                if (send is not { OperationId.Length: > 0, ChatId.Length: > 0 } || key != SharedCategories.KeyOf(profile, SharedCategories.Refused, send.OperationId)) continue;
                 unsettled++;
                 items.Add(new(send.State == UnsettledStates.Unknown ? "unknown" : "not sent", send.ChatId, send.Text ?? "", send.CreatedAt));
             }

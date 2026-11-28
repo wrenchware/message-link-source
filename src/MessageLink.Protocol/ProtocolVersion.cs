@@ -32,7 +32,7 @@ namespace MessageLink.Protocol;
 /// <para>9 moves the firing of scheduled sends to the server (owner D6): a server runs them itself, even with every client closed,
 /// and its clients draw them from rows (<c>scheduled:</c>, written by the server alone, <see cref="SharedCategory.HostOwned"/>) and ask it for the four typed,
 /// journaled commands <c>scheduled.create</c>, <c>edit</c>, <c>cancel</c> and <c>sendNow</c>. A send of unknown outcome or failed on the server is a host-owned
-/// row too (<c>outbox:</c>), drawn by every client as "may not have sent", and <c>outbox.dismiss</c> removes it everywhere.
+/// row too (<c>outbox:</c>, <c>refused:</c> from 35), drawn by every client as "may not have sent", and <c>outbox.dismiss</c> removes it everywhere.
 /// A client below 9, or of a server below 9, keeps its own schedule and fires it itself as before; a client of 9 or later never fires one itself, which is
 /// what keeps one message from being sent by both (S2, S3).</para>
 /// <para>10 gives <c>scheduled.cancel</c> and <c>scheduled.edit</c> with <c>IfRev</c> 0 a meaning: discard a message the client never saw the row of (its
@@ -133,10 +133,16 @@ namespace MessageLink.Protocol;
 /// <para>34 (owner, 2026-11-21) adds <see cref="HistorySyncParams.HeldOnly"/>: a sync answered only from a conversation the server already holds, refused as
 /// not ready otherwise and never read from the service, so the phone can keep its newest conversations ahead of opening them without asking a service
 /// anything. A server below 34 ignores the field and fills the conversation from the service, so a client sends it only to a server of 34.</para>
+/// <para>35 (owner, 2026-11-28) files the server's record of a refused send, or one of unknown outcome, under <c>refused:</c> (<see cref="SharedCategories.Refused"/>), so that
+/// "outbox" means only a client's sends on their way. The rows, their values and <c>outbox.dismiss</c> are unchanged, and the server's file is renamed once when it opens. A server hands
+/// a connection below 35 those rows under the older name (<see cref="SharedCategories.RefusedBefore"/>) and reads that name in the keys it sends, and a client of 35 of a server below 35
+/// reads the older name from it (<see cref="SharedCategories.FromWire(string, int)"/>), so nothing changes for either.</para>
 /// </remarks>
 public static class ProtocolVersion
 {
-    public const int Current = 34;
+    public const int Current = 35;
+    /// <summary>The first version that files the refused sends under <c>refused:</c> rather than <c>outbox:</c> (<see cref="SharedCategories.Refused"/>).</summary>
+    public const int RefusedRows = 35;
     /// <summary>The first version that answers a sync from what the server holds alone (<see cref="HistorySyncParams.HeldOnly"/>).</summary>
     public const int HeldSync = 34;
     /// <summary>The first version that answers an older read from the server's copy alone (<see cref="HistoryOlderParams.HeldOnly"/>).</summary>

@@ -15,13 +15,16 @@ namespace MessageLink.Server.Backup;
 /// </summary>
 /// <remarks>
 /// Left out, on purpose: every service's sign-in (the sessions, Google's browser profiles, Instagram's guard, Voice's cookies), Messenger's encrypted-device
-/// database, the tailnet door's identity, the outbox (<c>outbox:</c> rows) and the journal, and the caches and logs. A send in flight is never repeated by a restore,
+/// database, the tailnet door's identity, the refused sends (<c>refused:</c> rows) and the journal, and the caches and logs. A send in flight is never repeated by a restore,
 /// and a sign-in restored beside the one still in use would be two clients on one device.
 /// </remarks>
 internal static class ServerBackupExport
 {
-    /// <summary>The shared categories a backup never carries: sends whose outcome is unknown are never replayed elsewhere.</summary>
-    internal static readonly string[] SharedLeftOut = [Protocol.SharedCategories.Outbox + ":"];
+    /// <summary>
+    /// The shared categories a backup never carries: sends whose outcome is unknown are never replayed elsewhere. Under the name before protocol 35 as well, which a
+    /// backup made by an older server read back here would hold them under if it held them at all.
+    /// </summary>
+    internal static readonly string[] SharedLeftOut = [Protocol.SharedCategories.Refused + ":", Protocol.SharedCategories.RefusedBefore + ":"];
 
     public static ServerBackupManifest Write(Stream payload, ServerBackupPaths paths, IStateProtector protector, BackupSettingsPart settings,
         IEnumerable<MessengerHistoryPage>? messenger, string? leftOut, string app, DateTimeOffset created, CancellationToken cancellationToken, IReadOnlyDictionary<string, IServerBackupMessenger>? additionalMessenger = null, ServerBackupProgress? progress = null)
@@ -54,7 +57,7 @@ internal static class ServerBackupExport
             }
             Done(ServerBackupArchive.Parts.State, state);
 
-            // The shared state, live rows only, without the outbox; and the ids it has retired for good.
+            // The shared state, live rows only, without the refused sends; and the ids it has retired for good.
             var (rows, retired) = SharedStateStore.ReadSealed(paths.Shared, cancellationToken);
             var shared = new PartWriter<PlainRow>(zip, ServerBackupArchive.Parts.Shared);
             foreach (var row in rows)

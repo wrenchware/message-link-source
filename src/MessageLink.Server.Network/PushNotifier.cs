@@ -12,7 +12,7 @@ namespace MessageLink.Server.Network;
 /// <summary>
 /// What a push says once opened (the phone's push/Push.kt reads the same): a new message to show, or a conversation read elsewhere whose notification goes.
 /// Written in the protocol's JSON. Short enough, cut where it must be, to fit the one padded size every push has. <paramref name="Whole"/>: the text is the
-/// message's own words, uncut, and it carries nothing else, so a phone may put it in its kept copy of the conversation before it reads the message itself
+/// message's own words, uncut, and it carries nothing else, so a phone may put it in its cached copy of the conversation before it reads the message itself
 /// (a photo's "Photo", or words cut short, would otherwise be drawn as the message until then).
 /// </summary>
 /// <para><c>Quiet</c>: someone is at a PC where Messages shows them the message itself, so the phone shows it without a sound (left out otherwise).</para>

@@ -47,7 +47,7 @@ internal sealed class RestoreUnfinishedException(Exception inner) : Exception("T
 /// finishes the moves at the next start. The server opens nothing in between.</para>
 /// <para><b>Every copy starts over.</b> The shared state and the whole history are made anew under new epochs, and the list's revisions are not carried: every client's
 /// copy from before the restore names an epoch the server no longer has, so it is read again whole (the history's start-over). Every scheduled send that has not gone
-/// is held as not sent for the person to send or drop (owner, 2026-11-01); the outbox is never carried, so no send is repeated.</para>
+/// is held as not sent for the person to send or drop (owner, 2026-11-01); the refused sends are never carried, so no send is repeated.</para>
 /// <para><b>A PC's backup</b> brings no identity: its Messenger history and its choices wait (<c>Restore/pending</c>) until the accounts they belong to are signed in
 /// again, and are then taken in once (<see cref="PendingImports"/>).</para>
 /// <para>Logged as <c>server restore ...</c> with fixed words and counts; never a file name, a password or a device's name.</para>

@@ -18,7 +18,7 @@ public sealed partial class ProtocolDispatcher
         routes[ProtocolMethods.ScheduledCancel] = Mutation<IScheduledCommands, ScheduledCommandParams, ScheduledAnswer>(s => s.Scheduled, (port, p, ct) => port.CancelAsync(p, ct));
         routes[ProtocolMethods.ScheduledSendNow] = ScheduledHermesFrom31(Mutation<IScheduledCommands, ScheduledCommandParams, ScheduledAnswer>(s => s.Scheduled, (port, p, ct) => port.SendNowAsync(p, ct)),
             (IScheduledCommands port, ScheduledCommandParams p, CancellationToken ct) => port.SendNowAsync(p, HermesIds.Owns, HermesNeedsUpdate, ct));
-        routes[ProtocolMethods.OutboxDismiss] = Mutation<IScheduledCommands, OutboxDismissParams, Done>(s => s.Scheduled, (port, p, ct) => port.DismissAsync(p, ct));
+        routes[ProtocolMethods.RefusedDismiss] = Mutation<IScheduledCommands, RefusedDismissParams, Done>(s => s.Scheduled, (port, p, ct) => port.DismissAsync(p, ct));
         return routes;
     }
 }

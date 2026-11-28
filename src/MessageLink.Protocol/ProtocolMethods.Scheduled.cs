@@ -25,8 +25,11 @@ public static partial class ProtocolMethods
     public const string ScheduledEdit = "scheduled.edit";
     public const string ScheduledCancel = "scheduled.cancel";
     public const string ScheduledSendNow = "scheduled.sendNow";
-    /// <summary>Removes a send of unknown outcome or failed from the shared state (<c>outbox:</c>), for every client. Nothing is sent: it only says the person has seen it.</summary>
-    public const string OutboxDismiss = "outbox.dismiss";
+    /// <summary>
+    /// Removes a send of unknown outcome or failed from the shared state (<c>refused:</c>), for every client. Nothing is sent: it only says the person has seen it. The method keeps
+    /// the name it has had since protocol 9, from when the refused sends were filed as <c>outbox:</c>: every client of the window calls it by that name.
+    /// </summary>
+    public const string RefusedDismiss = "outbox.dismiss";
 
     private static Entry[] ScheduledEntries() =>
     [
@@ -34,7 +37,7 @@ public static partial class ProtocolMethods
         new(ScheduledEdit, "IScheduledCommands.EditAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
         new(ScheduledCancel, "IScheduledCommands.CancelAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
         new(ScheduledSendNow, "IScheduledCommands.SendNowAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
-        new(OutboxDismiss, "IScheduledCommands.DismissAsync", typeof(OutboxDismissParams), typeof(Done), ProtocolVersion.ServerScheduled, true),
+        new(RefusedDismiss, "IScheduledCommands.DismissAsync", typeof(RefusedDismissParams), typeof(Done), ProtocolVersion.ServerScheduled, true),
     ];
 }
 
@@ -75,7 +78,7 @@ public sealed record ScheduledCreateParams(string ClientOpId, string ChatId, str
 public sealed record ScheduledCommandParams(string ClientOpId, string Id, long IfRev) : MutationParams(ClientOpId);
 
 /// <summary>Dismisses the unsettled send the operation <paramref name="OperationId"/> (the server's name for the attempt, <c>sched:&lt;id&gt;:&lt;n&gt;</c>) left.</summary>
-public sealed record OutboxDismissParams(string ClientOpId, string OperationId) : MutationParams(ClientOpId);
+public sealed record RefusedDismissParams(string ClientOpId, string OperationId) : MutationParams(ClientOpId);
 
 /// <summary>What <c>scheduled.edit</c> hands back: the row's words, for the composer.</summary>
 public sealed record ScheduledText(string ChatId, string Text, DateTimeOffset Due, string? ReplyToId = null, string? ReplyPreview = null);
@@ -97,7 +100,7 @@ public interface IScheduledCommands
     Task<ScheduledAnswer> CancelAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default);
     Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default);
     /// <summary>Removes the shared record of a send of unknown outcome. Idempotent: one already gone is done. Never sends.</summary>
-    Task<Done> DismissAsync(OutboxDismissParams request, CancellationToken cancellationToken = default);
+    Task<Done> DismissAsync(RefusedDismissParams request, CancellationToken cancellationToken = default);
     /// <summary>
     /// <see cref="EditAsync(ScheduledCommandParams, CancellationToken)"/> for a client that may not write to some conversations (below 31: Hermes's): a message
     /// in a conversation <paramref name="refuses"/> names is answered refused with <paramref name="refusal"/>. Looked at under the message's own gate, so no

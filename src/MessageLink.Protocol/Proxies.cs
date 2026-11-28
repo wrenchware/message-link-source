@@ -470,6 +470,6 @@ public sealed class ScheduledProxy(ProtocolClient client) : IScheduledCommands
         client.MutateAsync<ScheduledCommandParams, ScheduledAnswer>(ProtocolMethods.ScheduledCancel, request, cancellationToken);
     public Task<ScheduledAnswer> SendNowAsync(ScheduledCommandParams request, CancellationToken cancellationToken = default) =>
         client.MutateAsync<ScheduledCommandParams, ScheduledAnswer>(ProtocolMethods.ScheduledSendNow, request, cancellationToken);
-    public Task<Done> DismissAsync(OutboxDismissParams request, CancellationToken cancellationToken = default) =>
-        client.MutateAsync<OutboxDismissParams, Done>(ProtocolMethods.OutboxDismiss, request, cancellationToken);
+    public Task<Done> DismissAsync(RefusedDismissParams request, CancellationToken cancellationToken = default) =>
+        client.MutateAsync<RefusedDismissParams, Done>(ProtocolMethods.RefusedDismiss, request, cancellationToken);
 }

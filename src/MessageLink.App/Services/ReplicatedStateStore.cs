@@ -29,7 +29,7 @@ namespace MessageLink.App.Services;
 /// server's row, or dropped. <see cref="RemoteChanged"/> names the keys that changed. A snapshot (another epoch, a position the server no longer covers, or a
 /// new profile) replaces the shared rows held from the server and keeps every pending write.</para>
 /// <para><b>A root that was used in process.</b> When the replica is made, the one row of <c>state.db</c> a client must not lose is copied in, read-only:
-/// the sends whose outcome is unknown (<c>outbox:</c>, InterruptedSends), so their warning stays and they are still asked about with <c>ops.status</c>.
+/// the sends whose outcome is unknown (<c>refused:</c>, InterruptedSends), so their warning stays and they are still asked about with <c>ops.status</c>.
 /// Scheduled sends are not copied: a copy would make two places that fire them.</para>
 /// <para><b>Versions.</b> The categories grow with the protocol version (slice 3 added the chat preferences, names, snoozes and pinned order at version 3). A
 /// write of a category newer than the connection's version waits in the queue, unsent, for a server that keeps it (one sent now would be refused and give way
@@ -67,7 +67,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     /// <summary>The server id of a <c>remote</c> mode whose fingerprint is missing or not valid: it connects to nothing, and its replica mixes with no other.</summary>
     public const string UnpinnedServer = "unpinned";
     /// <summary>What is copied from the root's <c>state.db</c> when the replica is made: InterruptedSends' category.</summary>
-    public const string CarriedCategory = "outbox:";
+    public const string CarriedCategory = SharedCategories.Refused + ":";
     // As SqlitePrivateStateStore: expendable copies trimmed oldest first, and nothing larger than a value the PC keeps.
     private const int CacheLimit = 64;
     private const int MaxValue = 16 * 1024 * 1024;
@@ -1606,6 +1606,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                     // Another process added it first.
                     catch (SqliteException) when (ColumnPresent(command, table, column)) { }
                 }
+                RenameRefused(connection);
                 metaReady = true;
             }
             return connection;
@@ -1619,6 +1620,24 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         }
     }
 
+    // The refused sends were filed as outbox: until protocol 35 (SharedCategories.RefusedBefore): the record of this PC's own sends of unknown outcome (InterruptedSends, carried
+    // in) and the copies of the host's. Renamed once a run in one transaction, the same rev, value and digest (the digest is of the profile and the id), so the position this
+    // replica holds still describes what it holds: a host of 35 files the same rows under the new name, and a host below 35 is read through SharedCategories.FromWire. None of
+    // them is ever a pending write (the host's alone) and none is overtaken, but a key is renamed wherever it is kept. Running again finds nothing. Where both names are there (a build from
+    // before 35 ran after a rename and took the host's later change under the old one), the row with the later rev stays, a tombstone among them, and an equal
+    // rev keeps the renamed one, as state.db does.
+    private static void RenameRefused(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction(deferred: false);
+        const string Range = "key >= 'outbox:' AND key < 'outbox;'", Now = "'refused:' || substr(key, 8)";
+        Execute(connection, transaction, $"DELETE FROM rows WHERE key >= 'refused:' AND key < 'refused;' AND rev < (SELECT older.rev FROM rows older WHERE older.key = 'outbox:' || substr(rows.key, 9))");
+        Execute(connection, transaction, $"UPDATE OR IGNORE rows SET key = {Now} WHERE {Range}");
+        Execute(connection, transaction, $"DELETE FROM rows WHERE {Range}");
+        Execute(connection, transaction, $"UPDATE OR REPLACE overtaken SET key = {Now} WHERE {Range}");
+        Execute(connection, transaction, $"UPDATE pending SET key = {Now} WHERE {Range}");
+        transaction.Commit();
+    }
+
     // Once, as the replica is made: the root's unsettled sends, copied as they are (sealed by the same protector) from a state.db opened read-only, so nothing
     // there changes. -1 when there is nothing to copy from. Scheduled sends stay behind on purpose: a copy here would be a second place that fires them.
     private int Carry(SqliteConnection connection, SqliteTransaction transaction)
@@ -1629,9 +1648,14 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             using var source = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = carryFrom, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
             source.Open();
             using var read = source.CreateCommand();
-            read.CommandText = "SELECT key, payload, updated FROM private_state WHERE substr(key, 1, $length) = $prefix";
+            // A state.db this build has not opened yet still files them as outbox:, the name before protocol 35 (SqlitePrivateStateStore renames it when it opens it): taken under the
+            // new name, as the replica's own rename would leave it, and where both are there the new name's row first, as state.db's own rename keeps it.
+            read.CommandText = "SELECT $prefix || substr(key, $length + 1), payload, updated, 0 FROM private_state WHERE substr(key, 1, $length) = $prefix "
+                + "UNION ALL SELECT $prefix || substr(key, $before + 1), payload, updated, 1 FROM private_state WHERE substr(key, 1, $before) = $old ORDER BY 1, 4";
             read.Parameters.AddWithValue("$length", CarriedCategory.Length);
             read.Parameters.AddWithValue("$prefix", CarriedCategory);
+            read.Parameters.AddWithValue("$before", SharedCategories.RefusedBefore.Length + 1);
+            read.Parameters.AddWithValue("$old", SharedCategories.RefusedBefore + ":");
             using var reader = read.ExecuteReader();
             var carried = 0;
             while (reader.Read())

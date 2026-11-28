@@ -9,14 +9,16 @@ internal sealed class ServerUnsettledSends(SharedStateStore store, TimeProvider?
 {
     private readonly SharedSpaceView<SharedUnsettledSend> rows = Rows(store);
 
+    // The id a dismissal retires, kept as it was first written: the retired table holds only its digest, so ids already retired could not be renamed with the rows
+    // (protocol 35), and a different prefix would let a replayed publication bring back a warning the person dismissed.
     internal static string RetirementId(string operationId) => "outbox:" + operationId;
 
     /// <summary>A send's warning as its row holds it, in System.Text.Json's default spelling, which every client reads it in (ScheduledServerLink): the support window holds the bytes.</summary>
     internal static byte[] RowValue(SharedUnsettledSend send) => JsonSerializer.SerializeToUtf8Bytes(send);
 
-    /// <summary>The <c>outbox:</c> rows, one a send, by its operation id.</summary>
+    /// <summary>The <c>refused:</c> rows, one a send, by its operation id.</summary>
     internal static SharedSpaceView<SharedUnsettledSend> Rows(SharedStateStore store) =>
-        store.View<SharedUnsettledSend>(SharedCategories.Outbox, send => send is { OperationId.Length: > 0 } ? send.OperationId : null, RowValue);
+        store.View<SharedUnsettledSend>(SharedCategories.Refused, send => send is { OperationId.Length: > 0 } ? send.OperationId : null, RowValue);
 
     public async Task RecordAsync(UnsettledSendOperation operation)
     {

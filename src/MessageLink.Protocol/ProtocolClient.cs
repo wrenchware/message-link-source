@@ -855,6 +855,8 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
             Raise(FeedResynced);
             return;
         }
+        // As this build files the keys: a host below 35 names the refused sends outbox:, and one of 35 never does (SharedStateProxy reads its pages the same way).
+        if (SharedCategories.FromWire(change.Rows, ProtocolVersion.RefusedRows - 1) is var rows && !ReferenceEquals(rows, change.Rows)) change = change with { Rows = rows };
         try { SharedChanged?.Invoke(this, change); } catch (Exception) { /* a listener that fails must not fail the connection */ }
     }
 

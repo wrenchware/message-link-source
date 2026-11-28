@@ -79,7 +79,7 @@ internal static class LocalStateBackup
         // Saved Messages: keyed by the account's scope rather than the profile, so their keys hold anywhere.
         [Saved] = [],
     };
-    internal static readonly string[] Excluded = ["cache", "outbox", "incoming-unarchive"];
+    internal static readonly string[] Excluded = ["cache", "refused", "incoming-unarchive"];
     private const string Saved = "saved", Draft = "draft", Merges = "merges", MergesId = "groups";
     internal const int MaxPreferenceFile = 1024;
     private static readonly Regex HashPattern = new("^[0-9A-F]{64}$", RegexOptions.CultureInvariant);

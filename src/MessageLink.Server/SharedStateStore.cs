@@ -994,7 +994,7 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// How many scheduled messages (<c>scheduled:</c>) and sends that may not have gone through (<c>outbox:</c>) a data folder's <c>Server\shared.db</c> holds live, read without
+    /// How many scheduled messages (<c>scheduled:</c>) and sends that may not have gone through (<c>refused:</c>) a data folder's <c>Server\shared.db</c> holds live, read without
     /// making or changing anything (a file that is not there holds none). Null when the file is there and cannot be read. For <c>--reset-space</c>, which must never throw
     /// away a message a person asked the server to send.
     /// </summary>
@@ -1007,7 +1007,8 @@ public sealed class SharedStateStore : ISharedState
             using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = file, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COALESCE(SUM(substr(key, 1, 10) = 'scheduled:'), 0), COALESCE(SUM(substr(key, 1, 7) = 'outbox:'), 0) FROM rows WHERE deleted = 0";
+            // outbox: as well: a folder this build has not opened yet still files its refused sends under the name they had before protocol 35 (RenameRefused).
+            command.CommandText = "SELECT COALESCE(SUM(substr(key, 1, 10) = 'scheduled:'), 0), COALESCE(SUM(substr(key, 1, 8) = 'refused:' OR substr(key, 1, 7) = 'outbox:'), 0) FROM rows WHERE deleted = 0";
             using var reader = command.ExecuteReader();
             return reader.Read() ? ((int)reader.GetInt64(0), (int)reader.GetInt64(1)) : (0, 0);
         }
@@ -1104,6 +1105,26 @@ public sealed class SharedStateStore : ISharedState
 
     private SqliteConnection Open() => OpenFile(path, log);
 
+    // The files whose refused sends have been renamed in this process (RenameRefused), so each is looked at once a run rather than at every open.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Renamed = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The refused sends were filed as <c>outbox:</c> until protocol 35 (owner, 2026-11-28: "outbox" is a client's sends on their way). Their rows, tombstones included, take the
+    /// new name in one transaction, the same rev, value and digest, so every client's position still holds: a client below 35 is handed them under the old name as before
+    /// (SharedCategories.ToWire) and one of 35 meets them as it renamed its own copy. Nothing else here holds the name: the retired table keeps digests of ids that are not keys
+    /// (ServerUnsettledSends.RetirementId). Running again finds nothing to rename; an interrupted run commits nothing. A row a rolled-back build wrote under the old name after a
+    /// rename replaces the renamed one, being the later write.
+    /// </summary>
+    internal static void RenameRefused(SqliteConnection connection, Action<string>? log)
+    {
+        using var transaction = connection.BeginTransaction(deferred: false);
+        var renamed = Execute(connection, transaction, "UPDATE OR REPLACE rows SET key = $now || substr(key, $from) WHERE key >= $before AND key < $after",
+            ("$now", SharedCategories.Refused + ":"), ("$from", SharedCategories.RefusedBefore.Length + 2),
+            ("$before", SharedCategories.RefusedBefore + ":"), ("$after", SharedCategories.RefusedBefore + ";"));
+        transaction.Commit();
+        if (renamed > 0) log?.Invoke($"shared store renamed refused n={renamed}");
+    }
+
     private static SqliteConnection OpenFile(string path, Action<string>? log)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -1139,6 +1160,11 @@ public sealed class SharedStateStore : ISharedState
                     log?.Invoke("shared store created");
                 }
                 transaction.Commit();
+            }
+            if (!Renamed.ContainsKey(Path.GetFullPath(path)))
+            {
+                RenameRefused(connection, log);
+                Renamed.TryAdd(Path.GetFullPath(path), 0);
             }
             return connection;
         }

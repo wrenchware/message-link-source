@@ -22,7 +22,9 @@ public sealed record InterruptedSend(string LocalId, string ChatId, DateTimeOffs
 public sealed class InterruptedSends : IDisposable
 {
     private static readonly TimeSpan Retention = TimeSpan.FromDays(7);
-    private const string Category = "outbox", Id = "unsettled";
+    // SharedCategories.Refused and its RefusedLegacyRow: filed as outbox: until protocol 35, and renamed in place by the stores that held it (SqlitePrivateStateStore,
+    // ReplicatedStateStore).
+    private const string Category = "refused", Id = "unsettled";
     private readonly Outbox outbox;
     private readonly IMessageSender sender;
     private readonly PrivateState? state;
@@ -47,7 +49,7 @@ public sealed class InterruptedSends : IDisposable
     // outcomes: what a server's journal says became of a carried send that went over a connection. A send of this
     // session is the outbox's to settle; this is for one carried from an earlier run whose id the connection was asked about.
     // An answer changes the carried list the interface reads, so it is applied on dispatcher, which is required with outcomes.
-    // server: the server's own record of sends it made for its clients that may not have gone (outbox: rows): drawn beside the carried ones, and dismissed on the
+    // server: the server's own record of sends it made for its clients that may not have gone (stage 6 slice 11, refused: rows): drawn beside the carried ones, and dismissed on the
     // server for every device. A client of a server gives it; the in-process app and the loopback do not, and nothing here changes for them.
     public InterruptedSends(Outbox outbox, IMessageSender sender, PrivateState? state = null, IOperationOutcomes? outcomes = null, IUiDispatcher? dispatcher = null,
         IServerUnsettledLink? host = null)

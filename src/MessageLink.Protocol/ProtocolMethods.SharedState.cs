@@ -20,7 +20,7 @@ namespace MessageLink.Protocol;
 // write is answered `refused` and never stored, so a per-device row (cache:, draft-unfiled:, emoji recents) can never leave the client.
 // The set of categories grows only with the protocol version (SharedCategory.Since): a server gives a connection only the rows of the categories its
 // negotiated version knows (and no `shared` event at all below version 2), and a client keeps only the rows it would share itself, so a row an older
-// client does not know (scheduled:, outbox:, draft:, later) can never reach or replace one of its own.
+// client does not know (scheduled:, refused:, draft:, later) can never reach or replace one of its own.
 // Values are the rows' own JSON. They are never logged; at rest the server seals them with its IStateProtector.
 public static partial class ProtocolMethods
 {
@@ -210,11 +210,18 @@ public static class SharedCategories
     public const string Scheduled = "scheduled";
     public const string ScheduledLegacyRow = "all";
     /// <summary>
-    /// A send of unknown outcome or failed on the server: <c>outbox:&lt;H(profile, operation id)&gt;</c>, one <c>SharedUnsettledSend</c> a row, written by the server alone and removed by
-    /// its <c>outbox.dismiss</c>. The in-process app's own record, <c>outbox:&lt;H(profile, "unsettled")&gt;</c> (a whole list), shares the prefix and is no part of it (<see cref="Match"/>).
+    /// The server's record of a send refused or of unknown outcome: <c>refused:&lt;H(profile, operation id)&gt;</c>, one <c>SharedUnsettledSend</c> a row, written by the server
+    /// alone and removed by its <c>outbox.dismiss</c>. The in-process app's own record, <c>refused:&lt;H(profile, "unsettled")&gt;</c> (a whole list), shares the prefix and is no part of
+    /// it (<see cref="Match"/>). Filed as <see cref="RefusedBefore"/> below protocol 35, and still so on the wire to a peer below it (<see cref="ToWire(string, int)"/>).
     /// </summary>
-    public const string Outbox = "outbox";
-    public const string OutboxLegacyRow = "unsettled";
+    public const string Refused = "refused";
+    public const string RefusedLegacyRow = "unsettled";
+    /// <summary>
+    /// The refused sends' category below <see cref="ProtocolVersion.RefusedRows"/> (protocol 35), when "outbox" meant them as well as a client's sends on their way. Only the wire to a
+    /// peer below 35 says it, and the one-time renames of the files that held it (SharedStateStore, SqlitePrivateStateStore, ReplicatedStateStore). It goes when the support window
+    /// passes 35.
+    /// </summary>
+    public const string RefusedBefore = "outbox";
     /// <summary>
     /// A saved message: <c>saved:&lt;sha(account scope)&gt;:&lt;sha(["chat","message"])&gt;</c>, one <c>SavedMessage</c> with its reminder time (SavedMessages). Filed by account
     /// scope, not by profile, so it needs no profile to be told from the rows beside it.
@@ -254,7 +261,8 @@ public static class SharedCategories
         // The server's scheduled sends. Every row is the server's own write and the policy is never consulted (a client cannot put one); last writer is the server's.
         new(Scheduled, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.ServerScheduled, HostOwned: true),
         // A send of unknown outcome, or failed, on the server: one row, written and removed by the server alone; every client draws it as "may not have sent".
-        new(Outbox, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.ServerScheduled, HostOwned: true),
+        // Filed as outbox: until 35, and handed to a peer below 35 under that name (ToWire), which is why it keeps the version that brought it.
+        new(Refused, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.ServerScheduled, HostOwned: true),
         // Slice 8. A saved message is one row of its own. Saving it is a create-only write (ifRev 0: "already saved" counts as done, as it does on one device) made
         // by SavedMessages through ISharedRows.WriteIfAsync, and unsaving deletes; the reminder time and the moment it was raised are written without a condition,
         // last writer wins, except that the mark "raised" is conditional on the rev it was made from, so a stale mark never undoes a time set meanwhile. The
@@ -290,7 +298,7 @@ public static class SharedCategories
             if (category.Since > protocol || !key.StartsWith(category.Category + ":", StringComparison.Ordinal)) continue;
             // The in-process schedule's whole-list row shares the prefix and is not a scheduled send's row (see Scheduled).
             if (profile is not null && (category.Category == Scheduled && string.Equals(key, KeyOf(profile, Scheduled, ScheduledLegacyRow), StringComparison.Ordinal)
-                || category.Category == Outbox && string.Equals(key, KeyOf(profile, Outbox, OutboxLegacyRow), StringComparison.Ordinal))) continue;
+                || category.Category == Refused && string.Equals(key, KeyOf(profile, Refused, RefusedLegacyRow), StringComparison.Ordinal))) continue;
             if (category.Row is null) return category;
             if (profile is not null && string.Equals(key, KeyOf(profile, category.Category, category.Row), StringComparison.Ordinal)) return category;
         }
@@ -302,6 +310,27 @@ public static class SharedCategories
     /// holds a write of a newer category than its server speaks rather than sending it to be refused (and then dropped as a key the server does not keep).
     /// </summary>
     public static int? SinceOf(string key, string? profile) => Match(key, profile)?.Since;
+
+    /// <summary>
+    /// A key as a peer of <paramref name="protocol"/> names it: below 35 a refused send's key says <see cref="RefusedBefore"/>. The rest of the key is the same digest either way
+    /// (<see cref="KeyOf"/> hashes the profile and the id, not the category), so a row keeps its identity across the rename.
+    /// </summary>
+    public static string ToWire(string key, int protocol) =>
+        protocol < ProtocolVersion.RefusedRows && key.StartsWith(Refused + ":", StringComparison.Ordinal) ? RefusedBefore + key[Refused.Length..] : key;
+
+    /// <summary>A key a peer of <paramref name="protocol"/> named, as this build files it: below 35 <see cref="RefusedBefore"/> is a refused send's key.</summary>
+    public static string FromWire(string key, int protocol) =>
+        protocol < ProtocolVersion.RefusedRows && key.StartsWith(RefusedBefore + ":", StringComparison.Ordinal) ? Refused + key[RefusedBefore.Length..] : key;
+
+    /// <summary>Rows as a peer of <paramref name="protocol"/> names them (<see cref="ToWire(string, int)"/>); the same list when none changes.</summary>
+    public static IReadOnlyList<SharedRow> ToWire(IReadOnlyList<SharedRow> rows, int protocol) => Renamed(rows, key => ToWire(key, protocol));
+
+    /// <summary>Rows a peer of <paramref name="protocol"/> named, as this build files them (<see cref="FromWire(string, int)"/>); the same list when none changes.</summary>
+    public static IReadOnlyList<SharedRow> FromWire(IReadOnlyList<SharedRow> rows, int protocol) => Renamed(rows, key => FromWire(key, protocol));
+
+    private static IReadOnlyList<SharedRow> Renamed(IReadOnlyList<SharedRow> rows, Func<string, string> rename) =>
+        rows.Any(row => row?.Key is { } key && !ReferenceEquals(rename(key), key))
+            ? [.. rows.Select(row => row?.Key is { } key && rename(key) is var now && !ReferenceEquals(now, key) ? row with { Key = now } : row!)] : rows;
 
     /// <summary>Whether a key's category holds any shared row at all: a cheap test that needs no profile, for the many keys that are never shared.</summary>
     public static bool MayBeShared(string key)

@@ -5,6 +5,23 @@ namespace MessageLink.Storage;
 public sealed class SqlitePrivateStateStore(string path, IStateProtector protector) : IPrivateStateStore, ICompactableStore
 {
     private readonly SemaphoreSlim gate = new(1);
+    private int renamed;
+
+    // The record of sends of unknown outcome (InterruptedSends) was filed as outbox: until protocol 35, when the category became refused: (SharedCategories.Refused; owner,
+    // 2026-11-28: "outbox" is a client's sends on their way). Renamed once a run, in one transaction (the app and the server can both open this file; whichever comes second
+    // finds nothing left), the same value and digest: the key's digest is of the profile and the id, never the category. Where both names are there (a build from
+    // before 35 ran after a rename), the renamed row stays and the other goes: such a build saves the list it read as it loads, which held nothing under the old
+    // name, so its row is the one that would lose the warnings.
+    private static void RenameRefused(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction(deferred: false);
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE OR IGNORE private_state SET key = 'refused:' || substr(key, 8) WHERE key >= 'outbox:' AND key < 'outbox;'; "
+            + "DELETE FROM private_state WHERE key >= 'outbox:' AND key < 'outbox;'";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
     private SqliteConnection Open()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -32,6 +49,11 @@ public sealed class SqlitePrivateStateStore(string path, IStateProtector protect
                 }
                 transaction.Commit();
                 command.Transaction = null;
+            }
+            if (Volatile.Read(ref renamed) == 0)
+            {
+                RenameRefused(connection);
+                Volatile.Write(ref renamed, 1);
             }
             return connection;
         }

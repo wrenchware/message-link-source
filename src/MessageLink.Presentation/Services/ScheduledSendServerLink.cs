@@ -46,7 +46,7 @@ public sealed class ScheduledEditUnresolvedException(ScheduledSend copy, string 
 public sealed record StandInRecord(ScheduledSend Item, string OperationId);
 
 /// <summary>
-/// A send of unknown outcome, or failed, that the server made for a client (<c>outbox:</c> rows): all a client needs to say "may not have sent". The words are
+/// A send of unknown outcome, or failed, that the server made for a client (<c>refused:</c> rows): all a client needs to say "may not have sent". The words are
 /// the server's to keep for a later slice; no client draws them. <see cref="State"/> is one of <see cref="UnsettledStates"/>.
 /// <see cref="CreatedAt"/> is when the send began (shown); <see cref="RecordedAt"/> is when the server wrote this record, which is what it is kept by: a send interrupted days before a restart is recorded at the restart.
 /// </summary>
