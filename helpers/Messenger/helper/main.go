@@ -51,20 +51,9 @@ type response struct {
 type output struct {
 	mu      sync.Mutex
 	encoder *json.Encoder
-	// Whether a conversation is deleted here. A deleted conversation keeps its identity (identity.go), and some thirty
-	// places announce a conversation by id; one naming a deleted one sent the server back to it after it had been
-	// forgotten, to fill it again empty (three conversations at every start, 2026-11-28).
-	deleted func(chat string) bool
 }
 
 func (o *output) write(r response) {
-	if touched, ok := r.Result.(*changes); ok && r.Event == "changed" && touched != nil && o.deleted != nil {
-		trimmed := touched.without(o.deleted)
-		if trimmed != touched && trimmed.empty() {
-			return
-		}
-		r.Result = trimmed
-	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.encoder.Encode(r) != nil {
@@ -1178,7 +1167,6 @@ func (a *adapter) callContext(ctx context.Context, r request) (any, string) {
 func serve(in io.Reader, out io.Writer) {
 	o := &output{encoder: json.NewEncoder(out)}
 	a := newAdapter(o)
-	o.deleted = a.deletedChat
 	openLog()
 	defer func() {
 		// Before the log closes, so the export's end is recorded.

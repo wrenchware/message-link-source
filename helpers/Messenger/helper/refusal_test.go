@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,8 +24,8 @@ func TestRefusalSaysWhichReason(t *testing.T) {
 	gone := s.get(11)
 	gone.deleted = true
 	gone.deletedAt = 5
-	// A deleted conversation is said to be one, so the app forgets it rather than keeping it as unreadable.
-	if line, code := s.refusal(11); !strings.Contains(line, "reason=deleted") || !strings.Contains(line, "cutoff=true") || code != "chat_deleted" {
+	// Logged as deleted, but answered like any refusal: the flag is also how a pairing retires a stand-in.
+	if line, code := s.refusal(11); !strings.Contains(line, "reason=deleted") || !strings.Contains(line, "cutoff=true") || code != "unknown_chat" {
 		t.Fatalf("deleted: %s %s", line, code)
 	}
 	// A conversation held under an encrypted address another one was paired with, nobody in it known.
@@ -49,82 +46,6 @@ func TestRefusalSaysWhichReason(t *testing.T) {
 	orphan.folder = "e2ee_cutover_pending"
 	if line, _ := s.refusal(12); !strings.Contains(line, "folder=other") {
 		t.Fatalf("folder: %s", line)
-	}
-}
-
-// Announcements leave out conversations held as deleted, all but their deletion; one about nothing else is not sent.
-func TestAnnouncementsLeaveOutDeletedConversations(t *testing.T) {
-	var wire bytes.Buffer
-	o := &output{encoder: json.NewEncoder(&wire)}
-	a := newAdapter(o)
-	defer a.stop()
-	o.deleted = a.deletedChat
-	a.chats.get(7).deleted = true
-	a.chats.get(8)
-	both := &changes{Chats: []string{"7", "8"}, Messages: map[string][]string{"7": {"a"}, "8": {"b"}},
-		Receipts: map[string][]string{"7": {"c"}}, ChatsDeleted: []string{"7"}}
-	o.write(response{Event: "changed", Result: both})
-	if len(both.Chats) != 2 || len(both.Messages) != 2 {
-		t.Fatal("the announced changes were altered")
-	}
-	o.write(response{Event: "changed", Result: &changes{Chats: []string{"7"}, Messages: map[string][]string{"7": {"d"}}}})
-	lines := strings.Split(strings.TrimSpace(wire.String()), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("written %d: %s", len(lines), wire.String())
-	}
-	var got struct {
-		Result changes `json:"result"`
-	}
-	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(got.Result.Chats, []string{"8"}) || len(got.Result.Messages) != 1 || got.Result.Messages["8"] == nil ||
-		len(got.Result.Receipts) != 0 || !slices.Equal(got.Result.ChatsDeleted, []string{"7"}) {
-		t.Fatalf("written %s", lines[0])
-	}
-}
-
-// A conversation with oneself shows under the account's own name and picture once the name is known, and until then
-// the account is asked about like any participant; a deleted one, or a one-to-one with someone else, is not one.
-func TestConversationWithOneself(t *testing.T) {
-	s := newStore()
-	s.self = 1
-	mine := s.get(30)
-	mine.kind = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
-	mine.unresolved = true
-	mine.participants[1] = struct{}{}
-	mine.lastActivity = 5
-	s.messages[30] = map[string]*message{"a": {sender: 1}}
-	if s.visible(mine) {
-		t.Fatal("shown before the name")
-	}
-	if missing := s.missingPictures(5); !slices.Equal(missing, []int64{1}) {
-		t.Fatalf("not asked about: %v", missing)
-	}
-	s.contacts[1] = "Owner"
-	s.pictures[1] = "https://example.invalid/me.jpg"
-	if !s.visible(mine) {
-		t.Fatal("hidden after the name")
-	}
-	if view := s.view(mine); view.Title != "Owner" || view.AvatarURL == "" {
-		t.Fatalf("view %+v", view)
-	}
-	if listed := s.chats(0); len(listed) != 1 {
-		t.Fatalf("listed %d", len(listed))
-	}
-	if _, code := s.refusal(30); code != "unknown_chat" {
-		t.Fatal("refusal code")
-	}
-	other := s.get(31)
-	other.kind = table.ONE_TO_ONE
-	other.participants[1] = struct{}{}
-	other.participants[2] = struct{}{}
-	if s.selfChatLocked(other) {
-		t.Fatal("a one-to-one with someone else")
-	}
-	mine.deleted = true
-	if s.selfChatLocked(mine) || s.visible(mine) {
-		t.Fatal("a deleted one")
 	}
 }
 

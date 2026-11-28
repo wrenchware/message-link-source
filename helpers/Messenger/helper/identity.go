@@ -96,9 +96,6 @@ func (s *store) visible(t *thread) bool {
 	if t.deleted {
 		return false
 	}
-	if s.selfChatLocked(t) {
-		return s.contacts[s.self] != ""
-	}
 	if !t.unresolved || t.name != "" {
 		return true
 	}
@@ -110,28 +107,14 @@ func (s *store) visible(t *thread) bool {
 	return false
 }
 
-// A conversation with oneself: Messenger lets an account write to itself, and keeps that as a one-to-one whose only
-// person is the account (one of the four the server could not read, 2026-11-28: four messages, all the owner's). It
-// shows under the account's own name and picture, as Messenger's apps show it (owner, 2026-11-28), once faces has asked
-// Facebook for them. Call with the lock held.
-func (s *store) selfChatLocked(t *thread) bool {
-	if s.self == 0 || t.deleted || t.name != "" || !t.kind.IsOneToOne() || len(t.participants) == 0 {
-		return false
-	}
-	for id := range t.participants {
-		if id != s.self {
-			return false
-		}
-	}
-	return true
-}
-
 // Why ui.chat holds no such conversation, as one line of counts and states. Four conversations the server asks for at
 // every start were refused this way from 0.1.445 on without anyone telling which of visible's reasons it was. server= is
 // the tag the server's own lines give the conversation, so the two logs can be matched. paired says the key is an
 // encrypted address another conversation was paired with (its messages moved there); pairs says it is one. Also returns
-// ui.chat's code: chat_deleted for a conversation deleted here or on another device, which the app forgets as it does a
-// deletion it hears live (three of the four, 2026-11-28: deleted before the server was told), unknown_chat otherwise.
+// ui.chat's code, always unknown_chat. reason=deleted is not a deletion to act on: retire marks a stand-in deleted when a
+// pairing replaces it, the same flag a deletion sets, so a code that made the app forget a "deleted" conversation
+// (4d4dcb04, taken back the same day after review) could erase the server's history of a conversation that was only
+// renumbered. Two of the three seen on 2026-11-28 were such stand-ins (paired=true).
 func (s *store) refusal(key int64) (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -140,7 +123,7 @@ func (s *store) refusal(key int64) (string, string) {
 	if held {
 		reason = "nameless"
 		if current.deleted {
-			reason, code = "deleted", "chat_deleted"
+			reason = "deleted"
 		}
 	}
 	_, paired := s.hybrid[key]

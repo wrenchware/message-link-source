@@ -25,8 +25,8 @@ internal static class HelperErrorCodes
         "invalid_request",
         // Google Messages (connection_state.go, directory.go, actions.go, typing.go, deletemessage.go).
         "pairing_lost", "contacts_failed", "read_failed", "typing_failed", "delete_everyone_unsupported",
-        // Messenger (directory.go, updatechat.go, main.go's ui.chat).
-        "start_uncertain", "update_unconfirmed", "chat_deleted",
+        // Messenger (directory.go, updatechat.go).
+        "start_uncertain", "update_unconfirmed",
         // Instagram (readonly.go, chats.go, send.go, sendmedia.go, startchat.go, main.go).
         "chat_not_started", "chat_not_writable", "chat_unknown", "chat_is_self", "send_uncertain", "group_uncertain",
         "invalid_params", "invalid_response", "no_media_staged", "read_only", "connection_failed", "request_timeout",
