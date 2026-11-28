@@ -29,6 +29,10 @@ public sealed record LaunchCommand(LaunchAction Action, string? ChatId = null, s
     // A person asking, from the taskbar's jump list: the tray's Quit, which shows what is keeping it open or asks about unsaved messages. --quit refuses those cases in the log
     // alone, for a tool to go on from, and for a person that was a menu item that did nothing (audit, 2026-11-01).
     public const string QuitFromMenuArgument = "--quit-from-menu";
+    // Asked by tools (tools\Stop-MessageLink.ps1) through a Store package's execution alias: the server beside this program is asked to quit, and its answer is the exit
+    // code. A packaged MessageLinkServer.exe started by its path runs without the package's identity, so its --quit looks for another data root's server (#131); this
+    // program started by the alias has the identity, and the server's --quit it starts inherits it. Not a command either; only Program.Main acts on it.
+    public const string QuitServerArgument = "--quit-server";
 
     // Started again by Windows after a Microsoft Store update replaced the running app (WindowsStoreUpdates.RegisterRestart),
     // whose window was open: a background launch that then shows the window as it was (owner, 2026-11-14: an update keeps
