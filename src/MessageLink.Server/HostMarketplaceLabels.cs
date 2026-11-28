@@ -10,7 +10,7 @@ namespace MessageLink.Server;
 
 /// <summary>
 /// Puts the user's own "Marketplace" label on each Facebook Marketplace conversation once (owner, 2026-11-12), run by a server's host over the providers'
-/// feed so there is one labeller and one memory for every device. The label is an ordinary one in the shared label book (<see cref="ChatLabels"/>): the user
+/// feed so there is one labeller and one memory for every device. The label is an ordinary one in the shared label book (<see cref="LabelStore"/>): the user
 /// renames, recolors or deletes it, or takes it off a conversation, from any device, and each of those sticks, because the host remembers which conversations
 /// it has labelled and which label it made, and never labels one twice.
 /// </summary>
@@ -52,7 +52,7 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     private readonly IChatReader chats;
     private readonly SharedStateStore store;
     // The book's one row. Read strictly: a book that cannot be read is a failure, never an empty book to write over it.
-    private readonly SharedSpaceView<ChatLabelBook> books;
+    private readonly SharedSpaceView<LabelBook> books;
     private readonly PrivateState state;
     private readonly SharedMergeMembership? merges;
     private readonly Action<string> log;
@@ -66,7 +66,7 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     private HostMarketplaceLabels(IRealtimeFeed inner, IChatReader chats, SharedStateStore store, PrivateState state, SharedMergeMembership? merges, Action<string> log)
     {
         this.inner = inner; this.chats = chats; this.store = store; this.state = state; this.merges = merges; this.log = log;
-        books = store.View<ChatLabelBook>(SharedCategories.Labels, decode: bytes => JsonSerializer.Deserialize<ChatLabelBook>(bytes) ?? new ChatLabelBook([], []));
+        books = store.View<LabelBook>(SharedCategories.Labels, decode: bytes => JsonSerializer.Deserialize<LabelBook>(bytes) ?? new LabelBook());
     }
 
     public static IRealtimeFeed Over(IRealtimeFeed inner, IChatReader chats, SharedStateStore store, PrivateState state, SharedMergeMembership? merges,
@@ -208,7 +208,7 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
                 return true;
             }
             bool written;
-            try { written = await filed.WriteIfAsync(SharedCategories.LabelsRow, book.ToSaved(), rev, cancellationToken).ConfigureAwait(false); }
+            try { written = await filed.WriteIfAsync(SharedCategories.LabelsRow, book, rev, cancellationToken).ConfigureAwait(false); }
             // A book the store will not keep (past a row's size): nothing was written, and trying again would not change that.
             catch (ArgumentException)
             {
@@ -275,11 +275,11 @@ internal sealed class HostMarketplaceLabels : IRealtimeFeed
     private async Task<Memory> ReadMemoryAsync(string profile) =>
         await state.ReadAsync<Memory>(profile, MemoryCategory, MemoryRow).ConfigureAwait(false) ?? new Memory(null, []);
 
-    // Read as a client reads it (LabelBook.From): what a client would mend is mended here too, and written so with the host's next change.
-    private static async Task<(LabelBook Book, long Rev)> ReadBookAsync(SharedSpaceView<ChatLabelBook>.Filed filed, CancellationToken cancellationToken)
+    // Read as a client reads it (LabelBook reads its own saved form): what a client would mend is mended here too, and written so with the host's next change.
+    private static async Task<(LabelBook Book, long Rev)> ReadBookAsync(SharedSpaceView<LabelBook>.Filed filed, CancellationToken cancellationToken)
     {
         var stored = await filed.ReadAsync(SharedCategories.LabelsRow, cancellationToken).ConfigureAwait(false);
-        return (LabelBook.From(stored?.Value), stored?.Rev ?? 0);
+        return (stored?.Value ?? new LabelBook(), stored?.Rev ?? 0);
     }
 
     private async Task RememberAsync(string profile, Memory memory, string row, string outcome, CancellationToken cancellationToken)

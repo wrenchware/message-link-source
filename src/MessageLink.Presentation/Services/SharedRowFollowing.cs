@@ -76,7 +76,7 @@ public interface IConditionalSharedRows : ISharedRows
     Task WriteAfterPendingAsync(string key, byte[] value, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What holds a shared row in memory (<see cref="ISharedRows.FollowAsync"/>): <c>MergedConversations</c>, <c>ChatLabels</c>.</summary>
+/// <summary>What holds a shared row in memory (<see cref="ISharedRows.FollowAsync"/>): <c>MergedConversations</c>, <c>LabelStore</c>.</summary>
 public interface ISharedRowFollower
 {
     /// <summary>

@@ -52,6 +52,6 @@ public sealed partial class ChatListViewModel
         OnPropertyChanged(nameof(HasLabels)); OnPropertyChanged(nameof(LabelFilterName)); OnPropertyChanged(nameof(FilterDescription));
     }
 
-    private IReadOnlyList<ChatLabel> LabelsOf(ChatSummary chat) => labels?.For(chat.Id) ?? [];
+    private IReadOnlyList<Label> LabelsOf(ChatSummary chat) => labels?.For(chat.Id) ?? [];
     private bool MatchesLabel(ChatSummary chat) => !HasLabelFilter || labelFilters.Any(id => labels?.Has(chat.Id, id) == true);
 }

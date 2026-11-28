@@ -37,7 +37,7 @@ namespace MessageLink.App.Services;
 /// (<see cref="HostProtocolAsync"/>): the stores that were files draw from these rows only when it is 3 or more.</para>
 /// <para><b>Compare-and-set rows</b> (slice 5, <see cref="SharedConflictPolicy.CompareAndSet"/>: the merges and the labels, each one row). A write is queued
 /// with the rev the replica holds for the row (<c>if_rev</c>, 0 for none: create only), and with the tag of the newest change of its follower's it holds
-/// (<see cref="ISharedRows"/>). What holds the row in memory (MergedConversations, ChatLabels) reads it and becomes its follower in one step under the
+/// (<see cref="ISharedRows"/>). What holds the row in memory (MergedConversations, LabelStore) reads it and becomes its follower in one step under the
 /// replica's gate (<see cref="FollowAsync"/>), so its memory and the replica's rev never part: every row of the host's this replica takes for it afterwards is
 /// handed to it (<see cref="ISharedRowFollower.CatchUpAsync"/>), as is the host's row when a write loses (<c>conflict</c>), after the replica holds the host's
 /// row and has dropped the writes made before; the follower makes its changes again over it and writes the result. This is done by the worker, which sends

@@ -182,7 +182,7 @@ public static class SharedCategories
     /// <summary>The merges: <c>merges:&lt;H(profile, "groups")&gt;</c>, one <c>MergedConversation[]</c> (MergedConversations).</summary>
     public const string Merges = "merges";
     public const string MergesRow = "groups";
-    /// <summary>The labels: <c>labels:&lt;H(profile, "book")&gt;</c>, one <c>ChatLabelBook</c> (ChatLabels).</summary>
+    /// <summary>The labels: <c>labels:&lt;H(profile, "book")&gt;</c>, one <c>LabelBook</c> (LabelStore).</summary>
     public const string Labels = "labels";
     public const string LabelsRow = "book";
     /// <summary>The protected state's category the rows below share with the per-device ones (the emoji recents, the pinned order).</summary>

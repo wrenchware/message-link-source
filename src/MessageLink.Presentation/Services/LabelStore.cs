@@ -2,15 +2,6 @@ using System.Text.Json;
 
 namespace MessageLink.Presentation.Services;
 
-/// <summary>A label the user made. The id never changes, so a rename or a new colour keeps every conversation it is on.</summary>
-public sealed record ChatLabel(string Id, string Name, string Color);
-
-/// <summary>
-/// What is kept, sealed in the protected store under one key per profile: the labels in the order they were made, and
-/// which of them each conversation wears, by the id the list shows it under — a provider chat id, or merged:&lt;guid&gt;.
-/// </summary>
-public sealed record ChatLabelBook(ChatLabel[] Labels, Dictionary<string, string[]> Assignments);
-
 /// <summary>
 /// Labels belong to this PC and to the signed-in profile, like pins and merges, and never reach a provider. With no
 /// profile there is nowhere to keep them, so they are off: no labels, and nothing offered.
@@ -23,7 +14,7 @@ public sealed record ChatLabelBook(ChatLabel[] Labels, Dictionary<string, string
 /// server's other clients (SWITCHBOARD.md stage 6, slice 5), can make its changes again over another device's book when its write lost to one
 /// (<see cref="CatchUpAsync"/>). The in-process app and the loopback make and write each change exactly as before.</para>
 /// </remarks>
-public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = null)
+public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = null)
 {
     // The protected store's category. A backup that carries labels names this one.
     public const string Category = "labels";
@@ -38,14 +29,14 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
     private LabelBook book = new();
     // Each conversation's labels as label records, in the order the labels were made. A list rebuild asks for every
     // row's, so they are resolved once per change rather than once per row per rebuild.
-    private Dictionary<string, ChatLabel[]>? resolved;
+    private Dictionary<string, Label[]>? resolved;
     private Task saving = Task.CompletedTask;
     private string? failedLoad;
 
     /// <summary>Moves on every change and every load, so a reader can tell whether what it last saw is current.</summary>
     public int Version { get; private set; }
     public bool IsAvailable => profile is not null;
-    public IReadOnlyList<ChatLabel> Labels { get { lock (sync) return [.. book.Labels]; } }
+    public IReadOnlyList<Label> Labels { get { lock (sync) return [.. book.Labels]; } }
     public int Count { get { lock (sync) return book.Labels.Count; } }
     /// <summary>How many conversation-and-label pairs there are, for the log's counts.</summary>
     public int AssignmentCount { get { lock (sync) return book.AssignmentCount; } }
@@ -73,7 +64,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
             if (next == profile && !stale && Unconfirmed > 0) return;
             // A write still queued lands first, so a profile read again never comes back without its latest change.
             try { await LastSave; } catch (Exception) { /* That change's own caller heard about it. */ }
-            ChatLabelBook? saved = null;
+            LabelBook? saved = null;
             Exception? unreadable = null;
             if (next is not null)
             {
@@ -81,15 +72,15 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
                 // here (CatchUpAsync) and none taken before it is missed: what this holds is always what the replica's rev says.
                 try
                 {
-                    saved = state.Shared is null ? await state.ReadAsync<ChatLabelBook>(next, Category, BookId)
-                        : await state.FollowAsync<ChatLabelBook>(next, Category, BookId, new Follower(this, next));
+                    saved = state.Shared is null ? await state.ReadAsync<LabelBook>(next, Category, BookId)
+                        : await state.FollowAsync<LabelBook>(next, Category, BookId, new Follower(this, next));
                 }
                 catch (Exception error) { unreadable = error; }
             }
             lock (sync)
             {
                 // Never keep another profile's labels, whatever the new one holds.
-                book = LabelBook.From(saved);
+                book = saved ?? new();
                 if (next != profile) unconfirmed.Clear();
                 // A book that is there but cannot be read leaves labels off rather than empty: the first change to an
                 // empty book would be written over it and every label in it lost. The list still loads, and the next
@@ -107,7 +98,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
         finally { gate.Release(); }
     }
 
-    public ChatLabel? Find(string id) { lock (sync) return book.Find(id); }
+    public Label? Find(string id) { lock (sync) return book.Find(id); }
 
     /// <summary>Whether another label already has this name (<see cref="LabelBook.Taken"/>).</summary>
     public bool NameTaken(string name, string? exceptId = null) { lock (sync) return book.Taken(name, exceptId); }
@@ -116,7 +107,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
     public string NextColor() { lock (sync) return book.NextColor(); }
 
     /// <summary>A conversation's labels, in the order the labels were made. Empty when it has none.</summary>
-    public IReadOnlyList<ChatLabel> For(string chatId)
+    public IReadOnlyList<Label> For(string chatId)
     {
         lock (sync)
         {
@@ -139,11 +130,11 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
     };
 
     /// <summary>Makes a label, and puts it on a conversation straight away when it was made from one.</summary>
-    public ChatLabel Create(string name, string color, string? applyTo = null)
+    public Label Create(string name, string color, string? applyTo = null)
     {
         var clean = LabelBook.CleanName(name) ?? throw new ArgumentException("A label needs a name.", nameof(name));
         if (NameTaken(clean)) throw new ArgumentException("A label with this name already exists.", nameof(name));
-        var label = new ChatLabel(Guid.NewGuid().ToString("N"), clean, ChatLabelPalette.Get(color).Key);
+        var label = new Label(Guid.NewGuid().ToString("N"), clean, LabelColors.Get(color).Key);
         // Made again over another device's book, a label whose name another device took meanwhile is left out: two labels that read the same cannot be
         // told apart.
         Done Make(LabelBook within)
@@ -169,10 +160,10 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
         return Replace(id, label => label with { Name = clean }, clean);
     }
 
-    public bool Recolor(string id, string color) => Replace(id, label => label with { Color = ChatLabelPalette.Get(color).Key });
+    public bool Recolor(string id, string color) => Replace(id, label => label with { Color = LabelColors.Get(color).Key });
 
     // A label gone from the book, or (a rename) a name another label has now, leaves the change out.
-    private bool Replace(string id, Func<ChatLabel, ChatLabel> change, string? named = null)
+    private bool Replace(string id, Func<Label, Label> change, string? named = null)
     {
         Done Edit(LabelBook within)
         {
@@ -292,17 +283,17 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
         if (profile is not { } owner) return;
         if (state.Shared is null)
         {
-            saving = WriteAfterAsync(saving, owner, book.ToSaved());
+            saving = WriteAfterAsync(saving, owner, book.Copy());
             return;
         }
         // A client of a server: the change is kept, to be made again if the write loses to another device's (CatchUpAsync), until the host has taken it;
         // only while the host keeps the book (protocol 5 and later). Before that it stays here, nothing is confirmed, and nothing needs making again.
         var kept = new LabelChange(change, SharedRowTags.Next());
         if (state.Shares(owner, Category, BookId)) unconfirmed.Add(kept);
-        saving = WriteAfterAsync(saving, owner, book.ToSaved(), kept.Tag);
+        saving = WriteAfterAsync(saving, owner, book.Copy(), kept.Tag);
     }
 
-    private async Task WriteAfterAsync(Task previous, string owner, ChatLabelBook snapshot, long? tag = null)
+    private async Task WriteAfterAsync(Task previous, string owner, LabelBook snapshot, long? tag = null)
     {
         try { await previous.ConfigureAwait(false); } catch (Exception) { /* That change's own caller heard about it. */ }
         if (tag is { } shared) await Task.Run(() => state.WriteAsync(owner, Category, BookId, snapshot, shared)).ConfigureAwait(false);
@@ -343,7 +334,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
     {
         try { await LastSave.ConfigureAwait(false); } catch (Exception) { /* That change's own caller heard about it. */ }
         var host = current is null ? new LabelBook()
-            : LabelBook.From(JsonSerializer.Deserialize<ChatLabelBook>(current) ?? throw new InvalidDataException("The labels could not be read."));
+            : JsonSerializer.Deserialize<LabelBook>(current) ?? throw new InvalidDataException("The labels could not be read.");
         Task? write = null;
         SharedRowCaughtUp outcome;
         var dropped = 0;
@@ -365,7 +356,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
             {
                 unconfirmed.AddRange(kept);
                 book = next;
-                saving = write = WriteAfterAsync(saving, owner, next.ToSaved(), kept[^1].Tag);
+                saving = write = WriteAfterAsync(saving, owner, next.Copy(), kept[^1].Tag);
                 outcome = new(true, through);
             }
             else
@@ -412,7 +403,7 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
         if (dropped > 0) ChangedElsewhere?.Invoke(this, dropped);
     }
 
-    private sealed class Follower(ChatLabels owner, string profile) : ISharedRowFollower
+    private sealed class Follower(LabelStore owner, string profile) : ISharedRowFollower
     {
         public Task<SharedRowCaughtUp> CatchUpAsync(byte[]? current, CancellationToken cancellationToken) => owner.CatchUpAsync(profile, current);
         public void Confirmed(long tag) => owner.Confirm(tag);
@@ -421,16 +412,16 @@ public sealed class ChatLabels(PrivateState state, Action<string>? loadFailed = 
 }
 
 /// <summary>One of the fixed label colours, as a fill and the ink on it for each theme.</summary>
-public sealed record ChatLabelColor(string Key, string Name, Rgba LightFill, Rgba LightInk, Rgba DarkFill, Rgba DarkInk);
+public sealed record LabelColor(string Key, string Name, Rgba LightFill, Rgba LightInk, Rgba DarkFill, Rgba DarkInk);
 
 /// <summary>
 /// Eight label colours. Each theme's ink passes 4.5:1 on its fill, and none is a neutral grey: grey is the Pinned
 /// label's, and a label that looked like it would read as a state rather than something the user chose.
 /// </summary>
-public static class ChatLabelPalette
+public static class LabelColors
 {
     private static Rgba Hex(uint rgb) => new((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
-    public static readonly IReadOnlyList<ChatLabelColor> Colors =
+    public static readonly IReadOnlyList<LabelColor> Colors =
     [
         new("red", "Red", Hex(0xF9DADD), Hex(0xA4262C), Hex(0x4A2426), Hex(0xF4B9BD)),
         new("orange", "Orange", Hex(0xFBDFCB), Hex(0x8A3A0A), Hex(0x4A2D1A), Hex(0xF6C8A4)),
@@ -443,7 +434,7 @@ public static class ChatLabelPalette
     ];
 
     /// <summary>The colour with this key, or the first one for a key this build does not know.</summary>
-    public static ChatLabelColor Get(string? key) => Colors.FirstOrDefault(c => c.Key == key) ?? Colors[0];
+    public static LabelColor Get(string? key) => Colors.FirstOrDefault(c => c.Key == key) ?? Colors[0];
 
     // WCAG 2 contrast ratio between two opaque colours.
     public static double Contrast(Rgba a, Rgba b)
@@ -459,21 +450,21 @@ public static class ChatLabelPalette
 }
 
 /// <summary>What one pill on a conversation row says. No colour is the neutral grey that Pinned and "+N" use.</summary>
-public sealed record ChatLabelChip(string Text, string? Color = null, string? ToolTip = null);
+public sealed record LabelChip(string Text, string? Color = null, string? ToolTip = null);
 
-public static class ChatLabelPills
+public static class LabelPills
 {
     // Two fit after the preview on a narrow list without the preview giving up more than it already does for Pinned.
     public const int MaxPills = 2;
-    public static readonly ChatLabelChip Pinned = new("Pinned");
+    public static readonly LabelChip Pinned = new("Pinned");
 
     /// <summary>
     /// Pinned first, then labels in the order they were made; at most two pills. With more than that, the second pill
     /// becomes "+N" and its tooltip names the rest.
     /// </summary>
-    public static ChatLabelChip[] Layout(bool pinned, IReadOnlyList<ChatLabel> labels)
+    public static LabelChip[] Layout(bool pinned, IReadOnlyList<Label> labels)
     {
-        var all = new List<ChatLabelChip>(labels.Count + 1);
+        var all = new List<LabelChip>(labels.Count + 1);
         if (pinned) all.Add(Pinned);
         foreach (var label in labels) all.Add(new(label.Name, label.Color));
         if (all.Count <= MaxPills) return [.. all];
@@ -485,7 +476,7 @@ public static class ChatLabelPills
     /// Whether a pill keeps its whole width however narrow the row. Pinned does, as it did before there were labels:
     /// for it the preview gives way as far as its floor. A label or "+N" can be shortened, or left out.
     /// </summary>
-    public static bool KeepsWidth(ChatLabelChip? chip) => chip == Pinned;
+    public static bool KeepsWidth(LabelChip? chip) => chip == Pinned;
 
     // About six characters of text: the default floor for what the pills share a line with (ChatPreviewRow sets its own).
     public const double NameFloor = 48;

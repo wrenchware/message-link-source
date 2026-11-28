@@ -1,40 +1,46 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace MessageLink.Presentation.Services;
+
+/// <summary>A label the user made. The id never changes, so a rename or a new colour keeps every conversation it is on.</summary>
+public sealed record Label(string Id, string Name, string Color);
 
 /// <summary>
 /// The label book as it is changed: the labels in the order they were made, which of them each conversation wears, and the rules every writer of it keeps
-/// (a label's name, two names that read the same, a new label's colour). The window's and mlink's <see cref="ChatLabels"/> and a server's Marketplace
-/// labeller both change the book through this, so the two never disagree on what a name is. Pure: it reads and writes nothing, and
-/// <see cref="ChatLabelBook"/> is what it is kept as.
+/// (a label's name, two names that read the same, a new label's colour). The window's and mlink's <see cref="LabelStore"/> and a server's Marketplace
+/// labeller both change the book through this, so the two never disagree on what a name is. It reads and writes no store; System.Text.Json reads and
+/// writes it as the one saved shape (<see cref="Saved"/>), so every reader of a kept book mends it the same way.
 /// </summary>
+[JsonConverter(typeof(SavedForm))]
 public sealed class LabelBook
 {
     public const int MaxNameLength = 32;
 
-    private readonly List<ChatLabel> labels = [];
+    private readonly List<Label> labels = [];
     private readonly Dictionary<string, List<string>> assignments = new(StringComparer.Ordinal);
 
-    public IReadOnlyList<ChatLabel> Labels => labels;
+    public IReadOnlyList<Label> Labels => labels;
     /// <summary>Every conversation id that wears a label.</summary>
     public IEnumerable<string> ChatIds => assignments.Keys;
     /// <summary>How many conversation-and-label pairs there are.</summary>
     public int AssignmentCount => assignments.Values.Sum(ids => ids.Count);
 
     /// <summary>
-    /// A kept book, checked rather than trusted: a label with no name or a colour this build does not know, an assignment to a label that is gone, and
-    /// duplicates are dropped or mended here, once. Null reads as an empty book.
+    /// A book of these labels and assignments, checked rather than trusted, as a kept one is read: a label with no name or a colour this build does not
+    /// know, an assignment to a label that is gone, and duplicates are dropped or mended here, once.
     /// </summary>
-    public static LabelBook From(ChatLabelBook? saved)
+    public static LabelBook Of(IEnumerable<Label?>? labels, Dictionary<string, string[]>? assignments = null)
     {
         var book = new LabelBook();
-        if (saved is null) return book;
-        foreach (var label in saved.Labels ?? [])
+        foreach (var label in labels ?? [])
         {
             if (label is null || string.IsNullOrWhiteSpace(label.Id) || book.labels.Any(l => l.Id == label.Id)) continue;
             if (CleanName(label.Name) is not { } name) continue;
-            book.labels.Add(new(label.Id, name, ChatLabelPalette.Get(label.Color).Key));
+            book.labels.Add(new(label.Id, name, LabelColors.Get(label.Color).Key));
         }
         var known = book.labels.Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var (chatId, ids) in saved.Assignments ?? new Dictionary<string, string[]>())
+        foreach (var (chatId, ids) in assignments ?? [])
         {
             if (string.IsNullOrWhiteSpace(chatId)) continue;
             var kept = (ids ?? []).Where(known.Contains).Distinct(StringComparer.Ordinal).ToList();
@@ -43,9 +49,23 @@ public sealed class LabelBook
         return book;
     }
 
-    /// <summary>The book as it is kept.</summary>
-    public ChatLabelBook ToSaved() =>
-        new([.. labels], assignments.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray(), StringComparer.Ordinal));
+    /// <summary>
+    /// What is kept, sealed in the protected store (and in a server's shared space) under one key per profile, the category "labels" and the id "book":
+    /// the labels in the order they were made, and which of them each conversation wears, by the id the list shows it under (a provider chat id, or
+    /// merged:&lt;guid&gt;). Its JSON is the stored format and the wire's, which Android reads too: its names and shape never change.
+    /// </summary>
+    private sealed record Saved(Label?[]? Labels, Dictionary<string, string[]>? Assignments);
+
+    // A JSON null is never handed here (HandleNull stays false): it reads as no book, which every reader takes as an empty one.
+    private sealed class SavedForm : JsonConverter<LabelBook>
+    {
+        public override LabelBook Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            JsonSerializer.Deserialize<Saved>(ref reader, options) is { } saved ? Of(saved.Labels, saved.Assignments) : new LabelBook();
+
+        public override void Write(Utf8JsonWriter writer, LabelBook value, JsonSerializerOptions options) =>
+            JsonSerializer.Serialize(writer,
+                new Saved([.. value.labels], value.assignments.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray(), StringComparer.Ordinal)), options);
+    }
 
     public LabelBook Copy()
     {
@@ -80,7 +100,7 @@ public sealed class LabelBook
         CleanName(a) is { } x && CleanName(b) is { } y && string.Equals(x, y, StringComparison.CurrentCultureIgnoreCase);
 
     /// <summary>The label whose name reads the same as <paramref name="name"/>, or null.</summary>
-    public ChatLabel? Named(string? name, string? exceptId = null) =>
+    public Label? Named(string? name, string? exceptId = null) =>
         CleanName(name) is { } clean ? labels.FirstOrDefault(l => l.Id != exceptId && SameName(l.Name, clean)) : null;
 
     /// <summary>Whether another label already has this name.</summary>
@@ -90,30 +110,30 @@ public sealed class LabelBook
     public string NextColor()
     {
         var used = labels.Select(l => l.Color).ToHashSet(StringComparer.Ordinal);
-        return (ChatLabelPalette.Colors.FirstOrDefault(c => !used.Contains(c.Key)) ?? ChatLabelPalette.Colors[labels.Count % ChatLabelPalette.Colors.Count]).Key;
+        return (LabelColors.Colors.FirstOrDefault(c => !used.Contains(c.Key)) ?? LabelColors.Colors[labels.Count % LabelColors.Colors.Count]).Key;
     }
 
     // ---- Labels ----
 
-    public ChatLabel? Find(string id) => labels.FirstOrDefault(l => l.Id == id);
+    public Label? Find(string id) => labels.FirstOrDefault(l => l.Id == id);
 
     /// <summary>
     /// The label named <paramref name="name"/>: the one that reads the same, or a new one made with the next colour. <paramref name="made"/> says which.
     /// Throws when the name is empty once cleaned.
     /// </summary>
-    public ChatLabel Ensure(string name, out bool made)
+    public Label Ensure(string name, out bool made)
     {
         var clean = CleanName(name) ?? throw new ArgumentException("A label needs a name.", nameof(name));
         made = false;
         if (Named(clean) is { } found) return found;
-        var label = new ChatLabel(Guid.NewGuid().ToString("N"), clean, NextColor());
+        var label = new Label(Guid.NewGuid().ToString("N"), clean, NextColor());
         labels.Add(label);
         made = true;
         return label;
     }
 
     /// <summary>Adds a label as it is. False when the id is already there; whether its name is free is the caller's to ask (<see cref="Taken"/>).</summary>
-    public bool Add(ChatLabel label)
+    public bool Add(Label label)
     {
         if (Find(label.Id) is not null) return false;
         labels.Add(label);
@@ -121,7 +141,7 @@ public sealed class LabelBook
     }
 
     /// <summary>Changes a label in place. Null when it is gone, false when the change is no change.</summary>
-    public bool? Replace(string id, Func<ChatLabel, ChatLabel> change)
+    public bool? Replace(string id, Func<Label, Label> change)
     {
         var index = labels.FindIndex(l => l.Id == id);
         if (index < 0) return null;

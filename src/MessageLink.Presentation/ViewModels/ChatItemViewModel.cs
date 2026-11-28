@@ -18,14 +18,14 @@ public sealed class ChatItemViewModel(ChatSummary chat) : ObservableObject
     private bool isFrozen;
     public bool IsFrozen => isFrozen;
     internal void SetFrozen(bool value) => SetProperty(ref isFrozen, value, nameof(IsFrozen));
-    // The user's labels on this row, in the order they were made. The list sets them on every rebuild; see ChatLabels.
-    private IReadOnlyList<ChatLabel> labels = [];
-    public IReadOnlyList<ChatLabel> Labels => labels;
-    // The pills after the preview: Pinned first, then labels, two at most. See ChatLabelPills.Layout.
-    private ChatLabelChip[] pills = ChatLabelPills.Layout(chat.IsPinned, []);
-    public ChatLabelChip? FirstPill => pills.Length > 0 ? pills[0] : null;
-    public ChatLabelChip? SecondPill => pills.Length > 1 ? pills[1] : null;
-    internal void SetLabels(IReadOnlyList<ChatLabel> value)
+    // The user's labels on this row, in the order they were made. The list sets them on every rebuild; see LabelStore.
+    private IReadOnlyList<Label> labels = [];
+    public IReadOnlyList<Label> Labels => labels;
+    // The pills after the preview: Pinned first, then labels, two at most. See LabelPills.Layout.
+    private LabelChip[] pills = LabelPills.Layout(chat.IsPinned, []);
+    public LabelChip? FirstPill => pills.Length > 0 ? pills[0] : null;
+    public LabelChip? SecondPill => pills.Length > 1 ? pills[1] : null;
+    internal void SetLabels(IReadOnlyList<Label> value)
     {
         if (labels.SequenceEqual(value)) return;
         var wasAccessible = AccessibleName;
@@ -36,9 +36,9 @@ public sealed class ChatItemViewModel(ChatSummary chat) : ObservableObject
     }
     private void RefreshPills()
     {
-        var next = ChatLabelPills.Layout(Chat.IsPinned, labels);
+        var next = LabelPills.Layout(Chat.IsPinned, labels);
         if (next.SequenceEqual(pills)) return;
-        ChatLabelChip? first = FirstPill, second = SecondPill;
+        LabelChip? first = FirstPill, second = SecondPill;
         pills = next;
         if (first != FirstPill) OnPropertyChanged(nameof(FirstPill));
         if (second != SecondPill) OnPropertyChanged(nameof(SecondPill));

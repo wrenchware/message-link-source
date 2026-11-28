@@ -21,7 +21,7 @@ public enum ChatKind { All, Messages, Calls, Voicemails }
 public enum EmptyListReason { NoService, Filtered, LoadedOnly, Empty }
 public sealed record EmptyListState(string Text, EmptyListReason Reason, bool OffersAddAccount, bool OffersClearFilters);
 
-public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? state = null, MergedConversations? merges = null, ChatLabels? labels = null,
+public sealed partial class ChatListViewModel(IChatReader reader, PrivateState? state = null, MergedConversations? merges = null, LabelStore? labels = null,
     ComposerDrafts? drafts = null, ReadHereMarks? readHere = null) : ObservableObject, IDisposable, INoticeSource
 {
     // See ProgressIndicator: how long a row works before it says so. Settable so the offline checks can watch both

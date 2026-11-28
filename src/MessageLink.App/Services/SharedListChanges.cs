@@ -92,7 +92,7 @@ internal sealed class SharedListChanges : IDisposable
     private void OnRows(object? sender, SharedRowsChange change) => Gather(change.Keys, change.Arrived, everything: false);
 
     // The pinned order, the merges and the labels are rows of the replica itself (PrivateState reads them there), so they are told as soon as the replica
-    // holds them: the merges and the labels once MergedConversations and ChatLabels have taken them, which the replica does first (ISharedRowFollower). Only
+    // holds them: the merges and the labels once MergedConversations and LabelStore have taken them, which the replica does first (ISharedRowFollower). Only
     // their categories are kept: the rows of the other categories are told by their ReplicaRows once those hold them, and a key here is matched against the
     // profile later.
     private void OnReplica(object? sender, SharedRowsChange change)
@@ -104,10 +104,10 @@ internal sealed class SharedListChanges : IDisposable
 
     /// <summary>
     /// The merges and labels the list draws, whose changes another device's left out are told (slice 5, <see cref="ChangedElsewhereNotice"/>). A merge left
-    /// out had taken the labels of its conversations (ChatLabels.Merge, as the window merges): they are handed back to them, so none is left on a merge that
+    /// out had taken the labels of its conversations (LabelStore.Merge, as the window merges): they are handed back to them, so none is left on a merge that
     /// was never made. The read-here marks (slice 7) are re-read here too when the replica could not bring them to the host's row; the redraw applies them.
     /// </summary>
-    public void Follows(MergedConversations merges, ChatLabels labels, ReadHereMarks? marks = null)
+    public void Follows(MergedConversations merges, LabelStore labels, ReadHereMarks? marks = null)
     {
         this.merges = merges;
         this.labels = labels;
@@ -129,7 +129,7 @@ internal sealed class SharedListChanges : IDisposable
     public const string HeldNotice = "Another device is changing your merged conversations or labels too. Yours will be tried again shortly.";
 
     private MergedConversations? merges;
-    private ChatLabels? labels;
+    private LabelStore? labels;
     private ReadHereMarks? marks;
 
     private void OnTold(object? sender, SharedRowTold what) =>

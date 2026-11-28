@@ -14,7 +14,7 @@ namespace MessageLink.Terminal.Session;
 
 /// <summary>What <see cref="TerminalHost"/> is made of: the session's parts it reads and acts through.</summary>
 internal sealed record TerminalHostParts(ServerLink Link, MlinkContext Context, Action<string> Copy,
-    MessagingProxy Messaging, ChatListViewModel Chats, MergedConversations Merges, ChatLabels Labels, ILocalChatPreferences ChatPreferences,
+    MessagingProxy Messaging, ChatListViewModel Chats, MergedConversations Merges, LabelStore Labels, ILocalChatPreferences ChatPreferences,
     IChatSnoozes Snoozes, SavedMessages Saved, MessageActionsViewModel Actions, Outbox Outbox, FeedBatcher Pump, HostDiagnosticsReader Diagnostics,
     IHostLogs Logs, IHostIdentity Identity, IAccessTokenStore Tokens, ReplicatedStateStore Replica, DateTimeOffset Launched);
 

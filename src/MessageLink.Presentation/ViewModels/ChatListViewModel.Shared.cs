@@ -20,7 +20,7 @@ public sealed partial class ChatListViewModel
     /// </param>
     /// <param name="regroup">
     /// Another device's merges or labels came (slice 5). They are already held where the list reads them from (MergedConversations,
-    /// ChatLabels), and the redraw, the one this burst makes, builds the merged rows and the labels from them again.
+    /// LabelStore), and the redraw, the one this burst makes, builds the merged rows and the labels from them again.
     /// </param>
     /// <returns>How many loaded rows changed, and the rows taken (the others failed <paramref name="current"/>).</returns>
     public async Task<(int Changed, IReadOnlyList<ReappliedChat> Taken)> ApplySharedAsync(IReadOnlyList<ReappliedChat> rows, bool pinnedOrder,

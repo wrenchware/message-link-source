@@ -40,7 +40,7 @@ public sealed class MlinkSession : IAsyncDisposable
     private StateIdentity identity = null!;
     private MessagingProxy messaging = null!;
     private ChatListViewModel chats = null!;
-    private ChatLabels labels = null!;
+    private LabelStore labels = null!;
     private ActivityStream stream = null!;
     private Outbox outbox = null!;
     private FeedBatcher pump = null!;
@@ -116,7 +116,7 @@ public sealed class MlinkSession : IAsyncDisposable
         owned.Add(replicaSnoozes);
         var snoozes = new ObservedChatSnoozes(replicaSnoozes);
         var merges = new MergedConversations(privateState, GoogleVoiceIds.TextRouteForCall);
-        labels = new ChatLabels(privateState, error => log($"mlink labels load failed error={error}"));
+        labels = new LabelStore(privateState, error => log($"mlink labels load failed error={error}"));
         saved = new SavedMessages(replica);
         owned.Add(saved);
 

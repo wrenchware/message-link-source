@@ -232,7 +232,7 @@ internal static class LocalStateBackup
         }
 
         // Labels last, so the merges row they are matched against is this PC's as the restore leaves it.
-        foreach (var entry in (backup.State ?? []).OrderBy(entry => entry.Key?.StartsWith(ChatLabels.Category + ":", StringComparison.Ordinal) == true))
+        foreach (var entry in (backup.State ?? []).OrderBy(entry => entry.Key?.StartsWith(LabelStore.Category + ":", StringComparison.Ordinal) == true))
         {
             token.ThrowIfCancellationRequested();
             var category = entry.Key.Split(':')[0];
@@ -246,7 +246,7 @@ internal static class LocalStateBackup
             var holds = false;
             try
             {
-                if (category == ChatLabels.Category) (stored, holds) = await RestoreLabelsAsync(stores.State, backup, target, entry.Value, profile!, token);
+                if (category == LabelStore.Category) (stored, holds) = await RestoreLabelsAsync(stores.State, backup, target, entry.Value, profile!, token);
                 else stored = await stores.State.AddAsync(target, entry.Value, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
