@@ -72,6 +72,7 @@ type adapter struct {
 	sentLooks      map[string]*sentLook
 	downloadSlots  [3]chan struct{}
 	historyLocks   sync.Map
+	refusedChats   sync.Map // Diagnostic only: conversations ui.chat has refused this run.
 	encryptedStart sync.Mutex
 	mu             sync.Mutex
 	deleteMu       sync.Mutex
@@ -931,6 +932,10 @@ func (a *adapter) callContext(ctx context.Context, r request) (any, string) {
 		}
 		found, ok := a.chats.chatByKey(key)
 		if !ok {
+			// Once a run per conversation: the server's history check asks for the same ones several times at start.
+			if _, seen := a.refusedChats.LoadOrStore(key, true); !seen {
+				logf("%s", a.chats.refusal(key))
+			}
 			return nil, "unknown_chat"
 		}
 		return found, ""

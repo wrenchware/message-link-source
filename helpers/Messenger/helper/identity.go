@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
@@ -104,6 +105,49 @@ func (s *store) visible(t *thread) bool {
 		}
 	}
 	return false
+}
+
+// Why ui.chat holds no such conversation, as one line of counts and states. Four conversations the server asks for at
+// every start were refused this way from 0.1.445 on without anyone telling which of visible's reasons it was. server= is
+// the tag the server's own lines give the conversation, so the two logs can be matched. paired says the key is an
+// encrypted address another conversation was paired with (its messages moved there); pairs says it is one.
+func (s *store) refusal(key int64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, held := s.threads[key]
+	reason := "absent"
+	if held {
+		reason = "nameless"
+		if current.deleted {
+			reason = "deleted"
+		}
+	}
+	_, paired := s.hybrid[key]
+	pairs := false
+	for _, mapped := range s.hybrid {
+		if mapped == key {
+			pairs = true
+			break
+		}
+	}
+	line := fmt.Sprintf("ui.chat refused chat=%s server=%s reason=%s paired=%t pairs=%t messages=%d",
+		tag(key), serverTag(key), reason, paired, pairs, len(s.messages[key]))
+	if !held {
+		return line
+	}
+	known := 0
+	for id := range current.participants {
+		if id != s.self && s.contacts[id] != "" {
+			known++
+		}
+	}
+	folder := current.folder
+	if folder != "" && folder != "inbox" && folder != "archived" {
+		folder = "other"
+	}
+	return line + fmt.Sprintf(" kind=%d unresolved=%t named=%t participants=%d known=%d activity=%t cutoff=%t folder=%s",
+		current.kind, current.unresolved, current.name != "", len(current.participants), known, current.lastActivity > 0,
+		current.deletedAt > 0, folder)
 }
 
 // The pinned upstream bridge also uses GetGroupInfo when an encrypted group arrives without ordinary metadata.

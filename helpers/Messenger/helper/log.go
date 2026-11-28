@@ -154,6 +154,13 @@ func tag(id int64) string {
 	return hex.EncodeToString(sum[:3])
 }
 
+// A conversation as the server's own lines tag it (HistoryParts.Tag over "messenger:<key>"), for a line that has to be
+// matched with the server's log.
+func serverTag(key int64) string {
+	sum := sha256.Sum256([]byte("history:messenger:" + strconv.FormatInt(key, 10)))
+	return hex.EncodeToString(sum[:3])
+}
+
 func tagOf(id string) string {
 	if id == "" {
 		return "none"
