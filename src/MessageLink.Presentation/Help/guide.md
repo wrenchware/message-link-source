@@ -915,7 +915,7 @@ A Windows PC can be its own Message Link Server: the server runs as you, starts 
 
 | Setting | What it does | Default |
 |---|---|---|
-| **Diagnostic logs** | **View logs**. See [Troubleshooting](#troubleshooting) | |
+| **Diagnostic logs** | **View logs**, **Export logs…**. See [Troubleshooting](#troubleshooting) | |
 | **Connection health** | How each service stands, and a way to restart its connection. See [Troubleshooting](#troubleshooting) | |
 | **Record diagnostics** | Save troubleshooting information while Message Link runs | On |
 | **Reset Google Messages local data** | **Reset…**, shown only when Google sends have stopped because your phone renumbered its conversations | |
@@ -979,7 +979,7 @@ Everything is in Message Link's own folder on your PC. Uninstalling Message Link
 
 ### Tools {#troubleshooting-tools}
 
-- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source**: Message Link and each service, or, on a PC that uses a Message Link Server, the server and each service on it. Only logs that have been written are listed. **This run** and **Previous run** choose between this run's log and the one before it. **Following** keeps it live; **Copy**, and **Save all logs…** into one file to send to whoever helps you. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
+- **View logs** (Settings → Troubleshooting) opens **Diagnostic logs**: choose a log from **Log source**: Message Link and each service, or, on a PC that uses a Message Link Server, the server and each service on it. Only logs that have been written are listed. **This run** and **Previous run** choose between this run's log and the one before it. **Following** keeps it live; **Copy** copies the log shown, and **Export logs…** saves every log into one file to send to whoever helps you. **Export logs…** is also beside **View logs** in Settings. Logs hold no message text, contact details or sign-in information. The console's `/logs` shows the same logs.
 - **Connection health** (also in Commands) shows each service's state, its last activity and last message sent, and how long its connection has been running. **Restart** reconnects from the saved sign-in; it waits for any message still sending and asks before leaving one's outcome unknown. It never pairs again or signs in afresh.
 - **Send test** (Settings → Notifications) checks notifications without contacting anyone.
 - The console's `/diag` and `/status` summarize everything at once.
