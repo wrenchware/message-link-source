@@ -3,7 +3,7 @@ namespace MessageLink.App.Services;
 // Whether older history downloads in the background for search. On unless the user turns it off.
 internal static class SearchIndexPreference
 {
-    private static readonly string FilePath = MessageLink.App.Services.AppPaths.Combine("search-history-download.txt");
+    private static string FilePath => MessageLink.App.Services.AppPaths.Combine("search-history-download.txt");
 
     public static bool Load()
     {

@@ -1,8 +1,6 @@
 namespace MessageLink.App.Services;
 
-// Where this copy of the app keeps its data. Installed and ordinary builds use %LOCALAPPDATA%\Message Link. Before the
-// Message Link name it was %LOCALAPPDATA%\Messages for Windows; the first launch of a later version renames it (Settle,
-// DataFolderMove). A development build started with
+// Where this copy of the app keeps its data. Installed and ordinary builds use %LOCALAPPDATA%\Message Link. A development build started with
 // MESSAGELINK_DATA_ROOT (tools\Run-DevBuild.ps1) keeps everything in that folder instead and takes its own single-instance
 // identity, so it runs beside the installed app without touching its sessions, caches or archive. A copy installed from the
 // Microsoft Store (an MSIX package, installer\Build-StorePackage.ps1) keeps its data in the package's own LocalState folder
@@ -10,7 +8,6 @@ namespace MessageLink.App.Services;
 internal static class AppPaths
 {
     internal const string FolderName = "Message Link";
-    internal const string LegacyFolderName = "Messages for Windows";
 
     private static readonly string? Override = Environment.GetEnvironmentVariable("MESSAGELINK_DATA_ROOT") is { Length: > 0 } root
         ? Path.GetFullPath(root) : null;
@@ -30,14 +27,16 @@ internal static class AppPaths
     // the package instead, which is not virtualized, and which uninstalling the package removes.
     public static string DefaultRoot => PackageFamily is { } family ? PackageRoot(family) : UnpackagedRoot;
     public static string UnpackagedRoot => Path.Combine(LocalAppData, FolderName);
-    public static string LegacyRoot => Path.Combine(LocalAppData, LegacyFolderName);
     internal static string PackageRoot(string family) => Path.Combine(LocalAppData, "Packages", family, "LocalState");
-    // Whether a folder is the real data, or inside it, under either name. Naming the real folder in MESSAGELINK_DATA_ROOT is still
+    // Whether a folder is the real data, or inside it, packaged or not. Naming the real folder in MESSAGELINK_DATA_ROOT is still
     // the real data (review, 2026-10-08), and so is a junction or symbolic link to it, or to a folder above it, or a folder that is
     // the same directory by another route (review, 2026-10-09): Path.GetFullPath resolves none of those, so the paths are compared
     // as the file system names them (FinalPath). A path that cannot be resolved counts as the real data, since the answer
     // decides whether a server may read the owner's accounts.
-    public static bool IsRealData(string path) => IsRealData(path, [DefaultRoot, UnpackagedRoot, LegacyRoot]);
+    // Every package's folder counts too: an unpackaged copy cannot name the installed Store package's family, and a development
+    // copy pointed at that package's LocalState would read its preferences and replace its run marker and log (review, #129).
+    public static bool IsRealData(string path) => IsRealData(path, [DefaultRoot, UnpackagedRoot, PackagesRoot]);
+    internal static string PackagesRoot => Path.Combine(LocalAppData, "Packages");
 
     // The roots are a parameter so the harness can stand in for the real folder; nothing else calls this.
     internal static bool IsRealData(string path, IReadOnlyList<string> realRoots)
@@ -75,12 +74,10 @@ internal static class AppPaths
     private static string LocalAppData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
     // Fixed once, by Settle or by the first read, and the same for the rest of the run: every store, log and helper of a
-    // run uses one folder. It used to be computed as this type was first touched, and the app touches it before its data
-    // lock is taken (the instance key's suffix), so the move has to be a step of its own. A server that never settles (the
-    // harness, the diagnostics) reads whichever folder exists, moving nothing.
+    // run uses one folder. A server that never settles (the harness, the diagnostics) fixes it at its first read.
     private static string? root;
     private static readonly Lock Gate = new();
-    public static string DataRoot => Volatile.Read(ref root) ?? Settle(null).Root;
+    public static string DataRoot => Volatile.Read(ref root) ?? Choose(settling: false).Root;
     public static string Combine(params string[] parts) => Path.Combine([DataRoot, .. parts]);
 
     // A server whose own configuration names its folder (the Linux server's MESSAGES_DATA), before anything reads a path.
@@ -95,23 +92,20 @@ internal static class AppPaths
     }
 
     // How this run's folder was chosen, once Program.Main has settled it; App writes it to the log.
-    public static DataFolderMove.Result? Settled { get; private set; }
+    public static DataFolderChoice? Settled { get; private set; }
 
-    // Program.Main, holding the data lock and before anything reads a path: the one place that may move the folder.
-    // helpersRunning answers whether helpers of this install folder from before this launch are still running; they would
-    // hold files open in the old folder, so the move waits for a later launch. Null never moves anything.
-    public static DataFolderMove.Result Settle(Func<bool>? helpersRunning)
+    // Program.Main, holding the data lock and before anything reads a path, so the log can say which folder the run used.
+    public static DataFolderChoice Settle() => Choose(settling: true);
+
+    private static DataFolderChoice Choose(bool settling)
     {
         lock (Gate)
         {
             // Read before this was asked to settle: whatever was read stands for the whole run.
             if (root is { } chosen) return new(chosen, "unchanged", "read_before_settle");
-            // A package never had the old folder name, and the unpackaged install's folders are not its to move.
-            var result = Override is { } isolated ? new DataFolderMove.Result(isolated, "isolated", "none")
-                : IsPackaged ? new DataFolderMove.Result(DefaultRoot, Directory.Exists(DefaultRoot) ? "already" : "new", "packaged")
-                : DataFolderMove.Decide(LegacyRoot, DefaultRoot, helpersRunning);
+            var result = DataFolderChoice.For(Override, DefaultRoot, IsPackaged);
             Volatile.Write(ref root, result.Root);
-            if (helpersRunning is not null) Settled = result;
+            if (settling) Settled = result;
             return result;
         }
     }
@@ -249,41 +243,15 @@ internal static class FinalPath
     private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, out ByHandleFileInformation information);
 }
 
-// The one-time rename of the data folder from its earlier name (AppPaths.LegacyFolderName) to %LOCALAPPDATA%\Message Link. Both are
-// in the same folder, so Directory.Move is a rename: nothing is copied, and it either happens whole or not at all. What the
-// folder holds survives the rename: every path is worked out from the root each run (the helpers' too, given it as
-// MESSAGELINK_DATA_ROOT), Windows' protection of the session files is bound to the user rather than to a path, and the
-// browser profiles under it take their folder from the app each time they open.
-internal static class DataFolderMove
+// Which folder a run uses and why. outcome: already (it exists) | new (a first install) | isolated (MESSAGELINK_DATA_ROOT) |
+// unchanged (read before Settle). The data folder's earlier name, and the one-time move from it, went on 2026-11-28 (#129): every
+// machine runs the Store package, whose folder never had that name.
+internal sealed record DataFolderChoice(string Root, string Outcome, string Reason)
 {
-    // outcome: moved | kept_old (this run uses the old folder and the next launch tries again) | already (the new folder
-    // exists; old_remains when the old one does too, which is then left alone) | new (neither exists: a first install).
-    internal sealed record Result(string Root, string Outcome, string Reason, string? Error = null)
-    {
-        public string LogLine => $"data folder outcome={Outcome} reason={Reason}" + (Error is null ? "" : $" error={Error}");
-    }
+    public string LogLine => $"data folder outcome={Outcome} reason={Reason}";
 
-    public static Result Decide(string legacy, string current, Func<bool>? helpersRunning, Action<string, string>? move = null)
-    {
-        var hasNew = Directory.Exists(current);
-        var hasOld = Directory.Exists(legacy);
-        // A later downgrade recreates the old folder; the new one, which has the accounts, still wins.
-        if (hasNew) return new(current, "already", hasOld ? "old_remains" : "none");
-        if (!hasOld) return new(current, "new", "none");
-        if (helpersRunning is null) return new(legacy, "kept_old", "not_settling");
-        bool running;
-        try { running = helpersRunning(); }
-        catch (Exception failure) { return new(legacy, "kept_old", "helpers_unknown", failure.GetType().Name); }
-        if (running) return new(legacy, "kept_old", "helpers_running");
-        try
-        {
-            (move ?? Directory.Move)(legacy, current);
-            return new(current, "moved", "none");
-        }
-        // Something has a file open in it (a crashed run's browser, an Explorer window, a scan): this run uses it where it is.
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
-        {
-            return new(legacy, "kept_old", "move_failed", failure.GetType().Name);
-        }
-    }
+    // The first choice of a run; the harness gives its own folders, since its own run's folder is chosen before any check.
+    internal static DataFolderChoice For(string? isolated, string defaultRoot, bool packaged) =>
+        isolated is not null ? new(isolated, "isolated", "none")
+            : new(defaultRoot, Directory.Exists(defaultRoot) ? "already" : "new", packaged ? "packaged" : "none");
 }

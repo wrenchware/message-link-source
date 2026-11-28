@@ -28,8 +28,8 @@ type logger struct {
 
 var diagnostics = &logger{}
 
-// %LOCALAPPDATA%\Messages for Windows\Messenger\helper.log, beside the session the app already keeps there, or inside the
-// data root when one is set, as every database already is. A development copy started with only the root used to
+// helper.log in the helper's storage root (messengerStorageRoot), beside the session the app already keeps there, as every
+// database already is. A development copy started with only the data root used to
 // rotate the installed app's log to .previous here, and the record of the real run went with it.
 func logPath() string {
 	// A diagnostic run alongside the app sets this, so the two do not write over each other's log.
