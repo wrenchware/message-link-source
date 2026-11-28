@@ -298,7 +298,8 @@ func (s *store) missingPictures(limit int) []int64 {
 		}
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 		for _, id := range ids {
-			if id == 0 || id == s.self || seen[id] || s.tried[id] || (s.pictures[id] != "" && s.contacts[id] != "") {
+			// This account is asked about only for a conversation with itself, which is named after it.
+			if id == 0 || (id == s.self && !s.selfChatLocked(current)) || seen[id] || s.tried[id] || (s.pictures[id] != "" && s.contacts[id] != "") {
 				continue
 			}
 			seen[id] = true
@@ -1604,9 +1605,16 @@ func (s *store) view(current *thread) viewChat {
 			avatar = s.rememberMedia("avatar:"+strconv.FormatInt(others[0], 10), s.pictures[others[0]])
 		}
 	}
+	selfChat := s.selfChatLocked(current)
+	if avatar == "" && selfChat {
+		avatar = s.rememberMedia("avatar:"+strconv.FormatInt(s.self, 10), s.pictures[s.self])
+	}
 	title := current.name
 	if title == "" {
 		title = strings.Join(names, ", ")
+	}
+	if title == "" && selfChat {
+		title = s.contacts[s.self]
 	}
 	if title == "" {
 		title = "Conversation"

@@ -96,6 +96,9 @@ func (s *store) visible(t *thread) bool {
 	if t.deleted {
 		return false
 	}
+	if s.selfChatLocked(t) {
+		return s.contacts[s.self] != ""
+	}
 	if !t.unresolved || t.name != "" {
 		return true
 	}
@@ -105,6 +108,22 @@ func (s *store) visible(t *thread) bool {
 		}
 	}
 	return false
+}
+
+// A conversation with oneself: Messenger lets an account write to itself, and keeps that as a one-to-one whose only
+// person is the account (one of the four the server could not read, 2026-11-28: four messages, all the owner's). It
+// shows under the account's own name and picture, as Messenger's apps show it (owner, 2026-11-28), once faces has asked
+// Facebook for them. Call with the lock held.
+func (s *store) selfChatLocked(t *thread) bool {
+	if s.self == 0 || t.deleted || t.name != "" || !t.kind.IsOneToOne() || len(t.participants) == 0 {
+		return false
+	}
+	for id := range t.participants {
+		if id != s.self {
+			return false
+		}
+	}
+	return true
 }
 
 // Why ui.chat holds no such conversation, as one line of counts and states. Four conversations the server asks for at

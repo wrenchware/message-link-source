@@ -84,6 +84,50 @@ func TestAnnouncementsLeaveOutDeletedConversations(t *testing.T) {
 	}
 }
 
+// A conversation with oneself shows under the account's own name and picture once the name is known, and until then
+// the account is asked about like any participant; a deleted one, or a one-to-one with someone else, is not one.
+func TestConversationWithOneself(t *testing.T) {
+	s := newStore()
+	s.self = 1
+	mine := s.get(30)
+	mine.kind = table.ENCRYPTED_OVER_WA_ONE_TO_ONE
+	mine.unresolved = true
+	mine.participants[1] = struct{}{}
+	mine.lastActivity = 5
+	s.messages[30] = map[string]*message{"a": {sender: 1}}
+	if s.visible(mine) {
+		t.Fatal("shown before the name")
+	}
+	if missing := s.missingPictures(5); !slices.Equal(missing, []int64{1}) {
+		t.Fatalf("not asked about: %v", missing)
+	}
+	s.contacts[1] = "Owner"
+	s.pictures[1] = "https://example.invalid/me.jpg"
+	if !s.visible(mine) {
+		t.Fatal("hidden after the name")
+	}
+	if view := s.view(mine); view.Title != "Owner" || view.AvatarURL == "" {
+		t.Fatalf("view %+v", view)
+	}
+	if listed := s.chats(0); len(listed) != 1 {
+		t.Fatalf("listed %d", len(listed))
+	}
+	if _, code := s.refusal(30); code != "unknown_chat" {
+		t.Fatal("refusal code")
+	}
+	other := s.get(31)
+	other.kind = table.ONE_TO_ONE
+	other.participants[1] = struct{}{}
+	other.participants[2] = struct{}{}
+	if s.selfChatLocked(other) {
+		t.Fatal("a one-to-one with someone else")
+	}
+	mine.deleted = true
+	if s.selfChatLocked(mine) || s.visible(mine) {
+		t.Fatal("a deleted one")
+	}
+}
+
 // An encrypted one-to-one kept with nobody in it but this account takes its other person from its messages, once there
 // is exactly one, so the name lookup can find them; anything else is left as it is.
 func TestEncryptedPeerFromMessages(t *testing.T) {
