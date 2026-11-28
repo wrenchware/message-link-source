@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The relay listener's first line (SWITCHBOARD.md 4.7). The server's door on the owner's tailnet (<c>messages-tailnet</c>, a Tailscale node of its own in the
+/// The relay listener's first line. The server's door on the owner's tailnet (<c>messages-tailnet</c>, a Tailscale node of its own in the
 /// container) passes each device's connection to a Unix socket only it can reach, byte for byte, after one PROXY protocol line (version 1, haproxy.org's
 /// proxy-protocol.txt) naming the device's tailnet address. TLS is the server's own end to end. The address read here becomes the connection's own, so the door's
 /// per-address places, pairing and join pacing and the page's home-network rule see each tailnet device as itself rather than every one as the door.

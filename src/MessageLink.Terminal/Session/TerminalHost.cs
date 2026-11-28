@@ -15,8 +15,8 @@ namespace MessageLink.Terminal.Session;
 /// <summary>What <see cref="TerminalHost"/> is made of: the session's parts it reads and acts through.</summary>
 internal sealed record TerminalHostParts(ServerLink Link, MlinkContext Context, Action<string> Copy,
     MessagingProxy Messaging, ChatListViewModel Chats, MergedConversations Merges, LabelStore Labels, ILocalChatPreferences ChatPreferences,
-    IChatSnoozes Snoozes, SavedMessages Saved, MessageActionsViewModel Actions, Outbox Outbox, FeedBatcher Pump, HostDiagnosticsReader Diagnostics,
-    IHostLogs Logs, IHostIdentity Identity, IAccessTokenStore Tokens, ReplicatedStateStore Replica, DateTimeOffset Launched);
+    IChatSnoozes Snoozes, SavedMessages Saved, MessageActionsViewModel Actions, Outbox Outbox, FeedBatcher Pump, ServerDiagnosticsReader Diagnostics,
+    IServerLogs Logs, IServerIdentity Identity, IAccessTokenStore Tokens, ReplicatedStateStore Replica, DateTimeOffset Launched);
 
 /// <summary>
 /// What the chat console asks of the program around it, in a terminal over Message Link Server, with every member answered by the server: its status
@@ -27,7 +27,7 @@ internal sealed partial class TerminalHost : IConsoleHost
 {
     private readonly TerminalHostParts parts;
     private ServerLink Link => parts.Link;
-    private HostStateCache State => parts.Link.State;
+    private ServerStateCache State => parts.Link.State;
     private IReadOnlyList<ConsoleQueueItem> serverQueue = [];
     private int scheduledHeld, unsettledHeld;
 
@@ -216,22 +216,22 @@ internal sealed partial class TerminalHost : IConsoleHost
     // The names the pager shows and its words pick ("google", "helper", "voice"), to the names the wire uses; the server's own first.
     private static readonly (string Shown, string Wire)[] ServerLogs =
     [
-        ("Server", HostLogNames.Server), ("Google Messages", HostLogNames.GoogleMessages), ("Messenger", HostLogNames.Messenger),
-        ("Messenger helper", HostLogNames.MessengerHelper), ("Google Voice", HostLogNames.GoogleVoice), ("Instagram", HostLogNames.Instagram),
-        ("Google Messages · sign-in history", HostLogNames.GoogleSignInHistory), ("Server · previous run", HostLogNames.ServerPrevious),
-        ("Google Messages · previous run", HostLogNames.GoogleMessagesPrevious), ("Messenger helper · previous run", HostLogNames.MessengerHelperPrevious),
-        ("Google Voice · previous run", HostLogNames.GoogleVoicePrevious), ("Instagram · previous run", HostLogNames.InstagramPrevious),
+        ("Server", ServerLogNames.Server), ("Google Messages", ServerLogNames.GoogleMessages), ("Messenger", ServerLogNames.Messenger),
+        ("Messenger helper", ServerLogNames.MessengerHelper), ("Google Voice", ServerLogNames.GoogleVoice), ("Instagram", ServerLogNames.Instagram),
+        ("Google Messages · sign-in history", ServerLogNames.GoogleSignInHistory), ("Server · previous run", ServerLogNames.ServerPrevious),
+        ("Google Messages · previous run", ServerLogNames.GoogleMessagesPrevious), ("Messenger helper · previous run", ServerLogNames.MessengerHelperPrevious),
+        ("Google Voice · previous run", ServerLogNames.GoogleVoicePrevious), ("Instagram · previous run", ServerLogNames.InstagramPrevious),
     ];
 
     /// <summary>How much of a log's end the first read shows; one answer's worth.</summary>
-    public const int TailBytes = HostLogChunk.MaxChunk;
+    public const int TailBytes = ServerLogChunk.MaxChunk;
 
     public IReadOnlyList<string> LogSources => [.. ServerLogs.Select(log => log.Shown)];
 
     public async Task<ConsoleLogRead> ReadLogAsync(string source, long from, CancellationToken cancellationToken = default)
     {
         if (ServerLogs.FirstOrDefault(log => log.Shown.Equals(source, StringComparison.OrdinalIgnoreCase)) is not { Wire: { } name }) return new([], 0, true);
-        HostLogChunk chunk;
+        ServerLogChunk chunk;
         try { chunk = await parts.Logs.ReadAsync(name, from, cancellationToken); }
         catch (NotSupportedException) { return new(["This server doesn't share its logs."], 0, true); }
         if (!chunk.Exists) return new([], 0, from != 0);

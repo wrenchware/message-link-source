@@ -11,7 +11,7 @@ public sealed record OutgoingMessage(string LocalId, string ChatId, string Text,
     // Set once every automatic confirmation check has finished without the provider knowing the message. Every send is
     // briefly pending between its receipt and its echo; only one still unknown after the background checks says so.
     bool Unconfirmed = false, IReadOnlyList<string>? PendingMessageIds = null,
-    // The host's name for an unknown send whose connection ended before its answer (SendException.OperationId), so the host's journal
+    // The server's name for an unknown send whose connection ended before its answer (SendException.OperationId), so the server's journal
     // can later say what became of it. Never shown.
     string? OperationId = null);
 
@@ -24,8 +24,8 @@ public sealed record PhotoSetOutcome(int Handled, OutgoingState? Failed, string?
 // refused send's row sends it again (RetryAsync).
 // followUpDelays replaces the background confirmation schedule, and lookupStep the spacing of the quick lookups after a
 // receipt (2 s, then 4 s, then 6 s); the offline checks use them to keep those checks fast.
-// outcomes, when the sender is a host over a connection that can be lost, says what became of a send whose answer was lost
-// (SWITCHBOARD.md 3.0c); it arrives on another thread, so dispatcher (the interface thread) is where it is applied, and is required
+// outcomes, when the sender is a server over a connection that can be lost, says what became of a send whose answer was lost;
+// it arrives on another thread, so dispatcher (the interface thread) is where it is applied, and is required
 // with outcomes. This class is used only on that thread, so an answer applied there is ordered against SettleEarly.
 public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? followUpDelays = null, TimeSpan? lookupStep = null,
     IOperationOutcomes? outcomes = null, IUiDispatcher? dispatcher = null) : IDisposable
@@ -69,11 +69,11 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
     //
     // A refusal is certain (the service answered no), so sending the same thing again is a new send, never a duplicate. It is only ever
     // the person's click: nothing here resends by itself. The submission is kept from the start, so a send first uncertain and then
-    // reported failed by the host (ApplyOutcome) can go again too, and dropped once the service accepts it or the send leaves the outbox.
+    // reported failed by the server (ApplyOutcome) can go again too, and dropped once the service accepts it or the send leaves the outbox.
     private sealed record Resend(Func<CancellationToken, Task<SendReceipt>> Submit, bool WaitForConfirmation);
     private readonly Dictionary<string, Resend> resends = [];
     // The name the server's journal knows each refused send by (its planned OperationId), by local id: a server keeps a record of every
-    // refused send for every device (HostUnsettledSends), which this PC already draws on the message itself. Dismissed once the person
+    // refused send for every device (ServerUnsettledSends), which this PC already draws on the message itself. Dismissed once the person
     // retries or removes it (RefusalSettled).
     private readonly Dictionary<string, string> refusedAs = [];
     // Every name this outbox gave a send this session. Its outcome is shown on the message itself, refused or uncertain, so the
@@ -306,7 +306,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
                 messages[localId] = messages[localId] with { State = unknown ? OutgoingState.Unknown : OutgoingState.Rejected, Explanation = explanation,
                     OperationId = unknown ? (ex as SendException)?.OperationId : null };
                 Notify(chatId, localId);
-                // The host's answer may have come before the send was marked unknown: what it said is this photo's outcome. A
+                // The server's answer may have come before the send was marked unknown: what it said is this photo's outcome. A
                 // definite refusal stays on its row with Retry (it used to go back to the draft); a definite send goes on to the
                 // next photo (its confirmation already started), as a receipt would have. The verdict is taken from what was
                 // applied, not looked up afterwards: a lookup that answers at once confirms the photo and removes it before it
@@ -460,7 +460,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         return item;
     }
 
-    // Makes the one submission under the send's own name (PlannedOperation), so the host's journal knows the send by the name already kept for the next
+    // Makes the one submission under the send's own name (PlannedOperation), so the server's journal knows the send by the name already kept for the next
     // launch. The plan is open only while the call is made: a proxy takes the name when it builds its request, and a second mutation made by the same call
     // gets one of its own.
     private static Task<T> Named<T>(OutgoingMessage item, Func<Task<T>> call)
@@ -518,7 +518,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         }
     }
 
-    // ---- What the host says became of a send whose answer was lost ----
+    // ---- What the server says became of a send whose answer was lost ----
     //
     // Never a second send: an answer only changes what is shown for the send that was already made. Done gives the send the receipt a
     // normal answer would have (it is then pending and confirmed by the same lookups); failed makes it a refused send, which the composer
@@ -553,7 +553,7 @@ public sealed class Outbox(IMessageSender sender, IReadOnlyList<TimeSpan>? follo
         if (item.State != OutgoingState.Unknown) return null;
         if (outcome.Verdict == OperationVerdict.Failed)
         {
-            // Failed is the host saying it was not done, and an item here is only ever a message send, reply or attachment send (its
+            // Failed is the server saying it was not done, and an item here is only ever a message send, reply or attachment send (its
             // OperationId comes from their SendException). Directory and group operations, some of whose refusals say the thing was done, are
             // never in the outbox; SendExceptionSentenceChecks keeps those sentences out of the send paths.
             NoteRefused(item.LocalId, item.OperationId);

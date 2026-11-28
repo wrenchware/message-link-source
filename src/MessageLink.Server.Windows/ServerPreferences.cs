@@ -5,7 +5,7 @@ namespace MessageLink.Server.Windows;
 
 /// <summary>
 /// The one preference the server honours, read from the file the app writes it to (<c>app-preferences.json</c>, AppPreferences). The logs are shared
-/// code that reads only <see cref="Diagnostics.Recording"/>, which is true until a host lowers it, so a server that never read the choice would
+/// code that reads only <see cref="Diagnostics.Recording"/>, which is true until a server lowers it, so a server that never read the choice would
 /// record for someone who turned diagnostics off.
 /// </summary>
 internal static class ServerPreferences

@@ -9,7 +9,7 @@ using MessageLink.Server;
 
 namespace MessageLink.Server.Windows;
 
-// MessageLinkServer.exe (SWITCHBOARD.md stage 3, step 3.1): hosts the backends for one data root. One per root, however it was started: the lease
+// MessageLinkServer.exe: hosts the backends for one data root. One per root, however it was started: the lease
 // file decides, and the named mutex tells the app, mlink and the tools that one runs. Nothing connects unless it was started with --restore or --background.
 public static class Program
 {
@@ -27,7 +27,7 @@ public static class Program
         // Before the lease, the log and the marker: a quit is a visitor, and must not replace the log of the server it is asking.
         if (options.Quit) return Quit();
 
-        // The real data (the installed app's accounts) is served only for a root that runs its own server (SWITCHBOARD.md 10.7, the lift of 3.2b, owner D13
+        // The real data (the installed app's accounts) is served only for a root that runs its own server (owner,
         // 2026-10-30): the app marks the root so at its first launch (ProtocolMode.Settle), and the marker says so (MoveMarker.ServerMayOpen). The real data is the
         // default root, and also that folder named in MESSAGELINK_DATA_ROOT (review, 2026-10-08), or a junction or link to it, or to a folder above it (IsRealData
         // compares the paths as the file system resolves them, and one it cannot resolve is the real data). On any other root it reads the marker and nothing else,
@@ -40,14 +40,14 @@ public static class Program
         // either order.
         if (AppRunning() && !OwnerIsWindow(options.OwnerPid) && !MoveMarker.RunsOwnServer(MoveMarker.Read(AppPaths.DataRoot))) return Refused("app_running");
         // Before the log: a refused start must not replace the log of the server that holds the lease.
-        using var lease = HostLease.TryAcquire(AppPaths.DataRoot);
+        using var lease = ServerLease.TryAcquire(AppPaths.DataRoot);
         if (lease is null) return Refused("host_locked");
         using var mutex = new Mutex(false, ServerShell.MutexName);
         bool owned;
         try { owned = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; }
         if (!owned) return Refused("mutex_held");
-        // This process is the server of this root now; what its start needs and that touches no data runs beside the window's making (SWITCHBOARD.md 3.1d).
+        // This process is the server of this root now; what its start needs and that touches no data runs beside the window's making.
         ServerWarmUp.Start();
 
         // Its own files, so that a server run never moves the window's logs to .previous or adds to them.
@@ -65,7 +65,7 @@ public static class Program
         AppLog.Write($"server started version={typeof(Program).Assembly.GetName().Version?.ToString(3)} data_root={(AppPaths.IsIsolated ? "given" : "default")} lease=ok " +
             $"previous_exit={previousExit} restore={options.Restore} background={options.Background}");
         if (options.OwnerPid is { } owner) AppLog.Write($"server owner pid={owner}");
-        // runtime: the process's start to Main (the .NET host and runtime, which nothing here can shorten); prelude: Main to here (arguments, lease, mutex, the log file).
+        // runtime: the process's start to Main (the .NET server and runtime, which nothing here can shorten); prelude: Main to here (arguments, lease, mutex, the log file).
         AppLog.Write($"server compose step=prelude ms={prelude.ElapsedMilliseconds}");
         // Asked of Windows on the pool: the process's start time costs a few milliseconds the start does not need to wait for.
         _ = Task.Run(() => AppLog.Write($"server compose step=runtime ms={(long)(entered - Process.GetCurrentProcess().StartTime).TotalMilliseconds}"));

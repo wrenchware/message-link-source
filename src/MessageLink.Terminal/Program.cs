@@ -5,7 +5,7 @@ using MessageLink.Terminal.Connection;
 using MessageLink.Terminal.Session;
 using MessageLink.Terminal.Vt;
 
-// mlink (SWITCHBOARD.md stage 13): Message Link's chat console in a terminal, talking straight to Message Link Server.
+// mlink: Message Link's chat console in a terminal, talking straight to Message Link Server.
 
 Console.OutputEncoding = new UTF8Encoding(false);
 Console.InputEncoding = new UTF8Encoding(false);

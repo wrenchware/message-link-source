@@ -17,7 +17,7 @@ internal sealed class CdpException(int code) : Exception("cdp_error")
 /// <summary>
 /// The DevTools protocol over Chromium's <c>--remote-debugging-pipe</c>: two plain streams, each message one JSON object ended by a NUL byte. Nothing
 /// listens on a port, so no other process, container or machine can reach the browser; only the process that started it holds the two ends
-/// (SWITCHBOARD.md 4.3: the server foundation's broker published DevTools on an unauthenticated TCP port, which this replaces).
+/// (the server foundation's broker published DevTools on an unauthenticated TCP port, which this replaces).
 /// <para>
 /// One reader takes every message in order: answers complete their command, events go to <see cref="Events"/>, which the caller drains on its own, so a
 /// handler that sends a command never waits on the reader that would deliver its answer. Nothing read here is logged.

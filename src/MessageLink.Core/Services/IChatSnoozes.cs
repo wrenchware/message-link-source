@@ -10,7 +10,7 @@ public interface IChatSnoozes
     // closed is still owed, so nothing is dropped for being late.
     Task<IReadOnlyList<ChatSnooze>> ListAsync(CancellationToken cancellationToken = default);
 }
-// What a snooze store kept as files holds, for taking it in elsewhere once (a server's import, SWITCHBOARD.md stage 6 slice 3):
+// What a snooze store kept as files holds, for taking it in elsewhere once (a server's import):
 // every snooze that could be read, and how many files could not be (locked, unreadable to this user, or damaged). An import
 // with any unread is not finished, so it is tried again rather than recorded done without them. Reading never deletes a file.
 public sealed record ChatSnoozeFiles(IReadOnlyList<ChatSnooze> Snoozes, int Unreadable);

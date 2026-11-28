@@ -16,7 +16,7 @@ public abstract partial record RepeatRequest
     public sealed record Create(int Days, int Minute, string Text) : RepeatRequest;
     public sealed record Invalid(string Message) : RepeatRequest;
 
-    /// <summary>The server's own limits (HostRepeats): a prompt up to this long, and this many repeats.</summary>
+    /// <summary>The server's own limits (ServerRepeats): a prompt up to this long, and this many repeats.</summary>
     public const int MaxText = 2000, MaxRepeats = 20;
 
     public const string Usage = "Use /repeat weekdays 7:00 Morning brief: the days (daily, weekdays, weekends or mon,wed,fri), a time, then what to ask.";

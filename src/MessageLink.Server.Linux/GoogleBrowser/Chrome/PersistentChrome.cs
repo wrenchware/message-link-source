@@ -29,7 +29,7 @@ internal interface IChromeLauncher
     IChromeRunning Start(string profileFolder, string? page = null);
 }
 
-/// <summary>What Chrome is started with (SWITCHBOARD.md 5.4, Chrome on the server).</summary>
+/// <summary>What Chrome is started with (Chrome on the server).</summary>
 internal static class ChromeArguments
 {
     /// <summary>The one page Chrome shows: Messages for web's configuration address, never the web app itself (loading that could start a pairing of its own).</summary>
@@ -80,13 +80,13 @@ internal static class ChromeArguments
 }
 
 /// <summary>
-/// The policy file that contains Chrome (SWITCHBOARD.md 5.4, Chrome on the server): Chrome is a real browser running without its own sandbox, so which sites it may load is not left to it. The file
+/// The policy file that contains Chrome (Chrome on the server): Chrome is a real browser running without its own sandbox, so which sites it may load is not left to it. The file
 /// is baked into the image (<c>docker/messages-server/chrome-policy.json</c>, in Chrome's managed policy folder) and Chrome is not started without it. The path is fixed: the server reads no
 /// environment variable for it, so nothing the container is started with can point the check at another file (only the harness, through <see cref="LinuxServerOptions.ChromePolicyGiven"/>).
 /// <para>
 /// What the policy can and cannot do. <c>URLBlocklist</c> and <c>URLAllowlist</c> govern NAVIGATIONS (a page, a frame), by the most specific matching filter: the allow list names only the hosts the
 /// sign-in and Messages for web's configuration page need, plus <c>messages.google.com/web/config</c> by path against a block of the rest of that host, and Facebook's and Instagram's own sites for their
-/// sign-ins (SWITCHBOARD.md 10.5) with <c>instagram.com/direct</c> blocked by path against them, so Instagram's inbox never loads (the PC's window refuses it too). They do not govern what those pages then load
+/// sign-ins with <c>instagram.com/direct</c> blocked by path against them, so Instagram's inbox never loads (the PC's window refuses it too). They do not govern what those pages then load
 /// (scripts, images, fetches follow what the pages ask for), which is why the list is short rather than <c>google.com</c> and its relatives as a whole. Developer tools, remote debugging,
 /// downloads, file dialogs, extensions, saved passwords, autofill and sync are off.
 /// </para>
@@ -126,7 +126,7 @@ internal static class ChromePolicy
 }
 
 /// <summary>
-/// Chrome on Linux, kept running (SWITCHBOARD.md 5.4, Chrome on the server). <c>setsid</c> gives it a process group of its own, whose id is the shell's process id, and the shell starts
+/// Chrome on Linux, kept running (Chrome on the server). <c>setsid</c> gives it a process group of its own, whose id is the shell's process id, and the shell starts
 /// <c>Xvfb</c> on a display number Xvfb picks itself (<c>-displayfd</c>, so two runs can never race for a number), listening on no TCP port and no local socket, closed to everything without the key
 /// the server wrote into the profile folder (<see cref="XAuthority"/>), runs Chrome on it as a child, and when Chrome has gone ends the display and removes the key. A SIGTERM to the shell is
 /// passed on to Chrome alone, which then closes the way a person closing it does (its cookies and its state are written), and the shell ends the display after it. The browser gets none of the
@@ -293,7 +293,7 @@ internal sealed class ChromeLauncher(string executable, bool noSandbox) : IChrom
 }
 
 /// <summary>
-/// The server's one Chrome, kept running (SWITCHBOARD.md 5.4, chosen 2026-10-10): started when there is a profile to start it on and for a first sign-in, restarted if it dies (a few times
+/// The server's one Chrome, kept running (chosen 2026-10-10): started when there is a profile to start it on and for a first sign-in, restarted if it dies (a few times
 /// an hour, then it stays down and says so), and closed gently when the server stops. One at a time uses its display (<see cref="HoldAsync"/>). Logged as fixed words and counts only.
 /// </summary>
 internal sealed class PersistentChrome(IChromeLauncher launcher, IXConnector connector, Action<string> log, Func<IChromeRunning, CancellationToken, Task>? inspect = null) : IAsyncDisposable

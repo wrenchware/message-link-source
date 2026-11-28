@@ -3,13 +3,13 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// Hermes Agent on the wire (protocol 31). Its state travels in HostState.Hermes (the address, each profile's name, title and state; never a key).
+// Hermes Agent on the wire (protocol 31). Its state travels in ServerState.Hermes (the address, each profile's name, title and state; never a key).
 //
 //   accounts.hermes.configure       the address and profiles with their keys. Page-only on a server, where every account is set up (the server's page has
 //                                   the form); an app that runs its own services takes it from its own Settings. The keys cross only as this mutation's
 //                                   parameters: the journal keeps a hash, never the parameters.
 //   accounts.hermes.newConversation a Hermes thread starts over on a fresh Hermes session; the scrollback stays.
-//   repeats.create / repeats.cancel a repeating scheduled send, Hermes threads only (HostRepeats). The rows are the host's own (repeat:).
+//   repeats.create / repeats.cancel a repeating scheduled send, Hermes threads only (ServerRepeats). The rows are the server's own (repeat:).
 //   accounts.hermes.answerApproval  (protocol 32) approves once or denies a command Hermes holds for approval, named by its message in the thread. Never
 //                                   retried: the server reports how the request stands, and a person answers again only while it still waits.
 //
@@ -68,8 +68,8 @@ public sealed class RepeatsProxy(ProtocolClient client) : IRepeatCommands
         client.MutateAsync<RepeatCancelParams, RepeatAnswer>(ProtocolMethods.RepeatsCancel, request, cancellationToken);
 }
 
-/// <summary>Hermes's account over the wire: the state from the host's pushed state, New conversation and (on a host that takes it) the settings.</summary>
-public sealed class HermesAccountProxy(ProtocolClient client, HostStateCache cache) : IHermesAccount
+/// <summary>Hermes's account over the wire: the state from the server's pushed state, New conversation and (on a server that takes it) the settings.</summary>
+public sealed class HermesAccountProxy(ProtocolClient client, ServerStateCache cache) : IHermesAccount
 {
     public HermesAccountState State => cache.Hermes;
     public event EventHandler? Changed

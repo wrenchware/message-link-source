@@ -1,6 +1,6 @@
 namespace MessageLink.Protocol;
 
-/// <summary>Where the person signing in is (SWITCHBOARD.md 10.6): the server's own page, through its socket.</summary>
+/// <summary>Where the person signing in is: the server's own page, through its socket.</summary>
 public static class RemoteSignInFaces
 {
     public const string Page = "page";
@@ -28,7 +28,7 @@ public sealed class RemoteSignInBusyException(string face) : InvalidOperationExc
 }
 
 /// <summary>
-/// The host's sign-ins in its own browser, whichever face drives them (SWITCHBOARD.md 10.5 and 10.6): the app's protocol connection and the server page's socket both run a sign-in through
+/// The host's sign-ins in its own browser, whichever face drives them: the app's protocol connection and the server page's socket both run a sign-in through
 /// <see cref="RunAsync"/> and send what the person does through <see cref="InputAsync"/>, so the two are one flow and never two copies of it. One at a time across every face: a second start is
 /// refused with <see cref="RemoteSignInBusyException"/>, naming where the open one is, after a short wait for one that is just ending. The host's own browser keeps its own one-at-a-time as well
 /// (it is also held by renewals). Input is taken only from the owner of the open sign-in and goes to the port that sign-in runs on. Nothing a person typed or saw passes through here but on its way.
@@ -67,7 +67,7 @@ public sealed class RemoteSignInSessions
     /// <summary>
     /// Runs one sign-in of <paramref name="service"/> to its end for <paramref name="driver"/>: Google's and Voice's on their ports (Google's keeper told afterwards), Messenger's and Instagram's on the
     /// cookie port and then the connect (<see cref="RemoteSignInFinish"/>). Failures are the ports' and the connect's fixed words, <see cref="RemoteSignInBusyException"/> while another is open, and
-    /// <see cref="NotSupportedException"/> for a service the host does not sign in.
+    /// <see cref="NotSupportedException"/> for a service the server does not sign in.
     /// </summary>
     public async Task<RemoteSignInResult> RunAsync(ProtocolServices services, string service, RemoteSignInDriver driver, string clientOpId, bool asNewDevice, int width, int height,
         CancellationToken cancellationToken, string? accountKey = null)
@@ -98,7 +98,7 @@ public sealed class RemoteSignInSessions
                     catch (Exception) { }
                     return new RemoteSignInResult();
                 case RemoteSignInServices.Voice:
-                    // Nothing of Messages' keeper is told: it renews Messages, and the host adds the Voice account itself.
+                    // Nothing of Messages' keeper is told: it renews Messages, and the server adds the Voice account itself.
                     await services.VoiceRemoteSignIn!.SignInAsync(request, driver.View, driver.Progress, cancellationToken).ConfigureAwait(false);
                     return new RemoteSignInResult();
                 default:

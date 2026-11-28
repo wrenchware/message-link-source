@@ -66,7 +66,7 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
         chat.Type == "single" && chat.Participants.Any(p => p.IsSelf != true) && !chat.IsSpam;
     // Whether a conversation is in no merge, without knowing the merges: every way in (CanMerge, a Voice person's other conversations, a call's text
     // route) takes one-to-one conversations only, so a group never is. Only a type that says group counts; an unknown or missing one might be a member.
-    // The host of the client modes takes the conversations this says yes to whatever it knows of the merges, and the rest only once it reads them from
+    // The server of the client modes takes the conversations this says yes to whatever it knows of the merges, and the rest only once it reads them from
     // the shared state (IncomingUnarchiveSplit).
     public static bool NeverMember(ChatSummary chat) => !IsMerged(chat.Id) && chat.Type == "group";
 
@@ -84,10 +84,10 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
         try
         {
             var next = await state.ProfileAsync();
-            // A client of a server whose replica could not bring it to the host's row (Abandon) reads it again.
+            // A client of a server whose replica could not bring it to the server's row (Abandon) reads it again.
             if (next == profile && !reload && !stale) return;
-            // A client of a server holding changes the host has not taken yet holds more than its replica says while they are on their way; the replica
-            // brings the host's row to it as it comes (CatchUpAsync), never by a read here.
+            // A client of a server holding changes the server has not taken yet holds more than its replica says while they are on their way; the replica
+            // brings the server's row to it as it comes (CatchUpAsync), never by a read here.
             if (next == profile && !stale && Unconfirmed > 0) return;
             // Do not keep another profile's membership if loading the new one fails. The same profile's conversations,
             // seen on the list, are still its own.
@@ -98,7 +98,7 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
                 lock (changes) unconfirmed.Clear();
             }
             profile = null; groups = [];
-            // A client of a server reads the row and becomes its follower in one step, so a host row the replica takes after this read is handed here
+            // A client of a server reads the row and becomes its follower in one step, so a server row the replica takes after this read is handed here
             // (CatchUpAsync) and none taken before it is missed: what this holds is always what the replica's rev says, which its writes are conditional on.
             var saved = next is null ? [] : state.Shared is null
                 ? await state.ReadAsync<MergedConversation[]>(next, Category, Row) ?? []
@@ -546,7 +546,7 @@ public sealed partial class MergedConversations(PrivateState state, Func<ChatSum
         await gate.WaitAsync();
         try
         {
-            // Stale: a client of a server whose replica could not bring it to the host's row refuses changes until it has read the row again.
+            // Stale: a client of a server whose replica could not bring it to the server's row refuses changes until it has read the row again.
             if (profile is null || stale || profile != await state.ProfileAsync()) throw new InvalidOperationException("Reconnect before changing merged conversations.");
             var next = update(groups);
             if (state.Shared is null) await state.WriteAsync(profile, Category, Row, next);

@@ -9,9 +9,9 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// What the page needs for the server's backup and restore (SWITCHBOARD.md stage 10, 10.2 and 10.3): the backup itself, how many accounts are signed in on the server
+/// What the page needs for the server's backup and restore: the backup itself, how many accounts are signed in on the server
 /// (a restore goes only onto a server with none), signing every account out (Reset server), and a start again of the server, which applies a restore or a reset
-/// before anything opens (<see cref="ServerRestore.ApplyPendingAsync"/>). <paramref name="Restart"/> answers false when the host cannot start itself again.
+/// before anything opens (<see cref="ServerRestore.ApplyPendingAsync"/>). <paramref name="Restart"/> answers false when the server cannot start itself again.
 /// </summary>
 internal sealed record ServerPageBackups(ServerBackupService Service, Func<CancellationToken, Task<int>> SignedIn,
     Func<CancellationToken, Task<(int SignedOut, int Left, bool Failed)>> SignOutAll, Func<string, bool> Restart)

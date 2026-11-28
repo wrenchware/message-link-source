@@ -105,8 +105,8 @@ internal sealed partial class GoogleMessagesBackend
                     await CommitSessionAsync(encrypted);
                 }
                 finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(updated); }
-                // A new pairing may be another device or account. Said here, where the session was replaced, so that whoever hosts this backend
-                // answers with the new key at once whether or not its window tells it (HostIdentityPort).
+                // A new pairing may be another device or account. Said here, where the session was replaced, so that whoever servers this backend
+                // answers with the new key at once whether or not its window tells it (ServerIdentityPort).
                 if (tokens is GoogleSessionProfile profile) profile.Invalidate();
                 NoteSessionKind(result);
                 Files.Cookies.Remember(cookies);

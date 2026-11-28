@@ -4,33 +4,33 @@ using MessageLink.Core.Services;
 namespace MessageLink.Presentation.Services;
 
 /// <summary>
-/// Who returns which archived conversation to the inbox in the client modes (SWITCHBOARD.md stage 6, slices 9 and 5). A server's host takes group
+/// Who returns which archived conversation to the inbox in the client modes (slices 9 and 5). A server takes group
 /// conversations (protocol 4), once for all its clients, since a group is never in a merge (<see cref="MergedConversations.NeverMember"/>); from protocol 5,
 /// when the merges are a row of its shared state it can read, it also takes the one-to-one conversations outside every merge. Each client takes the rest:
-/// its merges always (a merge's archive is the merges row's, which each client changes itself), and what its host does not take through <c>chats.set</c>, as
-/// before. Against a host below 4 a client takes everything, as before.
+/// its merges always (a merge's archive is the merges row's, which each client changes itself), and what its server does not take through <c>chats.set</c>, as
+/// before. Against a server below 4 a client takes everything, as before.
 /// </summary>
 public static class IncomingUnarchiveSplit
 {
     /// <summary>
-    /// Whether a client takes <paramref name="chat"/>, which none of its merges holds, given whether its host takes groups and whether it takes one-to-one
+    /// Whether a client takes <paramref name="chat"/>, which none of its merges holds, given whether its server takes groups and whether it takes one-to-one
     /// conversations outside the merges too.
     /// </summary>
     public static bool ClientTakes(bool hostTakesGroups, bool hostTakesChats, ChatSummary chat) =>
         MergedConversations.NeverMember(chat) ? !hostTakesGroups : !hostTakesChats;
 
     /// <summary>
-    /// Whether the host takes <paramref name="chat"/>: a group always, and, when it takes one-to-one conversations (<paramref name="takesChats"/>), one the
+    /// Whether the server takes <paramref name="chat"/>: a group always, and, when it takes one-to-one conversations (<paramref name="takesChats"/>), one the
     /// shared merges do not hold (<paramref name="inMerge"/>).
     /// </summary>
-    public static bool HostTakes(ChatSummary chat, bool takesChats = false, bool inMerge = true) => MergedConversations.NeverMember(chat) || takesChats && !inMerge;
+    public static bool ServerTakes(ChatSummary chat, bool takesChats = false, bool inMerge = true) => MergedConversations.NeverMember(chat) || takesChats && !inMerge;
 }
 
 /// <summary>What one event came to.</summary>
 /// <param name="Unarchived">This unarchiver returned the conversation to the inbox.</param>
-/// <param name="LeftToHost">An arrival in a conversation archived on its service that this unarchiver does not take (<see cref="IncomingMessageUnarchiver.Takes"/>):
-/// the host returns it to the inbox for this arrival, a moment later, so the arrival's notification is judged as the inbox will show it.</param>
-public readonly record struct UnarchiveOutcome(bool Unarchived, bool LeftToHost);
+/// <param name="LeftToServer">An arrival in a conversation archived on its service that this unarchiver does not take (<see cref="IncomingMessageUnarchiver.Takes"/>):
+/// the server returns it to the inbox for this arrival, a moment later, so the arrival's notification is judged as the inbox will show it.</param>
+public readonly record struct UnarchiveOutcome(bool Unarchived, bool LeftToServer);
 
 // Runs serially with notifications, independently of window focus and notification preferences.
 // A changed message is not necessarily a new arrival: providers also report edits, receipts and backfill.
@@ -52,18 +52,18 @@ public sealed class IncomingMessageUnarchiver(IChatSettingsBackend settings, IMe
     public Func<ChatSummary, bool>? Takes { get; init; }
 
     /// <summary>
-    /// As <see cref="Takes"/>, for an answer that has to be read: a server's host asks its shared merges whether they hold the conversation (stage 6 slice 5).
+    /// As <see cref="Takes"/>, for an answer that has to be read: a server asks its shared merges whether they hold the conversation.
     /// Asked after <see cref="Takes"/>, and only when that did not say no.
     /// </summary>
     public Func<ChatSummary, CancellationToken, Task<bool>>? TakesAsync { get; init; }
 
-    /// <summary>Asked before the provider is read: true leaves the conversation without reading it (the host's known one-to-one conversations).</summary>
+    /// <summary>Asked before the provider is read: true leaves the conversation without reading it (the server's known one-to-one conversations).</summary>
     public Func<string, bool>? Skips { get; init; }
 
     /// <summary>
     /// How the provider's unarchive is asked for, given the conversation and the arrival's id (<see cref="ArrivalId"/>, the same for every reader of the event
     /// and for a replay of it). Null asks the settings port; the host passes it through its operation journal under that id, and a client of a server sends
-    /// it with that id, so its host's journal makes every ask for one arrival, the clients' and its own, one.
+    /// it with that id, so its server's journal makes every ask for one arrival, the clients' and its own, one.
     /// </summary>
     public Func<string, string, CancellationToken, Task<ChatSummary>>? Submit { get; init; }
 
@@ -98,7 +98,7 @@ public sealed class IncomingMessageUnarchiver(IChatSettingsBackend settings, IMe
         if (chatSettings.Chat.IsSpam || chatSettings.Chat.MemberChatIds.Count != 0 || group is null && !chatSettings.CanArchive) return default;
         // A conversation another unarchiver takes is left to it, and said to be, when it is archived on its service: that one returns it for this arrival.
         if (group is null && (Takes?.Invoke(chatSettings.Chat) == false || TakesAsync is not null && !await TakesAsync(chatSettings.Chat, token)))
-            return new(false, LeftToHost: chatSettings.Chat.IsArchived);
+            return new(false, LeftToServer: chatSettings.Chat.IsArchived);
 
         ChatMessage? newest = null;
         foreach (var id in change.Ids.Distinct(StringComparer.Ordinal))
@@ -131,8 +131,8 @@ public sealed class IncomingMessageUnarchiver(IChatSettingsBackend settings, IMe
             if (newest.Timestamp < attempt.Timestamp || (newest.Timestamp == attempt.Timestamp && ids.IsSubsetOf(attempt.Ids))) return default;
             if (newest.Timestamp == attempt.Timestamp) ids.UnionWith(attempt.Ids);
         }
-        // An ask under an id (a client of a server, or a server's host) needs the event to name the arrival; one that cannot is not asked for, and its
-        // watermark is not written: the host, or the next arrival, returns the conversation.
+        // An ask under an id (a client of a server, or a server) needs the event to name the arrival; one that cannot is not asked for, and its
+        // watermark is not written: the server, or the next arrival, returns the conversation.
         string? arrival = null;
         if (group is null && Submit is not null && (arrival = ArrivalId(chatId, change.Ids)) is null)
         {
@@ -160,9 +160,9 @@ public sealed class IncomingMessageUnarchiver(IChatSettingsBackend settings, IMe
 
     /// <summary>
     /// The arrival as one digest, from the event exactly as delivered: the conversation and the message ids it names (sorted, so their order does not matter),
-    /// or null when it names none usable. Nothing this unarchiver resolved, remembered or wrote goes in, and nothing that differs between the host and its
-    /// clients (not the profile, which a server keeps under its own key): every reader of one event, a client or the host, names it the same, so their asks
-    /// are one operation in the host's journal. A later event names other messages, and so another arrival. The digest names no conversation.
+    /// or null when it names none usable. Nothing this unarchiver resolved, remembered or wrote goes in, and nothing that differs between the server and its
+    /// clients (not the profile, which a server keeps under its own key): every reader of one event, a client or the server, names it the same, so their asks
+    /// are one operation in the server's journal. A later event names other messages, and so another arrival. The digest names no conversation.
     /// </summary>
     internal static string? ArrivalId(string chatId, IEnumerable<string> ids)
     {

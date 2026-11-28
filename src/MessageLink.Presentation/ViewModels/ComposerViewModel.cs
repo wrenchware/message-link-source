@@ -89,7 +89,7 @@ public sealed partial class ComposerViewModel : ObservableObject, INoticeSource,
     public string InterruptedSendText => InterruptedSendTextOf(chatId is null || interruptedSends is null ? [] : interruptedSends.ForChat(chatId));
     public static string InterruptedSendTextOf(IReadOnlyList<InterruptedSend> sends)
     {
-        // Sends a server made that may not have gone (stage 6 slice 11): the server's word, not "before Messages closed". Since its ordinary sends are
+        // Sends a server made that may not have gone: the server's word, not "before Messages closed". Since its ordinary sends are
         // recorded there too (from this PC or the phone), only the ones it fired from the schedule say "scheduled".
         if (sends.Count > 0 && sends.All(send => send.OnServer))
         {

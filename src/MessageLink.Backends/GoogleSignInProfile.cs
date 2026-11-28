@@ -108,7 +108,7 @@ internal sealed class GoogleSignInProfile
         return true;
     }
 
-    // The names of everything in one service's profiles folder, for a host that removes the profiles nothing names any more. Names only; nothing
+    // The names of everything in one service's profiles folder, for a server that removes the profiles nothing names any more. Names only; nothing
     // here opens or follows them.
     internal static IReadOnlyList<string> Names(string service)
     {
@@ -147,8 +147,8 @@ internal sealed class GoogleSignInProfile
         AppLog.Write($"google profile delete outcome=left service={(service == MessagesService ? "messages" : "voice")}");
     }
 
-    // Where a host keeps the profiles instead of beside the data, chosen once before anything opens one. The Linux server keeps them with its
-    // keys (SWITCHBOARD.md 4.3): a profile is a working Google sign-in, unsealed, so it belongs on the volume that holds the secrets, not on the
+    // Where a server keeps the profiles instead of beside the data, chosen once before anything opens one. The Linux server keeps them with its
+    // keys: a profile is a working Google sign-in, unsealed, so it belongs on the volume that holds the secrets, not on the
     // data folder whose contents are useless without them.
     private static string? profilesRoot;
 

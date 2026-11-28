@@ -5,7 +5,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// The account methods of the host (SWITCHBOARD.md 2.6c): what the four account ports do, served from the objects that own the
+// The account methods of the host: what the four account ports do, served from the objects that own the
 // sessions. A mutation (connect, sign-in, restore, sign out, encryption on, reset, history indexing, forgetting avatars) is journaled
 // like a send: at most once per client operation id, an interrupted one an unknown outcome, never retried. An account action's answer
 // follows the state it caused (SettleAsync), and a sign-in's progress reaches only the connection that made the call.
@@ -51,25 +51,25 @@ public sealed partial class ProtocolDispatcher
         where TPort : class where TParams : MutationParams
         => Mutation<TPort, TParams, TResult>(port, (_, target, parameters, progress, cancellationToken) => Coded(() => call(target, parameters, progress, cancellationToken)), null, true);
 
-    // A restore of a provider the host restores itself answers the host's, and is waited for if the host's is still under way: a second login on one
-    // account (Messenger and Instagram above all) is the harm this exists to prevent. The host's slot exists from the moment it is composed, so a client
-    // that asks before the host's restore has begun waits for it rather than starting its own. Cancelling the call stops the wait, never the host's restore.
+    // A restore of a provider the server restores itself answers the server's, and is waited for if the server's is still under way: a second login on one
+    // account (Messenger and Instagram above all) is the harm this exists to prevent. The server's slot exists from the moment it is composed, so a client
+    // that asks before the server's restore has begun waits for it rather than starting its own. Cancelling the call stops the wait, never the server's restore.
     private static Route RestoreMutation<TPort, TResult>(Func<ProtocolServices, TPort?> port, string provider, TResult skipped, Func<TPort, CancellationToken, Task<TResult>> restore)
         where TPort : class
         => Mutation<TPort, AccountOpParams, TResult>(port, (services, target, _, _, cancellationToken) =>
             Coded(() => services.Restores?.Joined(provider, skipped) is { } host ? host.WaitAsync(cancellationToken) : restore(target, cancellationToken)), null, true);
 
-    // Connecting Google Messages while the host's own connect is still under way would start a second one beside it. The wait ends however the host's
-    // ended (a failed connect is the host's to report, and the call then does what it always did), and a connect asked for later is the user's own.
-    private static async Task WaitForHostGoogleAsync(ProtocolServices services, CancellationToken cancellationToken)
+    // Connecting Google Messages while the server's own connect is still under way would start a second one beside it. The wait ends however the server's
+    // ended (a failed connect is the server's to report, and the call then does what it always did), and a connect asked for later is the user's own.
+    private static async Task WaitForServerGoogleAsync(ProtocolServices services, CancellationToken cancellationToken)
     {
         if (services.Restores?.Joined(RestoreOnce.Google, false) is not { } hosting || hosting.IsCompleted) return;
         try { await hosting.WaitAsync(cancellationToken).ConfigureAwait(false); }
         catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
     }
 
-    // An account was signed out (or Google Messages' local data reset) and the host has done it: the host's own part that follows (it keeps the saved photos'
-    // originals for its clients, HostSavedPhotos) is told, as the window tells its own (App.AccountSignedOut). A host that keeps nothing is told nothing, and a
+    // An account was signed out (or Google Messages' local data reset) and the server has done it: the server's own part that follows (it keeps the saved photos'
+    // originals for its clients, ServerSavedPhotos) is told, as the window tells its own (App.AccountSignedOut). A host that keeps nothing is told nothing, and a
     // part that fails is never the sign-out's.
     private static void Ended(ProtocolServices services, string account, string? key)
     {
@@ -126,7 +126,7 @@ public sealed partial class ProtocolDispatcher
         routes[ProtocolMethods.AccountsMessengerRefreshEncrypted] = Of<IMessengerAccount, bool>(s => s.MessengerAccount, (port, ct) => port.RefreshEncryptedStateAsync(ct)) with { Settles = true };
         routes[ProtocolMethods.AccountsMessengerConnect] = PageOnly(ProtocolMethods.AccountsMessengerConnect, AccountMutation<IMessengerAccount, MessengerConnectParams, int>(
             s => s.MessengerAccount, (port, p, ct) => port.ConnectAsync(p.Cookies, ct)), request => ReadParams<MessengerConnectParams>(request).Cookies is not null);
-        // The caller's "stop" is the request's cancel (the client turns its own flag into one), so the host's is the token.
+        // The caller's "stop" is the request's cancel (the client turns its own flag into one), so the server's is the token.
         routes[ProtocolMethods.AccountsMessengerRestore] = RestoreMutation<IMessengerAccount, AccountRestore>(s => s.MessengerAccount, RestoreOnce.Messenger,
             new AccountRestore(null, Skipped: true), (port, ct) => port.RestoreAsync(() => ct.IsCancellationRequested));
         // Turning encrypted conversations on registers the server as one of the account's Messenger devices.
@@ -208,7 +208,7 @@ public sealed partial class ProtocolDispatcher
 
     // ---- An answer follows the state it caused ----
 
-    // The host looks at its state again now and, when this connection has a feed, waits until the feed has written the newest state
+    // The server looks at its state again now and, when this connection has a feed, waits until the feed has written the newest state
     // into the channel; the answer is written after it. On the one connection frames are in order, so the client has read the state
     // when it reads the answer. It never holds the answer back for long, and never fails it.
     private async Task SettleAsync()

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// The envelope format the app compares a server's with before a move back (SWITCHBOARD.md slice 13, 2026-10-12): the
+// The envelope format the app compares a server's with before a move back (2026-10-12): the
 // one this build resumes, and a newer one is refused here, which is the failure the app's check keeps off the PC. The
 // app's own copy of the number (InstagramEnvelope.Version) is pinned to savedSessionVersion by a harness check.
 func TestOnlyThisBuildsEnvelopeFormatResumes(t *testing.T) {

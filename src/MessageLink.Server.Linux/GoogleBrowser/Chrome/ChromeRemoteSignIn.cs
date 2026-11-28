@@ -11,7 +11,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// A Google Messages sign-in made BY HAND in the server's own Chrome and shown on the server's page (SWITCHBOARD.md 5.4; chosen 2026-10-10: run official Chrome persistently, sign in by hand,
+/// A Google Messages sign-in made BY HAND in the server's own Chrome and shown on the server's page (chosen 2026-10-10: run official Chrome persistently, sign in by hand,
 /// never automate it, and let it renew Google's sign-in itself as the PC's WebView2 profile does). Nothing is automated while a Google page is loaded and nothing is attached to the browser: the picture is
 /// the X display it sits on (<see cref="ChromeScreenStream"/>), and what the person does goes in as real X input (<see cref="XInputTranslator"/>, <see cref="XInputRunner"/>). The server's part is
 /// to read Chrome's cookie store from disk (<see cref="ChromeCookieStore"/>), which fills in as Chrome writes it, and when a NEW complete set of Google's account cookies is there, to hand it to the
@@ -125,7 +125,7 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
     }
 
     /// <summary>
-    /// The same window, display, input and one-at-a-time for Messenger and Instagram (protocol 27, SWITCHBOARD.md 10.5), each on a throwaway Chrome profile under <paramref name="profilesRoot"/>, like the PC's
+    /// The same window, display, input and one-at-a-time for Messenger and Instagram (protocol 27), each on a throwaway Chrome profile under <paramref name="profilesRoot"/>, like the PC's
     /// InPrivate window. See <see cref="RunMetaAsync"/>.
     /// </summary>
     public IRemoteCookieSignInHost ForMeta(string profilesRoot) => new MetaHost(this, profilesRoot);
@@ -147,7 +147,7 @@ internal sealed class ChromeRemoteSignIn(PersistentChrome chrome, IChromeCookieS
     }
 
     /// <summary>
-    /// A Messenger or Instagram sign-in in the server's Chrome (SWITCHBOARD.md 10.5): Chrome (closed first, off the Messages profile) is started on a NEW throwaway profile at the service's login page; the
+    /// A Messenger or Instagram sign-in in the server's Chrome: Chrome (closed first, off the Messages profile) is started on a NEW throwaway profile at the service's login page; the
     /// person signs in by hand and chooses Done; Chrome is then closed gently, which is when it writes its cookie file whole (it writes late otherwise); the cookies the PC's own window would have kept are
     /// read from that file (<see cref="MetaSignInTarget"/>, the same rules), and refused with <c>missing_cookies</c> unless the required ones are all there. Whatever happens, the profile is deleted and
     /// Chrome goes back to the Messages profile, as after a Voice sign-in. Nothing is retried: a refusal or a failure ends the sign-in, and the person starts it again.

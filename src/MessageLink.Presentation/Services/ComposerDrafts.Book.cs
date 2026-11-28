@@ -98,7 +98,7 @@ public sealed partial class ComposerDrafts
             privateState = state;
             // A client of a server only (state.db shares nothing): another device's drafts reach the conversations held here.
             hostRows = state.Shared;
-            if (hostRows is not null) hostRows.HostChanged += OnBookHostChanged;
+            if (hostRows is not null) hostRows.ServerChanged += OnBookServerChanged;
         }
         if (owners is null && draftOwners is not null) owners = draftOwners;
         if (owners is not null && !ownerHooked) { ownerHooked = true; owners.Changed += OwnerChanged; owners.Attach(writer); }
@@ -116,7 +116,7 @@ public sealed partial class ComposerDrafts
         if (!last) return;
         ended = true;
         CancelAllPending();
-        if (hostRows is not null) hostRows.HostChanged -= OnBookHostChanged;
+        if (hostRows is not null) hostRows.ServerChanged -= OnBookServerChanged;
         if (owners is not null && ownerHooked) { ownerHooked = false; owners.Changed -= OwnerChanged; owners.Detach(writer); }
     }
 
@@ -632,7 +632,7 @@ public sealed partial class ComposerDrafts
         return unreadableDrafts.Contains(id) ? Task.CompletedTask : privateState!.RemoveAsync(profile, "draft", id);
     }
 
-    // ---- Drafts shared with a server's other clients (SWITCHBOARD.md stage 6, slice 6) ----
+    // ---- Drafts shared with a server's other clients ----
     //
     // In a client of a Messages Server the protected state is the replica of the server's, and a chat's draft is one of its shared rows (last writer wins): what
     // is typed here reaches the other devices, and what they type reaches the conversations held here. The person typing now wins: an arriving draft never
@@ -691,10 +691,10 @@ public sealed partial class ComposerDrafts
     }
 
     // The store took drafts from the server (another device's, or a snapshot). Raised off the interface thread.
-    private void OnBookHostChanged(object? sender, IReadOnlyList<string> keys)
+    private void OnBookServerChanged(object? sender, IReadOnlyList<string> keys)
     {
         if (ended || !keys.Any(key => key.StartsWith("draft:", StringComparison.Ordinal))) return;
-        if (home is not null && SynchronizationContext.Current != home) { home.Post(_ => OnBookHostChanged(sender, keys), null); return; }
+        if (home is not null && SynchronizationContext.Current != home) { home.Post(_ => OnBookServerChanged(sender, keys), null); return; }
         _ = ApplyRemoteDraftsAsync(keys);
     }
 

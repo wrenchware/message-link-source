@@ -1,7 +1,7 @@
 namespace MessageLink.Server.Windows;
 
 /// <summary>
-/// Stops a server whose owner has gone (SWITCHBOARD.md 3.2c). While the owner process lives it does nothing. When it exits it waits
+/// Stops a server whose owner has gone. While the owner process lives it does nothing. When it exits it waits
 /// <see cref="Grace"/> for a client to come back (an app that was restarted, or one that is reconnecting); if no client is connected at the end,
 /// the server stops, as it would for <c>--quit</c>. A client that is connected at the end keeps the server, and the grace starts again the next time
 /// none is, so a server whose owner is gone is never left running with nobody using it. A server with no owner never creates one of these.

@@ -17,7 +17,7 @@ namespace MessageLink.Presentation.Services;
 public static class HermesThreads
 {
     public const string Network = HermesIds.Network;
-    /// <summary>The server keeps up to this many repeats, each prompt up to <see cref="MaxPromptLength"/> characters (HostRepeats).</summary>
+    /// <summary>The server keeps up to this many repeats, each prompt up to <see cref="MaxPromptLength"/> characters (ServerRepeats).</summary>
     public const int MaxRepeats = 20, MaxPromptLength = 2000;
     /// <summary>What the file picker offers in a Hermes thread: the pictures Hermes takes, and nothing else.</summary>
     public static IReadOnlyList<string> PictureExtensions { get; } = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
@@ -27,7 +27,7 @@ public static class HermesThreads
     public static bool Is(ChatSummary? chat) => chat is not null && (HermesIds.Owns(chat.Id) || chat.Network == Network);
 
     /// <summary>Whether a window shows Hermes at all: only once a profile is set up (on the server's page), so someone who never uses Hermes never
-    /// sees it. Routing still follows whether the host runs Hermes.</summary>
+    /// sees it. Routing still follows whether the server runs Hermes.</summary>
     public static bool Shown(HermesAccountState? state) => state is { Agents.Count: > 0 };
 
     public static bool TakesPicture(string? mimeType) => mimeType is not null && PictureTypes.Contains(mimeType.ToLowerInvariant());
@@ -46,7 +46,7 @@ public static class HermesThreads
         _ => "Checking",
     };
 
-    /// <summary>The name a profile goes by: the title its host gives, else <see cref="DefaultTitle"/>.</summary>
+    /// <summary>The name a profile goes by: the title its server gives, else <see cref="DefaultTitle"/>.</summary>
     public static string Title(HermesAgentState agent) => agent.Title is { Length: > 0 } title ? title : DefaultTitle(agent.Name);
 
     /// <summary>
@@ -134,7 +134,7 @@ public static class HermesThreads
 
 /// <summary>
 /// The server's repeats as a client reads them (<c>repeat:</c> rows of its replica, protocol 31). Registered only for a client of a server, the one
-/// kind of host that keeps them; elsewhere there is none and no repeat is offered.
+/// kind of server that keeps them; elsewhere there is none and no repeat is offered.
 /// </summary>
 public interface IRepeatRows
 {

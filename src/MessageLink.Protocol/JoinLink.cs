@@ -3,7 +3,7 @@ using System.Text;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// What "Add a phone" and "Add a PC" hand a new device (SWITCHBOARD.md 10.4): the server's machine name on its Tailscale network, its address on the home network,
+/// What "Add a phone" and "Add a PC" hand a new device: the server's machine name on its Tailscale network, its address on the home network,
 /// the SHA-256 of its certificate (pinned before anything is sent), a one-time pairing code, and the Tailscale account its door signed in with when it knows it.
 /// <para>
 /// The phone reads it as a link, <c>https://wrenchware.github.io/message-link/join#v=1&amp;n=…&amp;a=…&amp;f=…&amp;c=…&amp;u=…</c> (the phone's JoinLink.kt reads the same

@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.GoogleMessages;
 
 // What the keeper needs from whatever hosts it: the app's window, or a server. Every decision below is made on the
-// host's own thread (Post), as the window made them on its interface thread before this moved (SWITCHBOARD.md 1.7b).
+// server's own thread (Post), as the window made them on its interface thread before this moved.
 internal interface IGoogleSignInHost
 {
     bool Closed { get; }
@@ -35,10 +35,10 @@ internal interface IGoogleSignInHost
 // Google says so once per expiry, so a refusal that lands while a dialog is open, while a refresh runs, or inside the
 // spacing is put off and looked at again (GoogleRecoveryGate), not dropped without a line in the log.
 //
-// Here rather than in the window so that every host renews the same way (SWITCHBOARD.md 1.7b, 1.7c); the window keeps
+// Here rather than in the window so that every server renews the same way; the window keeps
 // only what it draws (MainWindow.GoogleRecovery).
 internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleBrowser browser,
-    [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens,
+    [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.ServerTokensKey)] IAccessTokenStore tokens,
     IClientBusy? clientBusy = null) : IDisposable
 {
     private readonly GoogleRecoveryGate googleRecovery = new();
@@ -47,7 +47,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
     private IGoogleSignInHost host = null!;
     private Timer? googleEarlyTimer;
 
-    // Whether a dialog is open. A host that is told by its clients (client.state, SWITCHBOARD.md 3.0b) answers from what they said; the one that
+    // Whether a dialog is open. A server that is told by its clients (client.state) answers from what they said; the one that
     // hosts the window itself asks the window.
     private bool UserBusy => clientBusy?.Busy ?? host.UserBusy;
 
@@ -60,7 +60,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
         // Whether an old sign-in can be refreshed before connecting: only from a kept profile.
         backend.SilentRefreshAvailable = () => browser.RefreshBeforeConnect && backend.Files.BrowserProfile.Id is not null;
         backend.SignInRefused += Refused;
-        // A refusal from before this host listened would otherwise wait for Google to say it again, which it does not.
+        // A refusal from before this server listened would otherwise wait for Google to say it again, which it does not.
         if (backend.SignInExpired) Refused(backend, EventArgs.Empty);
         googleEarlyTimer = new(_ => host.Post(CheckGoogleSignInAge), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
     }
@@ -94,7 +94,7 @@ internal sealed class GoogleSignInKeeper(GoogleMessagesBackend backend, IGoogleB
         _ = RecoverGoogleSignInAsync(backend);
     });
 
-    // Runs on the host's thread, from a refusal, a deferral coming due, or the end of an attempt.
+    // Runs on the server's thread, from a refusal, a deferral coming due, or the end of an attempt.
     private async Task RecoverGoogleSignInAsync(GoogleMessagesBackend backend)
     {
         // No browser is ever started for a QR pairing: it has no sign-in to renew.

@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Storage;
 
-// What the server's backup (SWITCHBOARD.md stage 10) reads out of each store and writes back into a new one: rows as they are kept, each store's own key still sealed
+// What the server's backup reads out of each store and writes back into a new one: rows as they are kept, each store's own key still sealed
 // by the protector that sealed it, so the backup unseals that key alone and the restoring server seals it again with its own protector (its master key is never
 // replaced). Each store is read in one transaction on a connection of its own, so a store in use is read as one moment of it (history.db's write-ahead log gives
 // the snapshot without holding a writer up). A restore writes a new file at a path of its choosing, whole, in one transaction: a stop half way leaves a file the

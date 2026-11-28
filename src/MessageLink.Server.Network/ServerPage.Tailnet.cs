@@ -5,7 +5,7 @@ using MessageLink.Protocol;
 
 namespace MessageLink.Server.Network;
 
-// Tailscale on the server's page (SWITCHBOARD.md 4.7 and 10.8, D9): the door set up from here rather than from the container's log. Signing the server in (a button
+// Tailscale on the server's page: the door set up from here rather than from the container's log. Signing the server in (a button
 // and the same link as a QR code, for signing in on a phone), signing in again when Tailscale signed it out, approving it, and a checklist of what is left, each line
 // in plain words with a link to the exact page of Tailscale's admin console and a tick once the server sees it done: key expiry off for the server and each Message Link
 // phone and PC, only the owner's devices reaching it, and Tailnet Lock when the tailnet uses it. "Fix it for me" does what the API can with an OAuth client the owner gives
@@ -70,7 +70,7 @@ internal sealed partial class ServerPage
     {
         if (!board.Enabled && board.Turn is not null)
         {
-            // The Windows server (SWITCHBOARD.md 10.7): a switch, here and now; Tailscale runs inside Messages Server, with nothing else to install.
+            // The Windows server: a switch, here and now; Tailscale runs inside Messages Server, with nothing else to install.
             body.Append("<section id=\"tailnet\"><h2>Away from home</h2>")
                 .Append(Para("Message Link on a phone or laptop reaches this PC's Message Link Server through Tailscale, so it works anywhere without opening this PC to the internet. "
                     + "Tailscale runs inside Message Link Server: there is nothing else to install. Once it is on, this page walks you through signing it in."))

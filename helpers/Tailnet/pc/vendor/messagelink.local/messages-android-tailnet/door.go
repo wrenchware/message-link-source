@@ -238,7 +238,7 @@ func throughNode(ctx context.Context, name, id string, port uint16) (net.Conn, b
 }
 
 // splice copies both ways until either side is done, passing a half-close on, then gives the other direction a few
-// seconds to finish (a WebSocket's closing frames) before both are closed. As the server's door does (4.7).
+// seconds to finish (a WebSocket's closing frames) before both are closed. As the server's door does.
 func splice(a, b net.Conn) {
 	done := make(chan struct{}, 2)
 	copyHalf := func(to, from net.Conn) {

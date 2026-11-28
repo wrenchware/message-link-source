@@ -1,7 +1,7 @@
 namespace MessageLink.App.Services.Messenger;
 
 /// <summary>
-/// The reconnect of the encrypted connection when it was turned on before (SWITCHBOARD.md stage 6 slice 13, the E2EE guard). It asks the helper for <c>restore</c> only, which is the helper's
+/// The reconnect of the encrypted connection when it was turned on before (the E2EE guard). It asks the helper for <c>restore</c> only, which is the helper's
 /// promise never to register a device: a missing device database must not become a new device on the account, whether a copy of the data came without it or the file was lost. Only the
 /// Settings button and a brand-new sign-in register a device (the helper call without <c>restore</c>). The helper answers <c>device_missing</c> then, and nothing else is tried.
 /// </summary>

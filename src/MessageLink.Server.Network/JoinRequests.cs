@@ -5,7 +5,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The devices asking to join (protocol 21, SWITCHBOARD.md 4.6): a device with nothing but the server's address connects without a token on a join connection
+/// The devices asking to join (protocol 21): a device with nothing but the server's address connects without a token on a join connection
 /// (<see cref="JoinSession"/>), and the request is held here until the owner approves it on the server's page,
 /// turns it away, it runs out after <see cref="Lifetime"/>, or the device leaves. Nobody could otherwise reach anything without a token, so the door is narrow: at most
 /// <see cref="MaxWaiting"/> join connections at once, one per source (an IPv4 address, or an IPv6 /64, as <see cref="PairingCodes.Key"/> counts them), a source asking
@@ -232,7 +232,7 @@ internal sealed class JoinRequests(TimeProvider time, Action<string> log, string
         request.Delivered.TrySetResult(null);
     }
 
-    /// <summary>Ends the requests that have run out (the network host calls it on its pairing check; a check calls it after moving the clock).</summary>
+    /// <summary>Ends the requests that have run out (the network server calls it on its pairing check; a check calls it after moving the clock).</summary>
     public void Sweep()
     {
         lock (gate) SweepLocked(time.GetUtcNow());

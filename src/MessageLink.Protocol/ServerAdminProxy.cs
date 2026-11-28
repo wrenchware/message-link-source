@@ -3,14 +3,14 @@ namespace MessageLink.Protocol;
 /// <summary>A server's administration as its owner asks for it (<c>host.status</c>, <c>host.accounts</c>, <c>host.removeAccount</c>, protocol 20). Nothing is kept.</summary>
 public sealed class ServerAdminProxy(ProtocolClient client) : IServerAdmin
 {
-    public Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default) => client.CallAsync<HostStatus>(ProtocolMethods.HostStatusRead, cancellationToken);
+    public Task<ServerStatus> StatusAsync(CancellationToken cancellationToken = default) => client.CallAsync<ServerStatus>(ProtocolMethods.ServerStatusRead, cancellationToken);
 
     public Task<IReadOnlyList<ServerAccount>> AccountsAsync(CancellationToken cancellationToken = default) =>
-        client.CallAsync<IReadOnlyList<ServerAccount>>(ProtocolMethods.HostAccountsList, cancellationToken);
+        client.CallAsync<IReadOnlyList<ServerAccount>>(ProtocolMethods.ServerAccountsList, cancellationToken);
 
     /// <summary>One operation id per call: a removal is one person's one choice, and a repeat is a new choice. An interrupted one is an unknown outcome, never repeated here.</summary>
     public Task<AccountRemoved> RemoveAccountAsync(string provider, string? key, CancellationToken cancellationToken = default) =>
-        client.MutateAsync<AccountRemoveParams, AccountRemoved>(ProtocolMethods.HostAccountRemove, new AccountRemoveParams(Guid.NewGuid().ToString("N"), provider, key), cancellationToken);
+        client.MutateAsync<AccountRemoveParams, AccountRemoved>(ProtocolMethods.ServerAccountRemove, new AccountRemoveParams(Guid.NewGuid().ToString("N"), provider, key), cancellationToken);
 }
 
 /// <summary>A server's paired devices as a device asks for them (<c>devices.*</c>; <c>devices.rename</c> from protocol 20). Nothing is kept.</summary>

@@ -1,6 +1,6 @@
 namespace MessageLink.Protocol;
 
-// A sign-in made in the server's own browser (SWITCHBOARD.md 5.4 and 10.6). Google binds a sign-in to the browser that made it, so a server that must renew one has to be the
+// A sign-in made in the server's own browser. Google binds a sign-in to the browser that made it, so a server that must renew one has to be the
 // browser that signs in. The server's page shows that browser and drives it from its own socket (RemoteSignInSessions); no protocol method starts one, so this file holds the
 // types of what the person does and what the browser shows, and the ports a host gives.
 //
@@ -77,9 +77,9 @@ public static class RemoteSignIn
     public const string ConnectingProgress = "connecting", EncryptingProgress = "encrypting";
     /// <summary>The most input events one call carries, and the most characters one text event carries.</summary>
     public const int MaxEvents = 64, MaxTextCharacters = 4096;
-    /// <summary>The longest picture the host sends, as base64 (about 512 KiB of JPEG); a bigger one is not sent.</summary>
+    /// <summary>The longest picture the server sends, as base64 (about 512 KiB of JPEG); a bigger one is not sent.</summary>
     public const int MaxFrameCharacters = 700_000;
-    /// <summary>The picture size the host starts with, and the limits it clamps a request to.</summary>
+    /// <summary>The picture size the server starts with, and the limits it clamps a request to.</summary>
     public const int DefaultWidth = 1280, DefaultHeight = 800, MinWidth = 320, MinHeight = 240, MaxWidth = 1920, MaxHeight = 1200;
     /// <summary>What Settings' Google Messages card says while the server's Chrome is out of date (protocol 14).</summary>
     public const string ChromeOutOfDateSentence = "Message Link Server's Chrome is out of date. Reinstall the server to update it.";
@@ -100,7 +100,7 @@ public interface IRemoteSignInHost
     /// <summary>Delivers what the person did to <paramref name="owner"/>'s sign-in. Refused (<see cref="InvalidOperationException"/>, <c>no_sign_in</c>) when that connection has none.</summary>
     Task InputAsync(object owner, IReadOnlyList<RemoteSignInInput> events, CancellationToken cancellationToken);
 
-    /// <summary>Whether the browser this host signs in through has gone unrenewed past the age its image was meant to keep it (protocol 14, <see cref="HostLimits.ChromeOutOfDate"/>). Read whenever the state is built.</summary>
+    /// <summary>Whether the browser this host signs in through has gone unrenewed past the age its image was meant to keep it (protocol 14, <see cref="ServerLimits.ChromeOutOfDate"/>). Read whenever the state is built.</summary>
     bool BrowserOutOfDate => false;
 }
 
@@ -116,7 +116,7 @@ public interface IRemoteSignInOutput
 /// without one (every host but the Linux server with its own Chrome) leaves it null, and those services answer <c>not_supported</c> on <see cref="ProtocolMethods.ServerSignInMethod"/>.
 /// <para>
 /// The session is held by <see cref="RemoteSignInRequest.Owner"/>, any object: every face of the flow runs it through <see cref="RemoteSignInSessions"/>, the dispatcher with its connection and the
-/// server page's own socket (10.6) with an object of its own, each with its own <see cref="IRemoteSignInOutput"/>, and the cookies go on to <see cref="RemoteSignInFinish.ConnectAsync"/> the same way.
+/// server page's own socket with an object of its own, each with its own <see cref="IRemoteSignInOutput"/>, and the cookies go on to <see cref="RemoteSignInFinish.ConnectAsync"/> the same way.
 /// </para>
 /// </summary>
 public interface IRemoteCookieSignInHost

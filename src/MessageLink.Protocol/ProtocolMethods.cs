@@ -11,7 +11,7 @@ namespace MessageLink.Protocol;
 // Left for 2.2, because they cannot cross as they are:
 //   bytes that are not media: IPrivateStateStore, ISavedPhotoStore. Since stage 6 the rows that must look the same everywhere cross as the shared state
 //     (ProtocolMethods.SharedState.cs), into a replica the client's IPrivateStateStore reads; the rest of IPrivateStateStore stays on each device.
-//   synchronous live state: has no request. Since 2.6b the host pushes it as a `state` event (HostState) and the proxies answer from the
+//   synchronous live state: has no request. Since 2.6b the server pushes it as a `state` event (ServerState) and the proxies answer from the
 //     client's cache; ProxyMembers lists every synchronous member and how it is answered. IAppPresence, the keeper's UserBusy, private reading and link previews are the client's own, stated to the host by client.state (ProtocolMethods.ClientState.cs).
 //   IRealtimeFeed.RunAsync is the events.subscribe stream (EventLog, RealtimeFeedProxy). ITypingService.WatchAsync is the same stream's
 //     `typing` frames (TypingHub, TypingProxy), which are not part of its sequence: typing is ephemeral and never replayed.
@@ -19,13 +19,13 @@ namespace MessageLink.Protocol;
 // 2.6d (ProtocolMethods.Reading.cs): mark read and typing out, which carry the private-reading admission explicitly; link previews; and a
 // history window with the call that waits for its refresh (HistoryWindow.Refreshed is a Task and cannot cross).
 // The mutations that are here carry a clientOpId and are served through the OperationJournal (at most once per id).
-// Media (2.4c): a file to send goes up first, in chunks, under a handle (media.upload*, UploadStore), and the send names the handle
+// Media: a file to send goes up first, in chunks, under a handle (media.upload*, UploadStore), and the send names the handle
 // (attachments.send, attachments.sendBatch); a file or picture to read comes down in chunks by reference (media.read). The
 // synchronous members CanSave and DrawsPhotosAtOnce are answered on the client from the pushed state, and CanSendBatch has an async form
 // (attachments.canSendBatch).
-// Accounts (2.6c, ProtocolMethods.Accounts.cs): what the four account ports do. The actions that change an account or a session are
+// Accounts (ProtocolMethods.Accounts.cs): what the four account ports do. The actions that change an account or a session are
 // journaled mutations (accounts.<service>.<verb>); a question per call is a read, and the synchronous ones are answered on the client from a
-// copy of the host answer (Remembered) or a rule in Core.
+// copy of the server answer (Remembered) or a rule in Core.
 public static partial class ProtocolMethods
 {
     public const string BackendDiscover = "backend.discover";
@@ -66,7 +66,7 @@ public static partial class ProtocolMethods
     public const string ContactsStartDirect = "contacts.startDirect";
     public const string ContactsStartWithMessage = "contacts.startWithMessage";
     public const string SnoozesSet = "snoozes.set";
-    /// <summary>One file, or a photo set, to a conversation. Each names uploads made earlier (<see cref="MediaUploadBegin"/>); the host reads them from its store.</summary>
+    /// <summary>One file, or a photo set, to a conversation. Each names uploads made earlier (<see cref="MediaUploadBegin"/>); the server reads them from its store.</summary>
     public const string AttachmentsSend = "attachments.send";
     public const string AttachmentsSendBatch = "attachments.sendBatch";
 
@@ -78,7 +78,7 @@ public static partial class ProtocolMethods
     public const string MediaUploadBegin = "media.uploadBegin";
     public const string MediaUploadChunk = "media.uploadChunk";
     public const string MediaUploadEnd = "media.uploadEnd";
-    /// <summary>Drops an upload no send has claimed. Best effort: the host expires what is left.</summary>
+    /// <summary>Drops an upload no send has claimed. Best effort: the server expires what is left.</summary>
     public const string MediaUploadAbort = "media.uploadAbort";
     /// <summary>A picture, clip or file a message carries, one chunk of it at a time.</summary>
     public const string MediaRead = "media.read";
@@ -94,8 +94,8 @@ public static partial class ProtocolMethods
     /// <summary>
     /// One method: its wire name, the Core member behind it, its params record (null for none) and the type of its result (a
     /// null result is allowed where the port can return null). A <paramref name="Mutation"/> changes something: its params derive
-    /// from <see cref="MutationParams"/> and the host runs it at most once per client operation id. <paramref name="Since"/> is the protocol version
-    /// that brought it: a host answers it as not supported to a connection that negotiated less (SWITCHBOARD.md, "Client compatibility"), and once
+    /// from <see cref="MutationParams"/> and the server runs it at most once per client operation id. <paramref name="Since"/> is the protocol version
+    /// that brought it: a server answers it as not supported to a connection that negotiated less ("Client compatibility"), and once
     /// a release that speaks a version has shipped, no method that version had may take a higher one.
     /// </summary>
     public sealed record Entry(string Name, string Member, Type? Params, Type Result, int Since, bool Mutation = false);
@@ -188,16 +188,16 @@ public sealed record MessagesPageParams(string ChatId, string? OlderThan = null)
 public sealed record MessageIdParams(string ChatId, string MessageId);
 public sealed record AccountIdParams(string AccountId);
 public sealed record ContactsFindParams(string AccountId, string Query);
-/// <summary>A null <paramref name="Source"/> (absent on the wire) searches the provider's archive; <see cref="SearchQueryParams.KeptSource"/> the host's kept history, whole and without a cursor.</summary>
+/// <summary>A null <paramref name="Source"/> (absent on the wire) searches the provider's archive; <see cref="SearchQueryParams.KeptSource"/> the server's kept history, whole and without a cursor.</summary>
 public sealed record SearchQueryParams(SearchRequest Request, string? Cursor = null, string? Source = null)
 {
-    /// <summary>The <see cref="Source"/> of the host's kept history (Messenger's own store).</summary>
+    /// <summary>The <see cref="Source"/> of the server's kept history (Messenger's own store).</summary>
     public const string KeptSource = "kept";
 }
 public sealed record HistoryHeldParams(string ChatId, DateTimeOffset After, int Limit);
 public sealed record SnoozeGetParams(string Profile, string ChatId);
 
-// Mutation params. ClientOpId names one user action (a new one per action, never reused for a different one): it is how a host
+// Mutation params. ClientOpId names one user action (a new one per action, never reused for a different one): it is how a server
 // answers a repeat with the first answer instead of doing the thing twice. A required member that is a value type (a flag, an
 // enum) must be present on the wire, because a missing one would otherwise read as its default and change what is asked.
 public abstract record MutationParams(string ClientOpId);
@@ -218,18 +218,18 @@ public sealed record StartWithMessageParams(string ClientOpId, ContactPerson Con
 public sealed record SnoozeSetParams(string ClientOpId, string Profile, string ChatId, DateTimeOffset? Until = null) : MutationParams(ClientOpId);
 
 // Media. An upload is begun with the file's declared length, filled by chunks whose offsets follow one another, and ended; the
-// host checks that what arrived is what was declared. A chunk is at most UploadStore.MaxChunkBytes before base64.
+// server checks that what arrived is what was declared. A chunk is at most UploadStore.MaxChunkBytes before base64.
 public sealed record UploadBeginParams(string MimeType, long Length, string FileName);
 public sealed record UploadBegun(string UploadId);
 public sealed record UploadChunkParams(string UploadId, long Offset, string Data);
-/// <summary>How many bytes of the upload the host holds now.</summary>
+/// <summary>How many bytes of the upload the server holds now.</summary>
 public sealed record UploadReceived(long Received);
 public sealed record UploadIdParams(string UploadId);
 public sealed record UploadEnded(string UploadId, long Length);
 
 /// <summary>What an <c>AttachmentFile</c> says about itself, without its bytes. <paramref name="FileName"/> is private: it is never logged.</summary>
 public sealed record AttachmentMeta(string FileName, string MimeType, long Length, bool IsVoiceNote = false, double? DurationSeconds = null);
-/// <summary>A finished upload that a send names: the handle and the file's description (the host checks length and type against what it holds).</summary>
+/// <summary>A finished upload that a send names: the handle and the file's description (the server checks length and type against what it holds).</summary>
 public sealed record UploadRef(string UploadId, string FileName, string MimeType, long Length, bool IsVoiceNote = false, double? DurationSeconds = null);
 public sealed record AttachmentFileParams(string ChatId, AttachmentMeta File);
 public sealed record AttachmentSendParams(string ClientOpId, string ChatId, UploadRef Upload, string? Caption = null) : MutationParams(ClientOpId);
@@ -250,7 +250,7 @@ public sealed record Done;
 
 public sealed record OpStatusParams(string ClientOpId);
 
-/// <summary>Where an operation stands in the journal. <c>unknown</c> means the host has no record of it: never seen, or pruned.</summary>
+/// <summary>Where an operation stands in the journal. <c>unknown</c> means the server has no record of it: never seen, or pruned.</summary>
 public enum OpState { Running, Done, Failed, Unknown }
 
 /// <summary>
@@ -262,14 +262,14 @@ public sealed record OpStatus(OpState State, JsonElement? Result = null, Protoco
 
 /// <summary>
 /// Where a connection's feed resumes from: the <paramref name="Epoch"/> and the last <paramref name="Since"/> a client received. Both
-/// absent is a first subscription. A feed that cannot be resumed (another epoch, or a position the host no longer holds) starts with
+/// absent is a first subscription. A feed that cannot be resumed (another epoch, or a position the server no longer holds) starts with
 /// a resync instead. <paramref name="Typing"/> asks for the typing of the people in the user's conversations as <c>typing</c> frames
-/// beside the events (a client that does not ask gets none; an older host ignores it).
+/// beside the events (a client that does not ask gets none; an older server ignores it).
 /// </summary>
 public sealed record EventsSubscribeParams(long? Since = null, string? Epoch = null, bool Typing = false);
 
 /// <summary>
-/// The answer to a subscription, sent before any event frame. <paramref name="Head"/> is the host's last sequence number now;
+/// The answer to a subscription, sent before any event frame. <paramref name="Head"/> is the server's last sequence number now;
 /// <paramref name="Resync"/> says the first event frame is a resync rather than the replay of what the client missed.
 /// </summary>
 public sealed record EventsSubscribed(string Epoch, long Head, bool Resync);

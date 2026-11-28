@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The Windows server's page on this PC (SWITCHBOARD.md 10.7): how Messages opens it signed in, with no password to type, and how the page knows the link is the app's.
+/// The Windows server's page on this PC: how Messages opens it signed in, with no password to type, and how the page knows the link is the app's.
 /// <list type="bullet">
 /// <item>The server writes where its page listens, <c>&lt;root&gt;\Server\page.json</c> (the port and its certificate's SHA-256, nothing secret), each time it starts.</item>
 /// <item>Messages makes a one-time code, writes its SHA-256 and an expiry to <c>&lt;root&gt;\Server\page-once</c>, and opens <c>https://127.0.0.1:&lt;port&gt;/login?once=&lt;code&gt;</c>

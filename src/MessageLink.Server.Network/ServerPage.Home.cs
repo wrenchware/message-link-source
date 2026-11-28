@@ -253,7 +253,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
         if (backups is not null && ServerRestore.LastOutcome(backups.Service.Paths) is { } outcome && time.GetUtcNow() - outcome.At < TimeSpan.FromDays(2))
             body.Append(Notice(OutcomeWords(outcome)));
 
-        HostStatus? status = null;
+        ServerStatus? status = null;
         IReadOnlyList<ServerAccount>? accounts = null;
         if (admin is not null)
         {
@@ -287,7 +287,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
     }
 
     // What ServerAttention works from, read from the server's parts as they are now.
-    private AttentionFacts AttentionFactsOf(IReadOnlyList<JoinRequest> waiting, ServerAccount[] ordered, SignInOffers signIns, HostStatus? status, SetupProgress progress)
+    private AttentionFacts AttentionFactsOf(IReadOnlyList<JoinRequest> waiting, ServerAccount[] ordered, SignInOffers signIns, ServerStatus? status, SetupProgress progress)
     {
         var agents = Hermes?.State?.Agents ?? [];
         return new()
@@ -488,10 +488,10 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')shut(null)})
     }
 
     // What the server is, where its source is, and starting it again empty.
-    private void AboutSection(StringBuilder body, HttpRequest request, HostStatus? status, string open, string token)
+    private void AboutSection(StringBuilder body, HttpRequest request, ServerStatus? status, string open, string token)
     {
         body.Append("<section class=\"sec\" id=\"about\"><div class=\"sh\"><h2>About</h2></div><div class=\"box\">");
-        // The version alone: how the server is updated is its host's schedule, which it cannot know, and its protocol and build are in its log. Nor does it say nightly
+        // The version alone: how the server is updated is its server's schedule, which it cannot know, and its protocol and build are in its log. Nor does it say nightly
         // or stable: a promotion gives the nightly's very image the stable tags, so the image cannot tell which tag its server pulled (docs/release.md, "Server image channels").
         if (status is null) body.Append(Row("The server couldn't say what it is just now.", null, null, Act("")));
         else

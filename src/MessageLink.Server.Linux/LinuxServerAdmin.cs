@@ -23,7 +23,7 @@ internal sealed partial record ServerImage(string? Channel, string? Revision, Da
 }
 
 /// <summary>
-/// The Linux server's administration (SWITCHBOARD.md 4.6, protocol 20), for its page and its devices' reads: what the server is, the
+/// The Linux server's administration (protocol 20), for its page and its devices' reads: what the server is, the
 /// accounts it holds, and removing one of them.
 /// <para>
 /// Removing an account removes the server's copy and nothing else. It is the same as signing that account out on the server (its sign-in and the conversations it kept go; nothing is
@@ -37,7 +37,7 @@ internal sealed partial record ServerImage(string? Channel, string? Revision, Da
 /// provider's lifecycle lock, so a restore cannot sign in the identity being quarantined. Logged as fixed words only.
 /// </para>
 /// </summary>
-internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : MessageLink.Server.IHostAdmin
+internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : MessageLink.Server.IComposedServerAdmin
 {
     /// <param name="App">The application version the server was built from.</param>
     /// <param name="ChromeSandbox">The latest reading of the server's Chrome (<see cref="ChromeSandboxWords"/>), or null when it runs none.</param>
@@ -56,8 +56,8 @@ internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : MessageLi
         Action<string> Log, string? EncryptedFlag = null, Func<string?>? GoogleNumber = null, Func<string?>? MessengerName = null, Func<bool>? GoogleNeedsSignIn = null,
         Func<CancellationToken, Task<string>>? GoogleRemove = null);
 
-    public Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(new HostStatus(parts.App, ProtocolVersion.Current, ProtocolVersion.Supported, parts.Started, parts.ChromeSandbox(), parts.Image.Channel, parts.Image.Revision, parts.Image.Built));
+    public Task<ServerStatus> StatusAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ServerStatus(parts.App, ProtocolVersion.Current, ProtocolVersion.Supported, parts.Started, parts.ChromeSandbox(), parts.Image.Channel, parts.Image.Revision, parts.Image.Built));
 
     public Task<IReadOnlyList<ServerAccount>> AccountsAsync(CancellationToken cancellationToken = default)
     {
@@ -78,8 +78,8 @@ internal sealed class LinuxServerAdmin(LinuxServerAdmin.Parts parts) : MessageLi
     }
 
     /// <summary>
-    /// Told of an account removed here, as a client's sign-out tells the host (<c>ProtocolServices.AccountEnded</c>: <c>messenger</c>, <c>instagram</c>, or
-    /// <c>voice</c> with its key), so what the host keeps of it goes too: the whole history's copies of its conversations (stage 8).
+    /// Told of an account removed here, as a client's sign-out tells the server (<c>ProtocolServices.AccountEnded</c>: <c>messenger</c>, <c>instagram</c>, or
+    /// <c>voice</c> with its key), so what the server keeps of it goes too: the whole history's copies of its conversations.
     /// </summary>
     public Action<string, string?>? Ended { get; set; }
 

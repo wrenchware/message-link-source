@@ -9,7 +9,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// <see cref="IGoogleBrowser"/> on Linux (SWITCHBOARD.md 4.3): what the Windows renewal does with an invisible WebView2
+/// <see cref="IGoogleBrowser"/> on Linux: what the Windows renewal does with an invisible WebView2
 /// (<c>GoogleBrowserRecovery</c>), done with a Chromium (headless, or headed on a virtual display, <see cref="Headed"/>) driven over its DevTools pipe (<see cref="ChromiumLauncher"/>,
 /// <see cref="CdpConnection"/>). The same answers in the same words, so <see cref="GoogleSignInKeeper"/> and Voice's recovery cannot tell the two apart:
 /// <list type="bullet">
@@ -50,9 +50,9 @@ internal sealed class ChromiumGoogleBrowser(IChromiumLauncher launcher, Action<s
     /// A new profile for <paramref name="service"/>, seeded from <paramref name="cookies"/> alone and loaded once, so it holds what Google sets on
     /// that page; null (with the reason) when the load did not end signed in, and then the new profile is deleted. This is how a server gets a
     /// profile for a sign-in made in a client's window (<see cref="ProfileKeepingGoogleAccount"/>): whether Google renews a profile seeded on another
-    /// machine is what SWITCHBOARD.md 5.4 tests live.
+    /// machine is what the live sign-in run tests.
     /// </summary>
-    /// <param name="profileCookies">Every Google cookie the client's sign-in browser held, when the client sent them (SWITCHBOARD.md 5.4): the profile is then seeded with
+    /// <param name="profileCookies">Every Google cookie the client's sign-in browser held, when the client sent them: the profile is then seeded with
     /// all of them as that browser had them, and with <paramref name="cookies"/> only for what they do not cover. Null: <paramref name="cookies"/> alone, as before.</param>
     public async Task<(GoogleSignInResult? Result, string Reason)> CreateProfileWithReasonAsync(string service, IReadOnlyDictionary<string, string> cookies,
         CancellationToken cancellationToken, IReadOnlyList<GoogleProfileCookie>? profileCookies = null)
@@ -149,7 +149,7 @@ internal sealed class ChromiumGoogleBrowser(IChromiumLauncher launcher, Action<s
             // Only once the browser is gone: it holds the folder until it exits.
             if (deleteOnFailure && !succeeded) await profile.DeleteAsync().ConfigureAwait(false);
             // Fixed words and numbers: the service, whether it was seeded, how it ended, how long the browser ran, how long Google said to keep the
-            // sign-in's timestamp cookie and whether the page changed it (the measures SWITCHBOARD.md 5.4 reads), whether the profile was written,
+            // sign-in's timestamp cookie and whether the page changed it (the measures the live sign-in run reads), whether the profile was written,
             // and how many loads from outside Google's hosts were refused.
             log($"google browser service={target.Service} seeded={(seed is not null ? "yes" : "no")} outcome={outcome} ms={clock.ElapsedMilliseconds} sidts={sidts}"
                 + $" rotated={notes.Rotated} saved={(notes.Saved ? "yes" : "no")} blocked={notes.Blocked} headed={(Headed ? "yes" : "no")}");
@@ -307,7 +307,7 @@ internal sealed class ChromiumGoogleBrowser(IChromiumLauncher launcher, Action<s
     // Only into a new, empty profile, and only the cookies the target's rules would read back, each where they would read it from. Google's account
     // cookies go on the whole domain; a service's own (OSID, COMPASS) on its host alone, as Google sets them. Values never leave this method.
     //
-    // When the client sent the whole of its sign-in browser's Google cookies (profileCookies, SWITCHBOARD.md 5.4) those are seeded first, each as that browser held it
+    // When the client sent the whole of its sign-in browser's Google cookies (profileCookies) those are seeded first, each as that browser held it
     // (host-only ones, accounts.google.com's LSID and every __Host- cookie among them, on their host alone), and the helper's cookies only where those do not already
     // cover the name: seeding SID again without its HttpOnly flag would undo the browser's own.
     private async Task SeedAsync(ChromiumRenewalTarget target, CdpConnection cdp, string session, IReadOnlyDictionary<string, string> cookies,

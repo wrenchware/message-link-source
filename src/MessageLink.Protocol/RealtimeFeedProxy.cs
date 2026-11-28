@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-/// <summary>A started feed: where the host said it begins, and the items as they arrive, in order.</summary>
+/// <summary>A started feed: where the server said it begins, and the items as they arrive, in order.</summary>
 public sealed class ClientEvents
 {
     private readonly EventQueue queue;
@@ -18,7 +18,7 @@ public sealed class ClientEvents
 
     public string Epoch { get; }
     public long Head { get; }
-    /// <summary>The first item is a resync: the host could not resume this reader from where it was.</summary>
+    /// <summary>The first item is a resync: the server could not resume this reader from where it was.</summary>
     public bool Resync { get; }
 
     /// <summary>
@@ -30,7 +30,7 @@ public sealed class ClientEvents
 
 /// <summary>
 /// The realtime feed over the wire: the client's end of <c>events.subscribe</c>. It hands each event to <c>receive</c> in the
-/// host's order and waits for it to finish before handing over the next. A resync from the host (it could not resume this
+/// server's order and waits for it to finish before handing over the next. A resync from the server (it could not resume this
 /// reader, or the reader fell behind) is delivered as <see cref="RealtimeKind.ResyncRequired"/>, which is what makes the list read
 /// everything again. It remembers the epoch and sequence number of the last event <c>receive</c> finished with, so a new
 /// subscription, on the same client or one that reconnected, resumes there; an event whose handling failed is delivered again.
@@ -40,12 +40,12 @@ public sealed class ClientEvents
 /// <see cref="RealtimeKind.Disconnected"/> for everything (no scope), then, after a pause, a new subscription. <see cref="StreamAsync"/>
 /// is the part that fails the way a provider's feed does, by throwing.
 /// </para>
-/// <para>The host's state (<c>state</c> events, SWITCHBOARD.md 2.6b) goes to <paramref name="state"/>, not to <c>receive</c>: the
+/// <para>The server's state (<c>state</c> events) goes to <paramref name="state"/>, not to <c>receive</c>: the
 /// application never sees it as an event, and a client given no cache ignores it. A state is applied before the event that follows it
 /// is delivered, so a reader told "connected" already holds a state that says so. A lost connection marks the cache lost, since
-/// nothing can be known to be connected through a host that cannot be reached.</para>
+/// nothing can be known to be connected through a server that cannot be reached.</para>
 /// </remarks>
-public sealed class RealtimeFeedProxy(ProtocolClient client, HostStateCache? state = null) : IRealtimeFeed
+public sealed class RealtimeFeedProxy(ProtocolClient client, ServerStateCache? state = null) : IRealtimeFeed
 {
     // The composite's pause after a provider fails.
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(3);
@@ -74,8 +74,8 @@ public sealed class RealtimeFeedProxy(ProtocolClient client, HostStateCache? sta
 
     /// <summary>
     /// One subscription's worth of the feed. Never returns normally: it ends by throwing, an unavailable <see cref="BackendException"/> when
-    /// the connection is lost or the host stopped the feed, the host's own error if it refused, or an
-    /// <see cref="OperationCanceledException"/> when cancelled (after telling the host to stop).
+    /// the connection is lost or the server stopped the feed, the server's own error if it refused, or an
+    /// <see cref="OperationCanceledException"/> when cancelled (after telling the server to stop).
     /// </summary>
     public async Task StreamAsync(Func<RealtimeEvent, CancellationToken, Task> receive, CancellationToken cancellationToken)
     {
@@ -100,7 +100,7 @@ public sealed class RealtimeFeedProxy(ProtocolClient client, HostStateCache? sta
         }
         finally
         {
-            // Awaited, so a subscription made next on this client cannot be undone by this one arriving late. A host that does not
+            // Awaited, so a subscription made next on this client cannot be undone by this one arriving late. A server that does not
             // answer does not hold the cancel up for long.
             using var patience = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try { await client.UnsubscribeEventsAsync(patience.Token).ConfigureAwait(false); } catch (Exception) { }

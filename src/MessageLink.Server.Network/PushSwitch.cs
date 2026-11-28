@@ -7,9 +7,9 @@ namespace MessageLink.Server.Network;
 internal enum PushInstall { On, OnUnchecked, NotAppSettings, NotServiceAccount, ProjectsDiffer, NoApp, KeyRefused, ApiDisabled, NotAllowed, NotSaved }
 
 /// <summary>
-/// The server's pushes as they are now (SWITCHBOARD.md 7.5): set up at the start from the push folder, or turned on later from the server's page without a restart
+/// The server's pushes as they are now: set up at the start from the push folder, or turned on later from the server's page without a restart
 /// (<see cref="InstallAsync"/>), which keeps the two files in <see cref="Folder"/> for the next start. Every push goes through it, so one sent after the files are
-/// replaced goes with the new project. Each install is announced (<see cref="Installed"/>), so open phones sign up at once (10.9); others ask on their next connection.
+/// replaced goes with the new project. Each install is announced (<see cref="Installed"/>), so open phones sign up at once; others ask on their next connection.
 /// Logged: <c>push setup outcome=on|on_unchecked apps=</c> and <c>push setup outcome=refused reason=</c>; never a key, a project or a token.
 /// </summary>
 internal sealed class PushSwitch : IPushTransport
@@ -25,7 +25,7 @@ internal sealed class PushSwitch : IPushTransport
     private readonly SemaphoreSlim installing = new(1, 1);
     private PushSetup? current;
 
-    /// <param name="folder">Where the page keeps the files it is given; null when the page cannot set pushes up (a host with no place for them).</param>
+    /// <param name="folder">Where the page keeps the files it is given; null when the page cannot set pushes up (a server with no place for them).</param>
     /// <param name="handler">What the transports it makes send through (the harness's stand-in for Google); null for the network.</param>
     public PushSwitch(PushSetup? setup, string? folder, Action<string> log, HttpMessageHandler? handler = null)
     {
@@ -38,13 +38,13 @@ internal sealed class PushSwitch : IPushTransport
     /// <summary>Where the files are kept; null when they cannot be set up from the page.</summary>
     public string? Folder { get; }
 
-    /// <summary>Once, the first time pushes go from off to on (the host starts its notifier then).</summary>
+    /// <summary>Once, the first time pushes go from off to on (the server starts its notifier then).</summary>
     public event Action? TurnedOn;
 
     /// <summary>The files were replaced with another Firebase project's: every phone's address belongs to the old one (the host forgets those made before the given moment; each phone signs up again).</summary>
     public event Action<DateTimeOffset>? ProjectChanged;
 
-    /// <summary>After every install that turned pushes on or replaced the files (after <see cref="TurnedOn"/> and <see cref="ProjectChanged"/>): the host tells open phones.</summary>
+    /// <summary>After every install that turned pushes on or replaced the files (after <see cref="TurnedOn"/> and <see cref="ProjectChanged"/>): the server tells open phones.</summary>
     public event Action? Installed;
 
     public Task<PushOutcome> SendAsync(string token, string sealedPush, bool urgent, CancellationToken cancellationToken = default) =>

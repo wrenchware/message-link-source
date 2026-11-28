@@ -14,7 +14,7 @@ internal readonly record struct XAction(XActionKind Kind, int A = 0, int B = 0, 
 }
 
 /// <summary>
-/// What the person did on the server's page, as real input on the server's display (SWITCHBOARD.md 5.4, Chrome on the server). The person may be typing a Google password, so this is the one
+/// What the person did on the server's page, as real input on the server's display (Chrome on the server). The person may be typing a Google password, so this is the one
 /// place their input is read, and it is read to be handed on and forgotten: nothing here is logged, stored or put in an exception, a bad event is dropped without saying which, and nothing
 /// outside this table reaches the display. A pointer is held inside the display, a wheel turn and a text event are bounded, a key is one of a short list of control keys (characters arrive as
 /// text, so a layout or an input method never matters), and Ctrl+A is the one chord.

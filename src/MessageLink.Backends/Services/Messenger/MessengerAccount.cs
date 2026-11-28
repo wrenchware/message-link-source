@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.Messenger;
 
 // The Messenger account behind IMessengerAccount, so a window (or a remote client, later) manages it without holding
-// MessengerBackend (SWITCHBOARD.md 2.6a). Every call is the backend's own; nothing here decides anything.
+// MessengerBackend. Every call is the backend's own; nothing here decides anything.
 internal sealed class MessengerAccount(MessengerBackend messenger) : IMessengerAccount
 {
     public MessengerAccountState State =>

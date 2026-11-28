@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.App.Services.GoogleMessages;
 
-internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens,MessageLink.Storage.MediaDiskCache disk) : IMediaReader, IAttachmentBackend
+internal sealed partial class GoogleMediaBackend(GoogleMessagesBackend backend, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.ServerTokensKey)] IAccessTokenStore tokens,MessageLink.Storage.MediaDiskCache disk) : IMediaReader, IAttachmentBackend
 {
     private const int Limit = 50 * 1024 * 1024, Chunk = 256 * 1024;
     // What may be received and opened: the largest Google Messages sends, and the helper's own downloadLimit. A video over 50 MB could not be opened once

@@ -180,7 +180,7 @@ public sealed class LocalSearchCatalog
         {
             // A reconnect can be a different account behind a fixed provider id. Rebuild that service from
             // fresh reads; a cached result must never survive sign-out into another account's session. A resync for everything
-            // is the host saying the feed could not resume (it restarted, or this reader fell too far behind): what it missed,
+            // is the server saying the feed could not resume (it restarted, or this reader fell too far behind): what it missed,
             // a sign-out or an unsend among it, never reaches this catalog, so it goes as the link's drop once made it go.
             if (change.Kind is RealtimeKind.Connected or RealtimeKind.Disconnected or RealtimeKind.AuthenticationRequired ||
                 change.Kind == RealtimeKind.ResyncRequired && change.Scope is null)

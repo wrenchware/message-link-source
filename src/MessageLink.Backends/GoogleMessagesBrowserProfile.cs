@@ -10,7 +10,7 @@ internal sealed class GoogleAccountBrowserProfile(string dataRoot)
 {
     private string FilePath => Path.Combine(dataRoot, "GoogleMessages", "browser-profile");
 
-    // Where the pointer is, for a host that must tell "no pointer" from "a pointer it could not read" (LinuxGoogle's start-time sweep): Id answers
+    // Where the pointer is, for a server that must tell "no pointer" from "a pointer it could not read" (LinuxGoogle's start-time sweep): Id answers
     // null for both.
     internal string PointerPath => FilePath;
 
@@ -29,7 +29,7 @@ internal sealed class GoogleAccountBrowserProfile(string dataRoot)
     }
 
     // The pairing the profile renewed has been replaced by one with no Google-account sign-in: the pointer goes, and the profile (a full Google sign-in) with it.
-    // Nothing is left to refer to a profile that is gone, and a failure to delete leaves it for the host's start-time sweep, which removes what no pointer names.
+    // Nothing is left to refer to a profile that is gone, and a failure to delete leaves it for the server's start-time sweep, which removes what no pointer names.
     // A host that runs a browser on the kept profile (the Linux server's Chrome) sets this to close it: awaited before the pointer changes or the profile is deleted, so a browser is
     // never left running on a folder that is about to go.
     internal Func<Task>? BeforeChange { get; set; }

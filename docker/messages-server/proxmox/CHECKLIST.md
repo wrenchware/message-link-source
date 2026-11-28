@@ -3,8 +3,8 @@
 A run from nothing to a phone joined and the Facebook test account signed in, on a fresh container. Use the Facebook
 test account only: no real account is signed in on this test server, and nothing is sent anywhere but the test thread.
 
-The setup code, the first-run steps and the QR code (part 3) come with the server's first run (10.4) and the Tailscale
-screen (10.8). With a package from before them, set the page password at the script's question instead, sign Tailscale
+The setup code, the first-run steps and the QR code (part 3) come with the server's first run and the Tailscale
+screen. With a package from before them, set the page password at the script's question instead, sign Tailscale
 in with the link the script prints, and add the phone with the pairing code.
 
 The script and the package come from the newest stable release (a promotion publishes both, `docs/release.md`, "Server
@@ -118,7 +118,7 @@ user would. Take a screenshot of each page on the way. Start a stopwatch.
 Report: the time from Open Firebase to "Arrived", every moment of doubt (a button not where the page said, a word the
 page didn't explain, a Firebase screen the page didn't mention), and what the page and the phone showed.
 
-## 6. Messenger and Instagram signed in from the Windows app (10.5)
+## 6. Messenger and Instagram signed in from the Windows app
 
 The server's own Chrome signs Messenger and Instagram in, shown in the Windows app's window, on a throwaway profile
 that is deleted afterwards. **Facebook test account only.** Instagram is never signed in here: the owner's only

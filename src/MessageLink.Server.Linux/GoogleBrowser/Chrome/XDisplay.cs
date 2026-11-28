@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// One X display, as the server's Chrome sits on it (SWITCHBOARD.md 5.4, Chrome on the server): what the person sees is a picture of its pixels, and what the person does is real X input
+/// One X display, as the server's Chrome sits on it (Chrome on the server): what the person sees is a picture of its pixels, and what the person does is real X input
 /// (the XTEST extension), so the browser is never driven through DevTools and nothing marks the page as automated. A small interface so that the pointer, key and text logic can be checked
 /// against a fake; the real one is <see cref="XcbDisplay"/>.
 /// </summary>

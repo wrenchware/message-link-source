@@ -25,7 +25,7 @@ public sealed partial class ProtocolDispatcher
     }
 
     // A commit as this connection may see it (none below version 2, which has no shared kind: EventKinds.Since): only the rows of the categories its version
-    // knows. A commit with none of them still goes out, empty, so the client's position follows the host's revs without a gap.
+    // knows. A commit with none of them still goes out, empty, so the client's position follows the server's revs without a gap.
     private SharedChange SharedFor(SharedChange change) =>
         change.Rows.All(row => row.Since <= negotiated) ? change
         : change with { Rows = [.. change.Rows.Where(row => row.Since <= negotiated)] };

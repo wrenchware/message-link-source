@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// What makes a mutation happen at most once. A host keeps one journal for all its connections (so a client that
+/// What makes a mutation happen at most once. A server keeps one journal for all its connections (so a client that
 /// reconnects finds its operation) and runs every mutation through <see cref="ExecuteAsync"/>, keyed by the caller's
 /// <c>clientOpId</c>:
 /// <list type="bullet">
@@ -25,7 +25,7 @@ namespace MessageLink.Protocol;
 /// </summary>
 /// <remarks>
 /// Log lines carry fixed words only; an operation id is the caller's and is never written. An entry holds the id, the fingerprint (a
-/// hash), the answer and the error, and never the request's parameters: a sign-in's cookies are not kept here (SWITCHBOARD.md 2.6c; the
+/// hash), the answer and the error, and never the request's parameters: a sign-in's cookies are not kept here (the
 /// harness searches the entries for them).
 /// </remarks>
 public sealed partial class OperationJournal : IDisposable
@@ -172,7 +172,7 @@ public sealed partial class OperationJournal : IDisposable
     }
 
     // Reads only after Ended is set (or by the owner that set them), so no lock is needed. A finished operation reloaded from disk may have
-    // no result (see KeepsResult): it was done, but this host cannot say what it answered.
+    // no result (see KeepsResult): it was done, but this server cannot say what it answered.
     private static byte[] Answer(Entry entry) => entry.Error is { } error ? throw new ProtocolException(error)
         : entry.Result ?? throw new ProtocolException(new ProtocolError(ProtocolErrorCodes.Internal, ResultNotKeptSentence));
 

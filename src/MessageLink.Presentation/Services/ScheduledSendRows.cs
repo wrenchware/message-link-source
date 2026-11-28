@@ -12,7 +12,7 @@ namespace MessageLink.Presentation.Services;
 public static class ScheduledSendRows
 {
     public const string Scheduled = "LOCAL_SCHEDULED", NotSentPrefix = "LOCAL_NOT_SENT_";
-    /// <summary>A message a client has asked its server to keep and has no answer for yet (stage 6 slice 11).</summary>
+    /// <summary>A message a client has asked its server to keep and has no answer for yet.</summary>
     public const string Scheduling = "LOCAL_SCHEDULING";
     /// <summary>A scheduled message on its way: the outbox has it, or a server's schedule is sending it.</summary>
     public const string Sending = "LOCAL_SENDING";

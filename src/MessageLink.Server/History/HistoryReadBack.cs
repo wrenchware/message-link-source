@@ -5,7 +5,7 @@ namespace MessageLink.Server;
 
 /// <summary>
 /// The sends that do not go through the whole history's own ports (files, and a first message that makes its conversation), each read back into the copy
-/// once it is made (SWITCHBOARD.md stage 9, A1): Instagram announces only what arrives, so a photo sent from here reached no copy and no client drawing from
+/// once it is made: Instagram announces only what arrives, so a photo sent from here reached no copy and no client drawing from
 /// one. Everything else passes straight through.
 /// </summary>
 internal sealed class HistoryReadBack(IAttachmentBackend attachments, IAttachmentBatchBackend batches, IFirstMessageStarter? starter, ConversationHistory history)

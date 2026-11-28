@@ -17,8 +17,8 @@ internal sealed record ShutdownBudget(TimeSpan Sends, TimeSpan Providers, TimeSp
     public TimeSpan Total => Sends + Providers + Sweep;
 }
 
-// The end of a host's run for the providers: in the backends so that every host closes them the same way, a server's
-// stop as much as the app's quit (SWITCHBOARD.md 1.7e).
+// The end of a server's run for the providers: in the backends so that every server closes them the same way, a server's
+// stop as much as the app's quit.
 internal static class BackendShutdown
 {
     // All four providers' helpers, closed together and waited for within a bound. Before, only Google's close was

@@ -8,39 +8,39 @@ namespace MessageLink.Presentation.Services;
 /// </summary>
 public sealed record MergesDropped(int Changes, IReadOnlyDictionary<string, string[]> Unmade);
 
-// The merges as one row of a Messages Server's shared state (SWITCHBOARD.md stage 6, slice 5), in a client of one only: PrivateState.Shared is null for
+// The merges as one row of a Messages Server's shared state, in a client of one only: PrivateState.Shared is null for
 // the in-process app and the loopback, and nothing here runs for them. While the host keeps the row (PrivateState.Shares), each change is kept, as the
-// transform it was, until the host has taken a write holding it (Confirm). When the host's row comes (another device's merge, or this device's write lost to
+// transform it was, until the server has taken a write holding it (Confirm). When the server's row comes (another device's merge, or this device's write lost to
 // one), the replica hands it here (CatchUpAsync) and the changes still kept are made again over it, as they were made here: one that no longer holds (the
 // conversation is in another merge now) throws as it would have, is left out, and is said to be (ChangedElsewhere).
 public sealed partial class MergedConversations
 {
-    // After: the merges as this change left them, which the host holds once it confirms the change's tag.
+    // After: the merges as this change left them, which the server holds once it confirms the change's tag.
     private sealed record Change(Func<MergedConversation[], MergedConversation[]> Apply, long Tag, string? Makes, string[] Members, MergedConversation[] After);
     private readonly object changes = new();
     private List<Change> unconfirmed = [];
-    // The merges as the host last held them, as far as this device knows (loaded, taken from it, or confirmed): what a server's host judges the incoming
-    // unarchive by (HostMayHold).
+    // The merges as the server last held them, as far as this device knows (loaded, taken from it, or confirmed): what a server judges the incoming
+    // unarchive by (ServerMayHold).
     private volatile MergedConversation[] hostGroups = [];
-    // The replica could not bring this to the host's row (Abandon): read again before the next change, and no change until then.
+    // The replica could not bring this to the server's row (Abandon): read again before the next change, and no change until then.
     private volatile bool stale;
     // Under the gate, while CatchUpAsync makes the kept changes again.
     private bool remaking;
 
     /// <summary>
     /// Changes of this device's were left out because another device's merges no longer allow them, or because the replica could not bring these merges to
-    /// the host's (a client of a server only). Raised off the interface thread.
+    /// the server's (a client of a server only). Raised off the interface thread.
     /// </summary>
     public event EventHandler<MergesDropped>? ChangedElsewhere;
 
     private int Unconfirmed { get { lock (changes) return unconfirmed.Count; } }
 
     /// <summary>
-    /// Whether the merges the host last held hold <paramref name="chatId"/> while this device's own changes to them are still on their way (a client of a
-    /// server only). Such a conversation this device no longer merges is the client's to return to the inbox (IncomingUnarchiveSplit): its host, which
+    /// Whether the merges the server last held hold <paramref name="chatId"/> while this device's own changes to them are still on their way (a client of a
+    /// server only). Such a conversation this device no longer merges is the client's to return to the inbox (IncomingUnarchiveSplit): its server, which
     /// reads the merges it holds, still leaves it to the merge. False whenever nothing is on its way, and always in process.
     /// </summary>
-    public bool HostMayHold(string chatId)
+    public bool ServerMayHold(string chatId)
     {
         if (Unconfirmed == 0) return false;
         foreach (var group in hostGroups)
@@ -48,8 +48,8 @@ public sealed partial class MergedConversations
         return false;
     }
 
-    // Under the gate, so a catch-up never runs between a change and its write. Kept before the write: the host can confirm it before the write returns. Kept
-    // only while the host keeps the row: before that (a host below protocol 5) nothing is sent, nothing is confirmed, and nothing needs making again.
+    // Under the gate, so a catch-up never runs between a change and its write. Kept before the write: the server can confirm it before the write returns. Kept
+    // only while the server keeps the row: before that (a server below protocol 5) nothing is sent, nothing is confirmed, and nothing needs making again.
     private async Task WriteSharedAsync(string owner, MergedConversation[] next, Change change)
     {
         var kept = state.Shares(owner, Category, Row);
@@ -111,7 +111,7 @@ public sealed partial class MergedConversations
             {
                 foreach (var change in pending)
                 {
-                    // Made again as it was made here: a change the host's merges no longer allow throws as it would have, and is left out.
+                    // Made again as it was made here: a change the server's merges no longer allow throws as it would have, and is left out.
                     try
                     {
                         next = change.Apply(next);
@@ -125,7 +125,7 @@ public sealed partial class MergedConversations
             hostGroups = host;
             if (kept.Count > 0 && !Same(next, host))
             {
-                // The write below holds every kept change; its tag is the newest's, which the host confirms with what it leaves.
+                // The write below holds every kept change; its tag is the newest's, which the server confirms with what it leaves.
                 kept[^1] = kept[^1] with { After = next };
                 lock (changes) unconfirmed = kept;
                 await state.WriteAsync(owner, Category, Row, next, kept[^1].Tag);
@@ -133,7 +133,7 @@ public sealed partial class MergedConversations
             }
             else
             {
-                // Nothing of this device's is left to send (left out, or already what the host holds): the host's row as it is.
+                // Nothing of this device's is left to send (left out, or already what the server holds): the server's row as it is.
                 lock (changes) unconfirmed = [];
                 next = host;
                 outcome = new(false, through);

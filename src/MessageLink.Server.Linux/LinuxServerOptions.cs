@@ -4,11 +4,11 @@ namespace MessageLink.Server.Linux;
 /// What <c>messages-server</c> was started with. The configuration is the environment, as a container's is; the one argument is the same switch.
 /// </summary>
 /// <param name="DataRoot">
-/// <c>MESSAGES_DATA</c>, or <c>/data</c> (the image's volume). The host refuses to start unless it exists and can be written; it is never created,
-/// since a missing folder is most often a volume that was not mounted, and a host that made one would start empty beside the real data.
+/// <c>MESSAGES_DATA</c>, or <c>/data</c> (the image's volume). The server refuses to start unless it exists and can be written; it is never created,
+/// since a missing folder is most often a volume that was not mounted, and a server that made one would start empty beside the real data.
 /// </param>
 /// <param name="Restore">
-/// <c>--restore</c>, or <c>MESSAGES_RESTORE=1</c>: reconnect the saved Messenger and Instagram sessions at start and let the provider feed go. Without it the host
+/// <c>--restore</c>, or <c>MESSAGES_RESTORE=1</c>: reconnect the saved Messenger and Instagram sessions at start and let the provider feed go. Without it the server
 /// serves its stores and connects nothing, as the Windows server does without <c>--restore</c>.
 /// </param>
 /// <param name="Port"><c>MESSAGES_PORT</c>, or 8787: the one HTTPS port on the home network.</param>
@@ -19,11 +19,11 @@ namespace MessageLink.Server.Linux;
 /// <param name="Pair"><c>--pair</c>, or <c>MESSAGES_PAIR=1</c>: print a pairing code at start even when a device is already paired.</param>
 /// <param name="KeysRootGiven">
 /// <c>MESSAGES_KEYS</c>, or <c>/keys</c> (the image's second volume, a Docker named volume off every share): the keys and everything that is a secret in
-/// itself (<see cref="HostKeys"/>). Never created, for the same reason as the data folder, and never the data folder or inside it.
+/// itself (<see cref="LinuxServerKeys"/>). Never created, for the same reason as the data folder, and never the data folder or inside it.
 /// </param>
 /// <param name="Google">
-/// <c>MESSAGES_GOOGLE=1</c>, and nothing else: run Google Messages here, renewing its sign-in through Chromium (<see cref="LinuxGoogle"/>,
-/// SWITCHBOARD.md 4.3). Hidden and off by default until 5.4 has shown Google accepts it; without it Google Messages is refused as before, and with it
+/// <c>MESSAGES_GOOGLE=1</c>, and nothing else: run Google Messages here, renewing its sign-in through Chromium (<see cref="LinuxGoogle"/>).
+/// Hidden and off by default until a live run shows Google accepts it; without it Google Messages is refused as before, and with it
 /// but without <see cref="Restore"/> too (only the restore starts the renewal).
 /// </param>
 /// <param name="ChromiumGiven"><c>MESSAGES_CHROMIUM</c>, or <c>/usr/bin/chromium</c> (the Google image's): the browser the renewal starts.</param>
@@ -34,7 +34,7 @@ namespace MessageLink.Server.Linux;
 /// </param>
 /// <param name="ChromiumHeaded">
 /// <c>MESSAGES_CHROMIUM_HEADED=1</c>: run Chromium with a window on a virtual X display (<c>Xvfb</c>, one per browser run) instead of headless, so it
-/// says it is an ordinary Chrome and not <c>HeadlessChrome</c> (SWITCHBOARD.md 5.4: Google did not rotate the headless browser's sign-in). Hidden and off;
+/// says it is an ordinary Chrome and not <c>HeadlessChrome</c> (Google did not rotate the headless browser's sign-in). Hidden and off;
 /// the host refuses Google (<c>no_xvfb</c>) when it is asked for and Xvfb is not there. Nothing about the browser is hidden either way.
 /// </param>
 /// <param name="RemoteSignInOnHostNetwork">
@@ -45,23 +45,23 @@ namespace MessageLink.Server.Linux;
 /// <param name="NetworkIsolated">
 /// <c>MESSAGES_NETWORK_ISOLATED=1</c>, set by <c>install-unraid.sh --google</c>, which publishes the port with <c>-p</c> on a bridge network: the owner's word that this container has a network
 /// namespace of its own. It is half the proof the remote sign-in needs (the other half is the interfaces in view, <see cref="HostNetwork"/>); without it the sign-in is refused as
-/// <c>network_unproven</c>, because <c>lo</c> and <c>eth0</c> are also what a bare host with one card shows.
+/// <c>network_unproven</c>, because <c>lo</c> and <c>eth0</c> are also what a bare server with one card shows.
 /// </param>
 /// <param name="GoogleChrome">
 /// <c>MESSAGES_GOOGLE_CHROME=1</c> (with <c>MESSAGES_GOOGLE=1</c>; <c>install-unraid.sh --google</c> sets both): sign Google Messages in BY HAND in official Google Chrome kept running on a virtual display of its
-/// own, let it renew Google's sign-in itself, and read its cookies from disk (SWITCHBOARD.md 5.4, chosen 2026-10-10). Replaces the Chromium that is started for each renewal.
+/// own, let it renew Google's sign-in itself, and read its cookies from disk (chosen 2026-10-10). Replaces the Chromium that is started for each renewal.
 /// </param>
 /// <param name="ChromeGiven"><c>MESSAGES_CHROME</c>, or <c>/usr/bin/google-chrome-stable</c>.</param>
 /// <param name="ChromeBuilt"><c>MESSAGES_CHROME_BUILT</c>, written into the image from its build time (<c>yyyyMMddTHHmmssZ</c>): the date the server's Chrome age counts from (<see cref="ChromeBuild"/>).</param>
 /// <param name="ChromePolicyGiven">Test-only: the harness points the check at a file of its own. The server reads no environment variable for it, so it is always the image's managed policy file, and Chrome is not started without it (<see cref="ChromePolicy"/>).</param>
 /// <param name="Tailnet">
-/// <c>MESSAGES_TAILNET=1</c>: put the server on the owner's tailnet through a door of its own (<see cref="TailnetDoor"/>, SWITCHBOARD.md 4.7), a Tailscale node in this
+/// <c>MESSAGES_TAILNET=1</c>: put the server on the owner's tailnet through a door of its own (<see cref="TailnetDoor"/>), a Tailscale node in this
 /// container that devices reach on <see cref="Port"/> by its tailnet name. Off by default; the first start prints a Tailscale sign-in link in the container's log.
 /// Its auth key for a headless setup (<c>MESSAGES_TAILNET_AUTHKEY</c>) is deliberately not an option: a record's text would print it (<see cref="LinuxServerRun.TailnetAuthKeyVariable"/>).
 /// </param>
 /// <param name="TailnetNameGiven"><c>MESSAGES_TAILNET_NAME</c>, or <c>messages-server</c>: the door's name on the tailnet (one DNS label).</param>
 /// <param name="BackupsGiven">
-/// <c>MESSAGES_BACKUPS</c>: the folder the server's daily backup goes to (SWITCHBOARD.md stage 10, D7). Without it, <c>/backups</c> when that folder exists (the image's mapping); otherwise
+/// <c>MESSAGES_BACKUPS</c>: the folder the server's daily backup goes to. Without it, <c>/backups</c> when that folder exists (the image's mapping); otherwise
 /// backups are off and the page says how to map a folder. Never created: a folder that is not there is a mapping that is missing.
 /// </param>
 internal sealed record LinuxServerOptions(string DataRoot, bool Restore, int Port = 8787, IReadOnlyList<string>? HostNamesGiven = null, bool Pair = false,
@@ -127,7 +127,7 @@ internal sealed record LinuxServerOptions(string DataRoot, bool Restore, int Por
             BackupsGiven: environment("MESSAGES_BACKUPS") is { Length: > 0 } backups ? backups : null);
 }
 
-/// <summary>Whether the data root can hold the host's state: it exists, and a file can be made and removed in it. A fixed word when not.</summary>
+/// <summary>Whether the data root can hold the server's state: it exists, and a file can be made and removed in it. A fixed word when not.</summary>
 internal static class DataFolder
 {
     public static string? Refusal(string root)

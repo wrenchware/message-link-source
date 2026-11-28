@@ -33,11 +33,11 @@ internal static class RestoreOutcomes
         PlanUnreadable = "plan_unreadable", Reset = "reset", ResetInUse = "reset_in_use";
 }
 
-/// <summary>A restore's moves failed part way (SWITCHBOARD.md stage 10): the list of moves stays, the server must not open, and the next start finishes them.</summary>
+/// <summary>A restore's moves failed part way: the list of moves stays, the server must not open, and the next start finishes them.</summary>
 internal sealed class RestoreUnfinishedException(Exception inner) : Exception("The restore did not finish its moves.", inner);
 
 /// <summary>
-/// Restore (SWITCHBOARD.md stage 10, step 10.3), applied only at a start of the server, before any store is open, and only onto a server with no service signed in.
+/// Restore, applied only at a start of the server, before any store is open, and only onto a server with no service signed in.
 /// </summary>
 /// <remarks>
 /// <para><b>Plan, stage, commit.</b> The page checks the file and its password and writes the person's choices as a plan, sealed with the server's own key, then the
@@ -46,7 +46,7 @@ internal sealed class RestoreUnfinishedException(Exception inner) : Exception("T
 /// before that list leaves the old stores as they were and the staged ones swept at the next start, which starts the restore again from its plan; a stop after it
 /// finishes the moves at the next start. The server opens nothing in between.</para>
 /// <para><b>Every copy starts over.</b> The shared state and the whole history are made anew under new epochs, and the list's revisions are not carried: every client's
-/// copy from before the restore names an epoch the server no longer has, so it is read again whole (stage 9's start-over). Every scheduled send that has not gone
+/// copy from before the restore names an epoch the server no longer has, so it is read again whole (the history's start-over). Every scheduled send that has not gone
 /// is held as not sent for the person to send or drop (owner, 2026-11-01); the outbox is never carried, so no send is repeated.</para>
 /// <para><b>A PC's backup</b> brings no identity: its Messenger history and its choices wait (<c>Restore/pending</c>) until the accounts they belong to are signed in
 /// again, and are then taken in once (<see cref="PendingImports"/>).</para>
@@ -358,7 +358,7 @@ internal static class ServerRestore
 
     private static bool IsLink(string folder) => new DirectoryInfo(folder) is { Exists: true, LinkTarget: not null };
 
-    // The data folder's copy of the keys' id (HostKeys.MarkerFile): kept, so the keys still meet their data after a reset.
+    // The data folder's copy of the keys' id (LinuxServerKeys.MarkerFile): kept, so the keys still meet their data after a reset.
     private const string HostKeysMarker = "key.id";
 
     private static RestoreOutcome Ended(ServerBackupPaths paths, string planPath, RestoreOutcome outcome, Action<string> log)
@@ -519,7 +519,7 @@ internal static class ServerRestore
         try { await WritePrivateAsync(Stage(paths.BackupPassword), Seal(password)).ConfigureAwait(false); }
         finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(password); }
 
-        // Read by the network host: an unknown token from now on may be a device that joined after this backup.
+        // Read by the network server: an unknown token from now on may be a device that joined after this backup.
         var mark = Stage(paths.Restored);
         await RestoredMark.WriteAsync(mark, protector, now, contents.Manifest.Created).ConfigureAwait(false);
         // Whatever an earlier restore left waiting belongs to the server that was; this one's own is staged above.

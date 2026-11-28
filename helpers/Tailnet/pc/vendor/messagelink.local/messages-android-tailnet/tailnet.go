@@ -1,9 +1,9 @@
-// Package tailnet is the Go half of Message Link for Android's own Tailscale node (SWITCHBOARD.md 7.4, docs/switchboard-detail.md
-// stage 7), bound for Android with gomobile: the phone joins the owner's tailnet itself, without the Tailscale app or a VPN,
+// Package tailnet is the Go half of Message Link for Android's own Tailscale node,
+// bound for Android with gomobile: the phone joins the owner's tailnet itself, without the Tailscale app or a VPN,
 // and reaches the server's door (messages-tailnet, 4.7) through it. The app's connections go through a local door of this
 // package's (door.go), so the server's TLS, its pinned certificate and the device token stay the app's, end to end.
 //
-// What the stage 7.0 test app (since removed) learned is kept here: Android denies Go the netlink socket, so the app
+// What the tailnet test app (since removed) learned is kept here: Android denies Go the netlink socket, so the app
 // passes its interfaces and default route from Java; tsnet needs a log folder of the app's or it panics; and its log stays on
 // the phone.
 package tailnet
@@ -139,7 +139,7 @@ func Start(dir, hostname string) error {
 	}
 	// Tailscale looks for a folder for its local logs (TS_LOGS_DIR, a system state folder, a cache folder, the working
 	// folder, then the temporary one) and panics if none is writable, which on Android none is: "no safe place found to
-	// store log state" crashed the 7.0 test app on the owner's phone. Nothing is uploaded.
+	// store log state" crashed the tailnet test app on the owner's phone. Nothing is uploaded.
 	folders := map[string]string{"TS_LOGS_DIR": "logs", "TMPDIR": "tmp"}
 	if runtime.GOOS == "windows" {
 		// Go reads TMP and TEMP on Windows, never TMPDIR.
@@ -175,7 +175,7 @@ func Start(dir, hostname string) error {
 }
 
 // Stop takes the node off the tailnet. The app stops it a minute after it leaves the screen: nothing holds a tunnel in
-// the background (SWITCHBOARD.md Decisions: pushes, no persistent notification).
+// the background (pushes, no persistent notification).
 func Stop() error {
 	life.Lock()
 	defer life.Unlock()
@@ -315,7 +315,7 @@ func describe(peer *ipnstate.PeerStatus, users map[tailcfg.UserID]tailcfg.UserPr
 }
 
 // Find waits up to timeoutMs for a device called name on the tailnet and returns it as JSON (found above). A node
-// started from its saved state says Running before its list of peers has come (7.0), so the list is waited for. avoid,
+// started from its saved state says Running before its list of peers has come, so the list is waited for. avoid,
 // when set, is the device the app had kept, passed over while it is offline and another answers to the name: "Find the
 // server again", after the server's Tailscale state was reset and its old node, gone for good, still holds the name.
 func Find(name, avoid string, timeoutMs int) (string, error) {

@@ -2,20 +2,20 @@ using System.Text.Json;
 
 namespace MessageLink.Protocol;
 
-// host.status, host.accounts, host.removeAccount (ProtocolMethods.Admin.cs) and devices.rename: served only to a connection that negotiated version 20, by a host
+// host.status, host.accounts, host.removeAccount (ProtocolMethods.Admin.cs) and devices.rename: served only to a connection that negotiated version 20, by a server
 // that has the port. The two reads to any paired device, who reads every conversation anyway; a removal is the page's, and is refused to every device on a server. Who may rename
 // a device is the devices port's rule, as for a revoke. A removal is journaled by its operation id and its answer follows the state it changed. A fixed code word from
-// the host (AccountRemoveWords) reaches the caller as an account_failed error; nothing else of an exception does. Nothing is logged here but a refusal.
+// the server (AccountRemoveWords) reaches the caller as an account_failed error; nothing else of an exception does. Nothing is logged here but a refusal.
 public sealed partial class ProtocolDispatcher
 {
     private const string AdminRefusal = "Accounts are connected and removed on the server's page.";
 
     private static Dictionary<string, Route> AddAdminRoutes(Dictionary<string, Route> routes)
     {
-        routes[ProtocolMethods.HostStatusRead] = new(null, typeof(HostStatus), null, Own: (connection, _, _, ct) => connection.AdminReadAsync((port, token) => port.StatusAsync(token), ct));
-        routes[ProtocolMethods.HostAccountsList] = new(null, typeof(IReadOnlyList<ServerAccount>), null,
+        routes[ProtocolMethods.ServerStatusRead] = new(null, typeof(ServerStatus), null, Own: (connection, _, _, ct) => connection.AdminReadAsync((port, token) => port.StatusAsync(token), ct));
+        routes[ProtocolMethods.ServerAccountsList] = new(null, typeof(IReadOnlyList<ServerAccount>), null,
             Own: (connection, _, _, ct) => connection.AdminReadAsync((port, token) => port.AccountsAsync(token), ct));
-        routes[ProtocolMethods.HostAccountRemove] = new(typeof(AccountRemoveParams), typeof(AccountRemoved), null, (connection, services, request) =>
+        routes[ProtocolMethods.ServerAccountRemove] = new(typeof(AccountRemoveParams), typeof(AccountRemoved), null, (connection, services, request) =>
         {
             var parameters = ReadParams<AccountRemoveParams>(request);
             if (parameters.ClientOpId is not { Length: > 0 and <= 128 } || !ParamsShape.HasRequiredValues(typeof(AccountRemoveParams), request.Params))
@@ -49,7 +49,7 @@ public sealed partial class ProtocolDispatcher
     }
 
     // What a server's page does, refused to any device on its door (owner, 2026-11-03): `what` is the log line's fixed words, `sentence` the refusal's, and `method`, when given, the
-    // route's own name (a constant, never what the peer sent), added to the line. A host with no paired devices has one user, who goes on as before.
+    // route's own name (a constant, never what the peer sent), added to the line. A server with no paired devices has one user, who goes on as before.
     private void RefuseOnServer(string what, string sentence, string? method = null)
     {
         if (services.Devices is null) return;

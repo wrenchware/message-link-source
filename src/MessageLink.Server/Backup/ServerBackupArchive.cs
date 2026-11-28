@@ -5,7 +5,7 @@ using MessageLink.App.Services.Backup;
 namespace MessageLink.Server.Backup;
 
 /// <summary>
-/// What a server backup holds, readable only after it is decrypted (SWITCHBOARD.md stage 10, "What a server backup holds"). <paramref name="Id"/> names this backup,
+/// What a server backup holds, readable only after it is decrypted ("What a server backup holds"). <paramref name="Id"/> names this backup,
 /// <paramref name="Epoch"/> the server's history epoch when it was made, <paramref name="Counts"/> the items of each part and <paramref name="Pages"/> how many pages
 /// each paged part came in. <paramref name="Messenger"/> and <paramref name="LeftOut"/> are as in a PC backup (<see cref="BackupManifest"/>).
 /// </summary>
@@ -48,9 +48,9 @@ internal sealed record BackupPhotoRef(string Ref, string Photo, string Owner);
 internal sealed record BackupArchiveKey(string Profile, byte[] Key);
 
 /// <summary>
-/// The server's identity as a backup carries it (D8): its certificate and key, its devices (with the generation the list had), each phone's push address, the
+/// The server's identity as a backup carries it: its certificate and key, its devices (with the generation the list had), each phone's push address, the
 /// Firebase project's two files, whether requests to join are paused, the key its shared state is filed under, the backup's own settings, and the hash of the
-/// password its page's first run chose (10.4; absent from a backup made before it, or of a server whose password is in its environment). Never a sign-in.
+/// password its page's first run chose (absent from a backup made before it, or of a server whose password is in its environment). Never a sign-in.
 /// </summary>
 internal sealed record ServerIdentityPart(string? Certificate, string? CertificateKey, long DevicesGeneration, List<BackupDevice> Devices, JsonElement? Push,
     string? FirebaseSettings, string? FirebaseAccount, bool JoinPaused, string? SpaceKey, BackupSettingsPart? Backup, string? PagePassword = null);

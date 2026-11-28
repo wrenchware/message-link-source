@@ -5,14 +5,14 @@ using MessageLink.Core.Services;
 namespace MessageLink.Presentation.Services;
 
 // Incoming-message work does not depend on UI paging or consume a second provider connection. The host of the client modes runs it over the providers'
-// feed with no observer (notifications are each window's), for its incoming unarchive alone (SWITCHBOARD.md stage 6, slice 9).
+// feed with no observer (notifications are each window's), for its incoming unarchive alone.
 public sealed class NotificationRealtimeFeed(IRealtimeFeed inner, NotificationObserver? observer,
     IncomingMessageUnarchiver? unarchiver = null) : IRealtimeFeed
 {
     private int dropped, reset;
 
     /// <summary>
-    /// Null (the window): a full queue holds the feed until there is room, as it always did. Given (the host): a full queue drops the event from this work
+    /// Null (the window): a full queue holds the feed until there is room, as it always did. Given (the server): a full queue drops the event from this work
     /// only, never from the feed, so a slow provider cannot hold up every client's events; this is told how many were dropped once there is room again.
     /// After a drop the work starts again from now, as after a reconnect, so nothing that was missed is taken for a new arrival later.
     /// </summary>
@@ -33,7 +33,7 @@ public sealed class NotificationRealtimeFeed(IRealtimeFeed inner, NotificationOb
     public Action<string>? Log { get; init; }
 
     // One event of the queue. A retry carries what the first look decided (the arrival is returning to the inbox) and does not decide it again.
-    private sealed record Work(RealtimeEvent Change, int Attempt = 0, bool LeftToHost = false);
+    private sealed record Work(RealtimeEvent Change, int Attempt = 0, bool LeftToServer = false);
 
     // The lookup failed because the connection did, not because of what was looked up.
     private static bool IsConnectionFailure(Exception failure) =>
@@ -82,10 +82,10 @@ public sealed class NotificationRealtimeFeed(IRealtimeFeed inner, NotificationOb
                     }
                     catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
                     catch (Exception) { /* Keep the provider's state; never retry an uncertain archive change. */ }
-                var leftToHost = work.Attempt == 0 ? outcome.LeftToHost : work.LeftToHost;
-                // Read the confirmed archive state before deciding whether to show this arrival's notification. One the host is returning to the inbox
-                // (stage 6 slice 9) is still archived here for a moment, and is judged as the inbox will show it.
-                try { if (observer is not null) await observer.ObserveAsync(change, lifetime.Token, unarchiving: leftToHost); }
+                var leftToServer = work.Attempt == 0 ? outcome.LeftToServer : work.LeftToServer;
+                // Read the confirmed archive state before deciding whether to show this arrival's notification. One the server is returning to the inbox
+                // is still archived here for a moment, and is judged as the inbox will show it.
+                try { if (observer is not null) await observer.ObserveAsync(change, lifetime.Token, unarchiving: leftToServer); }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
                 catch (Exception failure)
                 {
@@ -93,7 +93,7 @@ public sealed class NotificationRealtimeFeed(IRealtimeFeed inner, NotificationOb
                     var retry = IsConnectionFailure(failure);
                     try { Log?.Invoke($"notification show failed type={failure.GetType().Name} hresult=0x{failure.HResult:X8} retry={(retry ? "yes" : "no")}"); }
                     catch (Exception) { /* a logger that fails must not fail the feed */ }
-                    if (retry) Retry(work with { LeftToHost = leftToHost });
+                    if (retry) Retry(work with { LeftToServer = leftToServer });
                 }
             }
         }, CancellationToken.None);

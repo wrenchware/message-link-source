@@ -7,7 +7,7 @@ namespace MessageLink.Server.Linux;
 
 /// <summary>
 /// <c>snoozes.*</c> on Linux: the Windows store's layout (one file per conversation under a hashed name, in <c>ChatSnoozes-v1</c>) sealed by the
-/// host's own protector instead of DPAPI. A file that does not open is skipped, not deleted: on this host that most likely means the key file
+/// server's own protector instead of DPAPI. A file that does not open is skipped, not deleted: on this server that most likely means the key file
 /// was swapped, and the next start with the right key should still find it.
 /// </summary>
 internal sealed class SealedChatSnoozeStore(string directory, IStateProtector protector) : IChatSnoozes, IChatSnoozeFiles

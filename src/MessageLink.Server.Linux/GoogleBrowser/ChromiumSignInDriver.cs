@@ -18,7 +18,7 @@ internal sealed record SignInPages(string LoginUrl, Func<string?, bool> AllowMai
 }
 
 /// <summary>
-/// The server's browser while a person signs in to Google Messages through it (SWITCHBOARD.md 5.4, chosen 2026-10-10): one page, on Google's real sign-in address, shown to the
+/// The server's browser while a person signs in to Google Messages through it (chosen 2026-10-10): one page, on Google's real sign-in address, shown to the
 /// client as a picture and driven by what the person does there. Google binds a sign-in to the browser that made it, so this is the browser the sign-in is made in, and the one whose
 /// profile is kept to renew it. Nothing is injected into the page, no user agent is changed and nothing hides that the browser is driven: the page is the one Google serves, and only
 /// DevTools's own screencast and input commands touch it.

@@ -82,7 +82,7 @@ public sealed partial class ComposerDrafts
         Follow(state);
     }
 
-    // ---- Drafts another device wrote (stage 6, slice 6) ----
+    // ---- Drafts another device wrote ----
     //
     // In a client of a Messages Server the draft rows are shared, so another device's draft changes a line the list shows: the lines it replaces are let go
     // and the rows are read again. Only a store that shares rows (state.Shared) is followed: in the in-process app and the loopback nothing subscribes.
@@ -97,10 +97,10 @@ public sealed partial class ComposerDrafts
             if (ReferenceEquals(following, rows)) return;
             following = rows;
         }
-        rows.HostChanged += OnHostChanged;
+        rows.ServerChanged += OnServerChanged;
     }
 
-    private void OnHostChanged(object? sender, IReadOnlyList<string> keys)
+    private void OnServerChanged(object? sender, IReadOnlyList<string> keys)
     {
         var changed = keys.Where(key => key.StartsWith("draft:", StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
         if (changed.Count == 0) return;
@@ -111,11 +111,11 @@ public sealed partial class ComposerDrafts
             foreach (var id in reported.Keys.ToArray())
                 if (KeyFor(id) is { } key && changed.Contains(key)) reported.Remove(id);
         }
-        _ = ReloadForHostAsync();
+        _ = ReloadForServerAsync();
     }
 
     // A burst of drafts is one read; one that comes while it runs makes it go round once more.
-    private async Task ReloadForHostAsync()
+    private async Task ReloadForServerAsync()
     {
         if (Interlocked.Exchange(ref hostReading, 1) == 1) { Volatile.Write(ref hostAgain, 1); return; }
         while (true)

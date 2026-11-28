@@ -18,21 +18,21 @@ public enum SpacePin
 }
 
 /// <summary>
-/// The key a server's shared space is filed under (stage 6 slice 2, docs/research/switchboard-stage6.md finding 2): <c>&lt;root&gt;\Server\space.protected</c>,
-/// beside <c>shared.db</c>, sealed by the host's <see cref="IStateProtector"/>. A server serves it as its <c>LocalKey</c> once it exists, whatever its own
+/// The key a server's shared space is filed under (docs/research/switchboard-stage6.md finding 2): <c>&lt;root&gt;\Server\space.protected</c>,
+/// beside <c>shared.db</c>, sealed by the server's <see cref="IStateProtector"/>. A server serves it as its <c>LocalKey</c> once it exists, whatever its own
 /// Google pairing says later, because every shared row's key is a one-way digest of the profile made from it: a server that paired Google itself would
-/// otherwise get another key and orphan every row. Only a server's <see cref="SharedStateStore"/> has one, and only once the host attaches it
+/// otherwise get another key and orphan every row. Only a server's <see cref="SharedStateStore"/> has one, and only once the server attaches it
 /// (<see cref="SharedStateStore.AttachSpace"/>), so the app's in-process and loopback hosts never read or write the file.
 /// </summary>
 /// <remarks>
-/// <para><b>Pinned at the first write, not the first key served.</b> A key served while the store holds no row files nothing on the host, so nothing can be
+/// <para><b>Pinned at the first write, not the first key served.</b> A key served while the store holds no row files nothing on the server, so nothing can be
 /// orphaned by its changing. Pinning at the first serve would fix an empty space to whatever the server happened to have when a client first connected
-/// (often the unpaired name), and migration (slice 13) could then no longer adopt the PC's key into it (D2). The first write's pin is made under the store's
+/// (often the unpaired name), and migration could then no longer adopt the PC's key into it (D2). The first write's pin is made under the store's
 /// gate with the very key the write's keys were judged under, so the pin and the first row cannot disagree, and a row is never kept unless the pin holds.</para>
 /// <para><b>Never a new key over rows.</b> A store with fixed rows (one row per profile, such as the quick replies) and no file (one from before this slice)
-/// adopts the key the host has now only when one of those rows was made under it; rows keyed by conversation (snoozes, chat preferences, names) carry their
+/// adopts the key the server has now only when one of those rows was made under it; rows keyed by conversation (snoozes, chat preferences, names) carry their
 /// profile inside their own digest, cannot be orphaned by a pin, and so neither decide nor block one. Otherwise the key they were made under cannot be known, and the space refuses rather than starting a second one beside them. A
-/// file that cannot be read refuses the same way, and is never written over. Refusing makes <c>state.*</c> answer unavailable and the host's identity
+/// file that cannot be read refuses the same way, and is never written over. Refusing makes <c>state.*</c> answer unavailable and the server's identity
 /// absent (its clients keep the identity they last knew, so their writes wait in their pending tables instead of being made under another key).</para>
 /// <para>Logs carry fixed words and counts only; never the key.</para>
 /// </remarks>
@@ -68,11 +68,11 @@ public sealed class SharedSpace
 
     public string FilePath => path;
 
-    /// <summary>The key the host's own Google pairing (or the unpaired name) gives now: what a first write pins and what is served before anything is.</summary>
+    /// <summary>The key the server's own Google pairing (or the unpaired name) gives now: what a first write pins and what is served before anything is.</summary>
     internal void Follow(Func<CancellationToken, Task<string?>> liveKey) => live = liveKey;
 
     /// <summary>
-    /// What the host serves as its <c>LocalKey</c>, given what its own pairing says now: the pinned key once there is one (a different live key is
+    /// What the server serves as its <c>LocalKey</c>, given what its own pairing says now: the pinned key once there is one (a different live key is
     /// logged <c>space key pinned kept=yes</c> and otherwise ignored), and the live key until then. Throws <see cref="SpaceUnavailableException"/> when
     /// the pinned file cannot be read or the store holds rows made under a key that is not this one.
     /// </summary>
@@ -100,15 +100,15 @@ public sealed class SharedSpace
     }
 
     /// <summary>
-    /// The key the space is filed under now: the pinned one, or the live one while nothing is pinned; null while nothing is signed in on the host and nothing is pinned. What
-    /// a restored PC backup's choices wait for (stage 10). Throws <see cref="SpaceUnavailableException"/> as <see cref="ServeAsync"/> does.
+    /// The key the space is filed under now: the pinned one, or the live one while nothing is pinned; null while nothing is signed in on the server and nothing is pinned. What
+    /// a restored PC backup's choices wait for. Throws <see cref="SpaceUnavailableException"/> as <see cref="ServeAsync"/> does.
     /// </summary>
     internal async Task<string?> CurrentKeyAsync(CancellationToken cancellationToken) =>
         await ServeAsync(live is null ? null : await live(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// What a <c>state.*</c> call files under now, read before the store's gate. Throws <see cref="SpaceUnavailableException"/> while the space
-    /// cannot be served, including a store that holds rows while nothing is signed in on the host and nothing is pinned.
+    /// cannot be served, including a store that holds rows while nothing is signed in on the server and nothing is pinned.
     /// </summary>
     internal async Task<Filing> FilingAsync(CancellationToken cancellationToken)
     {
@@ -136,7 +136,7 @@ public sealed class SharedSpace
     }
 
     /// <summary>
-    /// Files the space under <paramref name="localKey"/> for good: the first write's key, or (slice 13) the key a migration brings from the PC, which may
+    /// Files the space under <paramref name="localKey"/> for good: the first write's key, or the key a migration brings from the PC, which may
     /// be adopted only while nothing else is pinned and the store holds no row made under another key. A second pin of the same key is
     /// <see cref="SpacePin.Already"/>; any other key is refused, as is a pin over a file that cannot be read. <paramref name="via"/> is a fixed word for the log.
     /// </summary>
@@ -172,7 +172,7 @@ public sealed class SharedSpace
     }
 
     // Called with the gate held. The pinned key, or null when there is no file; throws when there is one that cannot be read. A key once read is kept for
-    // the run: the host is the file's only writer.
+    // the run: the server is the file's only writer.
     private async Task<string?> LoadAsync()
     {
         if (pinned is not null) return pinned;
@@ -206,7 +206,7 @@ public sealed class SharedSpace
         if (refusedKnown && string.Equals(refusedFor, liveKey, StringComparison.Ordinal)) throw new SpaceUnavailableException();
         var (rows, checkable, matching) = await rowsUnder(NotificationIdentity.ProfileOf(liveKey)).ConfigureAwait(false);
         // Only rows whose key is one fixed row of the profile can say which profile they were made under, and only they can be orphaned by a pin: a row
-        // of a category keyed by conversation (a snooze taken in from the host's files, slice 3) carries its own profile inside its digest whatever is pinned.
+        // of a category keyed by conversation (a snooze taken in from the server's files) carries its own profile inside its digest whatever is pinned.
         // A store of those alone is open, as an empty one is: refusing it would lock the space for good, as nothing could ever be adopted.
         if (checkable == 0) { open = true; return; }
         if (matching == 0)
@@ -290,19 +290,19 @@ public sealed class SpaceUnavailableException() : Exception("The server cannot t
 }
 
 /// <summary>
-/// The host's identity as a server serves it: the live one (Google paired, the saved-message scopes) with the pinned space key as its <c>LocalKey</c>.
-/// While the space cannot be served, reading fails, so the host's state carries no identity and its clients keep the one they last knew.
+/// The server's identity as a server serves it: the live one (Google paired, the saved-message scopes) with the pinned space key as its <c>LocalKey</c>.
+/// While the space cannot be served, reading fails, so the server's state carries no identity and its clients keep the one they last knew.
 /// </summary>
-internal sealed class SpaceIdentity(IHostIdentity live, SharedSpace space) : IHostIdentity
+internal sealed class SpaceIdentity(IServerIdentity live, SharedSpace space) : IServerIdentity
 {
     public bool GooglePaired => live.GooglePaired;
 
-    public async Task<HostIdentity> ReadAsync(CancellationToken cancellationToken = default)
+    public async Task<ServerIdentity> ReadAsync(CancellationToken cancellationToken = default)
     {
         var now = await live.ReadAsync(cancellationToken).ConfigureAwait(false);
         var key = await space.ServeAsync(now.LocalKey, cancellationToken).ConfigureAwait(false);
         if (string.Equals(key, now.LocalKey, StringComparison.Ordinal)) return now;
-        // Google's saved messages are filed by a scope made from the key ("google:" and the key's profile, HostIdentityPort), so a server that pairs Google as a new device
+        // Google's saved messages are filed by a scope made from the key ("google:" and the key's profile, ServerIdentityPort), so a server that pairs Google as a new device
         // would otherwise show none of the PC's: its own scope names the live key, and the saved rows (adopted verbatim by a move) name the pinned one (slice 13g). Only
         // an entry that is exactly the live key's Google scope follows the pin; every other account's scope is its own, and nothing is added where Google is not paired.
         var liveScope = NotificationIdentity.ProfileOf(now.LocalKey) is { } from ? GoogleScopePrefix + from : null;

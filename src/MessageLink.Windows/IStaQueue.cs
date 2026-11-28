@@ -2,7 +2,7 @@ namespace MessageLink.WindowsPlatform;
 
 /// <summary>
 /// The thread WebView2 lives on, as the browser needs to see it: whether the caller is already there, and a way to put work on it. The app
-/// supplies one over its interface thread's dispatcher queue and MessageLinkServer.exe one over its own STA thread (SWITCHBOARD.md 3.1c), so the
+/// supplies one over its interface thread's dispatcher queue and MessageLinkServer.exe one over its own STA thread, so the
 /// browser code names neither WinUI nor the Windows App SDK.
 /// </summary>
 internal interface IStaQueue
@@ -32,8 +32,7 @@ internal interface IStaQueue
 
 /// <summary>
 /// Makes a thread's awaits come back to it: the context a UI framework installs on its thread by itself (WinUI does), for a thread that has only a
-/// queue. Without it every await in the browser code resumes on the pool, and WebView2's objects belong to the thread that made them
-/// (SWITCHBOARD.md 3.1).
+/// queue. Without it every await in the browser code resumes on the pool, and WebView2's objects belong to the thread that made them.
 /// </summary>
 internal sealed class StaSynchronizationContext(IStaQueue queue) : SynchronizationContext
 {

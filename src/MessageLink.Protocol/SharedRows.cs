@@ -4,8 +4,8 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The keys and values of the shared rows that were files before slice 3 (SWITCHBOARD.md stage 6, docs/research/switchboard-stage6.md, "Shape"): the client's
-/// replica and the host both write them, so they are spelled once, here. Each key is the file's own digest (<c>H(profile, id)</c>, the name the file had), so a
+/// The keys and values of the shared rows that were files before slice 3 (docs/research/switchboard-stage6.md, "Shape"): the client's
+/// replica and the server both write them, so they are spelled once, here. Each key is the file's own digest (<c>H(profile, id)</c>, the name the file had), so a
 /// row and the file it replaces name the same thing; each value is the file's own JSON where the file was JSON, and a JSON string for a name.
 /// </summary>
 public static class SharedRows

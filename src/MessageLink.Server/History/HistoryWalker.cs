@@ -79,7 +79,7 @@ internal sealed class HistoryWalker(HistoryCopy copy, HistoryRows rows, HistoryM
 
     /// <summary>
     /// Walks the list now and then: every row is kept for the feed, a conversation not held yet is filled (the most recently active first), one whose list
-    /// moved past what is held is read again, and the most recently active of each service are compared with it (the mirror check, stage 9).
+    /// moved past what is held is read again, and the most recently active of each service are compared with it (the mirror check).
     /// </summary>
     public async Task WalkAsync()
     {

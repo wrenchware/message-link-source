@@ -14,7 +14,7 @@ public sealed record MessengerAccountState(bool Connected, bool Saved, bool Encr
 public sealed record AccountRestore(int? Conversations, string? Refusal = null, bool Skipped = false, string? Explanation = null);
 
 /// <summary>
-/// The Messenger account's lifecycle, for any client (SWITCHBOARD.md 2.6). The Facebook sign-in window is the client's;
+/// The Messenger account's lifecycle, for any client. The Facebook sign-in window is the client's;
 /// it hands its cookies to <see cref="ConnectAsync"/>, and the host owns the session from then on.
 /// </summary>
 public interface IMessengerAccount
@@ -30,7 +30,7 @@ public interface IMessengerAccount
     /// <summary>Connects with a new sign-in's cookies, or with the saved session when null. Answers the conversations joined.</summary>
     Task<int> ConnectAsync(Dictionary<string, string>? cookies, CancellationToken cancellationToken = default);
 
-    /// <summary>The launch's reconnect, with its retry policy (MessengerRestore). stopped: the host is closing.</summary>
+    /// <summary>The launch's reconnect, with its retry policy (MessengerRestore). stopped: the server is closing.</summary>
     Task<AccountRestore> RestoreAsync(Func<bool> stopped);
 
     /// <summary>What Messenger has sent so far, in a sentence for Settings.</summary>

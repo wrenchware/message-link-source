@@ -13,7 +13,7 @@ using Position = MessageLink.Protocol.HistoryPosition;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The kept copy of every conversation (SWITCHBOARD.md stage 8): each held from its newest message down to a floor with no gap between, filled from the
+/// The kept copy of every conversation: each held from its newest message down to a floor with no gap between, filled from the
 /// service's newest page, joined to it on each read, kept up from the events' own reads, and written so that every change takes the next number of one
 /// sequence (<see cref="HistoryDatabase"/>) and is announced in the event log. It also holds the conversations waiting for a background read
 /// (<see cref="Queue"/>), which the walker takes.
@@ -77,7 +77,7 @@ internal sealed class HistoryCopy
         }
         catch (Exception failure)
         {
-            // Served without a history: every read goes on to the services, as before stage 8.
+            // Served without a history: every read goes on to the services, as before the server kept whole histories.
             log($"history store open failed error={failure.GetType().Name}");
             ready.TrySetException(failure);
             return false;
@@ -248,7 +248,7 @@ internal sealed class HistoryCopy
         return row is { Removed: false } ? Message(row) : null;
     }
 
-    // ---- Events' and this host's own changes, each conversation's in order beside the feed ----
+    // ---- Events' and this server's own changes, each conversation's in order beside the feed ----
 
     // A conversation's own work in the order it was asked for, beside the feed. Each step catches its own failures, so one never stops the chain.
     private static void Chain(HeldChat chat, Func<Task> step)
@@ -313,7 +313,7 @@ internal sealed class HistoryCopy
         }
     }
 
-    /// <summary>A change made through this host, read back after each of <see cref="HistoryTimings.ConfirmAfter"/> in case its service sends no event for it.</summary>
+    /// <summary>A change made through this server, read back after each of <see cref="HistoryTimings.ConfirmAfter"/> in case its service sends no event for it.</summary>
     public void Confirm(string chatId, string messageId)
     {
         if (Whole(chatId) is not { } chat) return;
@@ -807,7 +807,7 @@ internal sealed class HistoryCopy
                 if (messages.Length > MaxEventIds || reset) sequence.Append(new RealtimeEvent(RealtimeKind.ChatChanged, chat.ChatId, [chat.ChatId], ReceivedAt: DateTimeOffset.UtcNow));
             }
         }
-        // The row's last message is the copy's: built again from it (B2).
+        // The row's last message is the copy's: built again from it.
         if (next.Filled) RowChanged?.Invoke(chat.ChatId);
         // Every message held went while older ones lie before them: nothing is left to serve a newest page from, so it is read again from the service's
         // newest (the server's own copy emptied by removals, ROADMAP.md).

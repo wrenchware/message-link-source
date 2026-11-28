@@ -30,7 +30,7 @@ internal enum SignInHost
 {
     /// <summary>It can't sign in at all from its page.</summary>
     None,
-    /// <summary>In its own browser, streamed to the page (Linux, SWITCHBOARD.md 10.4).</summary>
+    /// <summary>In its own browser, streamed to the page (Linux).</summary>
     Browser,
     /// <summary>In Message Link's native windows on its own desktop (the Windows server, 10.7), from a browser on that PC.</summary>
     Desktop,

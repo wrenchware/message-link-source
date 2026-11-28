@@ -52,7 +52,7 @@ internal sealed partial class MessengerBackend : IContactBackend, IDirectChatLoo
         return found is null ? null : Models.Map(found);
     }
 
-    // A conversation of the list as last read, without asking the helper: how a host with no window's catalogue presents a
+    // A conversation of the list as last read, without asking the helper: how a server with no window's catalogue presents a
     // kept search's conversations (MessengerKeptHistory's liveChat).
     internal ChatSummary? KnownChat(string chatId)
     {

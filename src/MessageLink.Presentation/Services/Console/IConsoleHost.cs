@@ -7,7 +7,7 @@ namespace MessageLink.Presentation.Services;
 /// connection and catch-up lines. All: also read receipts and typing.</summary>
 public enum ConsoleVerbosity { Quiet, Normal, All }
 
-/// <summary>One service's connection and its helper process, as the host already knows them.</summary>
+/// <summary>One service's connection and its helper process, as the server already knows them.</summary>
 /// <param name="Network">The service's network name ("Messenger", "Google Voice"); empty when not known.</param>
 /// <param name="ProcessId">The helper's process id while it runs.</param>
 /// <param name="MemoryBytes">The helper process's working set while it runs.</param>
@@ -39,7 +39,7 @@ public sealed record ConsoleMirror(bool Running, IReadOnlyList<ConsoleMirrorServ
 public sealed record ConsoleMirrorService(string Name, DateTimeOffset At, int Checked, int Differed, int Missing, int Extra, int Changed, int Skipped);
 
 public enum ConsoleCheckLevel { Ok, Info, Warn, Fail }
-/// <summary>One line of /diag: a check the host can answer from what it already holds.</summary>
+/// <summary>One line of /diag: a check the server can answer from what it already holds.</summary>
 public sealed record ConsoleCheck(ConsoleCheckLevel Level, string Name, string Detail);
 
 /// <summary>What /whoami, /neofetch and /diag say about this PC and this copy of Messages.</summary>
@@ -77,7 +77,7 @@ public sealed record ConsoleRepeatResult(ConsoleActionOutcome Outcome, string? M
 
 /// <summary>
 /// What the chat console asks of the program around it: mlink's terminal host, over Message Link Server. Every member is
-/// an explicit user action, a preference, or a read of state the host already holds — never a provider request of the
+/// an explicit user action, a preference, or a read of state the server already holds — never a provider request of the
 /// console's own. The console opens no window and has no notifications of its own: opening a conversation, the tour and
 /// pausing notifications are the Message Link app's. Members with defaults may be left out, so such a host shows less.
 /// </summary>
@@ -88,7 +88,7 @@ public interface IConsoleHost
     /// <summary>Mutes or unmutes a conversation in Message Link, never on the service.</summary>
     Task SetMutedAsync(ChatSummary chat, bool muted);
 
-    // ---- Read-only views of what the host already holds (/top, /queues, /diag, /logs, /thread) ----
+    // ---- Read-only views of what the server already holds (/top, /queues, /diag, /logs, /thread) ----
 
     /// <summary>Unsettled sends and scheduled sends, oldest first.</summary>
     IReadOnlyList<ConsoleQueueItem> Queue => [];
@@ -104,17 +104,17 @@ public interface IConsoleHost
     /// recently active conversations from each service. Null when the server cannot say (an older server).
     /// </summary>
     Task<ConsoleMirror?> MirrorAsync(bool start, CancellationToken cancellationToken = default) => Task.FromResult<ConsoleMirror?>(null);
-    /// <summary>A conversation's history as the host already holds it; never a provider read.</summary>
+    /// <summary>A conversation's history as the server already holds it; never a provider read.</summary>
     Task<HistorySnapshot?> SavedHistoryAsync(string chatId) => Task.FromResult<HistorySnapshot?>(null);
     /// <summary>
     /// One conversation's recent history for a command that named it (/msgs name, ^): the server's whole history, which may ask the service for its newest
-    /// page once if the server has never read it, as opening the conversation would. Nothing is marked read. Where the host has no such copy, what
+    /// page once if the server has never read it, as opening the conversation would. Nothing is marked read. Where the server has no such copy, what
     /// <see cref="SavedHistoryAsync"/> holds.
     /// </summary>
     Task<HistorySnapshot?> ConversationHistoryAsync(string chatId) => SavedHistoryAsync(chatId);
 
     // ---- Conversation actions: the conversation menu's own, with its checks (the window's conversation menu) ----
-    // Each is an explicit command the user typed on a line of its own; none is retried. A host that does not know one
+    // Each is an explicit command the user typed on a line of its own; none is retried. A server that does not know one
     // leaves it unavailable. Archive, delete and spam run through ConversationActions, which also says what is offered and its words.
 
     /// <summary>Archive or unarchive: on the service, except Instagram and linked conversations, kept in Message Link.</summary>
@@ -136,7 +136,7 @@ public interface IConsoleHost
 
     // ---- Message actions: the message menu's own (MessageActionsViewModel) ----
 
-    /// <summary>What the message menu offers for this message, as the menu asks for it; null when the host cannot say,
+    /// <summary>What the message menu offers for this message, as the menu asks for it; null when the server cannot say,
     /// which the console treats as nothing offered.</summary>
     Task<MessageActionOptions?> MessageOptionsAsync(ChatMessage message) => Task.FromResult<MessageActionOptions?>(null);
     /// <summary>Adds or removes one of your reactions. Seen by everyone in the conversation.</summary>
@@ -155,9 +155,9 @@ public interface IConsoleHost
 
     /// <summary>New conversation: the Hermes thread starts over on a fresh Hermes session, and its scrollback stays.</summary>
     Task<ConsoleActionResult> NewHermesConversationAsync(string chatId) => ConsoleActionResult.NotHere;
-    /// <summary>Whether this host keeps repeats (a server: HostLimits.Repeats). False: none are offered.</summary>
+    /// <summary>Whether this server keeps repeats (a server: ServerLimits.Repeats). False: none are offered.</summary>
     bool KeepsRepeats => false;
-    /// <summary>The repeats the host keeps for a Hermes thread, oldest first: its own rows as this terminal holds them, never a provider read.</summary>
+    /// <summary>The repeats the server keeps for a Hermes thread, oldest first: its own rows as this terminal holds them, never a provider read.</summary>
     Task<IReadOnlyList<RepeatingSend>> RepeatsAsync(string chatId) => Task.FromResult<IReadOnlyList<RepeatingSend>>([]);
     /// <summary>A new repeat in a Hermes thread: on <paramref name="days"/> (bit 0 Sunday) at <paramref name="minute"/> after midnight in the
     /// server's time zone. Asked once, never retried.</summary>

@@ -20,7 +20,7 @@ internal static class PcServerRestore
     /// <summary>Where the server's own keys live: the network door's certificate, the page's password, the devices' generation.</summary>
     public static string KeysFolder(string root) => Path.Combine(root, "Server", "Keys");
 
-    /// <summary>The backup's view of a PC's root: its keys folder, and the whole history in <c>Server\history.db</c>, where this host keeps it.</summary>
+    /// <summary>The backup's view of a PC's root: its keys folder, and the whole history in <c>Server\history.db</c>, where this server keeps it.</summary>
     public static ServerBackupPaths Paths(string root) =>
         ServerLayout.Windows(root).BackupPaths;
 
@@ -40,7 +40,7 @@ internal static class PcServerRestore
     // Kept by a reset, by their path under the root ('/' between folders). The tailnet door's identity is TailnetNode.StateFolderName, in the app.
     private static HashSet<string> Keep() => new(StringComparer.OrdinalIgnoreCase)
     {
-        "Server/Keys", MoveMarker.Folder + "/" + MoveMarker.FileName, "Tailnet", HostLease.FileName, "ServerLogs", ServerPageProfile,
+        "Server/Keys", MoveMarker.Folder + "/" + MoveMarker.FileName, "Tailnet", ServerLease.FileName, "ServerLogs", ServerPageProfile,
         "app.log", LogRotation.PreviousPath("app.log"), "server.log", LogRotation.PreviousPath("server.log"),
         "run.marker", "run.marker.version", "server-run.marker", "server-run.marker.version",
     };

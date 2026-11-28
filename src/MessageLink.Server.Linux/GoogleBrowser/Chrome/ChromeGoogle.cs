@@ -5,7 +5,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// Everything the host needs to run Google Messages through its own Chrome (SWITCHBOARD.md 5.4, Chrome on the server): the one persistent Chrome, the browser the keeper renews through, the
+/// Everything the host needs to run Google Messages through its own Chrome (Chrome on the server): the one persistent Chrome, the browser the keeper renews through, the
 /// cookie store, the picture encoder, which Chrome this is and whether the sign-in window is offered here (<see cref="LinuxGoogle.NetworkAllowsSignIn"/>).
 /// </summary>
 internal sealed record ChromeGoogle(PersistentChrome Chrome, ChromeKeptBrowser Browser, IChromeCookieSource Cookies, IFrameEncoder Encoder, ChromeBuild Build, bool SignInOffered)

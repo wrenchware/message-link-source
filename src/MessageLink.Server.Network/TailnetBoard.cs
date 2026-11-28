@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// What the server's tailnet door last reported for the server's own page (SWITCHBOARD.md 4.7; helpers/Tailnet/door/page.go): its state, the sign-in link while
+/// What the server's tailnet door last reported for the server's own page (helpers/Tailnet/door/page.go): its state, the sign-in link while
 /// it needs one, its name and address, the owner it lets in, key expiry, Tailnet Lock, and what the tailnet's access rules let reach it. Held in memory for the page,
 /// which only its signed-in owner sees from home, and never logged: the link decides whose tailnet the server joins, and the owner's login is a name.
 /// </summary>
@@ -71,7 +71,7 @@ internal sealed record TailnetPhone(string Name, string? Address = null, string?
 }
 
 /// <summary>
-/// Where the door's reports wait for the page: made before either (the network host starts first), given to both. <see cref="Enabled"/> says whether the server
+/// Where the door's reports wait for the page: made before either (the network server starts first), given to both. <see cref="Enabled"/> says whether the server
 /// was started with its tailnet door (<c>MESSAGES_TAILNET=1</c>); a server without it shows the page how to turn it on.
 /// </summary>
 internal sealed class TailnetBoard(bool enabled, int port = MessageLink.Protocol.NetworkEndpoint.DefaultPort)
@@ -83,13 +83,13 @@ internal sealed class TailnetBoard(bool enabled, int port = MessageLink.Protocol
     public bool Enabled => enabled;
 
     /// <summary>
-    /// The door turned on or off from the page, on a host that can (the Windows server, SWITCHBOARD.md 10.7: it keeps the choice in <c>Server\network.json</c> and starts
+    /// The door turned on or off from the page, on a server that can (the Windows server: it keeps the choice in <c>Server\network.json</c> and starts
     /// or stops the door at once); null where it is a setting of the install (Docker's <c>MESSAGES_TAILNET</c>), which the page then explains instead. False when
     /// the change could not be made.
     /// </summary>
     public Func<bool, bool>? Turn { get; set; }
 
-    /// <summary>Said by the host that turns the door on or off (<see cref="Turn"/>).</summary>
+    /// <summary>Said by the server that turns the door on or off (<see cref="Turn"/>).</summary>
     public void SetEnabled(bool on)
     {
         enabled = on;

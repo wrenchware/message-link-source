@@ -2,7 +2,7 @@ namespace MessageLink.Core.Services;
 
 /// <summary>
 /// The name a caller has already chosen for the mutation it is about to make. The outbox gives each send its operation id when the send is drawn, not when
-/// the answer is lost, so what it saves for the next launch (<c>InterruptedSends</c>) can ask the host's journal what became of a send that was in flight when the
+/// the answer is lost, so what it saves for the next launch (<c>InterruptedSends</c>) can ask the server's journal what became of a send that was in flight when the
 /// app was killed. A port that stands in for a host over a connection (the protocol's proxy) uses it as the clientOpId of the one mutation it then makes; a port
 /// that runs in this process never looks. Taken once: a second mutation made under the same plan gets a name of its own, so two mutations never share one.
 /// </summary>

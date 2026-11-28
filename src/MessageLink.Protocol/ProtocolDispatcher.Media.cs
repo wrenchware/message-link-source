@@ -4,11 +4,11 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// The media methods of the host (SWITCHBOARD.md 2.4c): uploads into the UploadStore, sends that claim them, descriptions of a file
+// The media methods of the host: uploads into the UploadStore, sends that claim them, descriptions of a file
 // checked without its bytes, and media read in chunks.
 public sealed partial class ProtocolDispatcher
 {
-    /// <summary>The most a saved copy (<c>IAttachmentBackend.CopyToAsync</c>) may hold in the host's memory while its chunks are read.</summary>
+    /// <summary>The most a saved copy (<c>IAttachmentBackend.CopyToAsync</c>) may hold in the server's memory while its chunks are read.</summary>
     public const long MaxCopyBytes = 256L * 1024 * 1024;
 
     private static ProtocolException Invalid(string sentence = "The request's params are missing or not valid.") =>
@@ -43,7 +43,7 @@ public sealed partial class ProtocolDispatcher
         new(meta.FileName, meta.MimeType, meta.Length,
             _ => Task.FromException<Stream>(new NotSupportedException("This file is described, not uploaded.")), meta.IsVoiceNote, meta.DurationSeconds);
 
-    // What a send of uploaded files is checked for at the door, before the journal records the operation: that the host can hold
+    // What a send of uploaded files is checked for at the door, before the journal records the operation: that the server can hold
     // uploads at all and the shape of the list. Whether the uploads are there is decided when the send claims them, inside the
     // journal, so a repeat of a send that already ran is answered with its first answer (the upload it used is long gone) instead
     // of being refused.
@@ -60,7 +60,7 @@ public sealed partial class ProtocolDispatcher
 
     /// <summary>
     /// The most media fetches one connection runs at once. The cache bounds what it keeps, not fetches still running: without this, a client could start
-    /// as many whole-file reads as it has requests in flight (each up to <see cref="MaxCopyBytes"/>) and take the host's memory. Chunks of one item share
+    /// as many whole-file reads as it has requests in flight (each up to <see cref="MaxCopyBytes"/>) and take the server's memory. Chunks of one item share
     /// its one fetch, so only distinct items wait here.
     /// </summary>
     public const int MaxMediaFetches = 4;
@@ -101,7 +101,7 @@ public sealed partial class ProtocolDispatcher
         return sink.ToArray();
     }
 
-    // A memory stream that refuses to grow past its limit, so one copy cannot take the host's memory.
+    // A memory stream that refuses to grow past its limit, so one copy cannot take the server's memory.
     private sealed class LimitedMemory(long limit) : MemoryStream
     {
         private void Check(long count) { if (Length + count > limit) throw new IOException("The file is larger than the host reads through."); }

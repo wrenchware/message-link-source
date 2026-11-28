@@ -12,7 +12,7 @@ using static MessageLink.Server.HistoryParts;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The list rows the feed serves (SWITCHBOARD.md stage 9, B1 and B2): the services' own rows as last read, each built with its last message from the copy,
+/// The list rows the feed serves (B1 and B2): the services' own rows as last read, each built with its last message from the copy,
 /// kept in the store and announced as they change. Rows are built again a moment after an event names them, and the whole list is read on a reconnect and
 /// by the walk.
 /// </summary>
@@ -23,7 +23,7 @@ internal sealed partial class HistoryRows(HistoryCopy copy, HistoryDatabase db, 
     // more than a few seconds old, as its poll does.
     private static readonly long ListReadEvery = (long)TimeSpan.FromMinutes(10).TotalMilliseconds;
 
-    // The services' own list rows as last read, which the served rows are built from (stage 9, B2).
+    // The services' own list rows as last read, which the served rows are built from.
     private readonly ConcurrentDictionary<string, ChatSummary> listed = new(StringComparer.Ordinal);
     // Rows to build again soon: true to read the service's row first, false to build again from the one held.
     private readonly ConcurrentDictionary<string, bool> rowsDue = new(StringComparer.Ordinal);

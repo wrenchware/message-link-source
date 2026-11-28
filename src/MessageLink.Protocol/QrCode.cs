@@ -4,8 +4,8 @@ using System.Text;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// A QR code (ISO/IEC 18004) of some text in byte mode, as the server's page and Manage server draw a join code (<see cref="JoinLink"/>, SWITCHBOARD.md 10.4) and the
-/// Tailscale sign-in link (10.8). Made here rather than by a library or a script: the page runs no script and loads nothing from elsewhere, so the code is drawn by the
+/// A QR code (ISO/IEC 18004) of some text in byte mode, as the server's page and Manage server draw a join code (<see cref="JoinLink"/>) and the
+/// Tailscale sign-in link. Made here rather than by a library or a script: the page runs no script and loads nothing from elsewhere, so the code is drawn by the
 /// server as SVG. The smallest version that holds the text at the asked error correction is used, then the mask with the lowest penalty.
 /// </summary>
 public sealed class QrCode

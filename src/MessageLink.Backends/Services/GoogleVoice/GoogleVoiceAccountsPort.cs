@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.GoogleVoice;
 
 // The Voice accounts behind IGoogleVoiceAccounts, so a window (or a remote client, later) manages them without holding
-// GoogleVoiceAccounts (SWITCHBOARD.md 2.6a). Every call is the manager's own; nothing here decides anything.
+// GoogleVoiceAccounts. Every call is the manager's own; nothing here decides anything.
 internal sealed class GoogleVoiceAccountsPort(GoogleVoiceAccounts voice) : IGoogleVoiceAccounts
 {
     public IReadOnlyList<GoogleVoiceAccountState> Accounts => [.. voice.Accounts.Select(Snapshot)];

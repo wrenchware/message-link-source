@@ -11,7 +11,7 @@ using MessageLink.Server.Linux;
 namespace MessageLink.Server.Windows;
 
 /// <summary>
-/// What the Windows server listens on besides its pipe (SWITCHBOARD.md 10.7, the Windows half of 4.7), read from <c>&lt;root&gt;\Server\network.json</c> at each start:
+/// What the Windows server listens on besides its pipe (the Windows half of the tailnet door), read from <c>&lt;root&gt;\Server\network.json</c> at each start:
 /// the port of its page and door on 127.0.0.1, and whether its own door on the owner's tailnet runs (off until turned on: a node on Tailscale is the owner's choice),
 /// and under what name. A file that is not there or cannot be read is the defaults; nothing here is secret.
 /// </summary>
@@ -72,7 +72,7 @@ internal static class TailnetNames
 }
 
 /// <summary>
-/// The Windows server's door on the network (SWITCHBOARD.md 10.7): the same <see cref="NetworkHost"/> as Linux's, on 127.0.0.1 only, with its page (opened from Messages
+/// The Windows server's door on the network: the same <see cref="NetworkServer"/> as Linux's, on 127.0.0.1 only, with its page (opened from Messages
 /// with a one-time code, <see cref="LocalPageLink"/>), pairing and asking to join for phones, pushes, the server's backup to a folder of the person's, and the tailnet
 /// door (<c>messages-tailnet.exe</c>, Tailscale in userspace) when it is turned on. What is secret is kept in <c>&lt;root&gt;\Server\Keys</c>: the certificate and its
 /// key, the page's key, the push project; the page's password and the door's node state sealed to the user with DPAPI. A port that is taken leaves the pipe serving and
@@ -82,12 +82,12 @@ internal sealed class ServerNetwork : IAsyncDisposable
 {
     public const string PagePasswordFile = "page-password.protected";
 
-    private readonly NetworkHost host;
+    private readonly NetworkServer host;
     private readonly DoorSwitch doors;
 
     private readonly string relay;
 
-    private ServerNetwork(NetworkHost host, DoorSwitch doors, string relay) { this.host = host; this.doors = doors; this.relay = relay; }
+    private ServerNetwork(NetworkServer host, DoorSwitch doors, string relay) { this.host = host; this.doors = doors; this.relay = relay; }
 
     public int Port => host.Port;
 
@@ -153,7 +153,7 @@ internal sealed class ServerNetwork : IAsyncDisposable
         return password;
     }
 
-    public static async Task<ServerNetwork?> StartAsync(ProtocolHost protocolHost, MessageLink.Server.Backup.ServerBackupService? serverBackup, string root, IStateProtector protector,
+    public static async Task<ServerNetwork?> StartAsync(ProtocolServer protocolServer, MessageLink.Server.Backup.ServerBackupService? serverBackup, string root, IStateProtector protector,
         Action<string> log, CancellationToken stop, Func<string, bool>? restart = null)
     {
         var authentication = new NativeAuthenticationHandoff(root, protector, id => OpenAuthentication(id, root), log, stop);
@@ -164,7 +164,7 @@ internal sealed class ServerNetwork : IAsyncDisposable
         // door beside the server reaches.
         var relay = RelaySocket(AppPaths.InstanceSuffix);
         var tailnet = new TailnetBoard(settings.Tailnet, settings.Port);
-        var backups = serverBackup is { } backup && protocolHost.Services.Admin is { } admin
+        var backups = serverBackup is { } backup && protocolServer.Services.Admin is { } admin
             ? new ServerPageBackups(backup, async ct => (await admin.AccountsAsync(ct).ConfigureAwait(false)).Count, async ct =>
             {
                 int signedOut = 0, left = 0;
@@ -184,11 +184,11 @@ internal sealed class ServerNetwork : IAsyncDisposable
             // window open the server itself, starts again.
             restart ?? (_ => false))
             : null;
-        NetworkHost network;
+        NetworkServer network;
         try
         {
             var restored = await MessageLink.Server.Backup.RestoredMark.LoadAsync(Path.Combine(root, MessageLink.Server.Backup.RestoredMark.FileName), protector).ConfigureAwait(false);
-            network = await NetworkHost.StartAsync(protocolHost, new NetworkHostOptions(root, protector, log)
+            network = await NetworkServer.StartAsync(protocolServer, new NetworkServerOptions(root, protector, log)
             {
                 // This PC only: phones reach it through the tailnet door, never a port on the home network.
                 BindAddress = "127.0.0.1", Port = settings.Port, KeysFolder = keys,
@@ -200,7 +200,7 @@ internal sealed class ServerNetwork : IAsyncDisposable
                 SealTlsKey = true,
                 // Connect on the page opens the native sign-in on this desktop, through Messages (the server draws nothing).
                 DesktopSignIn = _ => false,
-                DesktopAccountSignIn = (service, slot, authorized) => protocolHost.NativeAuthentication is { } select
+                DesktopAccountSignIn = (service, slot, authorized) => protocolServer.NativeAuthentication is { } select
                     ? authentication.StartAsync(ct => select(service, slot, ct), authorized) : Task.FromResult(NativeAuthenticationStart.Refused),
                 RelaySocket = relay, Tailnet = tailnet,
                 Push = FirebaseTransport.TryLoad(push, log), PushFolder = push,
@@ -236,7 +236,7 @@ internal sealed class ServerNetwork : IAsyncDisposable
     }
 
     /// <summary>
-    /// The tailnet door, on or off as the page's switch says (SWITCHBOARD.md 10.7): the choice written to <c>Server\network.json</c> first, so a failed start is still the
+    /// The tailnet door, on or off as the page's switch says: the choice written to <c>Server\network.json</c> first, so a failed start is still the
     /// person's choice at the next start, then the door started or stopped. One change at a time.
     /// </summary>
     internal sealed class DoorSwitch(string root, ServerNetworkSettings settings, string keys, string relay, TailnetBoard board, Action<string> log)

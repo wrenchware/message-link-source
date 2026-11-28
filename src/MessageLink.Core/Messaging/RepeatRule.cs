@@ -88,7 +88,7 @@ public sealed record RepeatRule(int Days, int Minute)
 }
 
 /// <summary>
-/// A repeating scheduled send, as the server keeps it (one <c>repeat:</c> row each, written by the host alone). NextDue is the next time it fires;
+/// A repeating scheduled send, as the server keeps it (one <c>repeat:</c> row each, written by the server alone). NextDue is the next time it fires;
 /// LastAt and LastOutcome (<c>sent</c>, <c>skipped</c>, <c>failed</c>) say what the last time did.
 /// </summary>
 public sealed record RepeatingSend(string Id, string ChatId, string Text, int Days, int Minute, DateTimeOffset CreatedAt, DateTimeOffset NextDue,

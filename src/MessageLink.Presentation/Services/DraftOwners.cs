@@ -20,7 +20,7 @@ public sealed class DraftOwners
     /// <summary>The category of the rows noting who owns what (the attribution marker, the conversations taken over, the accounts seen); the id of the last.</summary>
     public const string OwnerCategory = "draft-owner", KnownScopesId = "scopes";
     private const string MarkerCategory = OwnerCategory, MarkerId = "marker";
-    private readonly IHostIdentity identity;
+    private readonly IServerIdentity identity;
     private readonly PrivateState? state;
     private readonly Action<string>? log;
     private readonly SemaphoreSlim claiming = new(1);
@@ -29,7 +29,7 @@ public sealed class DraftOwners
     private bool hiddenLogged;
     private DraftOwnerMarker? marker;
 
-    public DraftOwners(IHostIdentity identity, IMessengerAccount? messenger = null, PrivateState? state = null, Action<string>? log = null)
+    public DraftOwners(IServerIdentity identity, IMessengerAccount? messenger = null, PrivateState? state = null, Action<string>? log = null)
     {
         this.identity = identity; this.state = state; this.log = log;
         // Any change of a sign-in or of the conversations is a reason to look again; only a different answer is announced.
@@ -45,7 +45,7 @@ public sealed class DraftOwners
 
     /// <summary>
     /// The Messenger account as last read (a one-way scope, never an id), or null when none is signed in or the account could
-    /// not be told apart (the host names an account only when exactly one is signed in).
+    /// not be told apart (the server names an account only when exactly one is signed in).
     /// </summary>
     public string? Messenger => Volatile.Read(ref scope);
 
@@ -269,7 +269,7 @@ public sealed class DraftOwners
     // ---- Drafts saved before they were filed by account ----
     //
     // Those rows sit under the profile alone, so nothing says whose they were. They are attributed once, to the Messenger
-    // account signed in the first time Messenger's conversations are listed while exactly one is (the host names none
+    // account signed in the first time Messenger's conversations are listed while exactly one is (the server names none
     // otherwise): until then they wait, hidden, and every run and every sign-in looks again. Once attributed they are not
     // attributed again. They are never deleted: the originals stay stored, and a note beside each says it was taken over, so
     // a draft the account has since sent or cleared does not come back from the original.

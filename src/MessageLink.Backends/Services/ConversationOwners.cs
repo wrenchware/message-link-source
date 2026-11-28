@@ -41,7 +41,7 @@ internal sealed class ConversationOwners
         Unowned = new UnownedConversations(log);
     }
 
-    /// <summary>The added accounts, once the host has them: each service reads its account's backend from here.</summary>
+    /// <summary>The added accounts, once the server has them: each service reads its account's backend from here.</summary>
     internal ProviderAccounts? Accounts { get; set; }
 
     /// <summary>Every service, in ServiceTags.All's order.</summary>

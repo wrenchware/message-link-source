@@ -23,7 +23,7 @@ public sealed record GoogleSimChip(string Label, string? Color)
 }
 
 /// <summary>
-/// One cookie of the Google sign-in browser, as that browser held it, so a host can rebuild a profile of its own (SWITCHBOARD.md 5.4). <paramref name="Domain"/> has no
+/// One cookie of the Google sign-in browser, as that browser held it, so a host can rebuild a profile of its own. <paramref name="Domain"/> has no
 /// leading dot; <paramref name="HostOnly"/> says whether the cookie belongs to that host alone (accounts.google.com's own, every <c>__Host-</c> cookie) or to the
 /// domain and its subdomains. <paramref name="SameSite"/> is None, Lax or Strict, or null when the browser did not say; <paramref name="Expires"/> is Unix seconds,
 /// or null for a session cookie.
@@ -41,7 +41,7 @@ public sealed record GoogleKnownPerson(string Id, string NativeId, bool Self);
 public sealed record GoogleKnownChat(string Id, bool Group, IReadOnlyList<GoogleKnownPerson> Participants);
 
 /// <summary>
-/// The Google Messages account, for any client (SWITCHBOARD.md 2.6). The Google sign-in window and its WebView2 are the
+/// The Google Messages account, for any client. The Google sign-in window and its WebView2 are the
 /// client's: it hands the cookies it captured, and a progress sink for the pairing emoji, to <see cref="SignInAsync"/>, and
 /// the host owns the session from then on. When to renew, and how, stays in the host's GoogleSignInKeeper.
 /// </summary>
@@ -77,7 +77,7 @@ public interface IGoogleMessagesAccount
 
     /// <summary>
     /// The same sign-in, also handing over every Google cookie the sign-in browser held (<see cref="GoogleProfileCookie"/>), for a host that keeps a browser
-    /// profile of its own to renew from (SWITCHBOARD.md 5.4). A port that keeps no profile ignores them, which is what this default does: the pairing needs only
+    /// profile of its own to renew from. A port that keeps no profile ignores them, which is what this default does: the pairing needs only
     /// <paramref name="cookies"/>. Only a client of a server sends any.
     /// </summary>
     Task SignInAsync(IReadOnlyDictionary<string, string> cookies, IProgress<string> pairingEmoji, CancellationToken cancellationToken, bool asNewDevice,

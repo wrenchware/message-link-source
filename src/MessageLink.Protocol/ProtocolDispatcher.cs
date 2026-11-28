@@ -14,7 +14,7 @@ namespace MessageLink.Protocol;
 /// exactly one <c>res</c> for it. Requests run at once, each on its own task, so a slow phone read never holds up
 /// another call. A <c>cancel</c> signals the request's token and nothing more: a request that had not finished answers
 /// <c>cancelled</c>, one that had answers its result (a backend that ignores its token still gets to answer).
-/// Errors reach the wire only through <see cref="ProtocolErrors.From"/>, so no exception message leaves the host. A mutation
+/// Errors reach the wire only through <see cref="ProtocolErrors.From"/>, so no exception message leaves the server. A mutation
 /// goes through the <see cref="OperationJournal"/>, so a repeat of the same client operation id is answered, never done twice.
 /// </summary>
 public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolServices services, string appVersion,
@@ -42,7 +42,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
     private sealed record Route(Type? Params, Type Result, Run? Run, Prepare? Prepare = null, Own? Own = null, bool Settles = false);
 
     /// <summary>
-    /// What makes a mutation happen at most once. A host that serves more than one connection passes the same journal to each
+    /// What makes a mutation happen at most once. A server that serves more than one connection passes the same journal to each
     /// dispatcher, so a client that reconnects finds the operation it started; a dispatcher given none keeps its own.
     /// </summary>
     public OperationJournal Journal { get; } = journal ?? new OperationJournal(log: log);
@@ -82,7 +82,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
             foreach (var (id, source) in running)
                 if (outliving.ContainsKey(id)) source.CancelAfter(OutlivingGrace); else source.Cancel();
             await EndFeedAsync().ConfigureAwait(false);
-            // What this connection stated no longer counts (HostClientState), nor its version.
+            // What this connection stated no longer counts (ServerClientState), nor its version.
             EndClientState();
             // The media this connection was reading: its wake held the bytes for up to 30 s after the close, and each reconnect made another (review, 2026-11-18).
             readCache.Dispose();
@@ -224,8 +224,8 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
     // The state as this connection's version can read it. A client below 16 has no "deviceMissing" among the encrypted states, and the word in a state frame would make the whole frame
     // unreadable to it (it would keep no state at all). It is given Down: encrypted conversations are on and carry nothing, which is true, says "can't send or receive here right now" without
     // claiming Facebook removed the device (DeviceGone) and without the "turn it on again to register" prompt that Facebook's removal gets, and is never the healthy "On" that Ready and Unknown show.
-    // The host's own state, and a client of 16, keep the real word.
-    private HostState ForConnection(HostState state) =>
+    // The server's own state, and a client of 16, keep the real word.
+    private ServerState ForConnection(ServerState state) =>
         negotiated < ProtocolVersion.AccountMove && state.Messenger is { Encrypted: MessengerEncryption.DeviceMissing } messenger
             ? state with { Messenger = messenger with { Encrypted = MessengerEncryption.Down } }
             : state;
@@ -300,7 +300,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
 
     /// <summary>
     /// The most requests one connection may have accepted and not yet answered. Each runs on a task of its own and may hold a response in memory until
-    /// the peer reads it, so a connection that asks without end (or never reads what it is sent) is held to this rather than to the host's memory. Real
+    /// the peer reads it, so a connection that asks without end (or never reads what it is sent) is held to this rather than to the server's memory. Real
     /// use is a few dozen at a burst, a stress run of 200 at once among them; a request over it is refused, before anything runs, as <c>unavailable</c> and transient, the
     /// same refusal and the same standing as one made while the server is closing: it never reached the journal, so a mutation refused this way
     /// definitely did not happen. One that was accepted is never dropped.
@@ -363,7 +363,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
                 await SendAsync(ResponseFrame.Failure(request.Id, new ProtocolError(ProtocolErrorCodes.InvalidRequest, "Say hello first."))).ConfigureAwait(false);
                 break;
             case RequestFrame request:
-                // Before anything is run: a request refused for this is one the journal never saw, so its caller may ask again of the next host. The
+                // Before anything is run: a request refused for this is one the journal never saw, so its caller may ask again of the next server. The
                 // check and the count are one step (TryBeginAnswer), so a request is either waited for by a drain or refused by it.
                 var admission = TryBeginAnswer();
                 if (admission != Admission.Accepted)
@@ -395,12 +395,12 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
     }
 
     /// <summary>
-    /// The highest protocol version this connection offers: <see cref="ProtocolVersion.Current"/>, unless a host is made to speak less (the harness's stand-in
-    /// for a host from before a version, which a client must still work with).
+    /// The highest protocol version this connection offers: <see cref="ProtocolVersion.Current"/>, unless a server is made to speak less (the harness's stand-in
+    /// for a server from before a version, which a client must still work with).
     /// </summary>
     public int HighestProtocol { get; init; } = ProtocolVersion.Current;
 
-    /// <summary>Told each accepted hello: the network host notes what the device runs, for its page.</summary>
+    /// <summary>Told each accepted hello: the network server notes what the device runs, for its page.</summary>
     public Action<HelloFrame>? Greeted { get; init; }
 
     private async Task GreetAsync(HelloFrame hello)
@@ -414,7 +414,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         }
         greeted = true;
         negotiated = version;
-        // Before the answer, so the host goes by this connection's version before it can ask for anything.
+        // Before the answer, so the server goes by this connection's version before it can ask for anything.
         services.Connections?.Opened(this, version);
         // The peer's version word is logged only when it looks like one.
         log?.Invoke($"protocol hello version={version} app={(VersionWord().IsMatch(hello.App) ? hello.App : "other")}");
@@ -434,7 +434,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         {
             if (!Routes.TryGetValue(request.Method, out route))
                 throw new ProtocolException(new ProtocolError(ProtocolErrorCodes.UnknownMethod, "The server does not offer that method."));
-            // A method newer than this connection's version is not supported to it, before anything of the request is read (SWITCHBOARD.md, "Client compatibility").
+            // A method newer than this connection's version is not supported to it, before anything of the request is read ("Client compatibility").
             if (negotiated < ProtocolMethods.SinceOf(request.Method)) throw new NotSupportedException();
             // The result is serialized once, straight into the frame, rather than into a JSON tree and out of it again.
             if (route.Own is { } own) response = Frames.SerializeResult(request.Id, await own(this, request, after, source.Token).ConfigureAwait(false));
@@ -455,7 +455,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         }
         running.TryRemove(request.Id, out _);
         outliving.TryRemove(request.Id, out _);
-        // Only a method this host knows is named in the measurements; whatever else a peer sends is not echoed anywhere.
+        // Only a method this server knows is named in the measurements; whatever else a peer sends is not echoed anywhere.
         if (route is not null) stats?.Record(request.Method, Stopwatch.GetElapsedTime(started));
         // After a failure too: what an action did before it failed (a sign-in that expired) is in the state the caller reads next.
         if (route is { Settles: true }) await SettleAsync().ConfigureAwait(false);
@@ -524,7 +524,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
             return JsonSerializer.SerializeToUtf8Bytes<TResult>(await call(target, parameters, cancellationToken).ConfigureAwait(false), ProtocolJson.Options);
         });
 
-    // The whole history's reads (stage 8): only on a host that keeps one.
+    // The whole history's reads: only on a server that keeps one.
     private static Route WholeHistoryRoute<TParams, TResult>(Func<IWholeHistory, TParams, CancellationToken, Task<TResult>> call)
         where TParams : class
         => new(typeof(TParams), typeof(TResult), null, Own: async (connection, request, _, cancellationToken) =>
@@ -543,7 +543,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         });
 
     // A read that needs more of the host than its port (the host's own restore, for the calls that connect Google Messages).
-    private static Route OfHost<TPort, TResult>(Func<ProtocolServices, TPort?> port, Func<ProtocolServices, TPort, CancellationToken, Task<TResult>> call)
+    private static Route OfServer<TPort, TResult>(Func<ProtocolServices, TPort?> port, Func<ProtocolServices, TPort, CancellationToken, Task<TResult>> call)
         where TPort : class
         => new(null, typeof(TResult), async (services, _, _, cancellationToken) =>
         {
@@ -612,8 +612,8 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
 
     private static readonly Dictionary<string, Route> Routes = AddHermesRoutes(AddPhoneContactsRoutes(AddBackupRoutes(AddPushRoutes(AddAdminRoutes(AddHostLogsRoutes(AddStateImportRoutes(AddScheduledRoutes(AddSharedStateRoutes(AddDeviceRoutes(AddShutdownRoutes(AddClientStateRoutes(AddIncomingRoutes(AddDiagnosticsRoutes(AddReadingRoutes(AddAccountRoutes(new(StringComparer.Ordinal)
     {
-        [ProtocolMethods.BackendDiscover] = OfHost<IChatBackend, BackendInfo>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.DiscoverAsync(ct).ConfigureAwait(false); }),
-        [ProtocolMethods.AccountsList] = OfHost<IChatBackend, IReadOnlyList<ChatAccount>>(s => s.Backend, async (services, port, ct) => { await WaitForHostGoogleAsync(services, ct).ConfigureAwait(false); return await port.GetAccountsAsync(ct).ConfigureAwait(false); }),
+        [ProtocolMethods.BackendDiscover] = OfServer<IChatBackend, BackendInfo>(s => s.Backend, async (services, port, ct) => { await WaitForServerGoogleAsync(services, ct).ConfigureAwait(false); return await port.DiscoverAsync(ct).ConfigureAwait(false); }),
+        [ProtocolMethods.AccountsList] = OfServer<IChatBackend, IReadOnlyList<ChatAccount>>(s => s.Backend, async (services, port, ct) => { await WaitForServerGoogleAsync(services, ct).ConfigureAwait(false); return await port.GetAccountsAsync(ct).ConfigureAwait(false); }),
         [ProtocolMethods.ChatsList] = Of<IChatReader, ChatsListParams, Page<ChatSummary>>(s => s.Chats, (port, p, ct) => port.GetChatsAsync(p.OlderThan, ct)),
         [ProtocolMethods.ChatsSync] = new(typeof(ChatsSyncParams), typeof(ChatsSyncResult), null, Own: async (connection, request, _, ct) =>
         {
@@ -662,7 +662,7 @@ public sealed partial class ProtocolDispatcher(IFrameChannel channel, ProtocolSe
         [ProtocolMethods.SnoozesSet] = Mutation<IChatSnoozes, SnoozeSetParams>(s => s.Snoozes, (port, p, ct) => port.SetAsync(p.Profile, p.ChatId, p.Until, ct)),
 
         // Files to send: the upload is claimed when the send starts and deleted when it ends, however it ended. A send that names an
-        // upload this host does not hold finished and unclaimed fails invalid_request, before anything is asked of a provider.
+        // upload this server does not hold finished and unclaimed fails invalid_request, before anything is asked of a provider.
         [ProtocolMethods.AttachmentsSend] = Mutation<IAttachmentBackend, AttachmentSendParams, SendReceipt>(s => s.Attachments,
             async (s, port, p, ct) =>
             {

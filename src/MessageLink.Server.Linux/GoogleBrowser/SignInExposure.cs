@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// The sign-in's display key (SWITCHBOARD.md 5.4). The display the person's browser draws on is closed to every client that has no key: Xvfb is started with <c>-auth</c> on a file in the
+/// The sign-in's display key. The display the person's browser draws on is closed to every client that has no key: Xvfb is started with <c>-auth</c> on a file in the
 /// browser's own 0700 profile folder (<see cref="ChromiumLauncher.SignInScript"/>), holding one MIT-MAGIC-COOKIE-1 of 16 random bytes made for the run, and the browser is told the file by
 /// XAUTHORITY. The entry is for any address and any display number (family 0xFFFF, both empty), because the display number is only known once Xvfb has picked it. The cookie is never
 /// logged, and the file is deleted when the run ends. Residual: other processes of the server's own account (the helpers, a compromised renderer under --no-sandbox) can read this
@@ -110,7 +110,7 @@ internal sealed class SignInGuard
 }
 
 /// <summary>
-/// What a browser keeps of a page it has shown that a kept profile does not need (SWITCHBOARD.md 5.4). A real Chrome, measured by the smoke run (<c>--chromium-signin-smoke</c>), keeps
+/// What a browser keeps of a page it has shown that a kept profile does not need. A real Chrome, measured by the smoke run (<c>--chromium-signin-smoke</c>), keeps
 /// the text typed into a form field in its saved session (<c>Default/Sessions</c>, for restoring the tab) even with autofill and password saving off in <c>Preferences</c>; its history,
 /// autofill, saved-login, top-sites and address-prediction stores could hold an address or a typed value too. After the browser has closed, before the profile is kept, these are removed.
 /// The cookie store, <c>Local State</c> and <c>Preferences</c> (all a renewal loads) stay. Deleting is best effort: a file that cannot be deleted is left, and the profile is still private to

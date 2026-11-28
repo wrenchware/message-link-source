@@ -1,9 +1,9 @@
 namespace MessageLink.Server;
 
 /// <summary>
-/// Holds a feed back until the host is allowed to connect. The event log runs its feed the moment a client subscribes, and Google's feed
+/// Holds a feed back until the server is allowed to connect. The event log runs its feed the moment a client subscribes, and Google's feed
 /// connects the saved pairing by itself, so without <c>--restore</c> a client attached to a server on a real data root would have started the
-/// very connection the flag keeps off. Opened by the restore, after it has started the other providers (SWITCHBOARD.md 1.7d).
+/// very connection the flag keeps off. Opened by the restore, after it has started the other providers.
 /// <para>
 /// Google's own feed, the only one that connects anything by being run, can be held by a gate of its own within this one (<c>connecting</c>). A start whose
 /// restore is skipped or held then lets the others go (<see cref="OpenPassive"/>): they only pass on what their accounts already do, so Hermes and an account

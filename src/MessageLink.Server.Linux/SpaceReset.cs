@@ -4,7 +4,7 @@ using MessageLink.Server;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// <c>messages-server --reset-space</c> (SWITCHBOARD.md stage 6 slice 13d, chosen as a fresh start on moving day): removes the server's shared state, so a
+/// <c>messages-server --reset-space</c> (chosen as a fresh start on moving day): removes the server's shared state, so a
 /// PC can move its own choices into an empty space and the server adopts that PC's key. It removes every row of <c>Server/shared.db</c> (a new file with a new epoch and
 /// no rows takes its place, its <c>-wal</c> and <c>-shm</c> go) and <c>Server/space.protected</c> together, and nothing else: no session, no key, no paired device, no helper's
 /// data, no log. The shared state is a copy of what the person chose, which the PC (the in-process stores, never deleted) holds the other way round, so this is the one place a
@@ -12,7 +12,7 @@ namespace MessageLink.Server.Linux;
 /// replays it later, and a space that had forgotten the message had gone would send it a second time.
 /// </summary>
 /// <remarks>
-/// Only while the data folder's server is not running (it takes the same <see cref="HostLease"/> the server holds, so a running server, or another reset, refuses it),
+/// Only while the data folder's server is not running (it takes the same <see cref="ServerLease"/> the server holds, so a running server, or another reset, refuses it),
 /// and only with a person typing: standard input must be a terminal and the word <see cref="Confirmation"/> typed exactly. Anything else changes nothing. The new database
 /// is made beside and moved into place whole, and the key goes last, so a run that stops half way leaves the old database or the new one with its record (and perhaps a key
 /// over no rows, which the next reset finishes), never rows under no key or a list of retired ids lost. It prints plain
@@ -37,14 +37,14 @@ internal static class SpaceReset
         Path.Combine("Server", SharedSpace.FileName),
     ];
 
-    /// <param name="acquire">The server's own lease on the data folder (<see cref="HostLease.TryAcquire"/>); null means a server is running.</param>
+    /// <param name="acquire">The server's own lease on the data folder (<see cref="ServerLease.TryAcquire"/>); null means a server is running.</param>
     /// <param name="interactive">Whether standard input is a terminal with a person at it.</param>
     /// <param name="liveSends">How many scheduled messages and unsettled sends the shared state holds (<see cref="SharedStateStore.LiveSends"/>), null when it cannot be told.</param>
     /// <param name="retiredOf">The retired ids to carry over (<see cref="SharedStateStore.RetiredRows"/>), null when they cannot be told.</param>
-    public static Outcome Run(string root, Func<string, HostLease?> acquire, bool interactive, TextReader input, TextWriter output, Func<string, (int Scheduled, int Unsettled)?>? liveSends = null,
+    public static Outcome Run(string root, Func<string, ServerLease?> acquire, bool interactive, TextReader input, TextWriter output, Func<string, (int Scheduled, int Unsettled)?>? liveSends = null,
         Func<string, IReadOnlyList<(string Id, long At)>?>? retiredOf = null)
     {
-        HostLease? lease;
+        ServerLease? lease;
         try { lease = acquire(root); }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {

@@ -31,7 +31,7 @@ internal sealed class SkiaFrameEncoder : IFrameEncoder
 }
 
 /// <summary>
-/// What the person sees while they sign in to Google on the server's Chrome (SWITCHBOARD.md 5.4): the whole display, captured from the X server, as a JPEG, about ten times a second but only when it
+/// What the person sees while they sign in to Google on the server's Chrome: the whole display, captured from the X server, as a JPEG, about ten times a second but only when it
 /// changed (and once every few seconds regardless, so a client that missed one is not left with an old picture). The pictures go to the output as they are made and are never decoded again, written,
 /// logged or kept; the output keeps only the newest. What a picture shows (an address, a code, a password field) is the person's business, so nothing here counts or names it.
 /// </summary>

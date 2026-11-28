@@ -103,7 +103,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
         ConnectCoreAsync(cookies, cancellationToken, adoptLegacy, automatic: false);
 
     /// <summary>
-    /// Whether the host lets this account sign in at all (an added account the server still lists, ProviderAccounts). Null lets it. Asked under the connect lock, after any
+    /// Whether the server lets this account sign in at all (an added account the server still lists, ProviderAccounts). Null lets it. Asked under the connect lock, after any
     /// shutdown that was waiting for it, so a removal that closes the helper cannot be undone by a connect that had already passed the ports' check.
     /// </summary>
     internal Func<bool>? MayConnect { get; set; }
@@ -154,7 +154,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
                 if (closing || !ReferenceEquals(helper, started)) throw new OperationCanceledException("Messenger is closing.");
             }
             // Shutdown deliberately bypasses the gate, so it can close a connect still waiting on Facebook. A hold that came while the helper started recorded itself first and then shut
-            // down: asked again here, now that there is a helper to put down, so nothing is said to Facebook for an account the host has held.
+            // down: asked again here, now that there is a helper to put down, so nothing is said to Facebook for an account the server has held.
             if (MayConnect?.Invoke() == false) throw new InvalidOperationException("account_moved_away");
             StillOpen();
             // A new helper session has handed nothing out yet: what the last one named no longer says a picture is gone.
@@ -354,7 +354,7 @@ internal sealed partial class MessengerBackend(IStateProtector protector, Provid
     }
 
     // Every change of the state tells the account's listeners, whichever way it was learned: the helper announces each
-    // change as an "encrypted" event, and "counts" (Settings' refresh) can find one too. A host publishing its state
+    // change as an "encrypted" event, and "counts" (Settings' refresh) can find one too. A server publishing its state
     // to a client hears it only from this, so a change that stayed silent stayed unseen there until something else
     // happened to republish (2026-10-09: Connecting shown for a connection that had been ready for seconds).
     private MessengerEncryption SetEncryptedState(MessengerEncryption parsed)

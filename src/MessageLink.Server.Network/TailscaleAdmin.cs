@@ -9,7 +9,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// "Fix it for me" on the server's page (SWITCHBOARD.md 10.8, D9): with a Tailscale OAuth client the owner made once (scopes <c>devices:core</c> and <c>policy_file</c>,
+/// "Fix it for me" on the server's page: with a Tailscale OAuth client the owner made once (scopes <c>devices:core</c> and <c>policy_file</c>,
 /// both write), the server turns off key expiry for itself and each of the owner's Message Link phones and PCs, approves them where device approval is on, and adds an access rule
 /// letting the owner's devices reach its port, through Tailscale's API. It never signs for Tailnet Lock (signing stays on the owner's own trusted device) and never
 /// removes anything from the policy file: the rule is added only when missing, to the file as read (comments kept), and written back only if nobody changed it since

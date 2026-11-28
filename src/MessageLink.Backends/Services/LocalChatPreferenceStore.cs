@@ -16,7 +16,7 @@ public sealed class LocalChatPreferenceStore : ILocalChatPreferences
     // Still version 1: At and Until are added fields, so an older file reads as before and an older build reads a newer
     // file by ignoring them. A timed mute then reads there as a mute until turned off, which is the safe direction.
     // Internal, with Writing, Local, Read, Decode and Combine: a client of a Messages Server keeps the same entries as rows of its replica
-    // (ReplicaChatPreferences, SWITCHBOARD.md stage 6 slice 3), which must read and write exactly what a file holds.
+    // (ReplicaChatPreferences), which must read and write exactly what a file holds.
     internal sealed record Entry(int Version, bool Value, long? At = null, long? Until = null);
     // A permanent setting's file stays exactly {"Version":1,"Value":true}, as before.
     internal static readonly JsonSerializerOptions Writing = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };

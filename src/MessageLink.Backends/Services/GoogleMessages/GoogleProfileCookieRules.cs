@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.GoogleMessages;
 
 /// <summary>
-/// Which of the sign-in browser's cookies travel to a server, and which a server will seed (SWITCHBOARD.md 5.4). The client applies it as it collects and the
+/// Which of the sign-in browser's cookies travel to a server, and which a server will seed. The client applies it as it collects and the
 /// server applies it again as it receives, so a peer that sends more than it should gets no further than the rules: only Google's own domains, no more than
 /// <see cref="MaxCount"/> cookies and <see cref="MaxBytes"/> of them. The values are credentials; nothing here logs or throws with one.
 /// </summary>

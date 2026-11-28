@@ -79,11 +79,11 @@ public sealed class PrivateReadingGate : IReadStateWriter, ITypingService
 
     // Each is its own async method so the admission set here stays inside this call: an async method's changes to an
     // AsyncLocal are undone for its caller when it returns, and the inner call sees it from its first line.
-    // A writer that takes its admission as an argument (the protocol's proxy: an AsyncLocal does not cross the wire, SWITCHBOARD.md 2.6d)
+    // A writer that takes its admission as an argument (the protocol's proxy: an AsyncLocal does not cross the wire)
     // is told it here, and only here, so the one place that can say "admitted" is still this gate. The flag is also set, as it
     // always was, for whatever sits between the gate and the writer in this process.
-    // `explicitly` is whether the person asked for this read by name. It is the one thing the gate says that a host keeping its own view of the choice
-    // does not overrule: a host admits an automatic read only for a service it does not read privately itself (PrivateReadingHostReadState).
+    // `explicitly` is whether the person asked for this read by name. It is the one thing the gate says that a server keeping its own view of the choice
+    // does not overrule: a server admits an automatic read only for a service it does not read privately itself (PrivateReadingServerReadState).
     private async Task AdmitReadAsync(string chatId, string messageId, bool explicitly, CancellationToken cancellationToken)
     {
         admitted.Value = true;
@@ -99,8 +99,8 @@ public sealed class PrivateReadingGate : IReadStateWriter, ITypingService
     }
 
     /// <summary>
-    /// For the host end of an explicit admission (<see cref="PrivateReadingHostReadState"/>): runs <paramref name="call"/> as an admitted call. The
-    /// host does this only for a read its client said the person asked for by name, or a typing stop; see that class for what it trusts.
+    /// For the server end of an explicit admission (<see cref="PrivateReadingServerReadState"/>): runs <paramref name="call"/> as an admitted call. The
+    /// server does this only for a read its client said the person asked for by name, or a typing stop; see that class for what it trusts.
     /// </summary>
     internal static async Task RunAdmittedAsync(Func<Task> call)
     {

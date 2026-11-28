@@ -19,7 +19,7 @@ public static class HistoryMerge
     {
         if (saved is not null && saved.Chat.Id == fresh.Chat.Id && MergedConversations.IsMerged(fresh.Chat.Id) && fresh.UnavailableSources is { Count: > 0 } missing)
             return KeepUnavailable(saved, fresh, missing);
-        // Following a server's whole history (SWITCHBOARD.md stage 9, B3): one copy. The rows are the PC's copy of the server's, as far back as it holds,
+        // Following a server's whole history: one copy. The rows are the PC's copy of the server's, as far back as it holds,
         // never this screen's own older rows, which nothing corrects below the fresh window.
         if (!MergedConversations.IsMerged(fresh.Chat.Id) && fresh.Messages.Count > 0 && ServerCopy?.Invoke(fresh.Chat.Id) is { Messages.Count: > 0 } whole)
         {

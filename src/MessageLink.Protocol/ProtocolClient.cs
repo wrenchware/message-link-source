@@ -8,7 +8,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The caller's end of one connection: greets the host, sends a <c>req</c> for each call and completes it from the
+/// The caller's end of one connection: greets the server, sends a <c>req</c> for each call and completes it from the
 /// matching <c>res</c>. Many calls may be outstanding at once. Cancelling a call's token sends a <c>cancel</c> and the call
 /// still completes from the answer: <c>cancelled</c> becomes an <see cref="OperationCanceledException"/>, a result that
 /// had already been produced is returned.
@@ -17,15 +17,15 @@ namespace MessageLink.Protocol;
 /// Failures reach callers as the exceptions a direct call to the port would have raised (<see cref="ProtocolErrors.ToException"/>),
 /// with one exception: the protocol-level errors (invalid_request, unknown_method, protocol_unsupported, internal)
 /// become <see cref="BackendFailure.InvalidResponse"/> with a fixed sentence, because the interface never sees a
-/// <see cref="ProtocolException"/> and a host's own words are not shown for them. A closed connection fails what is outstanding
+/// <see cref="ProtocolException"/> and a server's own words are not shown for them. A closed connection fails what is outstanding
 /// and every later call with <see cref="BackendFailure.Unavailable"/>; a mutation that was outstanding when it closed is instead an
 /// unknown-outcome <see cref="SendException"/> (see <see cref="MutateAsync{TParams, TResult}"/>).
 /// <para>Made with a channel it has that one connection for its whole life. Made with a connector it makes a new connection after a
-/// loss (SWITCHBOARD.md 3.0c): in the background after a growing pause, and at once when a call finds the connection gone, though that
+/// loss: in the background after a growing pause, and at once when a call finds the connection gone, though that
 /// call still fails unavailable and nothing is queued behind a connection that is not there. A new connection says hello again; the
 /// event feed's owner subscribes again from the position it last applied (<see cref="RealtimeFeedProxy"/>). A mutation is never sent
 /// again on any connection. Those that were outstanding at the loss are asked about with <c>ops.status</c> once the new connection is
-/// up, and the host's answers come out of <see cref="Reconciled"/>.</para>
+/// up, and the server's answers come out of <see cref="Reconciled"/>.</para>
 /// </remarks>
 public sealed class ProtocolClient : IDisposable, IOperationOutcomes
 {
@@ -40,7 +40,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     private sealed class Waiter(string? operationId)
     {
         public TaskCompletionSource<ResponseFrame> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        /// <summary>The mutation this call carries, once its request may have reached the host; a read has none.</summary>
+        /// <summary>The mutation this call carries, once its request may have reached the server; a read has none.</summary>
         public string? OperationId { get; } = operationId;
         public volatile bool Sent;
     }
@@ -63,7 +63,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     private readonly Action<string>? log;
     private readonly int protocol;
     private readonly int minProtocol;
-    private readonly HostStateCache? cache;
+    private readonly ServerStateCache? cache;
     private readonly CancellationTokenSource stop = new();
     private readonly Lazy<Task<Link>> first;
     private volatile Link? link;
@@ -74,16 +74,16 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
 
     /// <summary>A client with one connection for its whole life: once it ends, every later call is unavailable.</summary>
     public ProtocolClient(IFrameChannel channel, string appVersion, string client = "windows", ProtocolCallStats? stats = null,
-        Action<string>? log = null, int protocol = ProtocolVersion.Current, int minProtocol = ProtocolVersion.Minimum, HostStateCache? cache = null)
+        Action<string>? log = null, int protocol = ProtocolVersion.Current, int minProtocol = ProtocolVersion.Minimum, ServerStateCache? cache = null)
         : this(null, channel, appVersion, client, stats, log, protocol, minProtocol, cache) { }
 
     /// <summary>A client that connects when first used and makes a new connection after it is lost. The connector fails fast when nothing is there to connect to.</summary>
     public ProtocolClient(Func<CancellationToken, Task<IFrameChannel>> connector, string appVersion, string client = "windows", ProtocolCallStats? stats = null,
-        Action<string>? log = null, int protocol = ProtocolVersion.Current, int minProtocol = ProtocolVersion.Minimum, HostStateCache? cache = null)
+        Action<string>? log = null, int protocol = ProtocolVersion.Current, int minProtocol = ProtocolVersion.Minimum, ServerStateCache? cache = null)
         : this(connector, null, appVersion, client, stats, log, protocol, minProtocol, cache) { }
 
     private ProtocolClient(Func<CancellationToken, Task<IFrameChannel>>? connector, IFrameChannel? channel, string appVersion, string client, ProtocolCallStats? stats,
-        Action<string>? log, int protocol, int minProtocol, HostStateCache? cache)
+        Action<string>? log, int protocol, int minProtocol, ServerStateCache? cache)
     {
         this.connector = connector; onlyChannel = channel; this.appVersion = appVersion; this.client = client; this.stats = stats;
         this.log = log; this.protocol = protocol; this.minProtocol = minProtocol; this.cache = cache;
@@ -104,7 +104,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     public TimeSpan HelloTimeout { get; init; } = TimeSpan.FromSeconds(10);
     /// <summary>The least time between one attempt's end and the next one a call asks for.</summary>
     public TimeSpan CallRetryInterval { get; init; } = TimeSpan.FromSeconds(1);
-    /// <summary>An operation the host says is still running is asked about again after this long for its first <see cref="RunningChecks"/> looks, then every <see cref="SlowCheckDelay"/>.</summary>
+    /// <summary>An operation the server says is still running is asked about again after this long for its first <see cref="RunningChecks"/> looks, then every <see cref="SlowCheckDelay"/>.</summary>
     public TimeSpan RunningCheckDelay { get; init; } = TimeSpan.FromSeconds(2);
     public int RunningChecks { get; init; } = 15;
     public TimeSpan SlowCheckDelay { get; init; } = TimeSpan.FromSeconds(10);
@@ -112,16 +112,16 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     public TimeSpan RunningGiveUp { get; init; } = TimeSpan.FromMinutes(3);
 
     /// <summary>
-    /// The application version the host must report in its hello; a host of any other is refused like one that speaks no protocol this client can
+    /// The application version the server must report in its hello; a server of any other is refused like one that speaks no protocol this client can
     /// (<see cref="VersionSentence"/>, <c>protocol refused reason=version</c>) and is not tried again. A server left running from another install is
-    /// replaced, not reached (SWITCHBOARD.md 3.2b). Left out, any host is accepted (the in-process loopback, where it cannot differ).
+    /// replaced, not reached. Left out, any host is accepted (the in-process loopback, where it cannot differ).
     /// </summary>
     public string? RequiredServerApp { get; init; }
 
-    /// <summary>The host was refused for its version: no connection will be tried again, and every call fails.</summary>
+    /// <summary>The server was refused for its version: no connection will be tried again, and every call fails.</summary>
     public bool Refused => refusal is not null;
 
-    /// <summary>The version the host chose, once the greeting is done.</summary>
+    /// <summary>The version the server chose, once the greeting is done.</summary>
     public int? Version { get; private set; }
 
     private int linkNumber;
@@ -146,18 +146,18 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     public event EventHandler? Connected;
 
     /// <summary>
-    /// A commit to the host's shared state (<see cref="EventKinds.Shared"/>), as its frame is read, on the connection's reader: a listener queues it and
+    /// A commit to the server's shared state (<see cref="EventKinds.Shared"/>), as its frame is read, on the connection's reader: a listener queues it and
     /// returns. It comes only while this connection has an event feed, and never through the feed's own items.
     /// </summary>
     public event EventHandler<SharedChange>? SharedChanged;
 
-    /// <summary>The host handed this connection's feed a resync, as its frame is read: whatever follows the feed may have missed something before it.</summary>
+    /// <summary>The server handed this connection's feed a resync, as its frame is read: whatever follows the feed may have missed something before it.</summary>
     public event EventHandler? FeedResynced;
 
-    /// <summary>The host's answer for a mutation that was outstanding when its connection was lost (<see cref="IOperationOutcomes"/>).</summary>
+    /// <summary>The server's answer for a mutation that was outstanding when its connection was lost (<see cref="IOperationOutcomes"/>).</summary>
     public event EventHandler<OperationOutcome>? Reconciled;
 
-    /// <summary>Greets the host, once; later calls return the same outcome. Calls connect by themselves, so this is for a host that wants to fail early.</summary>
+    /// <summary>Greets the server, once; later calls return the same outcome. Calls connect by themselves, so this is for a server that wants to fail early.</summary>
     public async Task ConnectAsync(CancellationToken cancellationToken = default) =>
         await LinkAsync(cancellationToken).ConfigureAwait(false);
 
@@ -249,7 +249,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     // straight after its own.
     private volatile bool lastRefusedForGood;
 
-    // What the connectors say when the host will refuse every attempt until a person does something: a token it does not accept (NetworkEndpoint, PipeHandshake),
+    // What the connectors say when the server will refuse every attempt until a person does something: a token it does not accept (NetworkEndpoint, PipeHandshake),
     // or a certificate that is not the one pinned. Nothing else: a network that failed, a host not yet up, no token to present or a pairing code that was paced
     // may answer differently the next time.
     internal static bool RefusedForGood(Exception failure) => failure is CertificateMismatchException or UnauthorizedAccessException;
@@ -268,7 +268,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     }
 
     /// <summary>
-    /// The host was just started and is expected any moment (the Windows app starting its own server, SWITCHBOARD.md 10.7): the background attempt need not wait out its
+    /// The server was just started and is expected any moment (the Windows app starting its own server): the background attempt need not wait out its
     /// pause, as when a call finds the connection gone, within <see cref="CallRetryInterval"/>. Nothing while connected or refused.
     /// </summary>
     public void Hurry()
@@ -277,7 +277,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         WakeReconnect();
     }
 
-    // A call found the connection gone: the background attempt need not wait out its pause, if the last one is not too recent. Not while the host refuses this
+    // A call found the connection gone: the background attempt need not wait out its pause, if the last one is not too recent. Not while the server refuses this
     // client for good: a call changes nothing about that, and the person's own pairing again is what wakes it (RetryRefused).
     private void WakeReconnect()
     {
@@ -302,7 +302,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     /// </summary>
     public static void RetryRefused() => RetryRefusedRequested?.Invoke();
 
-    // Jittered, so clients refused by one host at once do not keep arriving at once: three quarters to five quarters of the pause.
+    // Jittered, so clients refused by one server at once do not keep arriving at once: three quarters to five quarters of the pause.
     internal static TimeSpan Jittered(TimeSpan pause) => TimeSpan.FromTicks((long)(pause.Ticks * (0.75 + Random.Shared.NextDouble() * 0.5)));
 
     private async Task ReconnectAsync()
@@ -380,9 +380,9 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
 
     // ---- Operations outstanding at a loss ----
     //
-    // A mutation whose request may have reached the host when its connection ended is an unknown outcome for its caller, and it is never
-    // sent again. The host's journal knows what became of it, so once a connection is back it is asked (ops.status, a lookup that runs
-    // nothing) and the answer is given to whoever listens. An id the host has no record of (it restarted, or pruned it) stays unknown.
+    // A mutation whose request may have reached the server when its connection ended is an unknown outcome for its caller, and it is never
+    // sent again. The server's journal knows what became of it, so once a connection is back it is asked (ops.status, a lookup that runs
+    // nothing) and the answer is given to whoever listens. An id the server has no record of (it restarted, or pruned it) stays unknown.
 
     private readonly object rememberedGate = new();
     private readonly List<string> remembered = [];
@@ -403,7 +403,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     }
 
     /// <summary>
-    /// Adds operations an earlier run of the application left unknown (<c>InterruptedSends.OperationIds</c>) to those to ask the host about:
+    /// Adds operations an earlier run of the application left unknown (<c>InterruptedSends.OperationIds</c>) to those to ask the server about:
     /// now if connected, otherwise once connected. A lookup only; nothing is run or sent again.
     /// </summary>
     public void Reconcile(IEnumerable<string> clientOpIds)
@@ -463,7 +463,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
                 {
                     OpStatus status;
                     if (firstAsked.TryAdd(id, Stopwatch.GetTimestamp())) asked++;
-                    // The connection went again, or the host could not answer: this and the rest stay remembered for the next connection.
+                    // The connection went again, or the server could not answer: this and the rest stay remembered for the next connection.
                     try { status = await OperationStatusAsync(id, stop.Token).ConfigureAwait(false); }
                     catch (Exception) { return; }
                     if (status.State == OpState.Running) running.Add(id);
@@ -527,8 +527,8 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         CallNullableAsync<TResult>(method, ProtocolJson.ToElement(parameters), cancellationToken);
 
     /// <summary>
-    /// The host's answer as it came, error and all, for a caller in this library that must tell the protocol's own refusals apart (a write of shared state the
-    /// host will never take, which retrying cannot change). Everything else goes through the calls above, which never show a protocol error.
+    /// The server's answer as it came, error and all, for a caller in this library that must tell the protocol's own refusals apart (a write of shared state the
+    /// server will never take, which retrying cannot change). Everything else goes through the calls above, which never show a protocol error.
     /// </summary>
     internal Task<ResponseFrame> AnswerAsync<TParams>(string method, TParams parameters, CancellationToken cancellationToken) =>
         RoundTripAsync(method, ProtocolJson.ToElement(parameters), cancellationToken);
@@ -550,9 +550,9 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     // ---- Mutations ----
     //
     // A mutation is never retried here. Once its request has been handed to the connection it may have been done, so whatever
-    // then goes wrong (the connection closing, an answer that cannot be read, a failure the host cannot describe) reaches the
-    // caller as an unknown outcome, never as a plain failure it could safely try again. Only what the host affirms is
-    // reported as it is: a result, an error the backend itself raised, or `cancelled` (the host never asked the provider).
+    // then goes wrong (the connection closing, an answer that cannot be read, a failure the server cannot describe) reaches the
+    // caller as an unknown outcome, never as a plain failure it could safely try again. Only what the server affirms is
+    // reported as it is: a result, an error the backend itself raised, or `cancelled` (the server never asked the provider).
 
     /// <summary>The sentence for a send whose connection ended before its answer arrived.</summary>
     public const string InterruptedSentence = "The connection to the server was lost while this was being sent. It may or may not have gone through.";
@@ -564,7 +564,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
 
     /// <summary>
     /// The name for a send (text, reply, attachments): the one its caller planned (<see cref="PlannedOperation"/>, the outbox's, saved before the send so a restart
-    /// can ask the host about it), else a new one.
+    /// can ask the server about it), else a new one.
     /// </summary>
     public static string SendOperationId() => PlannedOperation.Take() ?? NewOperationId();
 
@@ -574,7 +574,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     /// </param>
     /// <remarks>
     /// A send whose connection ended carries its operation id in <see cref="SendException.OperationId"/>; a client made with a connector asks
-    /// the host about it after reconnecting and says what it learned through <see cref="Reconciled"/>.
+    /// the server about it after reconnecting and says what it learned through <see cref="Reconciled"/>.
     /// </remarks>
     public async Task<TResult> MutateAsync<TParams, TResult>(string method, TParams parameters, CancellationToken cancellationToken = default,
         IProgress<string>? progress = null)
@@ -611,14 +611,14 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         await MutateAsync<TParams, Done>(method, parameters, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
-    /// What the host's journal holds for an operation this client started: for a caller that lost its connection and wants to know
+    /// What the server's journal holds for an operation this client started: for a caller that lost its connection and wants to know
     /// what became of the call. A lookup; it never runs or repeats anything.
     /// </summary>
     public Task<OpStatus> OperationStatusAsync(string clientOpId, CancellationToken cancellationToken = default) =>
         CallAsync<OpStatusParams, OpStatus>(ProtocolMethods.OpsStatus, new(clientOpId), cancellationToken);
 
     /// <summary>
-    /// How many mutations (sends, reactions, edits, deletions, settings) this client has handed to the host on its current connection and has no answer to yet.
+    /// How many mutations (sends, reactions, edits, deletions, settings) this client has handed to the server on its current connection and has no answer to yet.
     /// What a quit waits for beyond the outbox's sends: a reaction or an unsend in flight has the same question after the connection is let go, and the answer
     /// that would settle it goes with the connection.
     /// </summary>
@@ -634,7 +634,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         // A code this build does not know says nothing certain about whether the thing was done.
         if (!ProtocolErrors.IsKnown(error.Code)) return new SendException(true, UncertainSentence);
         var exception = ProtocolErrors.ToException(error);
-        // The host's own failure (not an error the backend raised) can follow the provider call, as when its answer cannot be written.
+        // The server's own failure (not an error the backend raised) can follow the provider call, as when its answer cannot be written.
         if (exception is ProtocolException { Error.Code: ProtocolErrorCodes.Internal }) return new SendException(true, UncertainSentence);
         return Translate(exception, cancellationToken);
     }
@@ -652,11 +652,11 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         {
             // Registered before the connection is checked, so a close that lands in between still fails this call.
             if (connection.Closed) throw Lost();
-            // From here the host may have the request.
+            // From here the server may have the request.
             if (attempt is not null) attempt.Sent = true;
             waiter.Sent = operationId is not null;
             await SendAsync(connection, new RequestFrame(id, method, parameters)).ConfigureAwait(false);
-            // After the request is sent, so the host never sees a cancel for a request it has not read.
+            // After the request is sent, so the server never sees a cancel for a request it has not read.
             using var registration = cancellationToken.CanBeCanceled
                 ? cancellationToken.UnsafeRegister(static state =>
                 {
@@ -692,10 +692,10 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     }
 
     /// <summary>
-    /// How long a call whose caller has given up (cancelled, or ran out of its own time) still waits for the host's answer before it ends without one. The cancel
-    /// frame asks the host to stop and to answer; a host that answers pings but keeps the answer back (a stuck provider call that ignores the cancel) must not leave
-    /// the caller waiting for ever on a connection that looks alive. Long enough for a host that is merely slow to answer a cancel (its provider call is cooperative
-    /// and a busy host can take seconds), short enough that a send stuck in "Sending" is reported within the time a person would still be looking.
+    /// How long a call whose caller has given up (cancelled, or ran out of its own time) still waits for the server's answer before it ends without one. The cancel
+    /// frame asks the server to stop and to answer; a server that answers pings but keeps the answer back (a stuck provider call that ignores the cancel) must not leave
+    /// the caller waiting for ever on a connection that looks alive. Long enough for a server that is merely slow to answer a cancel (its provider call is cooperative
+    /// and a busy server can take seconds), short enough that a send stuck in "Sending" is reported within the time a person would still be looking.
     /// </summary>
     public static TimeSpan CancelGrace { get; set; } = TimeSpan.FromSeconds(12);
 
@@ -739,7 +739,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         Interlocked.Exchange(ref on.Inbox, null)?.Complete(lost);
         if (connector is not null && !stopping && ReferenceEquals(link, on))
         {
-            // Nothing is connected through a host that cannot be reached.
+            // Nothing is connected through a server that cannot be reached.
             cache?.MarkLost();
             StartReconnecting();
         }
@@ -754,7 +754,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     /// Starts this connection's event feed from the position the caller last saw (<paramref name="since"/> in <paramref name="epoch"/>),
     /// or from nowhere. Replaces any feed this client already has. The returned <see cref="ClientEvents"/> reads the items in order;
     /// once the connection is lost it reads what had arrived and then throws an unavailable <see cref="BackendException"/>. A feed does not
-    /// carry over to a new connection: its owner subscribes again from the position it last applied, which resumes if the host is the
+    /// carry over to a new connection: its owner subscribes again from the position it last applied, which resumes if the server is the
     /// same run and still holds it, and otherwise starts with a resync.
     /// </summary>
     public async Task<ClientEvents> SubscribeEventsAsync(long? since, string? epoch, CancellationToken cancellationToken = default, bool typing = false)
@@ -776,7 +776,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         }
     }
 
-    /// <summary>Ends this connection's event feed on the host. Safe when there is none; the host stops sending before it answers.</summary>
+    /// <summary>Ends this connection's event feed on the server. Safe when there is none; the server stops sending before it answers.</summary>
     public async Task UnsubscribeEventsAsync(CancellationToken cancellationToken = default)
     {
         var connection = await LinkAsync(cancellationToken).ConfigureAwait(false);
@@ -785,10 +785,10 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     }
 
     /// <summary>
-    /// Keeps the host's state coming into the cache before anything reads the event feed: the window's sync loop subscribes only once it starts, and a
-    /// launch that decides what to restore from the account ports needs the state first (SWITCHBOARD.md 3.2b). It subscribes only if this connection
+    /// Keeps the server's state coming into the cache before anything reads the event feed: the window's sync loop subscribes only once it starts, and a
+    /// launch that decides what to restore from the account ports needs the state first. It subscribes only if this connection
     /// has no feed, so it never replaces the sync loop's; the feed it holds is discarded here, since the cache already took each state as its frame
-    /// was read, and the sync loop's own subscription (which replaces this one, on the host as here) begins from nowhere anyway. Returns when
+    /// was read, and the sync loop's own subscription (which replaces this one, on the server as here) begins from nowhere anyway. Returns when
     /// that happens or the connection ends. A client without a cache has nothing to feed and returns at once.
     /// </summary>
     public async Task HoldStateFeedAsync(CancellationToken cancellationToken = default)
@@ -818,8 +818,8 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
     // are written to be raised from any thread (a backend raises them from whichever thread noticed) and must not wait on this client.
     private void ApplyState(EventFrame frame)
     {
-        HostState? pushed = null;
-        try { pushed = frame.Payload.Deserialize<HostState>(ProtocolJson.Options); }
+        ServerState? pushed = null;
+        try { pushed = frame.Payload.Deserialize<ServerState>(ProtocolJson.Options); }
         catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
         if (pushed is not null) cache!.Apply(pushed, frame.Epoch, frame.Seq);
     }
@@ -895,7 +895,7 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
             return;
         }
         // A state is applied the moment its frame is read, ahead of everything that follows it on the connection, the answer to the
-        // call that caused it included: the window that reads the state right after an account action sees it (SWITCHBOARD.md 2.6c).
+        // call that caused it included: the window that reads the state right after an account action sees it.
         // The feed delivers the same state again in its place, and the cache ignores what it already holds.
         if (frame.Kind == EventKinds.State && cache is not null && frame.HasPayload) ApplyState(frame);
         // Typing is not part of the sequence the feed resumes by: it goes straight to the cache's listeners, which keep the newest
@@ -938,8 +938,8 @@ public sealed class ProtocolClient : IDisposable, IOperationOutcomes
         else if (frame.Kind == EventKinds.State)
         {
             // A state this build cannot read changes nothing it knows of: the cache keeps the last it could read, and the next one replaces it.
-            HostState? state = null;
-            try { state = frame.HasPayload ? frame.Payload.Deserialize<HostState>(ProtocolJson.Options) : null; }
+            ServerState? state = null;
+            try { state = frame.HasPayload ? frame.Payload.Deserialize<ServerState>(ProtocolJson.Options) : null; }
             catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
             if (state is null) return;
             item = new EventItem(frame.Seq, null, state);

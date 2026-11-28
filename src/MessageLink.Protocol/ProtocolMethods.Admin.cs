@@ -1,23 +1,23 @@
 namespace MessageLink.Protocol;
 
-// The server's own administration (SWITCHBOARD.md 4.6), for its page and for any paired device's reads: what the server is, the accounts it holds,
-// and removing one of them from it, which is the page's alone on a server. Only on a connection that negotiated ProtocolVersion.ServerAdmin, and only by a host that has an IServerAdmin. The status and the list are reads; a removal is a journaled
-// mutation, at most once per operation id and never retried by the host. The answers carry fixed words, counts and times, and the list carries the account
+// The server's own administration, for its page and for any paired device's reads: what the server is, the accounts it holds,
+// and removing one of them from it, which is the page's alone on a server. Only on a connection that negotiated ProtocolVersion.ServerAdmin, and only by a server that has an IServerAdmin. The status and the list are reads; a removal is a journaled
+// mutation, at most once per operation id and never retried by the server. The answers carry fixed words, counts and times, and the list carries the account
 // names a client already shows in Settings (never logged on either end). Pairing devices, renaming and revoking them are devices.* (ProtocolMethods.Devices.cs).
 public static partial class ProtocolMethods
 {
     /// <summary>What the server is: its version, the protocol window it serves, when it started, its Chrome's sandbox and where its updates come from.</summary>
-    public const string HostStatusRead = "host.status";
+    public const string ServerStatusRead = "host.status";
     /// <summary>Every account the server holds, each with its state and whether it can be removed now.</summary>
-    public const string HostAccountsList = "host.accounts";
+    public const string ServerAccountsList = "host.accounts";
     /// <summary>Removes the server's copy of one account (<see cref="ServerAccountProviders"/>): its sign-in and what the server kept of it. Nothing on another device, and nothing at the service.</summary>
-    public const string HostAccountRemove = "host.removeAccount";
+    public const string ServerAccountRemove = "host.removeAccount";
 
     private static Entry[] AdminEntries() =>
     [
-        new(HostStatusRead, "IServerAdmin.StatusAsync", null, typeof(HostStatus), ProtocolVersion.ServerAdmin),
-        new(HostAccountsList, "IServerAdmin.AccountsAsync", null, typeof(IReadOnlyList<ServerAccount>), ProtocolVersion.ServerAdmin),
-        new(HostAccountRemove, "IServerAdmin.RemoveAccountAsync", typeof(AccountRemoveParams), typeof(AccountRemoved), ProtocolVersion.ServerAdmin, true),
+        new(ServerStatusRead, "IServerAdmin.StatusAsync", null, typeof(ServerStatus), ProtocolVersion.ServerAdmin),
+        new(ServerAccountsList, "IServerAdmin.AccountsAsync", null, typeof(IReadOnlyList<ServerAccount>), ProtocolVersion.ServerAdmin),
+        new(ServerAccountRemove, "IServerAdmin.RemoveAccountAsync", typeof(AccountRemoveParams), typeof(AccountRemoved), ProtocolVersion.ServerAdmin, true),
     ];
 }
 
@@ -28,10 +28,10 @@ public static partial class ProtocolMethods
 /// image GitHub built, whichever tag the server follows; <c>local</c> for one built on the server), and <paramref name="Revision"/> the source commit; both are null when the
 /// image did not say. <paramref name="Built"/> is when its image was built, when it says.
 /// </summary>
-public sealed record HostStatus(string App, int Protocol, int Supported, DateTimeOffset Started, string? ChromeSandbox = null, string? Channel = null, string? Revision = null,
+public sealed record ServerStatus(string App, int Protocol, int Supported, DateTimeOffset Started, string? ChromeSandbox = null, string? Channel = null, string? Revision = null,
     DateTimeOffset? Built = null);
 
-/// <summary>The words <see cref="HostStatus.ChromeSandbox"/> takes: the server's own reading of its Chrome (<c>google chrome sandbox=</c> in its log), or <c>off</c> when it was started without one.</summary>
+/// <summary>The words <see cref="ServerStatus.ChromeSandbox"/> takes: the server's own reading of its Chrome (<c>google chrome sandbox=</c> in its log), or <c>off</c> when it was started without one.</summary>
 public static class ChromeSandboxWords
 {
     public const string Active = "active", Inactive = "inactive", Unknown = "unknown", Off = "off";
@@ -81,12 +81,12 @@ public static class AccountRemoveWords
 }
 
 /// <summary>
-/// The host's side of the administration methods. Only the Linux server has one; every other host answers not supported. Who may ask is the dispatcher's business and the
+/// The server's side of the administration methods. Only the Linux server has one; every other server answers not supported. Who may ask is the dispatcher's business and the
 /// page's; this port does what it is asked.
 /// </summary>
 public interface IServerAdmin
 {
-    Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default);
+    Task<ServerStatus> StatusAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ServerAccount>> AccountsAsync(CancellationToken cancellationToken = default);
     Task<AccountRemoved> RemoveAccountAsync(string provider, string? key, CancellationToken cancellationToken = default);
 }

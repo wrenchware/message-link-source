@@ -18,7 +18,7 @@ namespace MessageLink.Protocol;
 /// </remarks>
 public sealed class WebSocketFrameChannel : IFrameChannel
 {
-    /// <summary>The largest message accepted from the other end (SWITCHBOARD.md stage 3, transport).</summary>
+    /// <summary>The largest message accepted from the other end (transport).</summary>
     public const int MaxMessageBytes = 4 * 1024 * 1024;
 
     private const int SmallMessage = 16 * 1024;
@@ -39,7 +39,7 @@ public sealed class WebSocketFrameChannel : IFrameChannel
     /// <summary>
     /// How many whole messages wait to be read before the socket itself stops being read. The reader of <see cref="Incoming"/> takes them as fast as
     /// it can parse them, so a queue this deep means it has fallen behind; the socket is then left unread (TCP's own window slows the peer, nothing is
-    /// dropped) until it catches up, rather than the queue growing without limit for a peer that sends faster than the host can serve. A stalled socket
+    /// dropped) until it catches up, rather than the queue growing without limit for a peer that sends faster than the server can serve. A stalled socket
     /// also stops answering the WebSocket's pings, so one that never lets the queue drain is ended by the keep-alive timeout.
     /// </summary>
     public const int IncomingCapacity = 64;
@@ -64,7 +64,7 @@ public sealed class WebSocketFrameChannel : IFrameChannel
     public string? Route { get; init; }
 
     /// <summary>
-    /// Completes once nothing more will be read from the socket: the peer closed it or answered a close, or the connection was lost or dropped. A host whose
+    /// Completes once nothing more will be read from the socket: the peer closed it or answered a close, or the connection was lost or dropped. A server whose
     /// connection ends when its request handler returns (Kestrel) waits for this after <see cref="Close"/>, so the close handshake is not cut short.
     /// </summary>
     public Task Completion => receiving;

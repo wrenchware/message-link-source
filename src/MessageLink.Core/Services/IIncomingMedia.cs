@@ -3,8 +3,8 @@ using MessageLink.Core.Messaging;
 namespace MessageLink.Core.Services;
 
 /// <summary>
-/// Puts a picture or a GIF clip in the host's media cache ahead of the conversation drawing it (SWITCHBOARD.md 3.0b,
-/// <c>media.prepare</c>). The bytes stay where the cache is: nothing is returned for the caller to decode, which is why the client
+/// Puts a picture or a GIF clip in the host's media cache ahead of the conversation drawing it (<c>media.prepare</c>).
+/// The bytes stay where the cache is: nothing is returned for the caller to decode, which is why the client
 /// still reads and decodes the photos it will draw itself (the preview cache is its own). Only ever the reads the app's own
 /// prefetch made before this was a port, and a host that is asked for more refuses it.
 /// </summary>
@@ -24,7 +24,7 @@ public interface IMediaPreparer
 }
 
 /// <summary>
-/// Asks the host to make the card for a link that has just come in (SWITCHBOARD.md 3.0b, <c>media.requestCard</c>), under the rules the
+/// Asks the host to make the card for a link that has just come in (<c>media.requestCard</c>), under the rules the
 /// host applies to whose links may be fetched on a person's behalf. The caller says what only it knows: whether link previews are on, and
 /// whether its conversation list shows the conversation as spam (null when it does not show it at all).
 /// </summary>
@@ -41,7 +41,7 @@ public interface IIncomingCards
 public sealed record CaughtUpNotice(string ChatId, IReadOnlyList<string> Ids, bool Announced = false);
 
 /// <summary>
-/// Where the providers' catch-ups are heard (<c>caughtUp</c> in the host's event feed). Raised on whichever thread delivered it, which is
+/// Where the providers' catch-ups are heard (<c>caughtUp</c> in the server's event feed). Raised on whichever thread delivered it, which is
 /// not the interface thread, and never for a catch-up that named nothing.
 /// </summary>
 public interface ICaughtUpFeed

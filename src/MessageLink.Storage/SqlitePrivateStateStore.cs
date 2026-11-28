@@ -164,7 +164,7 @@ public sealed class SqlitePrivateStateStore(string path, IStateProtector protect
     }
     /// <summary>
     /// Every row whose key starts with one of <paramref name="prefixes"/>, as it is kept (its payload still sealed), read in one transaction from a connection of
-    /// its own: the server's backup (stage 10), which unseals each with the protector that sealed it. None when the file is not there. Nothing is written.
+    /// its own: the server's backup, which unseals each with the protector that sealed it. None when the file is not there. Nothing is written.
     /// </summary>
     public static IReadOnlyList<(string Key, byte[] Sealed)> ReadSealed(string path, IReadOnlyList<string> prefixes)
     {

@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// Each paired device's push address (SWITCHBOARD.md 7.5): Firebase's token for it and the key and secret its pushes are sealed to. Kept in
+/// Each paired device's push address: Firebase's token for it and the key and secret its pushes are sealed to. Kept in
 /// <c>push.json</c> beside <c>devices.json</c>, sealed the same way, and forgotten when the device is removed or Firebase says the token is gone. A token is
 /// never logged.
 /// </summary>
@@ -18,7 +18,7 @@ internal sealed class PushRegistry
     public const string FileName = "push.json";
 
     public sealed record Registration(string DeviceId, string Token, string Package, byte[] PublicKey, byte[] Auth, DateTimeOffset At, bool BackgroundSync = false);
-    // A row with an empty token is a phone's report that the project has no app for its package (10.9), kept in the same list.
+    // A row with an empty token is a phone's report that the project has no app for its package, kept in the same list.
     private sealed record Stored(string DeviceId, string Token, string Package, string PublicKey, string Auth, DateTimeOffset At, bool BackgroundSync = false);
 
     /// <summary>A phone's report that the Firebase project has no app for its <paramref name="Package"/>: shown on the page, never a push target.</summary>
@@ -122,7 +122,7 @@ internal sealed class PushRegistry
     }
 
     /// <summary>
-    /// Keeps a phone's report that the project has no app for <paramref name="package"/> (10.9), beside any registration the device has and never in its place;
+    /// Keeps a phone's report that the project has no app for <paramref name="package"/>, beside any registration the device has and never in its place;
     /// false, keeping nothing, for a device that is not paired.
     /// </summary>
     public async Task<bool> SetMissingAsync(string deviceId, string package, DateTimeOffset at)

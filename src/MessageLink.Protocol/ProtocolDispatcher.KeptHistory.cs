@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// search.query's two sources (ProtocolMethods.KeptHistory.cs): the provider's archive, and the host's kept history. A source this host does
+// search.query's two sources (ProtocolMethods.KeptHistory.cs): the provider's archive, and the server's kept history. A source this server does
 // not have is not_supported, and one nobody knows is invalid_request.
 public sealed partial class ProtocolDispatcher
 {

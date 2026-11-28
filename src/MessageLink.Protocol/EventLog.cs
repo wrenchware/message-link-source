@@ -3,30 +3,30 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// One item of a feed: a realtime event with its position, a host state (<see cref="State"/>, SWITCHBOARD.md 2.6b), an account
-/// <see cref="Signal"/> (2.6c), a provider's <see cref="CaughtUp"/> (3.0b), or (all null) a resync, which says that anything may have changed and the reader should read it all
-/// again. A resync's <see cref="Seq"/> is the position after which events continue. A <see cref="Shared"/> item is one commit to the host's shared state (stage 6).
-/// A <see cref="History"/> item is one change to the server's whole copy of a conversation (stage 8).
+/// One item of a feed: a realtime event with its position, a server state (<see cref="State"/>), an account
+/// <see cref="Signal"/>, a provider's <see cref="CaughtUp"/>, or (all null) a resync, which says that anything may have changed and the reader should read it all
+/// again. A resync's <see cref="Seq"/> is the position after which events continue. A <see cref="Shared"/> item is one commit to the server's shared state.
+/// A <see cref="History"/> item is one change to the server's whole copy of a conversation.
 /// </summary>
-public sealed record EventItem(long Seq, RealtimeEvent? Event, HostState? State = null, AccountSignal? Signal = null, CaughtUpNotice? CaughtUp = null,
+public sealed record EventItem(long Seq, RealtimeEvent? Event, ServerState? State = null, AccountSignal? Signal = null, CaughtUpNotice? CaughtUp = null,
     SharedChange? Shared = null, HistoryChange? History = null, HistoryRowChange? Row = null)
 {
     public bool IsResync => Event is null && State is null && Signal is null && CaughtUp is null && Shared is null && History is null && Row is null;
 }
 
 /// <summary>
-/// The host's record of its realtime events (SWITCHBOARD.md 2.3). The source feed (the providers' composite) is run once, by
+/// The server's record of its realtime events. The source feed (the providers' composite) is run once, by
 /// this log, and every event it produces gets the next sequence number and is kept in a ring of the last
 /// <c>capacity</c>. Any number of subscribers then read the same events without splitting them, each from its own bounded
-/// queue, so a slow reader costs the host and the others nothing.
+/// queue, so a slow reader costs the server and the others nothing.
 /// </summary>
 /// <remarks>
-/// <para>The <see cref="Epoch"/> is new each time the host starts. A subscriber that remembers the epoch and the last sequence
+/// <para>The <see cref="Epoch"/> is new each time the server starts. A subscriber that remembers the epoch and the last sequence
 /// number it saw resumes exactly where it stopped, if the ring still holds what follows; otherwise (a first subscription,
 /// another epoch, a position that has aged out) it is handed a resync first and live events after it. A subscriber whose queue
 /// overflows loses the queue and is handed a resync, once, the way a provider's backlog does (<c>RealtimeBuffer</c>). So the
 /// events a subscriber receives are in sequence order with no gap that a resync does not announce.</para>
-/// <para>The host's state (<see cref="HostState"/>) travels in the same sequence, as items of its own kind: <see cref="AppendState"/>
+/// <para>The server's state (<see cref="ServerState"/>) travels in the same sequence, as items of its own kind: <see cref="AppendState"/>
 /// gives one the next sequence number like any event. The log remembers the newest, and every resync it hands a subscriber (the
 /// opening one, or one that replaces an overflowed queue) is followed by that state, so a reader that has just been told
 /// "read everything again" also has the current state to read it against.</para>
@@ -44,7 +44,7 @@ public sealed class EventLog : IDisposable
     private readonly int subscriberQueue;
     private readonly Action<string>? log;
     private readonly List<EventSubscription> subscribers = [];
-    private HostState? latestState;
+    private ServerState? latestState;
     private long head;
     private int held;
     private int sourceRuns;
@@ -65,7 +65,7 @@ public sealed class EventLog : IDisposable
         Epoch = epoch ?? Guid.NewGuid().ToString("N");
     }
 
-    /// <summary>Names this run of the host. A sequence number means nothing under another epoch.</summary>
+    /// <summary>Names this run of the server. A sequence number means nothing under another epoch.</summary>
     public string Epoch { get; }
 
     /// <summary>How long the source feed waits after it ends before it is run again, as the composite does for a failed provider.</summary>
@@ -73,13 +73,13 @@ public sealed class EventLog : IDisposable
 
     /// <summary>
     /// Called with each event from the source feed just before it is recorded, on the thread that delivers it and with no lock held.
-    /// The host's state publisher uses it to record a connection change in the state first, so a reader that is told "connected"
+    /// The server's state publisher uses it to record a connection change in the state first, so a reader that is told "connected"
     /// already holds a state that says so. A hook that throws is ignored.
     /// </summary>
     public Action<RealtimeEvent>? BeforeSourceEvent { get; init; }
 
     /// <summary>The state most recently appended, or none before the first.</summary>
-    public HostState? LatestState { get { lock (gate) return latestState; } }
+    public ServerState? LatestState { get { lock (gate) return latestState; } }
 
     /// <summary>The sequence number of the latest event; 0 before the first.</summary>
     public long Head { get { lock (gate) return head; } }
@@ -96,47 +96,47 @@ public sealed class EventLog : IDisposable
     public int Overflows => Volatile.Read(ref overflows);
 
     /// <summary>
-    /// Records an event and hands it to every subscriber without waiting for any. The source feed's events come here; a host may
+    /// Records an event and hands it to every subscriber without waiting for any. The source feed's events come here; a server may
     /// add its own. Returns the sequence number it was given.
     /// </summary>
     public long Append(RealtimeEvent change) => Record(position => new EventItem(position, change), null);
 
     /// <summary>
-    /// Records the host's state as an item of its own kind and remembers it as the newest. The caller appends only a state that
+    /// Records the server's state as an item of its own kind and remembers it as the newest. The caller appends only a state that
     /// differs from the last (<see cref="StatePublisher"/>); a state is not deduplicated here. Returns its sequence number.
     /// </summary>
-    public long AppendState(HostState state) => Record(position => new EventItem(position, null, state), state);
+    public long AppendState(ServerState state) => Record(position => new EventItem(position, null, state), state);
 
     /// <summary>
-    /// Records a fact about an account that no state shows (SWITCHBOARD.md 2.6c) in the sequence, so a reader that resumes is given it
+    /// Records a fact about an account that no state shows in the sequence, so a reader that resumes is given it
     /// too. A reader that fell behind and was handed a resync reads everything again, which is what a missed signal needs.
     /// </summary>
     public long AppendSignal(AccountSignal signal) => Record(position => new EventItem(position, null, null, signal), null);
 
     /// <summary>
-    /// Records that a provider caught up on messages after connecting (SWITCHBOARD.md 3.0b), in the sequence, so a reader that resumes is given
+    /// Records that a provider caught up on messages after connecting, in the sequence, so a reader that resumes is given
     /// it too. A reader that fell behind and was handed a resync loses it, which costs only a picture prepared ahead.
     /// </summary>
     public long AppendCaughtUp(CaughtUpNotice notice) => Record(position => new EventItem(position, null, null, null, notice), null);
 
     /// <summary>
-    /// Records one commit to the host's shared state (SWITCHBOARD.md stage 6) in the sequence, so a reader that resumes is given it too. The store appends
+    /// Records one commit to the server's shared state in the sequence, so a reader that resumes is given it too. The store appends
     /// each commit while it still holds its own lock, so the commits are in the sequence in the order of their revs. A reader that fell behind and was
     /// handed a resync reads what it missed with <c>state.sync</c>.
     /// </summary>
     public long AppendShared(SharedChange change) => Record(position => new EventItem(position, null, Shared: change), null);
 
     /// <summary>
-    /// Records one change to the server's whole copy of a conversation (SWITCHBOARD.md stage 8) in the sequence, just after the realtime event that caused it, so a
+    /// Records one change to the server's whole copy of a conversation in the sequence, just after the realtime event that caused it, so a
     /// reader that resumes is given it too. A reader that fell behind and was handed a resync reads what it missed with <c>history.changes</c>.
     /// </summary>
     public long AppendHistory(HistoryChange change) => Record(position => new EventItem(position, null, History: change), null);
 
-    /// <summary>Records a conversation's list row as the server now keeps it (stage 9), for connections of 25 and later.</summary>
+    /// <summary>Records a conversation's list row as the server now keeps it, for connections of 25 and later.</summary>
     public long AppendRow(HistoryRowChange change) => Record(position => new EventItem(position, null, Row: change), null);
 
     /// <summary>
-    /// Starts running the source feed with no reader yet: a host that keeps something of its own from the events (the whole history) needs them whether or not
+    /// Starts running the source feed with no reader yet: a server that keeps something of its own from the events (the whole history) needs them whether or not
     /// a client is connected. Does nothing once the feed runs.
     /// </summary>
     public void Start()
@@ -151,7 +151,7 @@ public sealed class EventLog : IDisposable
         }
     }
 
-    private long Record(Func<long, EventItem> make, HostState? state)
+    private long Record(Func<long, EventItem> make, ServerState? state)
     {
         lock (gate)
         {
@@ -322,7 +322,7 @@ internal sealed class EventQueue(int capacity)
             {
                 dropped = items.Count(queued => !queued.IsResync) + (item.IsResync ? 0 : 1);
                 // The newest state this queue has seen, dropped with the rest, goes back right after the resync that replaces them:
-                // a resync is always followed by the current state (SWITCHBOARD.md 2.6b).
+                // a resync is always followed by the current state.
                 var state = item.State ?? items.LastOrDefault(queued => queued.State is not null)?.State;
                 items.Clear();
                 exempt = 0;

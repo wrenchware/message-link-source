@@ -1,8 +1,8 @@
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The protocol versions of a host's open connections, as their hellos chose them. The host's incoming unarchive (stage 6 slice 9) reads it: while a client
-/// older than <see cref="ProtocolVersion.HostUnarchives"/> is connected, that client still returns group conversations to the inbox itself, so the host leaves
+/// The protocol versions of a server's open connections, as their hellos chose them. The server's incoming unarchive reads it: while a client
+/// older than <see cref="ProtocolVersion.ServerUnarchives"/> is connected, that client still returns group conversations to the inbox itself, so the server leaves
 /// them to it rather than ask the provider a second time.
 /// </summary>
 public sealed class ConnectionRoster

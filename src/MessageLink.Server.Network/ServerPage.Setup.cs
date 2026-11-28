@@ -8,8 +8,8 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// What the server's first run on its page needs (SWITCHBOARD.md 10.4): where the setup code is printed (the container's own output, never the log file on the data
-/// volume; null prints it to the log), and Tailscale's API for "Fix it for me" (10.8), when the server offers it.
+/// What the server's first run on its page needs: where the setup code is printed (the container's own output, never the log file on the data
+/// volume; null prints it to the log), and Tailscale's API for "Fix it for me", when the server offers it.
 /// </summary>
 internal sealed record ServerPageSetup(Action<string>? Show, TailscaleAdmin? Tailscale = null);
 
@@ -63,9 +63,9 @@ internal sealed class StoredPassword
     }
 }
 
-// The server's first run on its page (SWITCHBOARD.md 10.4, D4) and the walkthrough after it. With no password set where the server was installed, the server prints a
+// The server's first run on its page and the walkthrough after it. With no password set where the server was installed, the server prints a
 // one-time setup code to its container's output (PairingCodes, as a pairing code is) and the page shows only the setup screen, to the home network and the tailnet
-// alone (NetworkHost): the code, then the password, which is kept as a hash with the keys. The code is taken by the first right try, as a pairing code is, and its tries
+// alone (NetworkServer): the code, then the password, which is kept as a hash with the keys. The code is taken by the first right try, as a pairing code is, and its tries
 // are paced the same way; the password must then be chosen in the same browser within half an hour (a cookie only that browser holds, tied to this screen's form).
 // Then one screen each, every one skippable: Tailscale, your accounts, notifications, a phone, a PC, backups. A phone comes after notifications because it needs them (owner, 2026-11-02). A checklist on the front page keeps what is left, each
 // line reopening its screen, until everything is done or the owner hides it.
@@ -93,7 +93,7 @@ internal sealed partial class ServerPage
     /// <summary>"I don't use a phone", said on the notifications step, kept with the keys: the phone's steps leave the walkthrough and the checklist until notifications are on.</summary>
     public const string NoPhoneFile = "server-page.no-phone";
 
-    // How far setting up has come, read from the server's parts as they are now: accounts only where the caller read them (they take a call to the host).
+    // How far setting up has come, read from the server's parts as they are now: accounts only where the caller read them (they take a call to the server).
     private SetupProgress Progress(int? accounts = null)
     {
         var view = tailnet?.Latest;
@@ -433,7 +433,7 @@ internal sealed partial class ServerPage
                 if (backups is not null)
                 {
                     await BackupsCardAsync(body, token, request, cancellationToken).ConfigureAwait(false);
-                    // Read again after the card, which waits on the host: a backup that finished meanwhile shows on the card, so its way on says so too.
+                    // Read again after the card, which waits on the server: a backup that finished meanwhile shows on the card, so its way on says so too.
                     progress = Progress(accounts?.Count);
                     done = progress.DoneInWalkthrough(step);
                 }

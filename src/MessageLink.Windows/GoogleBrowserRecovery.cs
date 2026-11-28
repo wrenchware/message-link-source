@@ -205,7 +205,7 @@ internal static class GoogleBrowserRecovery
         {
             if (!args.IsSuccess || !target.IsDone(core.Source))
             {
-                // A page the target allows on its way (Google's account host, for Messages) may hand on to the next by
+                // A page the target allows on its way (Google's account server, for Messages) may hand on to the next by
                 // itself; the bounded timeout ends one that does not. Voice allows only its own page, so for Voice any
                 // other page still ends the recovery at once.
                 if (args.IsSuccess && target.AllowNavigation(core.Source)) return;

@@ -8,7 +8,7 @@ namespace MessageLink.Protocol;
 public sealed record MoveRow(string Key, JsonElement Value);
 
 /// <summary>
-/// What a PC hands a Messages Server when its choices move there (SWITCHBOARD.md stage 6 slice 13): every row of the shared state it holds, filed under the key
+/// What a PC hands a Messages Server when its choices move there: every row of the shared state it holds, filed under the key
 /// it has always used (<paramref name="LocalKey"/>), which the server adopts verbatim so no row has to be renamed. It crosses as an upload, never in a frame,
 /// and holds names and drafts, so it is never logged. <paramref name="Counts"/> and <paramref name="Digest"/> are of <paramref name="Rows"/>'s keys
 /// (<see cref="MoveCounts"/>): the server checks them against the rows it received, and answers with the same two for the rows it now holds, so the PC can tell a

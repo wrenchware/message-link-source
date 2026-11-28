@@ -54,14 +54,14 @@ public sealed class ScheduledSendEngine : IDisposable
     public event Action<ScheduledSend>? Held;
 
     /// <summary>
-    /// Counts hand-overs (<see cref="ScheduledSend.Attempt"/>): each one is written, with the row marked sending, as one more than the last, so a host can send
+    /// Counts hand-overs (<see cref="ScheduledSend.Attempt"/>): each one is written, with the row marked sending, as one more than the last, so a server can send
     /// under the fixed id <c>sched:&lt;id&gt;:&lt;n&gt;</c> (S4). The in-process app leaves it off and its rows are as they always were.
     /// </summary>
     public bool NumbersAttempts { get; init; }
 
     /// <summary>
     /// A send the outlet reports certainly refused is kept as a not-sent message (reason refused) with its words, for the user to decide, instead of ending the
-    /// schedule. A host needs it: the in-process outbox hands such a send's words back to the composer, and nobody is at a host's composer to take them.
+    /// schedule. A server needs it: the in-process outbox hands such a send's words back to the composer, and nobody is at a server's composer to take them.
     /// </summary>
     public bool KeepsRejected { get; init; }
 
@@ -140,7 +140,7 @@ public sealed class ScheduledSendEngine : IDisposable
 
     /// <summary>
     /// Keeps this text for <paramref name="due"/>. Throws when it cannot be kept; nothing is sent here. <paramref name="id"/> names the message when the
-    /// caller has to know it before it is kept (a host makes it from the client's operation id, so a lost answer can be looked for); a message with that
+    /// caller has to know it before it is kept (a server makes it from the client's operation id, so a lost answer can be looked for); a message with that
     /// id already here is returned as it is, kept once.
     /// </summary>
     public async Task<ScheduledSend> ScheduleAsync(string chatId, string text, DateTimeOffset due, string? replyToId = null, string? replyPreview = null, string? id = null)
@@ -163,7 +163,7 @@ public sealed class ScheduledSendEngine : IDisposable
         // and a second try must not make two.
         bool saved;
         try { saved = await SaveAsync(); }
-        // The store looked at the id and made nothing (a host never makes a message twice): there is nothing to take back out of it.
+        // The store looked at the id and made nothing (a server never makes a message twice): there is nothing to take back out of it.
         catch (ScheduledIdRetiredException gone) when (gone.Ids.Contains(item.Id)) { items.Remove(item); throw; }
         catch (Exception) { saved = false; }
         if (!saved)
@@ -420,7 +420,7 @@ public sealed class ScheduledSendEngine : IDisposable
         Log("due", item, $"late_s={(long)Math.Max(0, (clock.GetUtcNow() - item.Due).TotalSeconds)}");
         Changed?.Invoke(this, item.ChatId);
         Task send;
-        // The message as it was saved as sending, so an outlet that names a hand-over (the host's: sched:<id>:<n>) names the one that was written down.
+        // The message as it was saved as sending, so an outlet that names a hand-over (the server's: sched:<id>:<n>) names the one that was written down.
         try { send = outlet.SendAsync(sending); }
         catch (Exception ex) { send = Task.FromException(ex); }
         // The outlet refuses before submitting anything when too many sends are unsettled: then it certainly was not

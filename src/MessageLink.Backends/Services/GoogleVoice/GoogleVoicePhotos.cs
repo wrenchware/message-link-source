@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.GoogleVoice;
 
 // Google Voice carries a photo inside the text message, up to 2 MB, as JPEG, PNG, GIF, BMP or TIFF (upstream's limits).
-// No photo goes with its location (decided, SWITCHBOARD.md "Decisions"). A JPEG, PNG, GIF or BMP that
+// No photo goes with its location (decided). A JPEG, PNG, GIF or BMP that
 // already fits goes with its picture untouched and its metadata taken out (PhotoMetadata). Anything larger, a TIFF, a
 // file that cannot be read that way, or another image format the platform can read (HEIC, WebP), goes as a JPEG made
 // smaller until it fits, which the re-encoder writes with no metadata at all. An animated GIF cannot be made smaller

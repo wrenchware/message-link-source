@@ -68,7 +68,7 @@ public sealed class PrivateReading
     };
 
     public bool IsOn(ReadService service) { lock (gate) return on.Contains(service); }
-    // Hermes keeps its read state on its host and tells no service, so there is nothing to hold back; Of files an id it does not know
+    // Hermes keeps its read state on its server and tells no service, so there is nothing to hold back; Of files an id it does not know
     // under Google Messages, and Google's switch must not gate a Hermes thread.
     public bool IsOn(string chatId) => !MessageLink.Core.Services.HermesIds.Owns(chatId) && IsOn(Of(chatId));
     public bool AnyOn { get { lock (gate) return on.Count > 0; } }

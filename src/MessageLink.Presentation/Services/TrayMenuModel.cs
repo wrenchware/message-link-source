@@ -23,7 +23,7 @@ public static class TrayMenuModel
         int unreadTotal, bool notificationsOn, DateTimeOffset? pausedUntil, bool consoleAvailable, DateTimeOffset nowLocal, bool ownServer = false)
         => Build(unread, unreadTotal, notificationsOn, pausedUntil, consoleAvailable, nowLocal, TimeZoneInfo.Local, ownServer);
 
-    /// <param name="ownServer">This PC runs its own Message Link Server (SWITCHBOARD.md 10.7): the menu offers its page, "Close Message Link" and "Quit Message Link and server".</param>
+    /// <param name="ownServer">This PC runs its own Message Link Server: the menu offers its page, "Close Message Link" and "Quit Message Link and server".</param>
     public static IReadOnlyList<TrayMenuItem> Build(IReadOnlyList<(string ChatId, string Title, string Service)> unread,
         int unreadTotal, bool notificationsOn, DateTimeOffset? pausedUntil, bool consoleAvailable, DateTimeOffset now, TimeZoneInfo zone, bool ownServer = false)
     {

@@ -41,7 +41,7 @@ internal static class GoogleMessagesLog
         "logout marker", "listen failed", "realtime ", "helper stopped", "stopping", "stopped", "library level=error",
     ];
     // Also given each of those lines, timestamped, as it is written: the Linux server's standard output, which is where a container's log is read
-    // (SWITCHBOARD.md 5.4: the renewal's `browser early=` lines were only in a file inside the container). The window never sets it. Set before the first line.
+    // (the renewal's `browser early=` lines were only in a file inside the container). The window never sets it. Set before the first line.
     public static Action<string>? HistoryMirror { get; set; }
     public static bool InHistory(string line) => HistoryPrefixes.Any(prefix => line.StartsWith(prefix, StringComparison.Ordinal));
 
@@ -159,7 +159,7 @@ internal static class GoogleMessagesLog
                 }
                 if (InHistory(entry.Line) && !RepeatedInHistory(entry))
                 {
-                    // The same lines, as app.log would time them, wherever the host reads its log from (the Linux server's standard output).
+                    // The same lines, as app.log would time them, wherever the server reads its log from (the Linux server's standard output).
                     if (HistoryMirror is { } mirror) try { mirror($"{entry.At:HH:mm:ss.fff} {entry.Line}\n"); } catch (Exception) { }
                     if (History is { } history)
                     {

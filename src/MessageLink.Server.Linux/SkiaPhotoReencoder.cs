@@ -4,7 +4,7 @@ using SkiaSharp;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// The Linux host's <see cref="IPhotoReencoder"/> (SWITCHBOARD.md 4.4), with the guarantees of the Windows one (WindowsPhotoReencoder): the photo upright,
+/// The Linux server's <see cref="IPhotoReencoder"/>, with the guarantees of the Windows one (WindowsPhotoReencoder): the photo upright,
 /// in sRGB, measured from its header before any pixel is decoded, and written out as a JPEG that carries none of the original's metadata (no EXIF, GPS,
 /// XMP, comment or ICC profile), never scaled up. Skia reads JPEG, PNG, GIF (its first frame, as Windows does), BMP, WebP, ICO and WBMP; it cannot read
 /// TIFF or HEIC, which then fail to prepare rather than send.

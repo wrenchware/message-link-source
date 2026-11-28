@@ -21,7 +21,7 @@ internal sealed partial class InstagramBackend
     private readonly InstagramReadBudget ownReads = new(OwnReadsPerHour);
 
     /// <summary>
-    /// A read the server's whole history makes on its own (SWITCHBOARD.md stage 8: filling or catching up a conversation nobody opened), taken from the same
+    /// A read the server's whole history makes on its own (filling or catching up a conversation nobody opened), taken from the same
     /// hourly budget as the catch-up and the arrivals, and only while half of it is left for them: an arrival read late is a notification late.
     /// </summary>
     internal bool TryTakeHistoryRead(DateTimeOffset now) => ownReads.TryTake(now, leaveFree: OwnReadsPerHour / 2);

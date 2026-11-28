@@ -2,7 +2,7 @@ using MessageLink.Presentation.Services;
 
 namespace MessageLink.Presentation.ViewModels;
 
-// The open conversation's header following what another device changed (SWITCHBOARD.md stage 6, slice 4), as its list row does.
+// The open conversation's header following what another device changed, as its list row does.
 public sealed partial class ConversationViewModel
 {
     /// <summary>

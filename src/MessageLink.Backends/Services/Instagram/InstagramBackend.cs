@@ -264,7 +264,7 @@ internal sealed partial class InstagramBackend : IChatBackend, IChatReader, IRea
             started.Typing += data => { if (ReferenceEquals(helper, started)) ReceiveTyping(data); };
             lock (realtimeGate) (realtimeState, realtimeFrames) = (null, 0);
             helper = started;
-            // The helper took time to start, and the host may have held this account (or the app closed it) meanwhile: a close that came then found no helper to close. Asked again now that
+            // The helper took time to start, and the server may have held this account (or the app closed it) meanwhile: a close that came then found no helper to close. Asked again now that
             // there is one, and still under this lock, so a hold's close can no longer be followed by a login. The helper is put down here without a word to the service.
             if (MayStart?.Invoke() == false) throw new InvalidOperationException("account_moved_away");
             if (disposed || closing) throw new OperationCanceledException("Instagram is closing.");

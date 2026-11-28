@@ -6,8 +6,8 @@ namespace MessageLink.Presentation.Services;
 // A send still unsettled when the app last closed. Identifiers and times only: no message text is stored.
 public sealed record InterruptedSend(string LocalId, string ChatId, DateTimeOffset CreatedAt, string? PendingId, string? ConfirmedId,
     IReadOnlyList<string>? PendingMessageIds = null,
-    // The host's name for a send whose connection ended before its answer (SendException.OperationId): all that is needed to ask the
-    // host's journal what became of it. Not a message, not a person.
+    // The server's name for a send whose connection ended before its answer (SendException.OperationId): all that is needed to ask the
+    // server's journal what became of it. Not a message, not a person.
     string? OperationId = null,
     // Kept by a server for a send it made on a client's behalf (a scheduled one, or any device's ordinary send): shown as the server's, and dismissed on the server for every device (outbox.dismiss). Never stored on this PC.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] bool OnServer = false,
@@ -35,27 +35,27 @@ public sealed class InterruptedSends : IDisposable
     private bool loaded;
     public event EventHandler<string>? Changed;
     // The carried list has just been read from disk for the signed-in account, with the operation ids it holds (OperationIds): what a
-    // client of a host over a connection asks that host about (ProtocolClient.Reconcile). Raised on whichever thread loaded it.
+    // client of a server over a connection asks that server about (ProtocolClient.Reconcile). Raised on whichever thread loaded it.
     public event EventHandler<IReadOnlyList<string>>? Loaded;
 
     private readonly IOperationOutcomes? outcomes;
     private readonly IUiDispatcher? dispatcher;
-    private readonly IHostUnsettledLink? host;
+    private readonly IServerUnsettledLink? host;
     private List<InterruptedSend> hostRows = [];
     private bool hostLoaded;
 
-    // outcomes: what a host's journal says became of a carried send that went over a connection (SWITCHBOARD.md 3.0c). A send of this
+    // outcomes: what a server's journal says became of a carried send that went over a connection. A send of this
     // session is the outbox's to settle; this is for one carried from an earlier run whose id the connection was asked about.
     // An answer changes the carried list the interface reads, so it is applied on dispatcher, which is required with outcomes.
-    // host: the server's own record of sends it made for its clients that may not have gone (stage 6 slice 11, outbox: rows): drawn beside the carried ones, and dismissed on the
+    // server: the server's own record of sends it made for its clients that may not have gone (outbox: rows): drawn beside the carried ones, and dismissed on the
     // server for every device. A client of a server gives it; the in-process app and the loopback do not, and nothing here changes for them.
     public InterruptedSends(Outbox outbox, IMessageSender sender, PrivateState? state = null, IOperationOutcomes? outcomes = null, IUiDispatcher? dispatcher = null,
-        IHostUnsettledLink? host = null)
+        IServerUnsettledLink? host = null)
     {
         if (outcomes is not null && dispatcher is null)
             throw new ArgumentException("Outcomes are applied on the interface thread: a dispatcher is required with them.", nameof(dispatcher));
         this.outbox = outbox; this.sender = sender; this.state = state; this.outcomes = outcomes; this.dispatcher = dispatcher; this.host = host;
-        if (host is not null) host.UnsettledChanged += (_, _) => _ = RefreshHostQuietAsync();
+        if (host is not null) host.UnsettledChanged += (_, _) => _ = RefreshServerQuietAsync();
         outbox.Changed += OutboxChanged;
         if (host is not null) outbox.RefusalSettled += RefusalSettled;
         if (outcomes is not null) outcomes.Reconciled += OperationReconciled;
@@ -63,7 +63,7 @@ public sealed class InterruptedSends : IDisposable
 
     // A refused send retried, removed or taken back to edit on this PC is dealt with, so the server's record of it goes for every device.
     // A record not written yet is retired by the same call, so it never appears. One that can't be reached now is owed, and dismissed
-    // at the next read of the server's records this session (RefreshHostAsync); after a restart it would show as any other.
+    // at the next read of the server's records this session (RefreshServerAsync); after a restart it would show as any other.
     private readonly HashSet<string> owed = new(StringComparer.Ordinal);
     private async void RefusalSettled(object? source, string operationId)
     {
@@ -82,7 +82,7 @@ public sealed class InterruptedSends : IDisposable
     }
     private bool Shown(InterruptedSend send) => send.OperationId is not { } name || !outbox.MadeHere(name);
 
-    // The names to ask a host about: every carried send that has one.
+    // The names to ask a server about: every carried send that has one.
     public IReadOnlyList<string> OperationIds => [.. carried.Select(send => send.OperationId).OfType<string>()];
 
     private async void OperationReconciled(object? source, OperationOutcome outcome)
@@ -127,7 +127,7 @@ public sealed class InterruptedSends : IDisposable
     {
         if (host is not null && !hostLoaded)
         {
-            try { await RefreshHostAsync(); }
+            try { await RefreshServerAsync(); }
             catch (Exception) { /* read again at the next change */ }
         }
         if (state is null) return;
@@ -204,10 +204,10 @@ public sealed class InterruptedSends : IDisposable
     }
 
     /// <summary>Reads the server's unsettled sends again and tells the conversations whose list changed.</summary>
-    public async Task RefreshHostAsync()
+    public async Task RefreshServerAsync()
     {
         if (host is null) return;
-        // Not ConfigureAwait(false): Changed below redraws the interface, so it is raised on the thread that asked (the dispatcher's, from RefreshHostQuietAsync).
+        // Not ConfigureAwait(false): Changed below redraws the interface, so it is raised on the thread that asked (the dispatcher's, from RefreshServerQuietAsync).
         var read = (await host.ReadUnsettledAsync())
             .Select(row => new InterruptedSend("server:" + row.OperationId, row.ChatId, row.CreatedAt, null, null, null, row.OperationId, OnServer: true, Scheduled: row.ScheduledId is not null,
                 Refused: row.State == UnsettledStates.Failed)).ToList();
@@ -224,9 +224,9 @@ public sealed class InterruptedSends : IDisposable
         }
     }
 
-    private async Task RefreshHostQuietAsync()
+    private async Task RefreshServerQuietAsync()
     {
-        try { await (dispatcher is null ? RefreshHostAsync() : dispatcher.InvokeAsync(RefreshHostAsync)); }
+        try { await (dispatcher is null ? RefreshServerAsync() : dispatcher.InvokeAsync(RefreshServerAsync)); }
         catch (Exception) { /* read again at the next change or load */ }
     }
 

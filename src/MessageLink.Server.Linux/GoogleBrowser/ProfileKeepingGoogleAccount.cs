@@ -6,7 +6,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// Google Messages' account on a host whose sign-ins are made in a client's window (SWITCHBOARD.md 2.6c, 4.3). The window keeps the browser profile it
+/// Google Messages' account on a host whose sign-ins are made in a client's window. The window keeps the browser profile it
 /// signed in with on the client's own PC (<c>GoogleMessagesBrowserProfile.KeepAsync</c>), where this host cannot load it; so once the host has accepted
 /// the sign-in, it seeds a profile of its own from the same cookies and loads it once (<see cref="ChromiumGoogleBrowser.CreateProfileWithReasonAsync"/>).
 /// That profile is what <see cref="GoogleSignInKeeper"/> renews from here, ten minutes before Google's two hours.
@@ -40,7 +40,7 @@ internal sealed class ProfileKeepingGoogleAccount(IGoogleMessagesAccount inner, 
     public async Task SignInAsync(IReadOnlyDictionary<string, string> cookies, IProgress<string> pairingEmoji, CancellationToken cancellationToken, bool asNewDevice,
         IReadOnlyList<GoogleProfileCookie>? profileCookies)
     {
-        // A server that signs in in its own browser has proven this hand-over unrenewable (SWITCHBOARD.md 5.4: Google binds a sign-in to the browser that made it), so it is refused before
+        // A server that signs in in its own browser has proven this hand-over unrenewable (Google binds a sign-in to the browser that made it), so it is refused before
         // anything is done with the cookies; the client uses the remote sign-in there.
         if (refusesHandOver) throw new InvalidOperationException("sign_in_use_server");
         // And no two Google sign-ins interleave: this one holds the guard through the backend's sign-in and the profile it keeps, as a remote one does through its own.

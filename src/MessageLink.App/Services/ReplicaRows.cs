@@ -8,14 +8,14 @@ using MessageLink.Protocol;
 namespace MessageLink.App.Services;
 
 /// <summary>
-/// Where the stores that were files draw from in a client of a Messages Server (<c>local</c> and <c>remote</c>, SWITCHBOARD.md stage 6, slice 3): the rows
-/// of the replica once its host speaks <see cref="ProtocolVersion.SharedPreferences"/>, and otherwise the files exactly as before (a host of an older
+/// Where the stores that were files draw from in a client of a Messages Server (<c>local</c> and <c>remote</c>): the rows
+/// of the replica once its server speaks <see cref="ProtocolVersion.SharedPreferences"/>, and otherwise the files exactly as before (a server of an older
 /// version keeps no such rows, and nothing kept there is lost). The in-process app and the loopback never make one: they keep their files.
 /// </summary>
 /// <remarks>
-/// Decided per call from <see cref="ReplicatedStateStore.HostProtocolAsync"/>, which is the connection's version while there is one and the last version
-/// heard otherwise, so a launch draws from where the last connection did. The rows of a client that has never met such a host start empty: what this PC kept
-/// in its files moves with the migration (slice 13), not here. A change of source is logged once: <c>shared preferences source=rows|files host_protocol=</c>.
+/// Decided per call from <see cref="ReplicatedStateStore.ServerProtocolAsync"/>, which is the connection's version while there is one and the last version
+/// heard otherwise, so a launch draws from where the last connection did. The rows of a client that has never met such a server start empty: what this PC kept
+/// in its files moves with the migration, not here. A change of source is logged once: <c>shared preferences source=rows|files host_protocol=</c>.
 /// </remarks>
 internal sealed class ReplicaPreferenceSource(ReplicatedStateStore replica, Action<string>? log = null)
 {
@@ -25,7 +25,7 @@ internal sealed class ReplicaPreferenceSource(ReplicatedStateStore replica, Acti
 
     public async ValueTask<bool> RowsAsync(CancellationToken cancellationToken = default)
     {
-        var version = await replica.HostProtocolAsync(cancellationToken).ConfigureAwait(false);
+        var version = await replica.ServerProtocolAsync(cancellationToken).ConfigureAwait(false);
         var rows = version >= ProtocolVersion.SharedPreferences;
         if (Interlocked.Exchange(ref last, rows ? 1 : 0) != (rows ? 1 : 0)) log?.Invoke($"shared preferences source={(rows ? "rows" : "files")} host_protocol={version}");
         return rows;
@@ -52,7 +52,7 @@ internal sealed class ReplicaRows : IDisposable
         replica.RemoteChanged += OnRemoteChanged;
     }
 
-    /// <summary>Keys of this category the host changed, once the rows here hold them, with when what changed them arrived (SharedListChanges tells the list).</summary>
+    /// <summary>Keys of this category the server changed, once the rows here hold them, with when what changed them arrived (SharedListChanges tells the list).</summary>
     public event EventHandler<SharedRowsChange>? Changed;
 
     public async ValueTask<byte[]?> ReadAsync(string key, CancellationToken cancellationToken = default) =>
@@ -129,7 +129,7 @@ internal sealed class ReplicaRows : IDisposable
 
 /// <summary>
 /// Pin, mute (timed or not), marked unread, archive on this PC and a service mute set aside, as rows <c>chatpref:&lt;H(profile, chat)&gt;.&lt;setting&gt;</c>
-/// holding the files' own JSON (<see cref="LocalChatPreferenceStore"/>), or the files themselves while the host keeps no such rows.
+/// holding the files' own JSON (<see cref="LocalChatPreferenceStore"/>), or the files themselves while the server keeps no such rows.
 /// </summary>
 internal sealed class ReplicaChatPreferences(ReplicaPreferenceSource source, LocalChatPreferenceStore files, Action<string>? log = null) : ILocalChatPreferences, IDisposable
 {
@@ -230,7 +230,7 @@ internal sealed class ReplicaChatPreferences(ReplicaPreferenceSource source, Loc
     public void Dispose() => rows.Dispose();
 }
 
-/// <summary>Names for people, as rows <c>name:&lt;H(profile, identity)&gt;</c> holding the name as a JSON string, or the files while the host keeps no such rows.</summary>
+/// <summary>Names for people, as rows <c>name:&lt;H(profile, identity)&gt;</c> holding the name as a JSON string, or the files while the server keeps no such rows.</summary>
 internal sealed class ReplicaContactNames(ReplicaPreferenceSource source, LocalContactNameStore files) : ILocalContactNames, IDisposable
 {
     private readonly ReplicaRows rows = new(source.Replica, SharedCategories.ContactName);
@@ -283,7 +283,7 @@ internal sealed class ReplicaContactNames(ReplicaPreferenceSource source, LocalC
 
 /// <summary>
 /// Snoozes, as rows <c>snooze:&lt;H(profile, chat)&gt;</c> naming their conversation, read from the replica: no <c>snoozes.get</c> for each conversation the list
-/// draws. While the host keeps no such rows, the host's own store over the wire (<c>snoozes.*</c>), exactly as before.
+/// draws. While the server keeps no such rows, the server's own store over the wire (<c>snoozes.*</c>), exactly as before.
 /// </summary>
 internal sealed class ReplicaChatSnoozes : IChatSnoozes, IChangingChatSnoozes, IDisposable
 {
@@ -295,10 +295,10 @@ internal sealed class ReplicaChatSnoozes : IChatSnoozes, IChangingChatSnoozes, I
     {
         this.source = source; this.host = host;
         rows = new(source.Replica, SharedCategories.Snooze);
-        // Another device's snooze, and the move between the host's store and the rows, reach the reminders (NotificationSnoozeService, through
+        // Another device's snooze, and the move between the server's store and the rows, reach the reminders (NotificationSnoozeService, through
         // ObservedChatSnoozes) as a snooze set here does: Windows keeps one only while some store says so.
         rows.Changed += (_, _) => OnChanged(this, EventArgs.Empty);
-        source.Replica.HostProtocolChanged += OnChanged;
+        source.Replica.ServerProtocolChanged += OnChanged;
     }
 
     /// <inheritdoc />
@@ -337,7 +337,7 @@ internal sealed class ReplicaChatSnoozes : IChatSnoozes, IChangingChatSnoozes, I
 
     public void Dispose()
     {
-        source.Replica.HostProtocolChanged -= OnChanged;
+        source.Replica.ServerProtocolChanged -= OnChanged;
         rows.Dispose();
     }
 }

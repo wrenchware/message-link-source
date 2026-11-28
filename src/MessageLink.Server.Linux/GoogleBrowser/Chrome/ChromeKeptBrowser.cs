@@ -7,7 +7,7 @@ using MessageLink.App.Services.GoogleVoice;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// <see cref="IGoogleBrowser"/> for the server's own Chrome (SWITCHBOARD.md 5.4, Chrome on the server), so that <see cref="GoogleSignInKeeper"/> (its 110-minute renewal, and the renewal after a refusal) asks
+/// <see cref="IGoogleBrowser"/> for the server's own Chrome (Chrome on the server), so that <see cref="GoogleSignInKeeper"/> (its 110-minute renewal, and the renewal after a refusal) asks
 /// the one browser that signed in and gets Chrome's own cookies. Chrome is the PC's WebView2 in this arrangement: signed in by a person, never automated, and left to renew Google's sign-in itself. What
 /// the server does to it is close it and start it again, and read its files:
 /// <list type="number">
@@ -146,7 +146,7 @@ internal interface IChromeRenewalTarget
 }
 
 /// <summary>
-/// The PC's 110-minute load, done for the server's Chrome (SWITCHBOARD.md 5.4, Chrome on the server): a sign-in that has run about 100 minutes gets Chrome reloaded (<see cref="ChromeKeptBrowser"/>), and
+/// The PC's 110-minute load, done for the server's Chrome (Chrome on the server): a sign-in that has run about 100 minutes gets Chrome reloaded (<see cref="ChromeKeptBrowser"/>), and
 /// when Chrome's page rotated <c>__Secure-1PSIDTS</c> the new cookies go into the running helper in place, which restarts the clock and so this loop's count. Nothing reconnects. When it did not
 /// rotate (<c>rotated=no</c>) it is tried again after <see cref="Retry"/>; twice running is logged as <c>renewal=stuck</c>, and nothing else is done: Google refuses the sign-in at two hours, and the keeper
 /// (<see cref="GoogleSignInKeeper"/>) then reloads and re-reads Chrome once more before it asks the person, exactly as it does on the PC. Never more than one reload per <see cref="Retry"/>.

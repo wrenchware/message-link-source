@@ -6,9 +6,9 @@ using MessageLink.Protocol;
 namespace MessageLink.Server;
 
 /// <summary>
-/// Which conversations the clients' merges hold, as a server's host reads them (SWITCHBOARD.md stage 6, slice 5): the one <c>merges:</c> row of its shared
+/// Which conversations the clients' merges hold, as a server reads them: the one <c>merges:</c> row of its shared
 /// state, under the profile its space key gives, read through the window's own <see cref="MergedConversations"/> so a Google Voice person's other
-/// conversations and a call's text route count as they count there. Read only: the host never writes the merges, which each client changes itself.
+/// conversations and a call's text route count as they count there. Read only: the server never writes the merges, which each client changes itself.
 /// </summary>
 /// <remarks>The row is read again for each question: one SQLite read and a few KB of JSON, asked once for each arrival in an archived one-to-one conversation.</remarks>
 internal sealed class SharedMergeMembership
@@ -18,7 +18,7 @@ internal sealed class SharedMergeMembership
     // other's DisplayId could find none and unarchive a merged member at its service, or file a label under the member's id.
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    /// <param name="store">The host's shared state, read under the profile it files the host's rows under (its space key's once pinned), as asked.</param>
+    /// <param name="store">The server's shared state, read under the profile it files the server's rows under (its space key's once pinned), as asked.</param>
     public SharedMergeMembership(SharedStateStore store) =>
         merges = new MergedConversations(store.View<MergedConversation[]>(SharedCategories.Merges).ReadOnlyState(), GoogleVoiceIds.TextRouteForCall);
 

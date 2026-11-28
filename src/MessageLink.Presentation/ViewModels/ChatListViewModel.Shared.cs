@@ -3,7 +3,7 @@ using MessageLink.Presentation.Services;
 
 namespace MessageLink.Presentation.ViewModels;
 
-// What another device changed, reaching a client of a Messages Server's list (SWITCHBOARD.md stage 6, slice 4): a pin, mute,
+// What another device changed, reaching a client of a Messages Server's list: a pin, mute,
 // marked unread, archive here, snooze or name made elsewhere, and the pinned order. The rows come with this PC's settings
 // already applied again (LocalPreferenceChatReader.ReapplyAsync); a burst of them is applied here at once, with one redraw.
 public sealed partial class ChatListViewModel
@@ -19,7 +19,7 @@ public sealed partial class ChatListViewModel
     /// redraw: a provider read that lands while the order is read is newer than the copy the row was made from, and is kept.
     /// </param>
     /// <param name="regroup">
-    /// Another device's merges or labels came (slice 5). They are already held where the list reads them from (MergedConversations,
+    /// Another device's merges or labels came. They are already held where the list reads them from (MergedConversations,
     /// LabelStore), and the redraw, the one this burst makes, builds the merged rows and the labels from them again.
     /// </param>
     /// <returns>How many loaded rows changed, and the rows taken (the others failed <paramref name="current"/>).</returns>
@@ -27,7 +27,7 @@ public sealed partial class ChatListViewModel
         Func<ReappliedChat, bool>? current = null, bool regroup = false)
     {
         // Read again rather than merged: another device saved the order whole, and the last writer's order is the order.
-        // Nothing is written back, so a remote order never echoes to the host.
+        // Nothing is written back, so a remote order never echoes to the server.
         if (pinnedOrder) await EnsurePinnedOrderAsync(CancellationToken.None, reload: true);
         var taken = current is null ? rows : rows.Where(current).ToList();
         var byId = new Dictionary<string, ReappliedChat>(StringComparer.Ordinal);

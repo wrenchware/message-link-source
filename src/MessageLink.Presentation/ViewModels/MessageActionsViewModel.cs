@@ -40,7 +40,7 @@ public sealed partial class MessageActionsViewModel(IMessageActions backend, IAc
     public async Task<(MessageActionOptions Options, string? Profile)> GetMenuAsync(ChatMessage message, bool reuseRecent = false)
     {
         if (!Available(message.ChatId)) return (new(false, [], []), null);
-        // Hermes takes no reply, reaction, edit or removal (the server refuses each by name), so its host is not asked.
+        // Hermes takes no reply, reaction, edit or removal (the server refuses each by name), so its server is not asked.
         if (HermesThreads.Is(message.ChatId)) return (new(false, [], []), null);
         try
         {

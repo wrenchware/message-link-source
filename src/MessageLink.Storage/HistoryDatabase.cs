@@ -47,7 +47,7 @@ public sealed record HistoryFeedChat(string ChatId, long From, long To, IReadOnl
 public sealed record HistoryFeedRead(long Through, bool More, IReadOnlyList<HistoryFeedRow> Rows, IReadOnlyList<HistoryFeedChat> Chats);
 
 /// <summary>
-/// The server's whole copy of every conversation (SWITCHBOARD.md stage 8), in <c>history.db</c> beside its other stores. Each message and each conversation's
+/// The server's whole copy of every conversation, in <c>history.db</c> beside its other stores. Each message and each conversation's
 /// state is sealed with AES-GCM under a key of this file's own, which the platform's protector keeps; conversation and message ids are stored only as keyed
 /// hashes, and each row's id rides inside its sealed bytes. What stays readable is a message's time, which is what orders a conversation, and the change
 /// numbers. One number counts every change the file has made (<see cref="Seq"/>), under an <see cref="Epoch"/> that is new whenever the file starts over.
@@ -58,7 +58,7 @@ public sealed record HistoryFeedRead(long Through, bool More, IReadOnlyList<Hist
 /// </remarks>
 public sealed partial class HistoryDatabase(string path, IStateProtector protector) : IDisposable
 {
-    // 2 (stage 9) adds the list rows, numbered in the same sequence as the messages.
+    // 2 adds the list rows, numbered in the same sequence as the messages.
     private const int Version = 2;
     private const int RecordLimit = 4 * 1024 * 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -85,7 +85,7 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
             if (stored is not null)
             {
                 // Only a key that no longer opens it starts it over. A protector that cannot read its own key now (a keys volume missing, a file
-                // unreadable) fails the open instead, and the host serves without a history until it can.
+                // unreadable) fails the open instead, and the server serves without a history until it can.
                 try { opened = await protector.UnprotectAsync(stored).ConfigureAwait(false); } catch (CryptographicException) { opened = null; }
                 if (opened is { Length: not 64 }) opened = null;
             }
@@ -286,7 +286,7 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
     }
 
     /// <summary>
-    /// Keeps list rows (stage 9): each that differs from what is kept, or that leaves the list, takes the next change number. Returns those that changed,
+    /// Keeps list rows: each that differs from what is kept, or that leaves the list, takes the next change number. Returns those that changed,
     /// with their numbers.
     /// </summary>
     public async Task<IReadOnlyList<HistoryFeedRow>> WriteRowsAsync(IReadOnlyList<HistoryListRow> rows, CancellationToken cancellationToken = default)
@@ -506,7 +506,7 @@ public sealed partial class HistoryDatabase(string path, IStateProtector protect
         return true;
     }
 
-    /// <summary>The file's size in bytes, for the host's diagnostics.</summary>
+    /// <summary>The file's size in bytes, for the server's diagnostics.</summary>
     public long Bytes
     {
         get

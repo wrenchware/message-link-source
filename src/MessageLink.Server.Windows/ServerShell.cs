@@ -31,9 +31,9 @@ internal interface IServerLifecycle
 /// <summary>
 /// The server's one STA thread: a Win32 message loop and a top-level window that is never shown. It is the process's address for the things only
 /// a window can receive: <c>MessageLinkServer.exe --quit</c> from another process (a registered message), Restart Manager's close when an installer
-/// replaces the program, and the end of the Windows session (SWITCHBOARD.md stage 3). A message-only window would hear none of the last two,
+/// replaces the program, and the end of the Windows session. A message-only window would hear none of the last two,
 /// since Windows broadcasts them to top-level windows. The Google renewal's WebView2 controllers live on this thread too: it carries a
-/// DispatcherQueue (<see cref="Sta"/>) that the same loop drains, and a synchronization context that brings awaits back to it (3.1c).
+/// DispatcherQueue (<see cref="Sta"/>) that the same loop drains, and a synchronization context that brings awaits back to it.
 /// </summary>
 internal sealed class ServerShell
 {

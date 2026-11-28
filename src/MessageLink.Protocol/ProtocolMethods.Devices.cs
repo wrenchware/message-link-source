@@ -1,9 +1,9 @@
 namespace MessageLink.Protocol;
 
-// The devices a host on the network has paired (SWITCHBOARD.md stage 4, the home-network transport). Only a host behind MessageLink.Server.Network serves
-// them; every other host leaves ProtocolServices.Devices null and answers not_supported. None is journaled: a list changes nothing, a revoke that is
+// The devices a host on the network has paired (the home-network transport). Only a host behind MessageLink.Server.Network serves
+// them; every other server leaves ProtocolServices.Devices null and answers not_supported. None is journaled: a list changes nothing, a revoke that is
 // repeated finds nothing left to remove and says so, a rename repeated gives the same name again, and a second new code simply replaces the first. Pairing
-// itself (NetworkPairing.ClaimMethod) is not here: no dispatcher serves it, only the network host's door, to a connection that has no token yet and may do
+// itself (NetworkPairing.ClaimMethod) is not here: no dispatcher serves it, only the network server's door, to a connection that has no token yet and may do
 // nothing else.
 //
 // A device token is never an admin's: any device may revoke or rename itself. Another device, and a code for a new one, are the page's (protocol 28): every device is answered forbidden.
@@ -24,8 +24,8 @@ public static partial class ProtocolMethods
     /// <summary>Turns a request to join away: the asking device is told so. The owner only.</summary>
     public const string DevicesDenyJoin = "devices.denyJoin";
     /// <summary>
-    /// A new pairing code (replacing any open one) as the join link a phone scans and the line a PC pastes (protocol <see cref="ProtocolVersion.JoinLinks"/>, SWITCHBOARD.md
-    /// 10.4): the server's Tailscale machine name and account, the address given or the server's own, its fingerprint and the code. Refused to every device from protocol 28: the page adds devices.
+    /// A new pairing code (replacing any open one) as the join link a phone scans and the line a PC pastes (protocol <see cref="ProtocolVersion.JoinLinks"/>):
+    /// the server's Tailscale machine name and account, the address given or the server's own, its fingerprint and the code. Refused to every device from protocol 28: the page adds devices.
     /// </summary>
     public const string DevicesJoinLink = "devices.joinLink";
 
@@ -58,7 +58,7 @@ public sealed record JoinApproved(bool Approved, string? DeviceId = null, string
 /// <summary>Whether a request was turned away: false when there was no such request any more.</summary>
 public sealed record JoinDenied(bool Denied);
 
-/// <summary>One paired device as <c>devices.list</c> describes it. Its token never leaves the host, which keeps only a hash of it.</summary>
+/// <summary>One paired device as <c>devices.list</c> describes it. Its token never leaves the server, which keeps only a hash of it.</summary>
 /// <param name="Name">What the device called itself when it paired.</param>
 /// <param name="Current">The device asking.</param>
 /// <param name="Owner">False from protocol 28, when no device outranks another (the page manages the server). Kept for a client of an older version, whose Manage server reads it.</param>
@@ -87,14 +87,14 @@ public sealed record DeviceRenameParams(string Id, string Name);
 /// <summary>Whether a device was renamed (false when no device had that id), and the name it now has.</summary>
 public sealed record DeviceRenamed(bool Renamed, string Name);
 
-/// <summary>What a host that pairs devices serves as <c>devices.*</c>, seen from one connection (which device is asking is the host's business).</summary>
+/// <summary>What a server that pairs devices serves as <c>devices.*</c>, seen from one connection (which device is asking is the server's business).</summary>
 public interface IPairedDevices
 {
     Task<IReadOnlyList<PairedDevice>> ListAsync(CancellationToken cancellationToken = default);
     Task<DeviceRevoked> RevokeAsync(string id, CancellationToken cancellationToken = default);
     Task<PairingCodeIssued> PairNewAsync(CancellationToken cancellationToken = default);
     Task<DeviceRenamed> RenameAsync(string id, string name, CancellationToken cancellationToken = default);
-    // A host without join requests (every one but the network host) offers none: these answer not supported there.
+    // A server without join requests (every one but the network server) offers none: these answer not supported there.
     Task<IReadOnlyList<JoinRequest>> JoinRequestsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
     Task<JoinApproved> ApproveJoinAsync(string id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     Task<JoinDenied> DenyJoinAsync(string id, CancellationToken cancellationToken = default) => throw new NotSupportedException();

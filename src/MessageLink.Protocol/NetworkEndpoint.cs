@@ -10,10 +10,10 @@ using MessageLink.Core.Backend;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// Pairing a device with a host on the network (SWITCHBOARD.md stage 4). A device has no token until it pairs: it opens the socket with the one-time code
+/// Pairing a device with a server on the network. A device has no token until it pairs: it opens the socket with the one-time code
 /// the host printed in <see cref="Header"/> instead of a token, says hello, and makes the one call such a connection may make, <see cref="ClaimMethod"/>,
-/// which answers the device's own token; then the host closes the connection. The method is not in <see cref="ProtocolMethods.Catalog"/>, because no
-/// dispatcher serves it: only the network host's door does, to a connection that has nothing else.
+/// which answers the device's own token; then the server closes the connection. The method is not in <see cref="ProtocolMethods.Catalog"/>, because no
+/// dispatcher serves it: only the network server's door does, to a connection that has nothing else.
 /// </summary>
 public static class NetworkPairing
 {
@@ -21,13 +21,13 @@ public static class NetworkPairing
     /// <summary>The upgrade header that carries the pairing code, in place of <c>Authorization</c>.</summary>
     public const string Header = "X-Messages-Pair";
     /// <summary>
-    /// The header a refusal of a token names its reason in, when it has one a device should say (stage 10, protocol 26): <see cref="RefusalRestored"/>, the server was restored
+    /// The header a refusal of a token names its reason in, when it has one a device should say (protocol 26): <see cref="RefusalRestored"/>, the server was restored
     /// from a backup made before this device joined (or the restore forgot it), so it asks to join again. Any server version may send it; a device that does not know it reads
     /// a refused token as before.
     /// </summary>
     public const string RefusalHeader = "X-Messages-Refusal";
     public const string RefusalRestored = "restored";
-    /// <summary>The longest device name a host keeps; a longer one is cut.</summary>
+    /// <summary>The longest device name a server keeps; a longer one is cut.</summary>
     public const int MaxDeviceName = 64;
 
     /// <summary>
@@ -177,14 +177,14 @@ public sealed class JoinNotOfferedException(bool noApprover = false, bool notHom
 /// <summary>What a device that asked to join and was let in keeps: its id, its token and the server's certificate as it saw it (what it pins from now on).</summary>
 public sealed record JoinedDevice(string DeviceId, byte[] Token, byte[] Pin);
 
-/// <param name="Code">The code the host printed, as the owner typed it (case and dashes do not matter).</param>
-/// <param name="DeviceName">What the host lists the device as (<c>devices.list</c>).</param>
+/// <param name="Code">The code the server printed, as the owner typed it (case and dashes do not matter).</param>
+/// <param name="DeviceName">What the server lists the device as (<c>devices.list</c>).</param>
 public sealed record PairClaimParams(string Code, string DeviceName);
 
-/// <param name="Token">The device's token in its text form (<see cref="ClientToken.Encode"/>). The host keeps only a hash of it; this is the one time it crosses.</param>
+/// <param name="Token">The device's token in its text form (<see cref="ClientToken.Encode"/>). The server keeps only a hash of it; this is the one time it crosses.</param>
 public sealed record PairClaimed(string DeviceId, string Token);
 
-/// <summary>The host turned the pairing code away: wrong, used or expired. Nothing about the code is in the message.</summary>
+/// <summary>The server turned the pairing code away: wrong, used or expired. Nothing about the code is in the message.</summary>
 public sealed class PairingRefusedException() : UnauthorizedAccessException("The server did not accept the pairing code.");
 
 /// <summary>The server refused this device's token because it was restored from a backup made before the device joined, or the restore forgot the device: it asks to join again.</summary>
@@ -203,7 +203,7 @@ public sealed class CertificateMismatchException() : AuthenticationException("Th
 public sealed class DeviceNotPairedException() : IOException("There is no device token to present.");
 
 /// <summary>
-/// The client's end of the network transport (SWITCHBOARD.md stage 4): one WebSocket, <c>wss://host:port/v1/socket</c>, carrying the same text frames
+/// The client's end of the network transport: one WebSocket, <c>wss://host:port/v1/socket</c>, carrying the same text frames
 /// as the pipe. The host's certificate is self-signed, so it is trusted by its SHA-256 fingerprint alone: a certificate whose fingerprint matches the
 /// pinned one is accepted whatever its chain or names say, and every other certificate is refused, whatever its chain or names say. The token goes
 /// only to a host that passed that check, because the TLS handshake ends before the request that carries it is written.
@@ -284,7 +284,7 @@ public static class NetworkEndpoint
 
     /// <summary>
     /// Pairs this device: opens the socket with <paramref name="code"/> in place of a token, claims a token for <paramref name="deviceName"/>, and returns it.
-    /// Throws <see cref="PairingRefusedException"/> when the host turned the code away (a definite answer: the code is spent or wrong, and asking again with
+    /// Throws <see cref="PairingRefusedException"/> when the server turned the code away (a definite answer: the code is spent or wrong, and asking again with
     /// it will not help), <see cref="CertificateMismatchException"/> before anything is sent to a host that is not the pinned one, and anything else for a
     /// connection that failed (which may be tried again).
     /// </summary>
@@ -434,7 +434,7 @@ public static class NetworkEndpoint
         try
         {
             var options = Configure(client, header, value);
-            // Straight to the host: a proxy in between would be a party to the connection that nobody chose.
+            // Straight to the server: a proxy in between would be a party to the connection that nobody chose.
             options.Proxy = null;
             // The pin is the whole of the trust: chain and name errors are expected for a self-signed certificate and are ignored only when the
             // fingerprint matches; nothing else is accepted, a certificate a public authority vouches for included.

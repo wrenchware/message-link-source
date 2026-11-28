@@ -6,18 +6,18 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The client's side of media (SWITCHBOARD.md 2.4c): turns an <see cref="AttachmentFile"/> into an upload and the chunks of a read
+/// The client's side of media: turns an <see cref="AttachmentFile"/> into an upload and the chunks of a read
 /// back into bytes, so that no <c>Func&lt;Stream&gt;</c>, <c>Stream</c> or <c>byte[]</c> crosses the wire as such. Chunks go one at a
-/// time, each a round trip; a transport that makes that slow has a better way to move bytes (ranged HTTP, stage 4), and these methods
+/// time, each a round trip; a transport that makes that slow has a better way to move bytes (ranged HTTP), and these methods
 /// stay for a pipe or a loopback.
 /// </summary>
 internal static class MediaTransfer
 {
-    /// <summary>The sentence for a file that could not be handed to the host: nothing was sent.</summary>
+    /// <summary>The sentence for a file that could not be handed to the server: nothing was sent.</summary>
     public const string UploadFailedSentence = "The file could not be handed to the server. It wasn't sent.";
 
     /// <summary>
-    /// Sends <paramref name="file"/>'s bytes up and returns the handle a send names. Any failure ends the upload on the host
+    /// Sends <paramref name="file"/>'s bytes up and returns the handle a send names. Any failure ends the upload on the server
     /// (best effort) and is thrown as it is: the caller decides what it means for a send, and until a send is requested nothing
     /// has been sent.
     /// </summary>
@@ -60,16 +60,16 @@ internal static class MediaTransfer
     }
 
     /// <summary>
-    /// How long cleaning up one upload waits for the host. The abort runs on the way out of a failure, and the failure is what the person is waiting to be told:
-    /// a host that answers pings but not this (the case <see cref="ProtocolClient.CancelGrace"/> is for) must not hold the report back, and what it holds
+    /// How long cleaning up one upload waits for the server. The abort runs on the way out of a failure, and the failure is what the person is waiting to be told:
+    /// a server that answers pings but not this (the case <see cref="ProtocolClient.CancelGrace"/> is for) must not hold the report back, and what it holds
     /// expires on its own.
     /// </summary>
     public static TimeSpan AbortWait { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Asks the host to drop uploads no send has claimed. Never throws and never waits on the caller's token: this runs after a
-    /// failure or a cancel, and a connection that is gone has nothing left to clean (the host expires what it holds). Each ask waits
-    /// at most <see cref="AbortWait"/>; one the host has not answered by then is left, not repeated.
+    /// Asks the server to drop uploads no send has claimed. Never throws and never waits on the caller's token: this runs after a
+    /// failure or a cancel, and a connection that is gone has nothing left to clean (the server expires what it holds). Each ask waits
+    /// at most <see cref="AbortWait"/>; one the server has not answered by then is left, not repeated.
     /// </summary>
     public static async Task AbortAsync(ProtocolClient client, IEnumerable<string> uploadIds)
     {
@@ -86,15 +86,15 @@ internal static class MediaTransfer
     }
 
     /// <summary>
-    /// The most one item may be, whatever the host says: what a host reads through for a saved copy (<see cref="ProtocolDispatcher.MaxCopyBytes"/>). A total
-    /// above it is refused before anything is kept, so a host cannot make this client hold more than it would itself.
+    /// The most one item may be, whatever the server says: what a server reads through for a saved copy (<see cref="ProtocolDispatcher.MaxCopyBytes"/>). A total
+    /// above it is refused before anything is kept, so a server cannot make this client hold more than it would itself.
     /// </summary>
     internal const long MaxItemBytes = ProtocolDispatcher.MaxCopyBytes;
 
     /// <summary>Everything <paramref name="attachment"/> is, as <c>IMediaReader.ReadImageAsync</c> would return it.</summary>
     public static async Task<byte[]> ReadAsync(ProtocolClient client, MessageAttachment attachment, bool inline, CancellationToken cancellationToken)
     {
-        // Grown as the chunks arrive, never sized from the host's total: a host that claims a large item and sends little costs this client what it sent.
+        // Grown as the chunks arrive, never sized from the server's total: a server that claims a large item and sends little costs this client what it sent.
         byte[] whole = [];
         long total = -1, position = 0;
         while (true)
@@ -136,7 +136,7 @@ internal static class MediaTransfer
             }
             else if (chunk.Total != total) throw Unreadable();
             var bytes = Decode(chunk.Data);
-            // The running count is held to the total, and the total to the limit, so no host keeps a copy going past it.
+            // The running count is held to the total, and the total to the limit, so no server keeps a copy going past it.
             if (position + bytes.Length > total || position + bytes.Length > MaxItemBytes) throw Unreadable();
             await destination.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
             position += bytes.Length;

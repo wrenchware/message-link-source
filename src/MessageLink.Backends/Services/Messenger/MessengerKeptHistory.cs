@@ -25,7 +25,7 @@ internal sealed record MessengerKeptAccount(string SelfId, string DatabasePath, 
             ? In(privateRoot, selfId)
             : new(selfId, AppPaths.Combine("Messenger", "accounts", StoreKey(selfId), "messages.db"), StoreKey(selfId));
 
-    // Under a private root the host names itself (the Linux server's keys folder), rather than the one in the environment.
+    // Under a private root the server names itself (the Linux server's keys folder), rather than the one in the environment.
     public static MessengerKeptAccount In(string privateRoot, string selfId)
     {
         var key = StoreKey(selfId);

@@ -38,7 +38,7 @@ internal sealed class HelperConnection : IAsyncDisposable
     // and without it from %LOCALAPPDATA%\Message Link: a development copy's helper started without it would keep its
     // history and log in the real folder. Null in the diagnostics, whose helpers inherit their environment as before.
     internal static string? DataRoot { get; set; }
-    // The helpers this host may start, by file name; null starts any. A host that cannot run a provider (the Linux server:
+    // The helpers this server may start, by file name; null starts any. A server that cannot run a provider (the Linux server:
     // Google Messages, Google Voice, Instagram) names only the ones it can, so a route it forgot to refuse still cannot
     // reach that provider's service.
     internal static Func<string, bool>? Allowed { get; set; }
@@ -231,7 +231,7 @@ internal sealed class HelperConnection : IAsyncDisposable
     public bool SealIfIdle() => requests.CloseIfIdle();
     private static long lastId;
     private readonly long id = Interlocked.Increment(ref lastId);
-    // The counter above starts again with every process, so a mark also names the run: a question asked of a host that has since
+    // The counter above starts again with every process, so a mark also names the run: a question asked of a server that has since
     // restarted must never match the new run's helper 1 (review, 2026-10-08).
     private static readonly string Run = Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8));
     // Which helper this is and how many contact-visible calls have begun on it, as one opaque word. Read when a restart

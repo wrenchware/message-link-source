@@ -5,7 +5,7 @@ using MessageLink.Protocol;
 
 namespace MessageLink.Server.Network;
 
-// ---- Notifications on phones (SWITCHBOARD.md 7.5, 10.9): the owner's Firebase project given here, as a wizard, with a test push that proves it end to end ----
+// ---- Notifications on phones: the owner's Firebase project given here, as a wizard, with a test push that proves it end to end ----
 internal sealed partial class ServerPage
 {
     private const string FirebaseConsole = "https://console.firebase.google.com/";

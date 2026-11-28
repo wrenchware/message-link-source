@@ -6,23 +6,23 @@ using MessageLink.Server;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// One run of the Linux host: compose, open the door, restore when asked, and the one stop every ending goes through (SIGTERM, SIGINT, or the
+/// One run of the Linux server: compose, open the door, restore when asked, and the one stop every ending goes through (SIGTERM, SIGINT, or the
 /// door closing by itself). The door is a hook, so the transport is plugged in by whoever builds it and this file does not change.
 /// </summary>
 /// <param name="previousExit">The run marker's word for how the last run ended (<c>clean</c>, <c>unclean</c>, ...), which paces the restore (<see cref="RestoreLedger"/>).</param>
-/// <param name="google">Google Messages, when the host runs it (<see cref="LinuxGoogle.Prepare"/>).</param>
-internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOptions options, Action<string> log, string previousExit, LinuxGoogle? google = null)
+/// <param name="google">Google Messages, when the server runs it (<see cref="LinuxGoogle.Prepare"/>).</param>
+internal sealed class LinuxServerRun(string root, LinuxServerKeys keys, LinuxServerOptions options, Action<string> log, string previousExit, LinuxGoogle? google = null)
 {
     /// <summary>
     /// Serves clients until <c>stopping</c> is cancelled, then stops taking requests, gives the requests already taken up to
-    /// <see cref="ShutdownBudget.Sends"/> to be answered, closes every connection and returns. It dispatches over <see cref="ProtocolHost.Services"/>
-    /// and <see cref="ProtocolHost.Journal"/> (one journal for every connection), and logs <c>server listening</c> once it accepts. A hook that
+    /// <see cref="ShutdownBudget.Sends"/> to be answered, closes every connection and returns. It dispatches over <see cref="ProtocolServer.Services"/>
+    /// and <see cref="ProtocolServer.Journal"/> (one journal for every connection), and logs <c>server listening</c> once it accepts. A hook that
     /// returns or throws before the stop ends the run.
     /// </summary>
-    public delegate Task Serve(ProtocolHost host, CancellationToken stopping);
+    public delegate Task Serve(ProtocolServer host, CancellationToken stopping);
 
     /// <summary>
-    /// A Tailscale auth key for a headless setup (SWITCHBOARD.md 10.8): read like the page's password, taken out of the environment before any helper starts and
+    /// A Tailscale auth key for a headless setup: read like the page's password, taken out of the environment before any helper starts and
     /// never kept in the options, and handed to the tailnet door alone, on its input (<see cref="TailnetDoor"/>).
     /// </summary>
     public const string TailnetAuthKeyVariable = "MESSAGES_TAILNET_AUTHKEY";
@@ -34,18 +34,18 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
     private int stopRequested;
 
     /// <summary>
-    /// The home network (SWITCHBOARD.md stage 4): TLS with a self-signed certificate the client pins, a one-time pairing code for a new device and a
-    /// token per device, sealed with the host's own key. On the stop, new requests are refused and those already taken get the sends' bound. The server's own page is on
+    /// The home network: TLS with a self-signed certificate the client pins, a one-time pairing code for a new device and a
+    /// token per device, sealed with the server's own key. On the stop, new requests are refused and those already taken get the sends' bound. The server's own page is on
     /// when <c>MESSAGES_ADMIN_PASSWORD</c> is set (read here and handed on, never kept in the options, whose text would print it).
     /// </summary>
     /// <param name="restart">Stops the run so it starts again in this process (a restore or a reset from the page, applied before anything opens); false when it cannot.</param>
-    public static Serve Network(LinuxServerOptions options, HostKeys keys, Action<string> log, Func<string, string?>? environment = null, Func<string, bool>? restart = null) => async (host, stop) =>
+    public static Serve Network(LinuxServerOptions options, LinuxServerKeys keys, Action<string> log, Func<string, string?>? environment = null, Func<string, bool>? restart = null) => async (host, stop) =>
     {
-        // The owner's tailnet, when asked for (SWITCHBOARD.md 4.7): the host also listens on a relay socket that only the door beside it reaches.
+        // The owner's tailnet, when asked for: the host also listens on a relay socket that only the door beside it reaches.
         var relay = options.Tailnet ? TailnetDoor.RelaySocket : null;
         // What the door reports, for the server's page: made before both, since the page exists before the door starts. Without the door, the page says how to turn it on.
         var tailnet = new MessageLink.Server.Network.TailnetBoard(options.Tailnet, options.Port);
-        // Notifications to phones (SWITCHBOARD.md 7.5): the owner's Firebase project, from two files. The server's page keeps them in the keys volume (one is the
+        // Notifications to phones: the owner's Firebase project, from two files. The server's page keeps them in the keys volume (one is the
         // project's private key, and nothing on the data volume is left readable); files put by hand in the data volume's push folder are read when the keys
         // volume has none. MESSAGES_PUSH names one folder for both.
         var named = (environment ?? Environment.GetEnvironmentVariable)("MESSAGES_PUSH") is { Length: > 0 } chosen ? chosen : null;
@@ -53,14 +53,14 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
         var pushFrom = named ?? (File.Exists(Path.Combine(kept, MessageLink.Server.Network.FirebaseTransport.ServiceAccountFile))
             && File.Exists(Path.Combine(kept, MessageLink.Server.Network.FirebaseTransport.AppSettingsFile)) ? kept : Path.Combine(options.DataRoot, "push"));
         var protector = new FileKeyStateProtector(keys.StateKey);
-        // The page's Backups card, restore and reset (stage 10), and the record of the restore this server was made from, if it was.
+        // The page's Backups card, restore and reset, and the record of the restore this server was made from, if it was.
         var backups = host.Services.Backup is MessageLink.Server.Backup.ServerBackupService backup && host.Services.Admin is { } admin
             ? new MessageLink.Server.Network.ServerPageBackups(backup, async ct => (await admin.AccountsAsync(ct).ConfigureAwait(false)).Count, ct => SignOutAllAsync(admin, log, ct),
                 restart ?? (_ => false))
             : null;
         var restored = await MessageLink.Server.Backup.RestoredMark.LoadAsync(Path.Combine(options.DataRoot, MessageLink.Server.Backup.RestoredMark.FileName), protector).ConfigureAwait(false);
-        var network = await MessageLink.Server.Network.NetworkHost.StartAsync(host,
-            new MessageLink.Server.Network.NetworkHostOptions(options.DataRoot, protector, log)
+        var network = await MessageLink.Server.Network.NetworkServer.StartAsync(host,
+            new MessageLink.Server.Network.NetworkServerOptions(options.DataRoot, protector, log)
             {
                 Backups = backups, Restored = restored,
                 Port = options.Port, HostNames = options.HostNames, Pair = options.Pair,
@@ -69,7 +69,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
                 // A live code goes to the container's output (docker logs) and never into server.log on the data volume.
                 ShowCode = Show,
                 PagePassword = (environment ?? Environment.GetEnvironmentVariable)("MESSAGES_ADMIN_PASSWORD"),
-                // Without that password, the page sets itself up with a setup code printed to the container's output (SWITCHBOARD.md 10.4).
+                // Without that password, the page sets itself up with a setup code printed to the container's output.
                 FirstRun = true,
                 RelaySocket = relay,
                 Tailnet = tailnet,
@@ -94,7 +94,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
 
     private static void Show(string line) => Console.Out.Write($"{DateTimeOffset.Now:HH:mm:ss.fff} {line}\n");
 
-    // Reset server (stage 10): every account the server can remove is removed, as the page removes one (each through its own sign-out; Google Messages, since
+    // Reset server: every account the server can remove is removed, as the page removes one (each through its own sign-out; Google Messages, since
     // 2026-11-22, asking the phone to unpair when it can). A removal that fails stops the reset.
     private static async Task<(int SignedOut, int Left, bool Failed)> SignOutAllAsync(MessageLink.Protocol.IServerAdmin admin, Action<string> log, CancellationToken cancellationToken)
     {
@@ -112,7 +112,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
         return (signedOut, left, false);
     }
 
-    /// <summary>No transport: the host is composed and restored, and nothing can reach it (development, and the harness).</summary>
+    /// <summary>No transport: the server is composed and restored, and nothing can reach it (development, and the harness).</summary>
     public static Serve NoTransport(Action<string> log) => async (_, stop) =>
     {
         log("server listening transport=none");
@@ -148,13 +148,13 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
     /// <summary>Runs until stopped. 0 for a stop that was asked for, 1 when the start or the door failed.</summary>
     public async Task<int> RunAsync(Serve serve)
     {
-        LinuxHostStartup? composed = null;
+        LinuxServerStartup? composed = null;
         Task restoring = Task.CompletedTask, serving = Task.CompletedTask, backingUp = Task.CompletedTask;
         var code = 0;
         try
         {
             var clock = Stopwatch.StartNew();
-            composed = LinuxHostStartup.Compose(root, keys, log, options.Restore, google, options.Backups(Directory.Exists));
+            composed = LinuxServerStartup.Compose(root, keys, log, options.Restore, google, options.Backups(Directory.Exists));
             log($"server ready ms={clock.ElapsedMilliseconds}");
             if (!stopping.IsCancellationRequested)
             {
@@ -194,9 +194,9 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
     /// <summary>
     /// The start's restore, held as long as <see cref="RestoreLedger"/> says (each restore logs Messenger and Instagram in again, and Docker restarts a crashing container
     /// within seconds). While it is held, a client asking for the restore is answered skipped rather than left waiting or let past the pacing; the feed and
-    /// the restore follow when the wait is over, if the host is still running.
+    /// the restore follow when the wait is over, if the server is still running.
     /// </summary>
-    private async Task PacedRestoreAsync(LinuxHostStartup composed, CancellationToken stop)
+    private async Task PacedRestoreAsync(LinuxServerStartup composed, CancellationToken stop)
     {
         var ledger = Ledger;
         // Only a restore that logs Messenger or Instagram in is counted against the hour; any start still pays the unclean back-off.
@@ -212,7 +212,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
             return;
         }
         // A count that cannot be written (a full disk, a read-only folder) is no limit at all: the next start would find the cap and the back-off gone. Fail
-        // closed: no restore this run. The host still serves, and a person can sign in or reconnect from a client.
+        // closed: no restore this run. The server still serves, and a person can sign in or reconnect from a client.
         if (!decision.Saved)
         {
             log("server restore skipped reason=ledger_not_saved");
@@ -246,7 +246,7 @@ internal sealed class LinuxServerRun(string root, HostKeys keys, LinuxServerOpti
 
     // The Windows server's stop, in its order: refuse new helpers and stop the restore, close the door (the transport drains its clients on the
     // sends bound), then close the providers within their bounds (BackendShutdown: a send already on the wire gets its own bound, and is never resent).
-    private async Task StopAsync(LinuxHostStartup? composed, Task restoring, Task serving, Task backingUp)
+    private async Task StopAsync(LinuxServerStartup? composed, Task restoring, Task serving, Task backingUp)
     {
         var clock = Stopwatch.StartNew();
         var budget = ShutdownBudget.Normal;

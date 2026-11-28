@@ -52,7 +52,7 @@ public static class RemoteSignInFinish
         finally { cookies.Clear(); }
     }
 
-    /// <summary>The one line shape every face of the sign-in logs (SWITCHBOARD.md 10.5): fixed words only.</summary>
+    /// <summary>The one line shape every face of the sign-in logs: fixed words only.</summary>
     public static string Line(string service, string outcome, string reason) => $"remote sign-in service={service} outcome={outcome} reason={reason}";
 
     // A failure as a word a log or a result may carry: a fixed code word of the app's own, or only the exception's type.

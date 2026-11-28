@@ -1,15 +1,15 @@
 namespace MessageLink.Protocol;
 
-/// <summary>How a proxy answers a member that has no call on the wire (SWITCHBOARD.md 2.6b, 2.6c).</summary>
+/// <summary>How a proxy answers a member that has no call on the wire.</summary>
 public enum SyncAnswer
 {
-    /// <summary>From the state the host pushes (<see cref="HostStateCache"/>).</summary>
+    /// <summary>From the state the server pushes (<see cref="ServerStateCache"/>).</summary>
     Pushed,
     /// <summary>From the pushed state where it is a flag of the scope, and from a prefetched copy where it depends on the conversation.</summary>
     PushedAndPrefetched,
     /// <summary>
-    /// From a client-side copy of the host's answer to a method (<see cref="Remembered{TKey, TValue}"/>): the conservative answer until the
-    /// host has been asked, then the host's, refreshed in the background. For a member that a window reads on its own thread and so cannot
+    /// From a client-side copy of the server's answer to a method (<see cref="Remembered{TKey, TValue}"/>): the conservative answer until the
+    /// server has been asked, then the server's, refreshed in the background. For a member that a window reads on its own thread and so cannot
     /// wait on a round trip for.
     /// </summary>
     Prefetched,
@@ -25,8 +25,8 @@ public sealed record ProxyMember(SyncAnswer Answer, string Reason);
 
 /// <summary>
 /// Every synchronous member of the ports the proxies stand in for, and how each is answered. The members that are not async and not an
-/// event have no request to carry them, so each is part of the host's pushed state, a copy of the host's answer to a method, a rule the
-/// client applies itself, or an action sent without waiting. None asks an object in the host's process (since 2.6d there is no such
+/// event have no request to carry them, so each is part of the server's pushed state, a copy of the server's answer to a method, a rule the
+/// client applies itself, or an action sent without waiting. None asks an object in the server's process (since 2.6d there is no such
 /// answer). The harness walks the ports by reflection and fails when a member is here and not on a port, or on a port and not here: a
 /// new synchronous member cannot appear without someone deciding which it is. Keys are <c>Interface.Member</c>.
 /// </summary>

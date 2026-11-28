@@ -2,7 +2,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// The history a provider's helper keeps on the host's disk, searched there (SWITCHBOARD.md 3.0b). It is search.query with a source
+// The history a provider's helper keeps on the server's disk, searched there. It is search.query with a source
 // (SearchQueryParams.KeptSource): the kept answer comes back as a page that is whole (every match, newest first, no cursor), because the
 // client's universal search merges it with the catalogue and pages through both itself. Nothing is written to the store and nothing is
 // journaled; the matches are results the person asked for, so they carry message text on the wire and are written nowhere else.

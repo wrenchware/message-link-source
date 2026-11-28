@@ -4,8 +4,8 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Windows;
 
 /// <summary>
-/// The server's end of the local transport (SWITCHBOARD.md 3.2c): one <see cref="PipeHost"/> on the user's pipe, and a <see cref="ProtocolDispatcher"/>
-/// for each client it admits, every one over the same <see cref="ProtocolServices"/> and the same <see cref="OperationJournal"/>. The host's state,
+/// The server's end of the local transport: one <see cref="PipeServer"/> on the user's pipe, and a <see cref="ProtocolDispatcher"/>
+/// for each client it admits, every one over the same <see cref="ProtocolServices"/> and the same <see cref="OperationJournal"/>. The server's state,
 /// its event log and its journal are therefore one thing however many clients are connected, and a client that comes back finds what it started.
 /// It is plain C# so the harness runs it against a pipe of its own name; the real pipe is opened only by <c>MessageLinkServer.exe</c>.
 /// </summary>
@@ -14,11 +14,11 @@ internal sealed class ServerPipe(string pipeName, ClientToken token, ProtocolSer
 {
     private readonly ProtocolCallStats served = new("protocol served", log);
     private readonly ConcurrentDictionary<ProtocolDispatcher, bool> dispatchers = new();
-    private PipeHost? host;
+    private PipeServer? host;
     private int stopped;
     private bool draining;
 
-    /// <summary>The most clients that may be in the door at once, set before <see cref="StartAsync"/> (see <see cref="PipeHost.MaxPending"/>).</summary>
+    /// <summary>The most clients that may be in the door at once, set before <see cref="StartAsync"/> (see <see cref="PipeServer.MaxPending"/>).</summary>
     public int MaxPending { get; set; } = 8;
 
     /// <summary>How many admitted clients are connected now.</summary>
@@ -27,12 +27,12 @@ internal sealed class ServerPipe(string pipeName, ClientToken token, ProtocolSer
     /// <summary>Raised when <see cref="Connections"/> changes, from the thread that changed it.</summary>
     public event Action? ConnectionsChanged;
 
-    public PipeHost Host => host ?? throw new InvalidOperationException("The pipe has not started.");
+    public PipeServer Host => host ?? throw new InvalidOperationException("The pipe has not started.");
 
     /// <summary>Makes the client token if there is none and takes the pipe. False when another process has the name; that is logged as <c>server start refused reason=pipe_taken</c> and nothing was left open.</summary>
     public async Task<bool> StartAsync()
     {
-        var listening = new PipeHost(pipeName, token, Serve, log) { MaxPending = MaxPending };
+        var listening = new PipeServer(pipeName, token, Serve, log) { MaxPending = MaxPending };
         try { await listening.StartAsync().ConfigureAwait(false); }
         catch (PipeNameTakenException)
         {
@@ -52,7 +52,7 @@ internal sealed class ServerPipe(string pipeName, ClientToken token, ProtocolSer
         // After it is in the set, so that either the stop's snapshot holds it or this sees the stop: a connection accepted around the moment of the stop
         // is never served. Draining it refuses its requests (unavailable); the connection itself is closed with the others.
         if (Volatile.Read(ref draining) || stopping?.Invoke() == true) dispatcher.BeginDraining();
-        // Only a connection that presented the token gets here: PipeHost has logged and closed the others.
+        // Only a connection that presented the token gets here: PipeServer has logged and closed the others.
         log("protocol connection accepted");
         ConnectionsChanged?.Invoke();
         try { await dispatcher.Start().ConfigureAwait(false); }

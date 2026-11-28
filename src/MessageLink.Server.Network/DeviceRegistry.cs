@@ -6,13 +6,13 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The devices paired with a network host (SWITCHBOARD.md stage 4). A device's token is 32 random bytes made at pairing and handed over once; the host keeps
-/// only its SHA-256, with the device's name, when it paired and when it was last seen, in <c>&lt;data&gt;/devices.json</c>, sealed through the host's
+/// The devices paired with a network server. A device's token is 32 random bytes made at pairing and handed over once; the server keeps
+/// only its SHA-256, with the device's name, when it paired and when it was last seen, in <c>&lt;data&gt;/devices.json</c>, sealed through the server's
 /// <see cref="IStateProtector"/>. A token is checked against every device in fixed time. Revoking a device removes it at once, so its token is refused from the
-/// next upgrade on, and raises <see cref="Revoked"/> for the host to close its connections. A file that cannot be read stops the host rather than being
+/// next upgrade on, and raises <see cref="Revoked"/> for the server to close its connections. A file that cannot be read stops the server rather than being
 /// replaced: an empty list would print a pairing code and then overwrite every pairing.
 /// <para>
-/// Every write numbers the list (a generation, sealed inside it) and, when the host has a keys folder apart from its data (the Linux host's <c>/keys</c>),
+/// Every write numbers the list (a generation, sealed inside it) and, when the server has a keys folder apart from its data (the Linux server's <c>/keys</c>),
 /// records that number there too (<see cref="GenerationFile"/>). An older list put back over the newer one, such as a backup of the data restored, would
 /// bring back the devices revoked since; it is refused at start (<c>server devices rolled_back action=refused</c>) rather than trusted. Deleting the list
 /// is still the way to unpair everything: no list means no devices, whatever the number says. A list ahead of the number (a stop between the two writes)
@@ -24,7 +24,7 @@ internal sealed class DeviceRegistry
     public const string FileName = "devices.json";
     /// <summary>The generation of the newest list written, in the keys folder: a decimal number, nothing secret, private all the same.</summary>
     public const string GenerationFile = "devices.generation";
-    /// <summary>The most devices a host keeps; a pairing past it is refused.</summary>
+    /// <summary>The most devices a server keeps; a pairing past it is refused.</summary>
     public const int MaxDevices = 32;
 
     private sealed record Device(string Id, string Name, DateTimeOffset Created, DateTimeOffset? LastSeen, byte[] Hash, DeviceSystem? System = null);
@@ -53,7 +53,7 @@ internal sealed class DeviceRegistry
         this.generationPath = generationPath; this.generation = generation;
     }
 
-    /// <summary>The record of the restore this server was made from, when it was (stage 10): an unknown token may then be a device from after the backup.</summary>
+    /// <summary>The record of the restore this server was made from, when it was: an unknown token may then be a device from after the backup.</summary>
     internal MessageLink.Server.Backup.RestoredMark? Restored { get; set; }
 
     /// <summary>
@@ -131,7 +131,7 @@ internal sealed class DeviceRegistry
         return new DeviceRegistry(path, protector, time, log, devices, generationPath, Math.Max(generation, recorded));
     }
 
-    // The recorded generation; 0 when there is none yet (a first start, or a host from before generations). One that cannot be read is not guessed at.
+    // The recorded generation; 0 when there is none yet (a first start, or a server from before generations). One that cannot be read is not guessed at.
     private static long ReadGeneration(string? path, Action<string> log)
     {
         if (path is null || !File.Exists(path)) return 0;

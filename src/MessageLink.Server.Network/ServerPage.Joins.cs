@@ -46,7 +46,7 @@ internal sealed partial class ServerPage
 
     private const string JoinSection = "join";
 
-    /// <summary>Set by the host: whether a device has a connection open now. One that has is another device of the same name, never an old entry of the one asking.</summary>
+    /// <summary>Set by the server: whether a device has a connection open now. One that has is another device of the same name, never an old entry of the one asking.</summary>
     internal Func<string, bool>? DeviceOnline { get; set; }
 
     private const string JoinAskBox = "<div id=\"join-ask\" class=\"box\" hidden></div>";

@@ -117,8 +117,8 @@ internal sealed class HelperRestarts(TimeProvider time, Action<string> log)
     }
 
     /// <summary>
-    /// The restart for a caller that cannot be asked in the middle of it and knows things at the moment of the stop that this host cannot
-    /// (a client of the host, <see cref="IHelperRestarter"/>), in two kinds of call. Settle waits for the sends on the helper and stops
+    /// The restart for a caller that cannot be asked in the middle of it and knows things at the moment of the stop that this server cannot
+    /// (a client of the server, <see cref="IHelperRestarter"/>), in two kinds of call. Settle waits for the sends on the helper and stops
     /// nothing: <c>settled</c> once none is in flight, or <c>asking</c> past <see cref="Patience"/>, with the mark of what is. The stop
     /// call never waits, so the caller can hold its own controls for exactly that long and state again whether it is signing in: it stops
     /// the helper when nothing is in flight, and answers <c>waiting</c> when a send has begun since the settle. Its force is the person's
@@ -269,7 +269,7 @@ internal sealed class HelperRestarts(TimeProvider time, Action<string> log)
 }
 
 /// <summary>
-/// A client's side of a restart asked of the host in two kinds of call (<see cref="IHelperRestarter"/>): the wait for sends, then the
+/// A client's side of a restart asked of the server in two kinds of call (<see cref="IHelperRestarter"/>): the wait for sends, then the
 /// stop. What only the client knows is read afresh for the stop call, so a sign-in begun during the wait is refused just before the
 /// helper would be stopped, and the client's controls are held for the stop call alone, not for the wait before it. Everything the
 /// client is given is called on the context the restart was started on (no ConfigureAwait), since it is the client's window state.
@@ -314,7 +314,7 @@ internal static class HelperRestartStages
                     answer = await Call(settle: true);
                     break;
                 // Sends are still in flight and nothing was stopped: whether to go on is the person's to say. A yes goes back with the
-                // token of the sends it was asked about, and if others began since, the host asks again rather than cut those off. A
+                // token of the sends it was asked about, and if others began since, the server asks again rather than cut those off. A
                 // question withdrawn because they were answered is an ordinary restart, which finds that out for itself.
                 case "asking":
                     step(HelperRestartStep.Asking);
@@ -331,7 +331,7 @@ internal static class HelperRestartStages
     }
 
     // Watched against the sends the client can see: when the last of them has been answered the question is withdrawn. A question about
-    // sends it never saw stays until it is answered, and the host's token is what keeps a yes from covering a send it was not asked about.
+    // sends it never saw stays until it is answered, and the server's token is what keeps a yes from covering a send it was not asked about.
     private static async Task<Verdict> AskAsync(Func<CancellationToken, Task<bool>> ask, Func<bool> sending, TimeProvider time)
     {
         using var retract = new CancellationTokenSource();

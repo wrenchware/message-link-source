@@ -1,4 +1,4 @@
-# Message Link Server's one image (SWITCHBOARD.md stage 11; 4.3, 5.4): the server, its helpers and official Google Chrome, in which it shows every sign-in and which it keeps running, signed in
+# Message Link Server's one image: the server, its helpers and official Google Chrome, in which it shows every sign-in and which it keeps running, signed in
 # by hand, to renew Google's sign-in the way the PC's own browser profile does. Debian with Google's own Chrome package, because Ubuntu offers browsers only as snaps, which a container cannot
 # run; .NET is published self-contained into it. Build from the repository root (install-unraid.sh does, with the current time as CHROME_REFRESH):
 #
@@ -43,7 +43,7 @@ RUN go test ./... \
  && go build -trimpath -o /out/instagram-helper .
 
 # ---- Google Voice helper (Go). It has no replace directive: its one library (go.mau.fi/mautrix-gvoice) is fetched and verified from go.sum, like the others' dependencies. ---------
-# Started only beside the server's own Chrome (SWITCHBOARD.md 5.4, Google Voice on the server), which signs Voice in and renews it; one process per Voice account.
+# Started only beside the server's own Chrome (Google Voice on the server), which signs Voice in and renews it; one process per Voice account.
 FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS gvoice-helper
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 WORKDIR /source/helpers/GoogleVoice/helper
@@ -53,7 +53,7 @@ COPY helpers/GoogleVoice/helper/ ./
 # The same tests helpers/GoogleVoice/Build.ps1 runs before it builds.
 RUN go test ./... && go build -trimpath -o /out/gvoice-helper .
 
-# ---- Tailnet door (Go): the server's own node on the owner's tailnet (SWITCHBOARD.md 4.7, TailnetDoor.cs), run only with MESSAGES_TAILNET=1. -------
+# ---- Tailnet door (Go): the server's own node on the owner's tailnet (TailnetDoor.cs), run only with MESSAGES_TAILNET=1. -------
 # Tailscale's tsnet: userspace networking, so the container needs no capability or tun device for it. The licence files of every module it links (and
 # Go's own) are copied beside it, as the app's THIRD_PARTY_NOTICES.md lists only what the PC installer ships; a module without one stops the build.
 FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS tailnet-door
@@ -100,7 +100,7 @@ RUN dotnet publish src/MessageLink.Server.Linux/MessageLink.Server.Linux.csproj 
       licenses/SMBLibrary/source-1.5.8.1.zip; do \
       if [ ! -s "/out/$file" ]; then echo "Message Link Server build: the publish has no $file." >&2; exit 1; fi; \
     done
-# mlink (SWITCHBOARD.md stage 13), Message Link in a terminal, for "docker exec -it messages-server mlink". Restored and published as the server is, from
+# mlink, Message Link in a terminal, for "docker exec -it messages-server mlink". Restored and published as the server is, from
 # its plain net10.0 build (its project also targets Windows' framework, for the PC installer, which is why it may restore Windows targeting here), and
 # laid into /out beside the server: a file both publishes make must be byte-identical or the build stops naming it, and only mlink's own files are
 # copied. One exception, as the PC installer has it: the server's ASP.NET Core runtime pack carries Microsoft's own build of
@@ -130,7 +130,7 @@ FROM debian:13.7-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d76
 LABEL org.opencontainers.image.title="Message Link Server (Google)" \
       org.opencontainers.image.description="Message Link Server with Google Messages: the Message Link backends on a home server, reached by paired devices over TLS."
 
-# What .NET needs on Debian (ICU, OpenSSL, time zones, certificates), tini, and xvfb: the virtual X display Chrome draws on (SWITCHBOARD.md 5.4).
+# What .NET needs on Debian (ICU, OpenSSL, time zones, certificates), tini, and xvfb: the virtual X display Chrome draws on.
 # xvfb brings xauth, xkb-data and x11-xkb-utils (xkbcomp, which gives the display its keyboard) and a few X libraries. libxcb-xtest0 is the XTEST
 # binding of libxcb, through which the server types and clicks on that display (real X input, so nothing is attached to Chrome); libxcb itself comes with Chrome.
 # With --no-install-recommends, and no window manager. The upgrade brings Debian's security fixes as of each build: the digest above
@@ -141,7 +141,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Official Google Chrome (stable), from Google's own apt repository, in place of Debian's chromium: the server runs it persistently, signed in by hand, and lets it renew
-# Google's sign-in itself (SWITCHBOARD.md 5.4, chosen 2026-10-10). The repository's key is fetched over HTTPS and only the keys whose fingerprints are listed in
+# Google's sign-in itself (chosen 2026-10-10). The repository's key is fetched over HTTPS and only the keys whose fingerprints are listed in
 # CHROME_SIGNER_FPRS are kept (the build fails if none of them is in the file); the repository line is pinned to that keyring and to amd64.
 # CHROME_REFRESH is a build argument install-unraid.sh sets to the build time: it is named in this RUN, so a new value is a new layer and the newest stable Chrome is fetched on
 # every build, never reused from Docker's cache. It is also written into the image as MESSAGES_CHROME_BUILT, which the server counts Chrome's age from (it says so when

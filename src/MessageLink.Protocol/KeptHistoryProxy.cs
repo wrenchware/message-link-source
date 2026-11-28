@@ -4,8 +4,8 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The host's kept history for the client's universal search (SWITCHBOARD.md 3.0b): <c>search.query</c> with the kept source, and a warm-up
-/// that is sent without waiting. The store is read only on the host, so the matches, their order and their number are the host's own; a host
+/// The server's kept history for the client's universal search: <c>search.query</c> with the kept source, and a warm-up
+/// that is sent without waiting. The store is read only on the server, so the matches, their order and their number are the server's own; a server
 /// that cannot answer fails the call, which the universal search already treats as no kept results.
 /// </summary>
 public sealed class KeptHistoryProxy(ProtocolClient client) : IKeptHistorySearch

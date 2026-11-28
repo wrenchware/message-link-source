@@ -8,11 +8,11 @@ using MessageLink.Protocol;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The host's one authoritative copy of the shared state (SWITCHBOARD.md stage 6, docs/research/switchboard-stage6.md): <c>&lt;root&gt;\Server\shared.db</c>,
-/// served as <c>state.sync</c>, <c>state.get</c> and <c>state.put</c>. Only a server keeps one; the app's in-process host never makes the file.
+/// The server's one authoritative copy of the shared state (docs/research/switchboard-stage6.md): <c>&lt;root&gt;\Server\shared.db</c>,
+/// served as <c>state.sync</c>, <c>state.get</c> and <c>state.put</c>. Only a server keeps one; the app's in-process server never makes the file.
 /// </summary>
 /// <remarks>
-/// <para><b>Rows.</b> <c>rows(key, payload, rev, deleted, size, since, updated)</c> (<c>since</c>: the protocol version of the row's category, which a caller must speak to see it): each value sealed by the host's <see cref="IStateProtector"/>, a delete kept as a
+/// <para><b>Rows.</b> <c>rows(key, payload, rev, deleted, size, since, updated)</c> (<c>since</c>: the protocol version of the row's category, which a caller must speak to see it): each value sealed by the server's <see cref="IStateProtector"/>, a delete kept as a
 /// tombstone (no payload) for <see cref="TombstonesKept"/> so a client that was away still hears of it. Every commit takes the next rev, one for all the rows it
 /// writes, and a tombstone that is let go raises the horizon to its rev: a client whose position is older than that is given a snapshot instead.</para>
 /// <para><b>Meta.</b> <c>meta(epoch, rev, horizon)</c>. The epoch is made when the file is made and never changes, so positions from another file (one made
@@ -21,8 +21,8 @@ namespace MessageLink.Server;
 /// of its operation id is answered with it and writes nothing, and the same id with other writes is refused. Kept <see cref="AppliedKept"/> or
 /// <see cref="AppliedLimit"/> entries. This is deliberately not the <see cref="OperationJournal"/>: these writes come every few seconds and would push the
 /// sends' entries out of it.</para>
-/// <para><b>Imports.</b> <c>imports(name, added, skipped, refused, at)</c>: what was taken in once from the host's older stores (<see cref="ImportOnce"/>).</para>
-/// <para>One gate serves every call, so a commit, its applied entry and its <c>shared</c> event are one step: the events are in the host's sequence in the
+/// <para><b>Imports.</b> <c>imports(name, added, skipped, refused, at)</c>: what was taken in once from the server's older stores (<see cref="ImportOnce"/>).</para>
+/// <para>One gate serves every call, so a commit, its applied entry and its <c>shared</c> event are one step: the events are in the server's sequence in the
 /// order of their revs. Logs carry counts and fixed words only; never a key or a value.</para>
 /// <para><b>Space key.</b> A server attaches its <see cref="Space"/> (<see cref="AttachSpace"/>): the keys are then judged under the key pinned in
 /// <c>space.protected</c>, the first write pins the key it was judged under before its rows are kept, and every call answers unavailable while the space
@@ -46,7 +46,7 @@ public sealed class SharedStateStore : ISharedState
     private readonly SemaphoreSlim gate = new(1, 1);
     private Action<SharedChange>? publish;
     private Func<CancellationToken, Task<string?>>? profile;
-    // Whether a host has attached the store yet (Attach or AttachSpace): before that, nothing can say what the host's rows are filed under.
+    // Whether a server has attached the store yet (Attach or AttachSpace): before that, nothing can say what the server's rows are filed under.
     private volatile bool attached;
     private volatile bool spaced;
     private DateTimeOffset pruned = DateTimeOffset.MinValue;
@@ -60,7 +60,7 @@ public sealed class SharedStateStore : ISharedState
     public SharedStateStore(string path, IStateProtector protector, Action<string>? log = null, TimeProvider? clock = null)
     {
         this.path = path; this.protector = protector; this.log = log; this.clock = clock ?? TimeProvider.System;
-        // Beside the store, so a server's two files are always one space. Nothing is read or written until a host attaches it.
+        // Beside the store, so a server's two files are always one space. Nothing is read or written until a server attaches it.
         Space = new SharedSpace(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, SharedSpace.FileName), protector, log, RowsUnderAsync);
     }
 
@@ -68,13 +68,13 @@ public sealed class SharedStateStore : ISharedState
     public SharedSpace Space { get; }
 
     /// <summary>
-    /// Raised for each commit, in rev order, right after the host's log is given it and still under the store's gate: a handler must not call back into the store
-    /// before it returns (queue the work). For what the host does with its own rows (HostSavedPhotos keeps the saved messages' photos). Never raised for a commit
+    /// Raised for each commit, in rev order, right after the server's log is given it and still under the store's gate: a handler must not call back into the store
+    /// before it returns (queue the work). For what the server does with its own rows (ServerSavedPhotos keeps the saved messages' photos). Never raised for a commit
     /// that failed, and a handler that throws changes nothing.
     /// </summary>
     internal event EventHandler<SharedChange>? Committed;
 
-    // Under the gate: the commit goes to the host's log, then to whatever watches the rows.
+    // Under the gate: the commit goes to the server's log, then to whatever watches the rows.
     private void Publish(SharedChange change)
     {
         try { publish?.Invoke(change); }
@@ -85,7 +85,7 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// What the host gives the store: where each commit goes (the event log's <see cref="EventLog.AppendShared"/>, called under the store's gate), and the profile
+    /// What the server gives the store: where each commit goes (the event log's <see cref="EventLog.AppendShared"/>, called under the store's gate), and the profile
     /// the keys are filed under now, which decides which keys are shared (<see cref="SharedCategories"/>). Without a profile no single row is shared.
     /// </summary>
     internal void Attach(Action<SharedChange>? publish, Func<CancellationToken, Task<string?>>? profile)
@@ -97,10 +97,10 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// What a server gives the store (stage 6 slice 2): where each commit goes, and the host's own identity, whose key a first write pins. Returns the identity
-    /// the host serves from then on: the live one with the pinned key as its <c>LocalKey</c> (<see cref="SpaceIdentity"/>).
+    /// What a server gives the store: where each commit goes, and the server's own identity, whose key a first write pins. Returns the identity
+    /// the server serves from then on: the live one with the pinned key as its <c>LocalKey</c> (<see cref="SpaceIdentity"/>).
     /// </summary>
-    internal IHostIdentity AttachSpace(Action<SharedChange>? publish, IHostIdentity live)
+    internal IServerIdentity AttachSpace(Action<SharedChange>? publish, IServerIdentity live)
     {
         this.publish = publish;
         profile = null;
@@ -122,8 +122,8 @@ public sealed class SharedStateStore : ISharedState
             throw SpaceUnavailableException.Answer();
         }
         // Nothing pinned and nothing signed in on the server: there is no key to file under. The categories keyed by conversation would otherwise take a row
-        // under whatever profile the client brought, with no pin beside it; unavailable keeps the client's writes pending until the host has a key (its clients
-        // have none either then, as they take theirs from the host). The host's own snoozes.* do not come this way (SharedChatSnoozes).
+        // under whatever profile the client brought, with no pin beside it; unavailable keeps the client's writes pending until the server has a key (its clients
+        // have none either then, as they take theirs from the server). The server's own snoozes.* do not come this way (SharedChatSnoozes).
         if (filing.Profile is null)
         {
             log?.Invoke($"shared {method} refused reason=no_key");
@@ -133,10 +133,10 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// The profile the host's own rows are filed under now: its space key's once one is attached (the pinned key, or the live one until a first write pins it),
+    /// The profile the server's own rows are filed under now: its space key's once one is attached (the pinned key, or the live one until a first write pins it),
     /// otherwise the one it was attached with; null while there is none. What every <see cref="SharedSpaceView{T}"/> files its rows under. Throws
-    /// <see cref="SpaceUnavailableException"/> while the space cannot be served, and <see cref="InvalidOperationException"/> before a host has attached the
-    /// store: a feature made before the host's identity (the incoming unarchive's merges) then leaves its step rather than take "no profile" for an answer.
+    /// <see cref="SpaceUnavailableException"/> while the space cannot be served, and <see cref="InvalidOperationException"/> before a server has attached the
+    /// store: a feature made before the server's identity (the incoming unarchive's merges) then leaves its step rather than take "no profile" for an answer.
     /// </summary>
     internal async Task<string?> ProfileAsync(CancellationToken cancellationToken = default)
     {
@@ -145,12 +145,12 @@ public sealed class SharedStateStore : ISharedState
             : profile is null ? null : await profile(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>One category of this space as the host's own features read and write it (<see cref="SharedSpaceView{T}"/>).</summary>
+    /// <summary>One category of this space as the server's own features read and write it (<see cref="SharedSpaceView{T}"/>).</summary>
     internal SharedSpaceView<T> View<T>(string category, Func<T, string?>? idOf = null, Func<T, byte[]>? encode = null, Func<byte[], T?>? decode = null) where T : class =>
         new(this, category, idOf, encode, decode);
 
     /// <summary>
-    /// Rows the host held elsewhere before this store kept them (slice 3: its own <c>ChatSnoozes-v1</c> files, <see cref="SharedChatSnoozes"/>), taken in once:
+    /// Rows the server held elsewhere before this store kept them (slice 3: its own <c>ChatSnoozes-v1</c> files, <see cref="SharedChatSnoozes"/>), taken in once:
     /// at the store's first use in a run, under its gate, so nothing is served before them. Each key is added only where the space holds no row for it (live or
     /// deleted: an end made here is never undone by the old copy), in one transaction (a rev for every SharedLimits.PutWrites rows), and the import is recorded with its counts in the same transaction, and
     /// then beside the store (<c>&lt;name&gt;.imported</c>, which outlives a shared.db made anew), so a later run, or a second import of the same name, adds
@@ -336,11 +336,11 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// A PC's move (stage 6 slice 13c): the rows of <paramref name="bundle"/>, taken in once. The space must be filed under the bundle's key: one with none yet is
+    /// A PC's move: the rows of <paramref name="bundle"/>, taken in once. The space must be filed under the bundle's key: one with none yet is
     /// filed under it now (<see cref="SharedSpace.PinAsync"/>, <c>space key pinned via=import</c>), the same key is fine, and any other answers
     /// <see cref="StateImportStatuses.SpaceMismatch"/> with nothing kept. Rows are added where the space holds nothing for the key and never replace one, so a repeat
     /// adds nothing, and one the server's clients changed or ended meanwhile is theirs. A row the server does not keep (not a shared kind under the bundle's profile,
-    /// a row only a host writes, too large) is refused and counted. The answer says which of the bundle's keys the space now holds live, by kind, as a digest of the keys and
+    /// a row only a server writes, too large) is refused and counted. The answer says which of the bundle's keys the space now holds live, by kind, as a digest of the keys and
     /// as a digest of the keys with their stored values (<see cref="MoveCounts.ValuesDigestOf"/>), to compare with the bundle's own: a key the space ended since, or holds
     /// with another value than the PC's, makes the move look incomplete rather than whole.
     /// <paramref name="resume"/>: the caller says this is a retry of a move it began and did not see finish. A space that is already filed under the bundle's key and holds
@@ -413,7 +413,7 @@ public sealed class SharedStateStore : ISharedState
     }
 
     // An import's record beside shared.db (Server\<name>.imported), as well as in its imports table. Beside the store rather than beside the files taken in:
-    // the files may be the in-process app's own (a local server shares its root), which this host never writes, and renaming them away would take the
+    // the files may be the in-process app's own (a local server shares its root), which this server never writes, and renaming them away would take the
     // in-process app's snoozes (its rollback copy) with them. A record here goes only with the whole Server folder, and a server started anew taking its
     // files in again is what a new server should do. Counts and a moment only.
     private string MarkerOf(string name) => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, name + ".imported");
@@ -454,7 +454,7 @@ public sealed class SharedStateStore : ISharedState
         "CREATE TABLE IF NOT EXISTS import_keys (name TEXT NOT NULL, key TEXT NOT NULL, PRIMARY KEY (name, key))";
 
     /// <summary>
-    /// The value of one live row, or null: what the host's own <c>snoozes.get</c> reads (<see cref="SharedChatSnoozes"/>). Like <see cref="LiveRowsAsync"/> and
+    /// The value of one live row, or null: what the server's own <c>snoozes.get</c> reads (<see cref="SharedChatSnoozes"/>). Like <see cref="LiveRowsAsync"/> and
     /// <see cref="WriteOwnBatchAsync"/>, it is not judged under the space key: a snooze's key carries the profile its client gave, as its file's name did, and
     /// <c>snoozes.*</c> answered whatever the server's sign-ins were before slice 3, so it still does.
     /// </summary>
@@ -479,8 +479,8 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// Every live row whose key starts with <paramref name="prefix"/>, with its value: what the host's own <c>snoozes.list</c> reads (<see cref="SharedChatSnoozes"/>).
-    /// The host's alone; no client reads this way.
+    /// Every live row whose key starts with <paramref name="prefix"/>, with its value: what the server's own <c>snoozes.list</c> reads (<see cref="SharedChatSnoozes"/>).
+    /// The server's alone; no client reads this way.
     /// </summary>
     internal async Task<IReadOnlyList<(string Key, byte[] Value)>> LiveRowsAsync(string prefix, CancellationToken cancellationToken = default)
     {
@@ -503,8 +503,8 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// <see cref="LiveRowsAsync"/> with each row's rev: the host's own schedule of scheduled sends (<see cref="HostScheduledSends"/>) reads its rows with the
-    /// revs its clients' commands are made against. Like the other host reads, not judged under the space key.
+    /// <see cref="LiveRowsAsync"/> with each row's rev: the server's own schedule of scheduled sends (<see cref="ServerScheduledSends"/>) reads its rows with the
+    /// revs its clients' commands are made against. Like the other server reads, not judged under the space key.
     /// </summary>
     internal async Task<IReadOnlyList<(string Key, byte[] Value, long Rev)>> LiveRowsWithRevAsync(string prefix, CancellationToken cancellationToken = default)
     {
@@ -544,7 +544,7 @@ public sealed class SharedStateStore : ISharedState
     }
 
     /// <summary>
-    /// The host's own write of rows in one commit, one rev and one <c>shared</c> event, with no operation id: every write of the host's own features
+    /// The server's own write of rows in one commit, one rev and one <c>shared</c> event, with no operation id: every write of the server's own features
     /// (<see cref="SharedSpaceView{T}"/>). The scheduled sends save a whole list, which is rows here; a snooze is one row, written whatever the space's key (a row
     /// keyed by conversation never decides the space, <see cref="SharedSpace"/>). A delete of a row that is not live is skipped, and a batch with nothing left
     /// to write commits nothing. Returns the commit's rev, or 0 when there was none. Each key must be a fixed-row-less shared key (<see cref="SharedCategories.Match"/>
@@ -666,15 +666,15 @@ public sealed class SharedStateStore : ISharedState
                 rows.Add(new SharedRow(writes[i].Key, commit.Item2, inline ? JsonSerializer.Deserialize<JsonElement>(value!) : null, value is null, size) { Since = categories[i].Since });
             }
             try { Publish(new SharedChange(commit.Item1, commit.Item2, rows)); } catch (Exception) { /* as a put's: clients catch up with state.sync */ }
-            // A write held to a rev is the host writing a client's row as a client's put would (the Marketplace label): private reading's defaults follow it as they
-            // follow a put. The host's own rows (the schedule, its records) never gave them, and still do not.
+            // A write held to a rev is the server writing a client's row as a client's put would (the Marketplace label): private reading's defaults follow it as they
+            // follow a put. The server's own rows (the schedule, its records) never gave them, and still do not.
             if (ifRevs is not null && filing?.Profile is { } pinnedUnder && readingDefaults && !readingDefaultsLooked && spaced) await ReadingDefaultsAsync(pinnedUnder).ConfigureAwait(false);
             return commit.Item2;
         }
         finally { gate.Release(); }
     }
 
-    // retired: the digest of every id a host has let go of for good (a scheduled message cancelled, taken back, sent or interrupted), with when. Not the journal, whose entries go
+    // retired: the digest of every id a server has let go of for good (a scheduled message cancelled, taken back, sent or interrupted), with when. Not the journal, whose entries go
     // after a day: an id that came back from a client a day later must still be refused. Made where missing, without a new user_version, like the imports.
     private const string RetiredTable = "CREATE TABLE IF NOT EXISTS retired (id TEXT PRIMARY KEY, at INTEGER NOT NULL)";
 
@@ -723,7 +723,7 @@ public sealed class SharedStateStore : ISharedState
     public async Task<StateSyncResult> SyncAsync(StateSyncParams request, int protocol = ProtocolVersion.Current, CancellationToken cancellationToken = default)
     {
         var limit = Math.Clamp(request.Limit ?? SharedLimits.PageRows, 1, SharedLimits.PageRows);
-        // Rows of a space whose key cannot be served are not handed out: a client would keep them under a key the host is not filing under.
+        // Rows of a space whose key cannot be served are not handed out: a client would keep them under a key the server is not filing under.
         if (spaced) await FilingAsync("sync", cancellationToken).ConfigureAwait(false);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -835,7 +835,7 @@ public sealed class SharedStateStore : ISharedState
                     ("$id", request.ClientOpId));
                 return found.Count == 0 ? ((string Fingerprint, byte[] Result)?)null : found[0];
             }, CancellationToken.None).ConfigureAwait(false);
-            // A repeat: its first answer, and nothing written again. Looked for before the keys are judged, so a batch the host took is answered as it was
+            // A repeat: its first answer, and nothing written again. Looked for before the keys are judged, so a batch the server took is answered as it was
             // even if what is shared has changed since.
             if (earlier is { } first)
             {
@@ -844,8 +844,8 @@ public sealed class SharedStateStore : ISharedState
                 return JsonSerializer.Deserialize<StatePutResult>(await protector.UnprotectAsync(first.Result).ConfigureAwait(false), ProtocolJson.Options)
                     ?? throw new InvalidDataException("An applied answer could not be read.");
             }
-            // What the caller's version shares under the profile the host files keys under now. Any other key is refused by itself and never stored, so a
-            // client can tell "the host will never keep this" from a failure worth trying again. A row only the host writes (the scheduled sends) is one of
+            // What the caller's version shares under the profile the server files keys under now. Any other key is refused by itself and never stored, so a
+            // client can tell "the server will never keep this" from a failure worth trying again. A row only the server writes (the scheduled sends) is one of
             // those: a put is never a way to schedule, change or fire a message.
             var categories = writes.Select(write => SharedCategories.Match(write.Key, filedUnder, protocol) is { HostOwned: false } category ? category : null).ToArray();
             if (categories.Any(category => category is null)) log?.Invoke($"shared put refused reason=key n={categories.Count(category => category is null)}");
@@ -870,7 +870,7 @@ public sealed class SharedStateStore : ISharedState
                 var write = writes[i];
                 var row = current.GetValueOrDefault(write.Key);
                 var live = row is { Deleted: false };
-                // Not a key this caller may keep here: nothing of the host's row is told, not even its rev.
+                // Not a key this caller may keep here: nothing of the server's row is told, not even its rev.
                 if (categories[i] is null)
                     results[i] = new SharedWriteResult(write.Key, SharedWriteStatus.Refused, 0);
                 else if (values[i] is { Length: > SharedLimits.ValueBytes })
@@ -1058,7 +1058,7 @@ public sealed class SharedStateStore : ISharedState
 
     /// <summary>
     /// Every live row of a shared state file (tombstones are left: the file a restore makes is a new epoch, which every client takes whole) and its retired ids, read in one
-    /// transaction without changing anything, for the server's backup (stage 10). Nothing when the file is not there.
+    /// transaction without changing anything, for the server's backup. Nothing when the file is not there.
     /// </summary>
     internal static (IReadOnlyList<SealedRow> Rows, IReadOnlyList<(string Id, long At)> Retired) ReadSealed(string file, CancellationToken cancellationToken = default)
     {
@@ -1203,8 +1203,8 @@ public sealed class SharedStateStore : ISharedState
     }
 }
 
-/// <summary>A commit would have made a row for an id the host has retired for good; it kept nothing (<see cref="SharedStateStore.WriteOwnBatchAsync"/>).</summary>
-/// <summary>A host write held to a rev found the row at another one (<see cref="SharedStateStore.WriteOwnBatchAsync"/>): nothing was kept.</summary>
+/// <summary>A commit would have made a row for an id the server has retired for good; it kept nothing (<see cref="SharedStateStore.WriteOwnBatchAsync"/>).</summary>
+/// <summary>A server write held to a rev found the row at another one (<see cref="SharedStateStore.WriteOwnBatchAsync"/>): nothing was kept.</summary>
 internal sealed class SharedRowMovedException() : InvalidOperationException("The row changed since it was read.");
 
 internal sealed class RetiredIdException(IReadOnlyList<string> ids) : InvalidOperationException("That message has already gone from the server.")

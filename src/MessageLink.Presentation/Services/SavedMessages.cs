@@ -16,10 +16,10 @@ public sealed record SavedMessage(string Scope, ChatSummary Chat, ChatMessage Me
     DateTimeOffset? RemindAt = null, DateTimeOffset? RemindedAt = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? RaisedAt = null);
 
-// A client of a Messages Server (stage 6 slice 8) keeps these rows in its replica of the server's shared state, where other devices write them too (store is
+// A client of a Messages Server keeps these rows in its replica of the server's shared state, where other devices write them too (store is
 // IConditionalSharedRows): saving is a create-only write (a message already saved, there or here, counts as done, as on one device), unsaving deletes, a
 // reminder's time is written as it is set (last writer wins), and the mark "raised" only while the row is as it was read, so a stale mark never undoes a time
-// set meanwhile. The server keeps the photos' originals itself (HostSavedPhotos), so a client of one that does keeps none.
+// set meanwhile. The server keeps the photos' originals itself (ServerSavedPhotos), so a client of one that does keeps none.
 // The in-process app's and the loopback's state.db shares nothing, so none of this runs there and every call below is the code it was.
 public sealed class SavedMessages : IDisposable
 {
@@ -33,7 +33,7 @@ public sealed class SavedMessages : IDisposable
     {
         this.store = store; this.clock = clock; this.photos = photos;
         shared = store as IConditionalSharedRows;
-        if (shared is not null) shared.HostChanged += OnHostChanged;
+        if (shared is not null) shared.ServerChanged += OnServerChanged;
     }
 
     private sealed record Envelope(int Version, SavedMessage Value);
@@ -50,7 +50,7 @@ public sealed class SavedMessages : IDisposable
     public bool IsShared => shared is not null;
 
     // The server's rows changed a saved message on another device, or this device's write lost to another's: Changed, off the replica's thread, as for a change here.
-    private void OnHostChanged(object? sender, IReadOnlyList<string> keys)
+    private void OnServerChanged(object? sender, IReadOnlyList<string> keys)
     {
         if (!keys.Any(key => key.StartsWith("saved:", StringComparison.Ordinal))) return;
         try { Changed?.Invoke(this, EventArgs.Empty); } catch (Exception) { /* a listener that fails must not stop the replica */ }
@@ -58,10 +58,10 @@ public sealed class SavedMessages : IDisposable
 
     public void Dispose()
     {
-        if (shared is not null) shared.HostChanged -= OnHostChanged;
+        if (shared is not null) shared.ServerChanged -= OnServerChanged;
     }
 
-    // Whether the server keeps this row's photos itself: the host is of a version that shares the saved messages (HostSavedPhotos keeps them from its rows).
+    // Whether the server keeps this row's photos itself: the server is of a version that shares the saved messages (ServerSavedPhotos keeps them from its rows).
     private bool ServerKeepsPhotos(string key) => shared?.Shares(key) == true;
 
     public async Task<bool> ContainsAsync(string scope, string chatId, string messageId, CancellationToken token = default)
@@ -80,7 +80,7 @@ public sealed class SavedMessages : IDisposable
             // Saving an already saved item is idempotent: its original snapshot and ordering remain stable.
             if (await ReadAsync(key, scope, token) is not null) return;
             var saved = Snapshot(scope, source, message);
-            // Create only on the server's rows: if another device saved it first, its row stands and the replica takes it (HostChanged).
+            // Create only on the server's rows: if another device saved it first, its row stands and the replica takes it (ServerChanged).
             if (shared is not null) await WriteIfAsync(key, saved, 0, null, token);
             else await WriteAsync(key, saved, token);
             // Inside the turn, so an unsave that follows at once always finds the photos' work to stop.
@@ -230,7 +230,7 @@ public sealed class SavedMessages : IDisposable
 
     /// <summary>
     /// The saved message a stored row holds, judged as the store of its own scope would judge it, or null when it is damaged or its key is not the one its message
-    /// has. For the server, which reads the rows of every device's saved messages to keep their photos (HostSavedPhotos). Leaves <paramref name="bytes"/> as it is.
+    /// has. For the server, which reads the rows of every device's saved messages to keep their photos (ServerSavedPhotos). Leaves <paramref name="bytes"/> as it is.
     /// </summary>
     public static SavedMessage? FromRow(string key, byte[] bytes)
     {

@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// What the typing router is to the window (SWITCHBOARD.md 2.6d). <c>CanReceive</c> and <c>CanSend</c> are the host's flags from its pushed
+/// What the typing router is to the window. <c>CanReceive</c> and <c>CanSend</c> are the server's flags from its pushed
 /// state. Starting and stopping typing cross as <c>typing.set</c>; the plain call is not admitted, and the private-reading gate over this
 /// proxy passes the admission it decided (<see cref="IAdmittedTypingService"/>). The typing of others comes down the connection's event
 /// feed as <c>typing</c> frames: every <see cref="WatchAsync"/> hears them from the moment it subscribes, newest snapshot per
@@ -12,7 +12,7 @@ namespace MessageLink.Protocol;
 /// expires by its own <c>ExpiresAt</c>). Typing is sent only to a feed that asked for it, which <see cref="RealtimeFeedProxy"/> does when
 /// it has a state cache.
 /// </summary>
-public sealed class TypingProxy(ProtocolClient client, HostStateCache state) : IAdmittedTypingService
+public sealed class TypingProxy(ProtocolClient client, ServerStateCache state) : IAdmittedTypingService
 {
     public bool CanReceive => state.Typing.CanReceive;
     public bool CanSend => state.Typing.CanSend;
@@ -33,7 +33,7 @@ public sealed class TypingProxy(ProtocolClient client, HostStateCache state) : I
         }
     }
 
-    /// <summary>Not admitted: the host's router refuses a start for a conversation read privately.</summary>
+    /// <summary>Not admitted: the server's router refuses a start for a conversation read privately.</summary>
     public Task SetTypingAsync(string chatId, bool isTyping, CancellationToken cancellationToken = default) => SetTypingAsync(chatId, isTyping, false, cancellationToken);
 
     public Task SetTypingAsync(string chatId, bool isTyping, bool admitted, CancellationToken cancellationToken = default) =>

@@ -1,14 +1,14 @@
-// Command messages-tailnet is Messages Server's own door on the owner's tailnet (SWITCHBOARD.md 4.7, chosen
+// Command messages-tailnet is Messages Server's own door on the owner's tailnet (chosen
 // 2026-10-15). It is a Tailscale node of its own inside the server's container (tsnet: userspace, no capability, no
 // tun device), so the server is on the tailnet without Unraid publishing its port anywhere but the home network, and
 // whatever Unraid's own Tailscale does to its firewall. It ends TLS nowhere: each connection a device makes to it is
 // passed byte for byte to the server's relay socket, after one PROXY protocol line naming the device's tailnet address,
 // so the server's pinned certificate and device tokens are the same end to end, and its per-address pacing and its
-// home-network rule see each device as itself (NetworkHost's relay listener).
+// home-network rule see each device as itself (NetworkServer's relay listener).
 //
 // Unraid's Tailscale plugin runs tailscaled on the host with its firewall rules on: after it restarts, every packet it
 // forwards to a container is masqueraded to the Docker bridge's address, so a server reached through the host's port
-// sees all tailnet devices as one (4.7, read from Tailscale's linuxfw source). This door is not subject to that.
+// sees all tailnet devices as one (read from Tailscale's linuxfw source). This door is not subject to that.
 //
 // The server starts it (TailnetDoor.cs) with a clean environment and reads its standard output: one line per event, fixed
 // words, counts and states. The sign-in link and the Tailnet Lock key go to the container's own log, and with the rest of what the

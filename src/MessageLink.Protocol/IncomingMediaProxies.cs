@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// <c>media.prepare</c> as a client asks it (SWITCHBOARD.md 3.0b): the host warms a picture or a GIF clip into its media cache and nothing comes
+/// <c>media.prepare</c> as a client asks it: the host warms a picture or a GIF clip into its media cache and nothing comes
 /// back. One request per call and never repeated here; a call that fails is the caller's ordinary failure (the prefetch tries nothing again, and
 /// the conversation reads the picture itself when it is drawn).
 /// </summary>
@@ -24,13 +24,13 @@ public sealed class IncomingCardsProxy(ProtocolClient client) : IIncomingCards
         client.CallAsync<RequestCardParams, Done>(ProtocolMethods.MediaRequestCard, new(chatId, messageId, linkPreviews, listedAsSpam), cancellationToken);
 }
 
-/// <summary>The host's catch-ups (the <c>caughtUp</c> kind of its event feed) as the client's cache hears them, handed on as they come.</summary>
+/// <summary>The server's catch-ups (the <c>caughtUp</c> kind of its event feed) as the client's cache hears them, handed on as they come.</summary>
 public sealed class CaughtUpProxy : ICaughtUpFeed, IDisposable
 {
-    private readonly HostStateCache state;
+    private readonly ServerStateCache state;
     private readonly EventHandler<CaughtUpNotice> forward;
 
-    public CaughtUpProxy(HostStateCache state)
+    public CaughtUpProxy(ServerStateCache state)
     {
         this.state = state;
         forward = (_, notice) => CaughtUp?.Invoke(notice);

@@ -12,7 +12,7 @@ import (
 
 // The Messenger helper's parent watch (helpers/Messenger/helper/parentwatch_linux.go), for the same reason: a
 // helper started by the Linux server ends with it however the server ends, a crash or a SIGKILL included, rather than
-// running on beside the next server on the same pairing (SWITCHBOARD.md 4.2, 4.3). The server names itself in
+// running on beside the next server on the same pairing. The server names itself in
 // MESSAGES_HELPER_PARENT_PID; without it (tests, a helper started by hand) nothing here applies.
 func init() {
 	if given := os.Getenv("MESSAGES_HELPER_PARENT_PID"); given != "" {

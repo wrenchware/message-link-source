@@ -2,8 +2,8 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Presentation.Services;
 
-// What ScheduledSendEngine acts through (SWITCHBOARD.md stage 6, S3). The in-process app gives it PrivateState, the one
-// Outbox and the backends' send check (ScheduledSends); a host that fires for its clients (slice 11) gives it its own.
+// What ScheduledSendEngine acts through (S3). The in-process app gives it PrivateState, the one
+// Outbox and the backends' send check (ScheduledSends); a server that fires for its clients gives it its own.
 
 /// <summary>Where scheduled messages are kept: one list per profile, written whole.</summary>
 public interface IScheduledSendStore
@@ -16,7 +16,7 @@ public interface IScheduledSendStore
 }
 
 /// <summary>
-/// A store refused to make a message because its id has gone for good (a host keeps the ids of the messages it let go of, so that none is ever made twice). The store kept nothing, so
+/// A store refused to make a message because its id has gone for good (a server keeps the ids of the messages it let go of, so that none is ever made twice). The store kept nothing, so
 /// there is nothing to put back; the engine hands this on as it is for its caller to answer.
 /// </summary>
 public sealed class ScheduledIdRetiredException(string message, IReadOnlyCollection<string> ids) : IOException(message)
@@ -42,7 +42,7 @@ public interface IScheduledSendOutlet
     Task CarryInterruptedAsync(InterruptedSend send);
     /// <summary>
     /// <see cref="CarryInterruptedAsync(InterruptedSend)"/> with the message as it was saved (its words and its attempt), for an outlet that must keep more than the id and the time: a
-    /// host's, whose record is shown to every client. The default is the one above, which is all the in-process outbox keeps.
+    /// server's, whose record is shown to every client. The default is the one above, which is all the in-process outbox keeps.
     /// </summary>
     Task CarryInterruptedAsync(ScheduledSend item, InterruptedSend send) => CarryInterruptedAsync(send);
 }

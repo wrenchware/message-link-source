@@ -6,7 +6,7 @@ using System.Text;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The one-time code a device pairs with (SWITCHBOARD.md stage 4). At most one is open at a time: <see cref="Issue"/> replaces it. It is
+/// The one-time code a device pairs with. At most one is open at a time: <see cref="Issue"/> replaces it. It is
 /// <see cref="Length"/> characters from an alphabet with nothing that reads as something else (no 0, 1, I, L or O), printed in two groups as
 /// <c>server pairing code=XXXXX-XXXXX expires_s=600</c>, and is good for one pairing within <see cref="Lifetime"/>. Comparisons are in fixed time. The
 /// printed line is the only place a code is written; what a peer presented never is.
@@ -23,7 +23,7 @@ namespace MessageLink.Server.Network;
 /// volume never holds a live code (it gets <c>server pairing code issued expires_s=600</c> instead).
 /// </param>
 /// <param name="setup">
-/// The page's one-time setup code (SWITCHBOARD.md 10.4) rather than a pairing code: the same shape and pacing, good for <see cref="SetupLifetime"/>, printed as
+/// The page's one-time setup code rather than a pairing code: the same shape and pacing, good for <see cref="SetupLifetime"/>, printed as
 /// <c>server setup code=XXXXX-XXXXX expires_s=</c> and logged as <c>server setup_code issued</c> (a word install scripts do not take for the code).
 /// </param>
 internal sealed class PairingCodes(TimeProvider time, Action<string> log, Action<string>? show = null, bool setup = false)

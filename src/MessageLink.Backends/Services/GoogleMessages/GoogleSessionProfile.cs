@@ -29,8 +29,8 @@ internal sealed class GoogleSessionProfile(IStateProtector protector, ProviderAc
     internal void Invalidate() { profile = null; good = null; }
     // The files the key is read from changed and it may follow them: read again, keeping the last answer for a read that fails.
     internal void Refresh() => profile = null;
-    // The inputs of the key that can change while the app runs, as one comparable value: what a host that does not hear of every
-    // sign-in (HostIdentityPort) watches to know the identity may have changed. The session file is not stamped by time, because the
+    // The inputs of the key that can change while the app runs, as one comparable value: what a server that does not hear of every
+    // sign-in (ServerIdentityPort) watches to know the identity may have changed. The session file is not stamped by time, because the
     // backend rewrites it with every update; the device and account the key comes from change only with a sign-in, and
     // GoogleMessagesBackend.SignInAsync invalidates for that itself. Whether the file exists is stamped.
     internal static string IdentityStamp() => string.Join('|', HasSavedSession, Stamp(AppPaths.Combine("GoogleMessagesSpike", "profile.protected")), File.Exists(AppPaths.Combine("GoogleMessagesSpike", "unpaired-profile.marker")), ServiceSetup.OtherThanGoogle);

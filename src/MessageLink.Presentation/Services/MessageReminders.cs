@@ -11,7 +11,7 @@ namespace MessageLink.Presentation.Services;
 /// <para>Nothing here contacts a service or marks anything read: the notification is built from the saved copy. A reminder
 /// whose account is not signed in now is left as it is, to be delivered when that account is back, as a snooze is; Windows
 /// stops holding it when that service is signed out here, and keeps it while the account is only not known yet.</para>
-/// <para><b>On every device</b> (stage 6 slice 8, a client of a server only: <see cref="SavedMessages.IsShared"/>). Each running device raises a reminder for itself, and
+/// <para><b>On every device</b> (a client of a server only: <see cref="SavedMessages.IsShared"/>). Each running device raises a reminder for itself, and
 /// the first to raise it marks the shared row reminded, which is the row's end state however many do (the marks are the same words, so a second changes nothing
 /// the first did not). The mark reaches the other devices as the time going from pending to raised, which would take their pending entry away before their own alarm
 /// is due; so an entry that goes that way, raised by another device at the very time it waited for, stays here as an <i>owed</i> one until this device has raised

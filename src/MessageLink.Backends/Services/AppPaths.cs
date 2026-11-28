@@ -76,16 +76,16 @@ internal static class AppPaths
 
     // Fixed once, by Settle or by the first read, and the same for the rest of the run: every store, log and helper of a
     // run uses one folder. It used to be computed as this type was first touched, and the app touches it before its data
-    // lock is taken (the instance key's suffix), so the move has to be a step of its own. A host that never settles (the
+    // lock is taken (the instance key's suffix), so the move has to be a step of its own. A server that never settles (the
     // harness, the diagnostics) reads whichever folder exists, moving nothing.
     private static string? root;
     private static readonly Lock Gate = new();
     public static string DataRoot => Volatile.Read(ref root) ?? Settle(null).Root;
     public static string Combine(params string[] parts) => Path.Combine([DataRoot, .. parts]);
 
-    // A host whose own configuration names its folder (the Linux server's MESSAGES_DATA), before anything reads a path.
+    // A server whose own configuration names its folder (the Linux server's MESSAGES_DATA), before anything reads a path.
     // Nothing is moved and nothing here reads MESSAGELINK_DATA_ROOT: that variable means "a development copy" on Windows.
-    public static void UseHostRoot(string folder)
+    public static void UseServerRoot(string folder)
     {
         lock (Gate)
         {
@@ -129,8 +129,8 @@ internal static class AppPaths
     private static string Tag(string tagged) =>
         "." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tagged)))[..12];
 
-    // The mutex the window holds for its whole run (Program.Main). MessageLinkServer.exe looks for it until the window takes the host lease itself
-    // (SWITCHBOARD.md 3.2), so that a server never opens the stores and providers of a data root the window is using.
+    // The mutex the window holds for its whole run (Program.Main). MessageLinkServer.exe looks for it until the window takes the host lease itself,
+    // so that a server never opens the stores and providers of a data root the window is using.
     // Renamed on 2026-11-27 with the product's earlier code name (#121): a copy from before cannot see this one's lock, nor this one its, so
     // an update stops the running copy first (a package's update cannot replace a package whose programs run).
     public static string AppDataLockName => DataLockPrefix + InstanceSuffix;

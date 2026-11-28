@@ -10,23 +10,23 @@ internal static class ServerLogs
 
     public static IReadOnlyDictionary<string, string> Paths(string root) => new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        [HostLogNames.Server] = Path.Combine(root, File),
-        [HostLogNames.ServerPrevious] = LogRotation.PreviousPath(Path.Combine(root, File)),
-        [HostLogNames.GoogleMessages] = Path.Combine(root, "GoogleMessages", File),
-        [HostLogNames.GoogleMessagesPrevious] = LogRotation.PreviousPath(Path.Combine(root, "GoogleMessages", File)),
-        [HostLogNames.GoogleSignInHistory] = Path.Combine(root, "GoogleMessages", "sign-in-history." + File),
-        [HostLogNames.GoogleVoice] = Path.Combine(root, "GoogleVoice", File),
-        [HostLogNames.GoogleVoicePrevious] = LogRotation.PreviousPath(Path.Combine(root, "GoogleVoice", File)),
-        [HostLogNames.Instagram] = Path.Combine(root, "Instagram", File),
-        [HostLogNames.InstagramPrevious] = LogRotation.PreviousPath(Path.Combine(root, "Instagram", File)),
-        [HostLogNames.Messenger] = Path.Combine(root, "Messenger", File),
-        [HostLogNames.MessengerHelper] = Path.Combine(root, "Messenger", "helper.log"),
-        [HostLogNames.MessengerHelperPrevious] = LogRotation.PreviousPath(Path.Combine(root, "Messenger", "helper.log")),
+        [ServerLogNames.Server] = Path.Combine(root, File),
+        [ServerLogNames.ServerPrevious] = LogRotation.PreviousPath(Path.Combine(root, File)),
+        [ServerLogNames.GoogleMessages] = Path.Combine(root, "GoogleMessages", File),
+        [ServerLogNames.GoogleMessagesPrevious] = LogRotation.PreviousPath(Path.Combine(root, "GoogleMessages", File)),
+        [ServerLogNames.GoogleSignInHistory] = Path.Combine(root, "GoogleMessages", "sign-in-history." + File),
+        [ServerLogNames.GoogleVoice] = Path.Combine(root, "GoogleVoice", File),
+        [ServerLogNames.GoogleVoicePrevious] = LogRotation.PreviousPath(Path.Combine(root, "GoogleVoice", File)),
+        [ServerLogNames.Instagram] = Path.Combine(root, "Instagram", File),
+        [ServerLogNames.InstagramPrevious] = LogRotation.PreviousPath(Path.Combine(root, "Instagram", File)),
+        [ServerLogNames.Messenger] = Path.Combine(root, "Messenger", File),
+        [ServerLogNames.MessengerHelper] = Path.Combine(root, "Messenger", "helper.log"),
+        [ServerLogNames.MessengerHelperPrevious] = LogRotation.PreviousPath(Path.Combine(root, "Messenger", "helper.log")),
     };
 }
 
 /// <summary>
-/// The PC backup handed over to the server's (SWITCHBOARD.md 10.7, owner D13: the PC backup retires once the PC runs its own server). The first time the server starts on a
+/// The PC backup handed over to the server's (owner D13: the PC backup retires once the PC runs its own server). The first time the server starts on a
 /// root whose PC backup had a folder, that folder becomes the server's, and the PC backup's password (sealed to this Windows user, as the server seals its own) becomes
 /// the server's backup password, so the person's backups go on where they were, under the password they know. Nothing is taken when the server has its own already,
 /// and the PC backup's own files are left as they are. Logged as fixed words.

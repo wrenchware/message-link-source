@@ -2,7 +2,7 @@ namespace MessageLink.App.Services.Instagram;
 
 // At launch, a saved session reconnects by itself, so Instagram conversations are in the list without a visit to
 // Settings. Without this the app came up reporting Instagram as disconnected every time, and the only way back was to
-// press Reconnect by hand. Here rather than in the window so that every host reconnects to this real account the same
+// press Reconnect by hand. Here rather than in the window so that every server reconnects to this real account the same
 // way: at most three tries, none after an answer only the user can change.
 internal static class InstagramRestore
 {
@@ -13,7 +13,7 @@ internal static class InstagramRestore
     // The wait before the second try; the third waits twice as long. A property so the harness need not sit through it.
     internal static TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(3);
 
-    // stopped: the host is closing, so no further try starts and giving up is not logged.
+    // stopped: the server is closing, so no further try starts and giving up is not logged.
     public static Task<Outcome> RunAsync(InstagramBackend instagram, Func<bool> stopped) =>
         RunAsync(() => instagram.ResumeAsync(automatic: true), () => instagram.SavedSessionProblem, instagram.ExpectReconnect, stopped);
 

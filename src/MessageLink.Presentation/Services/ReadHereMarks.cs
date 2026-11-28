@@ -13,9 +13,9 @@ namespace MessageLink.Presentation.Services;
 /// </summary>
 /// <remarks>
 /// <para>Thread-safe: the list applies marks on the interface thread, the notification repeats on the pool.</para>
-/// <para><b>A client of a Messages Server</b> (SWITCHBOARD.md stage 6, slice 7). The marks are one row the server's other clients write too, so a private read
+/// <para><b>A client of a Messages Server</b>. The marks are one row the server's other clients write too, so a private read
 /// on one device clears the row's bold on the others. Each change (a mark, a mark dropped because the service caught up, a service forgotten) is kept until
-/// the host has taken the write it went in, and when the write lost to another device's the replica hands over the host's row (<see cref="ISharedRowFollower"/>)
+/// the server has taken the write it went in, and when the write lost to another device's the replica hands over the server's row (<see cref="ISharedRowFollower"/>)
 /// and the changes still kept are made again over it: the merge is the later moment per conversation, then the cap. Dropping a mark is made again only over a
 /// mark no newer than the one dropped, so a read made on another device meanwhile stays. The in-process app and the loopback keep the store they always had
 /// (<see cref="PrivateState.Shared"/> is null there) and run exactly the code that is not under the line that says so.</para>
@@ -88,7 +88,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
             {
                 // Recorded even while the row is being read again (stale): replayed over it then, so a private read is never left to show unread.
                 var change = Record(map => Put(map, chatId, through));
-                // A mark the host does not keep yet (a host older than 7, or none heard) is merged over the host's row when it comes (CatchUpAsync).
+                // A mark the server does not keep yet (a server older than 7, or none heard) is merged over the server's row when it comes (CatchUpAsync).
                 if (!SharesNow()) NoteUnshared(chatId, through, change.Tag);
                 return;
             }
@@ -222,21 +222,21 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
         await shared;
     }
 
-    // ---- A client of a Messages Server (stage 6, slice 7): everything below runs only when PrivateState.Shared is not null ----
+    // ---- A client of a Messages Server: everything below runs only when PrivateState.Shared is not null ----
 
     private sealed record Change(Func<Dictionary<string, DateTimeOffset>, bool> Apply, long Tag);
-    // Under the lock: the changes the host has not taken yet, in the order they were made; and those made before the row was read, which are made over it then.
+    // Under the lock: the changes the server has not taken yet, in the order they were made; and those made before the row was read, which are made over it then.
     private readonly List<Change> unconfirmed = [];
     private readonly List<Change> beforeLoad = [];
     // The chain of writes: each lands after the one before, so the last change is the one the replica holds.
     private Task sharedSaving = Task.CompletedTask;
-    // The replica could not bring the marks to the host's row (AbandonAsync, or a row this build cannot read): no change is made until the row is read again.
+    // The replica could not bring the marks to the server's row (AbandonAsync, or a row this build cannot read): no change is made until the row is read again.
     private bool stale;
-    // The host's row handed over while the load that registered the follower was still between its read and its assignment: newer than what that load read.
+    // The server's row handed over while the load that registered the follower was still between its read and its assignment: newer than what that load read.
     private Dictionary<string, DateTimeOffset>? handed;
     private string? loadingFor;
-    // Marks made (or held) while the host did not keep the row: merged by the later moment over the host's row when it comes, so the marks of a device from
-    // before version 7 are not replaced by another device's row (CatchUpAsync). Each with the tag of the change that made it, so a write the host took clears it.
+    // Marks made (or held) while the server did not keep the row: merged by the later moment over the server's row when it comes, so the marks of a device from
+    // before version 7 are not replaced by another device's row (CatchUpAsync). Each with the tag of the change that made it, so a write the server took clears it.
     private readonly Dictionary<string, (DateTimeOffset At, long Tag)> unshared = new(StringComparer.Ordinal);
     // The write of the marks is made at most once in SharedWriteDelay however many marks come (each is the whole row, up to the cap): the changes are kept at once,
     // and the newest tag is what the one write carries.
@@ -247,7 +247,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
     /// <summary>How long a mark waits for others before the row is written (client of a server only). Settable so the offline checks need not sit through it.</summary>
     public TimeSpan SharedWriteDelay { get; init; } = TimeSpan.FromSeconds(2);
 
-    // Under the lock, after a change was made on the marks held: kept to be made again over the host's row if the write of it loses.
+    // Under the lock, after a change was made on the marks held: kept to be made again over the server's row if the write of it loses.
     private Change Record(Func<Dictionary<string, DateTimeOffset>, bool> apply)
     {
         var change = new Change(apply, SharedRowTags.Next());
@@ -265,7 +265,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
         else unshared[chatId] = (at, tag);
     }
 
-    // Under the lock, loaded. Kept only while the host keeps the row (protocol 7 and later): before that it stays here, nothing is confirmed, and nothing needs
+    // Under the lock, loaded. Kept only while the server keeps the row (protocol 7 and later): before that it stays here, nothing is confirmed, and nothing needs
     // making again.
     private void Keep(Change change)
     {
@@ -318,7 +318,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
             var readable = true;
             if (next is not null)
             {
-                // The row is read and this becomes its follower in one step, so a host row the replica takes after the read is handed over (CatchUpAsync)
+                // The row is read and this becomes its follower in one step, so a server row the replica takes after the read is handed over (CatchUpAsync)
                 // and none taken before it is missed.
                 try { row = await state.FollowAsync<Dictionary<string, DateTimeOffset>>(next, Category, Id, new Follower(this, next)); }
                 catch (Exception) { readable = false; /* Marks that cannot be read only mean those conversations show unread again. */ }
@@ -338,7 +338,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
                 beforeLoad.Clear();
                 profile = next; loaded = true; stale = !readable;
                 var shares = next is not null && state.Shares(next, Category, Id);
-                // A host that does not keep the row yet: what this device holds is its own, merged over the host's row when it comes.
+                // A server that does not keep the row yet: what this device holds is its own, merged over the server's row when it comes.
                 if (!shares) foreach (var (chatId, at) in marks) NoteUnshared(chatId, at, SharedRowTags.Next());
                 if (replayed.Count > 0 && next is not null && readable)
                 {
@@ -363,7 +363,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
     private static bool Same(Dictionary<string, DateTimeOffset> a, Dictionary<string, DateTimeOffset> b) =>
         a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var at) && at == pair.Value);
 
-    // The host's row, handed over by the replica: each change still kept is made again over it, as it was made here (a mark is the later moment, a drop leaves a
+    // The server's row, handed over by the replica: each change still kept is made again over it, as it was made here (a mark is the later moment, a drop leaves a
     // newer mark). When anything of them is left, the result is written before this returns; the writes of changes made before are awaited first (they were
     // made over the old row and land ahead of this one), so the replica sends nothing in between.
     private async Task<SharedRowCaughtUp> CatchUpAsync(string owner, byte[]? current)
@@ -387,12 +387,12 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
             if (owner != profile || !loaded) return new(false, 0);
             var next = new Dictionary<string, DateTimeOffset>(host, StringComparer.Ordinal);
             var kept = new List<Change>();
-            // The changes the host has not taken, and those held back while the row was read again (stale), made over the host's row in the order they were made.
+            // The changes the server has not taken, and those held back while the row was read again (stale), made over the server's row in the order they were made.
             var replay = unconfirmed.Concat(beforeLoad).ToList();
             foreach (var change in replay)
                 if (change.Apply(next)) kept.Add(change);
             beforeLoad.Clear();
-            // Marks made before the host kept the row merge in by the later moment, whatever was recorded of how.
+            // Marks made before the server kept the row merge in by the later moment, whatever was recorded of how.
             var folded = false;
             foreach (var (chatId, held) in unshared) folded |= Put(next, chatId, held.At);
             unshared.Clear();
@@ -409,7 +409,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
             }
             else
             {
-                // Nothing of this device's is left to send (it is in the host's row already, or was dropped over it): the host's row as it is.
+                // Nothing of this device's is left to send (it is in the server's row already, or was dropped over it): the server's row as it is.
                 Replace(host);
                 outcome = new(false, through);
             }
@@ -442,7 +442,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
         }
     }
 
-    // The replica could not bring the marks to the host's row: the changes kept go, nothing changes until the row is read again, and every write made before
+    // The replica could not bring the marks to the server's row: the changes kept go, nothing changes until the row is read again, and every write made before
     // has landed when this returns (the replica then drops them).
     private async Task AbandonAsync(string owner)
     {
@@ -459,7 +459,7 @@ public sealed class ReadHereMarks(PrivateState? state = null, PrivateReading? re
         try { await queued.ConfigureAwait(false); } catch (Exception) { /* That change's own writer heard about it. */ }
     }
 
-    /// <summary>How many changes are kept to be made again over the host's row. For the offline checks.</summary>
+    /// <summary>How many changes are kept to be made again over the server's row. For the offline checks.</summary>
     public int Unconfirmed { get { lock (gate) return unconfirmed.Count; } }
 
     private sealed class Follower(ReadHereMarks owner, string profile) : ISharedRowFollower

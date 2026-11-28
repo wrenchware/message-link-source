@@ -31,7 +31,7 @@ internal interface IChromeCookieSource
 }
 
 /// <summary>
-/// Chrome's cookie store, read from disk and never through the browser (SWITCHBOARD.md 5.4, Chrome on the server): the file <c>Default/Network/Cookies</c> (<c>Default/Cookies</c> before Chrome 96),
+/// Chrome's cookie store, read from disk and never through the browser (Chrome on the server): the file <c>Default/Network/Cookies</c> (<c>Default/Cookies</c> before Chrome 96),
 /// a SQLite database Chrome keeps open and writes to in batches (every 30 seconds, or at 512 changes: <c>kCommitInterval</c> in <c>sqlite_persistent_cookie_store.cc</c>).
 /// <para>
 /// Read from a copy: the database and its journal are copied into the profile's private folder and opened there, so Chrome's locks never matter and nothing is ever written to Chrome's own
@@ -125,7 +125,7 @@ internal sealed class ChromeCookieStore : IChromeCookieSource
         return string.Join("|", parts);
     }
 
-    // The store's hosts for a service, each with and without its dot: constants of this server's own, never anything read from a page or a client.
+    // The store's servers for a service, each with and without its dot: constants of this server's own, never anything read from a page or a client.
     internal static string HostList(ChromiumRenewalTarget target) => string.Join(", ", target.StoreHosts.SelectMany(host => new[] { "'." + host + "'", "'" + host + "'" }));
 
     private ChromeCookieRead ReadCopy(string source, string profileFolder, ChromiumRenewalTarget target)

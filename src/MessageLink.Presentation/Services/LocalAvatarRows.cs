@@ -5,8 +5,8 @@ namespace MessageLink.Presentation.Services;
 
 /// <summary>
 /// The custom photos people choose for a conversation or a person, as rows of the protected state: <c>avatar-v2:&lt;H(profile, id)&gt;</c>, a 256 px picture or the
-/// choice to use the provider's (<c>null</c> bytes). The part of <c>LocalAvatarStore</c> that has no Windows API in it, so it is checked in the harness
-/// (stage 6 slice 8). For a client of a server these rows are the server's shared state, which other devices write as well; this tells the interface which
+/// choice to use the provider's (<c>null</c> bytes). The part of <c>LocalAvatarStore</c> that has no Windows API in it, so it is checked in the harness.
+/// For a client of a server these rows are the server's shared state, which other devices write as well; this tells the interface which
 /// pictures changed when one does.
 /// </summary>
 /// <remarks>
@@ -31,7 +31,7 @@ public sealed class LocalAvatarRows : IDisposable
     {
         this.state = state;
         shared = state.Shared;
-        if (shared is not null) shared.HostChanged += OnHostChanged;
+        if (shared is not null) shared.ServerChanged += OnServerChanged;
     }
 
     public event EventHandler<string>? Changed;
@@ -74,8 +74,8 @@ public sealed class LocalAvatarRows : IDisposable
         if (legacyChatId != overrideId) Changed?.Invoke(this, legacyChatId);
     }
 
-    // A photo chosen by an older release was kept as it came, not cut to 256 px, so it can be larger than the host keeps a row (SharedValueLimit). Copied into a
-    // shared row it would stay on this device only and be dropped by the next snapshot of the host's rows. It is not re-encoded here (that takes Windows' imaging,
+    // A photo chosen by an older release was kept as it came, not cut to 256 px, so it can be larger than the server keeps a row (SharedValueLimit). Copied into a
+    // shared row it would stay on this device only and be dropped by the next snapshot of the server's rows. It is not re-encoded here (that takes Windows' imaging,
     // which this class has none of) and not lost either: it stays in the older slot, which is never shared, and is read from there each time. Only a picture
     // chosen anew (StoreAsync) is cut down, and shared.
     private bool Fits(Saved value) =>
@@ -90,7 +90,7 @@ public sealed class LocalAvatarRows : IDisposable
 
     // Another device chose, or removed, a picture (or this device's write lost to its): the pictures drawn from the ids it names are announced as changed, as for a
     // choice made here, off the replica's thread.
-    private void OnHostChanged(object? sender, IReadOnlyList<string> keys)
+    private void OnServerChanged(object? sender, IReadOnlyList<string> keys)
     {
         foreach (var key in keys)
         {
@@ -101,6 +101,6 @@ public sealed class LocalAvatarRows : IDisposable
 
     public void Dispose()
     {
-        if (shared is not null) shared.HostChanged -= OnHostChanged;
+        if (shared is not null) shared.ServerChanged -= OnServerChanged;
     }
 }

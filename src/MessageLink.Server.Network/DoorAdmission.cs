@@ -8,7 +8,7 @@ namespace MessageLink.Server.Network;
 internal enum DoorWay { SignInSocket, Page, Report, ReportSetup, Device, Pairing, Join, Refused }
 
 /// <summary>
-/// What the door knows of a request before it decides, read from it once (<see cref="NetworkHost"/>), so <see cref="DoorAdmission"/> can be checked without a
+/// What the door knows of a request before it decides, read from it once (<see cref="NetworkServer"/>), so <see cref="DoorAdmission"/> can be checked without a
 /// TLS host or a handshake. Each header is as many values as it came with. What can change while a request is judged (<see cref="Trusted"/>,
 /// <see cref="Approver"/>, <see cref="Draining"/>) is asked at the check that needs it, as the door always read it, and <see cref="Trusted"/> only where its
 /// answer matters (the page and a join), since asking it logs a proxied request.
@@ -31,7 +31,7 @@ internal sealed record DoorRequest
     public bool HasPage { get; init; }
     /// <summary>The page is ready to answer a join: it exists and has its password.</summary>
     public Func<bool> Approver { get; init; } = () => false;
-    /// <summary>The host is stopping.</summary>
+    /// <summary>The server is stopping.</summary>
     public Func<bool> Draining { get; init; } = () => false;
 }
 
@@ -58,9 +58,9 @@ internal sealed record DoorDecision(DoorWay Way, int Status = 0, string? Reason 
 }
 
 /// <summary>
-/// The network door's decision (SWITCHBOARD.md stage 4), apart from accepting the connection, which the host does. In order: the page's sign-in socket and its
+/// The network door's decision, apart from accepting the connection, which the host does. In order: the page's sign-in socket and its
 /// paths, to a trusted network only; the reports' paths; then the one socket path, exactly, a GET with no query; never a browser (an Origin header) and only an
-/// upgrade; nothing while the host stops; then a token, and only a token when one is sent, even beside a code; else the pairing code, a try too soon told
+/// upgrade; nothing while the server stops; then a token, and only a token when one is sent, even beside a code; else the pairing code, a try too soon told
 /// apart from a wrong one; else asking to join, from a trusted network only and only while the page can answer; else refused as a missing token. Nothing is
 /// taken from a part (a code, a join's place) before every check ahead of it has passed.
 /// </summary>
@@ -70,13 +70,13 @@ internal static class DoorAdmission
 
     public static DoorDecision Decide(DoorRequest request, IDoorAnswers answers)
     {
-        // The page's own socket for signing in on it (SWITCHBOARD.md 10.6), to the home network only as the page is; the page itself asks for its cookie, its token and its origin.
+        // The page's own socket for signing in on it, to the home network only as the page is; the page itself asks for its cookie, its token and its origin.
         if (request.HasPage && string.Equals(request.Path, ServerPage.SignInSocketPath, StringComparison.Ordinal) && request.Trusted()) return new(DoorWay.SignInSocket);
         // The server's own page, when its owner set it a password (ServerPage): its few paths only, to the home network only.
         if (request.HasPage && ServerPage.Serves(request.Path) && request.Trusted()) return new(DoorWay.Page);
         // Reports (IAgentReports): their own small HTTP surface, never the socket's.
-        if (request.Path is NetworkHost.ReportPath or NetworkHost.ReportCheckPath) return new(DoorWay.Report);
-        if (NetworkHost.IsReportSetupPath(request.Path)) return new(DoorWay.ReportSetup);
+        if (request.Path is NetworkServer.ReportPath or NetworkServer.ReportCheckPath) return new(DoorWay.Report);
+        if (NetworkServer.IsReportSetupPath(request.Path)) return new(DoorWay.ReportSetup);
         // Exactly the one path, compared as written (PathString's own comparison ignores case).
         if (!string.Equals(request.Path, NetworkEndpoint.Target, StringComparison.Ordinal) || request.HasQuery || !request.IsGet) return DoorDecision.Refuse(NotFound, "handshake");
         // A browser always names its page's origin; this app's clients never do. A page on the home network gets nothing here, not even a try at a code.
@@ -87,7 +87,7 @@ internal static class DoorAdmission
             // A token, and only a token: a request that also carries a code is judged by its token alone.
             var token = request.Authorization.Count == 1 ? ClientToken.Presented(request.Authorization[0]) : null;
             if (token is not null && answers.Authenticate(token) is { } device) return new(DoorWay.Device, Device: device);
-            // A server restored from a backup (stage 10) says so to a token it does not know, so the device can say to ask to join again (NetworkEndpoint).
+            // A server restored from a backup says so to a token it does not know, so the device can say to ask to join again (NetworkEndpoint).
             return answers.RefusesAsRestored(token) ? DoorDecision.Refuse(Unauthorized, "restored", NetworkPairing.RefusalRestored) : DoorDecision.Refuse(Unauthorized, "token");
         }
         if (request.PairingCode.Count == 1)

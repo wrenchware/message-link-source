@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- What a host owns when it serves the backends over the protocol: the dispatcher's services, the event log, the state
-       publisher, the journal and the upload store (SWITCHBOARD.md stage 3). Plain net10.0 with no Windows or WinUI
-       reference, so the app's loopback, the local server and a Linux host all call the same ProtocolHost.Create; what only
+       publisher, the journal and the upload store. Plain net10.0 with no Windows or WinUI
+       reference, so the app's loopback, the local server and a Linux host all call the same ProtocolServer.Create; what only
        Windows can do arrives as a port. -->
   <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
   <ItemGroup>

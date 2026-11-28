@@ -5,13 +5,13 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Windows;
 
 /// <summary>
-/// The Windows server's administration (SWITCHBOARD.md 10.7, as the Linux host's 4.6): what the server is, the accounts it holds, and removing one, for its page. Removing an account is that account's own sign-out on this PC, exactly as Settings' Sign out was in the in-process app: nothing is sent to the service, and the
+/// The Windows server's administration (as the Linux server's): what the server is, the accounts it holds, and removing one, for its page. Removing an account is that account's own sign-out on this PC, exactly as Settings' Sign out was in the in-process app: nothing is sent to the service, and the
 /// Messenger device and the history the helper kept stay where they are, so a later sign-in on this PC reuses them. Google Messages is unpaired: the phone is asked
 /// to drop the server when it is connected, and the pairing is forgotten either way (GoogleMessagesBackend.RemoveAsync). Logged as fixed words only.
 /// </summary>
-internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : MessageLink.Server.IHostAdmin
+internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : MessageLink.Server.IComposedServerAdmin
 {
-    /// <summary>The channel this host names itself by on the page.</summary>
+    /// <summary>The channel this server names itself by on the page.</summary>
     public const string Channel = "windows";
 
     // A pairing removed on the phone, or a sign-in Google refused, is Saved ("not connected", with the sign-in to fix it), not Paired: the page said "Paired"
@@ -33,11 +33,11 @@ internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : Messa
             () => google.PairingLost || google.SignInExpired && !google.SignInPresumed, google.RemoveAsync, backends.LoginGate));
     }
 
-    /// <summary>Told of an account removed here, so what the host kept of it goes too (<c>ProtocolServices.AccountEnded</c>).</summary>
+    /// <summary>Told of an account removed here, so what the server kept of it goes too (<c>ProtocolServices.AccountEnded</c>).</summary>
     public Action<string, string?>? Ended { get; set; }
 
-    public Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(new HostStatus(parts.App, ProtocolVersion.Current, ProtocolVersion.Supported, parts.Started, Channel: Channel));
+    public Task<ServerStatus> StatusAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ServerStatus(parts.App, ProtocolVersion.Current, ProtocolVersion.Supported, parts.Started, Channel: Channel));
 
     public Task<IReadOnlyList<ServerAccount>> AccountsAsync(CancellationToken cancellationToken = default)
     {
@@ -103,7 +103,7 @@ internal sealed class WindowsServerAdmin(WindowsServerAdmin.Parts parts) : Messa
     }
 
     // The provider's lifecycle lock, the one the start's restore takes (as LinuxServerAdmin): whichever comes second finds the account already connected, or
-    // gone. The host is told of the removal after the lock is let go.
+    // gone. The server is told of the removal after the lock is let go.
     private async Task<bool> UnderLoginGateAsync(string provider, Func<Task<bool>> remove, CancellationToken cancellationToken)
     {
         if (parts.LoginGate?.Invoke(provider) is not { } gate) return await remove().ConfigureAwait(false);

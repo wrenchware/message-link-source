@@ -12,7 +12,7 @@ import (
 
 // A helper started by the Linux server ends with it however the server ends, a crash or a SIGKILL included, rather than
 // staying logged in to the real account beside the next server's helper: two clients on one Instagram session is the
-// kind of traffic that gets an account checked (SWITCHBOARD.md 4.2). End of input says the same, but a helper inside a
+// kind of traffic that gets an account checked. End of input says the same, but a helper inside a
 // call reads its input only between frames, and a mutation runs to its end whatever happens to the pipe (dispatch.go).
 // The server names itself in MESSAGES_HELPER_PARENT_PID; without it (tests, a helper started by hand) nothing here
 // applies. The same watch as the Messenger helper's (helpers/Messenger/helper/parentwatch_linux.go).

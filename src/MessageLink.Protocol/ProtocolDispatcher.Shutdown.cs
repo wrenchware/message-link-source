@@ -7,7 +7,7 @@ public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddShutdownRoutes(Dictionary<string, Route> routes)
     {
-        routes[ProtocolMethods.HostShutdown] = Of<IHostShutdown, HostShutdownResult>(s => s.Shutdown, (port, ct) => port.RequestAsync(ct));
+        routes[ProtocolMethods.ServerShutdown] = Of<IServerShutdown, ServerShutdownResult>(s => s.Shutdown, (port, ct) => port.RequestAsync(ct));
         return routes;
     }
 }

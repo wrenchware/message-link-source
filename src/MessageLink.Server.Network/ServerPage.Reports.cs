@@ -12,7 +12,7 @@ namespace MessageLink.Server.Network;
 // its form and no later page. The server keeps only hashes. The scripts Hermes uses to post, and the Hermes plugin, are offered from here too, each as one download.
 internal sealed partial class ServerPage
 {
-    /// <summary>The report tokens this page turns on and off (<see cref="NetworkHostOptions.Reports"/>); null shows no Reports line.</summary>
+    /// <summary>The report tokens this page turns on and off (<see cref="NetworkServerOptions.Reports"/>); null shows no Reports line.</summary>
     internal IAgentReports? Reports { get; set; }
 
     internal const string ReportScriptPath = "/hermes/ml-report.zip";

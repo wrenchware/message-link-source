@@ -80,7 +80,7 @@ internal sealed partial class ServerPage
         var page = AgentReportCode.Url(Address(request)) is { } url && CommandSafe.IsMatch(url.Host + ":" + url.Port) ? url.Host + ":" + url.Port : addresses.LastOrDefault() ?? "";
         var port = ListenPort?.Invoke() is { } listening and > 0 ? " --port " + listening : "";
         return "MLSETUP=" + code + " sh -c 'set -e; f=$(mktemp); trap \"rm -f \\\"\\$f\\\"\" EXIT; "
-            + "curl -q -fsSk --proto =https --max-time 60 --max-filesize 4000000 --pinnedpubkey " + PublicKeyPin + " -o \"$f\" https://" + page + NetworkHost.SetupShellPath + "; "
+            + "curl -q -fsSk --proto =https --max-time 60 --max-filesize 4000000 --pinnedpubkey " + PublicKeyPin + " -o \"$f\" https://" + page + NetworkServer.SetupShellPath + "; "
             + "[ \"$({ sha256sum 2>/dev/null || shasum -a 256; } <\"$f\" | cut -c1-64)\" = " + ReportInstaller.ShellSha256 + " ] "
             + "|| { echo \"The download does not match this server. Nothing changed.\" >&2; exit 1; }; "
             + "sh \"$f\"" + port + (add ? " --add" : "") + " " + profile + " " + fingerprint() + " " + string.Join(' ', addresses) + "'";
@@ -91,7 +91,7 @@ internal sealed partial class ServerPage
     {
         var address = "127.0.0.1:" + (ListenPort?.Invoke() ?? MessageLink.Protocol.NetworkEndpoint.DefaultPort);
         return "$env:MLSETUP='" + code + "'; $f=Join-Path $env:TEMP ('ml-setup-'+[guid]::NewGuid()+'.py'); try { "
-            + "curl.exe -q -fsSk --proto =https --max-time 60 --max-filesize 4000000 --pinnedpubkey '" + PublicKeyPin + "' -o $f 'https://" + address + NetworkHost.SetupPythonPath + "'; "
+            + "curl.exe -q -fsSk --proto =https --max-time 60 --max-filesize 4000000 --pinnedpubkey '" + PublicKeyPin + "' -o $f 'https://" + address + NetworkServer.SetupPythonPath + "'; "
             + "if ($LASTEXITCODE -ne 0) { 'The download failed. Nothing changed.' } "
             + "elseif ((Get-FileHash $f -Algorithm SHA256).Hash -ne '" + ReportInstaller.PythonSha256 + "') { 'The download does not match this server. Nothing changed.' } "
             + "else { $h=Get-Command hermes -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; $a=@(); $py='python'; "

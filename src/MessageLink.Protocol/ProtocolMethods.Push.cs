@@ -1,11 +1,11 @@
 namespace MessageLink.Protocol;
 
-// Notifications to a phone (SWITCHBOARD.md 7.5, Decisions: encrypted pushes). A server set up with the owner's own Firebase project offers its app settings
+// Notifications to a phone (Decisions: encrypted pushes). A server set up with the owner's own Firebase project offers its app settings
 // (`push.offer`); the phone makes a P-256 key and a secret, asks Firebase for a token, and gives the three to the server (`push.register`), which keeps them
 // beside the paired device and forgets them when the device is removed. Each new message then goes to a phone that is not connected as a push sealed to
 // its key (Web Push encryption, RFC 8291), so Firebase carries only ciphertext of one padded size. A server without the project offers nothing, and a
 // phone then asks for nothing. Neither call sends anything to a service; `push.register` is per device, so it is answered only on a network connection.
-// A phone whose package the project lacks reports it with `push.register` and an empty token (stage 10, 10.9): kept beside the device for the server's page,
+// A phone whose package the project lacks reports it with `push.register` and an empty token: kept beside the device for the server's page,
 // never a push target. Protocol 27 adds `push.testShown` (the phone showed the server's test push) and `push.status` (how the server's pushes stand, for
 // Manage server), and the `push` account signal (pushes turned on, or the files replaced: an open phone asks for the offer again).
 public static partial class ProtocolMethods

@@ -11,7 +11,7 @@ using Position = MessageLink.Protocol.HistoryPosition;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The server's whole copy of every conversation (SWITCHBOARD.md stage 8), as the ports and protocol answers the host serves. The copy itself is
+/// The server's whole copy of every conversation, as the ports and protocol answers the host serves. The copy itself is
 /// <see cref="HistoryCopy"/>, kept up from the providers' events, which this sees first (<see cref="Over"/>); the list rows are <see cref="HistoryRows"/>, the
 /// background reads and the walk <see cref="HistoryWalker"/>, the mirror check <see cref="HistoryMirror"/>. A client asks only for what changed after the
 /// number it holds (<see cref="SyncAsync"/>, <see cref="FeedAsync"/>), so its copy is whole by construction. The same copy answers the reads every client
@@ -54,7 +54,7 @@ internal sealed class ConversationHistory : IWholeHistory, IChatReader, ILinkPre
     private long syncRefreshMinute;
     private int syncRefreshes;
 
-    /// <param name="facts">Each conversation's service's own facts (its budget, its echo of sends, its events). Every host states them: none taken for granted.</param>
+    /// <param name="facts">Each conversation's service's own facts (its budget, its echo of sends, its events). Every server states them: none taken for granted.</param>
     public ConversationHistory(HistoryDatabase db, IChatReader chats, IMessageSender sender, IMessagePeek? peek, IHistoryWindowReader? windows,
         IMessageActions? actions, IMessageMutations? mutations, Action<string> log, IHistoryFacts facts)
     {
@@ -209,7 +209,7 @@ internal sealed class ConversationHistory : IWholeHistory, IChatReader, ILinkPre
     public Task<HistoryChangesResult> ChangesAsync(HistoryChangesParams request, CancellationToken cancellationToken = default) =>
         copy.ChangedChatsAsync(request.Since, cancellationToken);
 
-    // ---- Protocol 25: the one ordered feed, and the copy checks (stage 9) ----
+    // ---- Protocol 25: the one ordered feed, and the copy checks ----
 
     public async Task<HistoryFeedResult> FeedAsync(HistoryFeedParams request, CancellationToken cancellationToken = default)
     {
@@ -378,8 +378,7 @@ internal sealed class ConversationHistory : IWholeHistory, IChatReader, ILinkPre
     }
 
     // A send to a conversation whose service does not announce its own sends (HistoryFacts.EchoesOwnSends: Instagram's) is read back as an open is, the
-    // person having just sent: one read per send, and what it finds is announced as any find is. Files and scheduled sends come here too (HistoryReadBack,
-    // stage 9).
+    // person having just sent: one read per send, and what it finds is announced as any find is. Files and scheduled sends come here too (HistoryReadBack).
     internal void ReadBackSent(string chatId)
     {
         if (facts.FactsOf(chatId).EchoesOwnSends || copy.Whole(chatId) is null) return;

@@ -7,8 +7,8 @@ using MessageLink.GoogleMessages.Spike;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// Google Messages on the Linux host (SWITCHBOARD.md 4.3), on only with the hidden <c>MESSAGES_GOOGLE=1</c>. Decided once at start, before anything is
-/// composed: a host asked for it that has no helper (or no restore) says so in one line and runs without it, refused as before, rather than taking sign-ins (a missing browser no longer refuses it: a QR pairing needs none, SWITCHBOARD.md 5.4;
+/// Google Messages on the Linux server, on only with the hidden <c>MESSAGES_GOOGLE=1</c>. Decided once at start, before anything is
+/// composed: a host asked for it that has no helper (or no restore) says so in one line and runs without it, refused as before, rather than taking sign-ins (a missing browser no longer refuses it: a QR pairing needs none;
 /// it could not keep for two hours).
 /// <para>
 /// The profiles go to <c>&lt;keys&gt;/Google</c>: a profile is a working sign-in, unsealed (Chromium's cookie store on Linux without a keyring is
@@ -17,7 +17,7 @@ namespace MessageLink.Server.Linux;
 /// </summary>
 internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string ProfilesRoot, IChromiumSignInLauncher? SignIn = null, ChromeGoogle? Chrome = null)
 {
-    /// <summary>What the keeper renews through: the server's own Chrome when it runs one (SWITCHBOARD.md 5.4, Chrome on the server), else the Chromium that is started for each renewal.</summary>
+    /// <summary>What the keeper renews through: the server's own Chrome when it runs one (Chrome on the server), else the Chromium that is started for each renewal.</summary>
     public IGoogleBrowser KeeperBrowser => Chrome is not null ? Chrome.Browser : Browser;
 
     /// <summary>Whether this host signs Google Messages in in a browser of its own: the hand-over from a client's window is then refused.</summary>
@@ -35,9 +35,9 @@ internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string Profile
     /// <summary>The server's own Chrome's sandbox as last read (<see cref="ChromeSandboxReading"/>); null when it runs no Chrome of its own.</summary>
     public ChromeSandboxReading? Sandbox { get; init; }
 
-    /// <summary>The helper this adds to the one the host starts.</summary>
+    /// <summary>The helper this adds to the one the server starts.</summary>
     public const string Helper = "gmessages-helper";
-    /// <summary>Google Voice's helper, which the host starts only beside its own Chrome (SWITCHBOARD.md 5.4, Google Voice on the server): Voice's sign-in and renewal need that browser.</summary>
+    /// <summary>Google Voice's helper, which the host starts only beside its own Chrome (Google Voice on the server): Voice's sign-in and renewal need that browser.</summary>
     public const string VoiceHelper = "gvoice-helper";
     public const string ProfilesFolder = "Google";
 
@@ -45,24 +45,24 @@ internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string Profile
     public bool VoiceRuns => Chrome is not null;
 
     /// <summary>
-    /// The saved Voice sessions' profile ids for the start's sweep (<see cref="SweepProfiles"/>), read with this host's key; null when Voice does not run here, which then keeps none.
+    /// The saved Voice sessions' profile ids for the start's sweep (<see cref="SweepProfiles"/>), read with this server's key; null when Voice does not run here, which then keeps none.
     /// </summary>
-    public Func<IReadOnlySet<string>?>? VoiceKept(HostKeys keys) =>
+    public Func<IReadOnlySet<string>?>? VoiceKept(LinuxServerKeys keys) =>
         VoiceRuns ? () => GoogleVoiceAccounts.SavedProfileIdsAsync(new FileKeyStateProtector(keys.StateKey)).GetAwaiter().GetResult() : null;
 
-    /// <summary>The one line a host that runs Google says it started with; <paramref name="options"/> decide both words.</summary>
+    /// <summary>The one line a server that runs Google says it started with; <paramref name="options"/> decide both words.</summary>
     internal static string EnabledLine(LinuxServerOptions options) =>
         $"server google enabled sandbox={(options.ChromiumNoSandbox ? "off" : "on")} headed={(options.ChromiumHeaded ? "yes" : "no")}";
 
     /// <param name="findXvfb">Where Xvfb is, or null; the harness gives its own answer. The real one looks in the browser's own folders.</param>
     /// <param name="interfaces">The network interfaces in view, or the real list; the harness gives its own.</param>
-    public static LinuxGoogle? Prepare(LinuxServerOptions options, HostKeys keys, Action<string> log, Func<string?>? findXvfb = null, Func<IReadOnlyList<string>>? interfaces = null)
+    public static LinuxGoogle? Prepare(LinuxServerOptions options, LinuxServerKeys keys, Action<string> log, Func<string?>? findXvfb = null, Func<IReadOnlyList<string>>? interfaces = null)
     {
         if (!options.Google) return null;
         // Only the restore starts the keeper, and a sign-in nobody renews dies at two hours; a host that would take one and seed a browser for it
         // anyway (ProfileKeepingGoogleAccount) without ever renewing it is refused instead.
         if (!options.Restore) { log("server google refused reason=no_restore"); return null; }
-        // Chrome mode (SWITCHBOARD.md 5.4, MESSAGES_GOOGLE_CHROME=1) has its own refusals (no_browser, no_xvfb, no_policy, no_helper): Chrome is never started without its policy. Refused, it
+        // Chrome mode (MESSAGES_GOOGLE_CHROME=1) has its own refusals (no_browser, no_xvfb, no_policy, no_helper): Chrome is never started without its policy. Refused, it
         // is not what runs, and the host falls through to the lines below as a host without the switch would; the Chromium lines say what is left.
         if (options.GoogleChrome && PrepareChrome(options, keys, log, findXvfb, interfaces) is { } chrome) return chrome;
         // A missing browser, or a headed one with no Xvfb, does not refuse Google; it only leaves the browser-based ways (a Gaia pairing's renewal, the sign-in in the server's
@@ -108,10 +108,10 @@ internal sealed record LinuxGoogle(ChromiumGoogleBrowser Browser, string Profile
     }
 
     /// <summary>
-    /// Google Messages through the server's own Chrome (SWITCHBOARD.md 5.4, <c>MESSAGES_GOOGLE_CHROME=1</c>): refused, with a fixed word, without Chrome, Xvfb, its policy file or the helper. The old
+    /// Google Messages through the server's own Chrome (<c>MESSAGES_GOOGLE_CHROME=1</c>): refused, with a fixed word, without Chrome, Xvfb, its policy file or the helper. The old
     /// renewal browser is built beside it and never started: the host's types ask for one, and the hand-over from a client's window is refused whenever the sign-in is offered.
     /// </summary>
-    internal static LinuxGoogle? PrepareChrome(LinuxServerOptions options, HostKeys keys, Action<string> log, Func<string?>? findXvfb, Func<IReadOnlyList<string>>? interfaces,
+    internal static LinuxGoogle? PrepareChrome(LinuxServerOptions options, LinuxServerKeys keys, Action<string> log, Func<string?>? findXvfb, Func<IReadOnlyList<string>>? interfaces,
         IChromeLauncher? launcher = null, IXConnector? connector = null, IChromeCookieSource? cookies = null, IFrameEncoder? encoder = null, ChromeBuild? build = null,
         Func<string?>? sandboxProbe = null)
     {

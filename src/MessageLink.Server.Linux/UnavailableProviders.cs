@@ -7,48 +7,48 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// The providers this host does not run, refused rather than half-working (SWITCHBOARD.md stage 4, "First Unraid test"):
+/// The providers this host does not run, refused rather than half-working ("First Unraid test"):
 /// <list type="bullet">
 /// <item>Google Messages: Google refuses a copied sign-in at two hours and only a kept browser profile renews it (<c>PROVIDERS.md</c>). The Linux
-/// renewal (step 4.3, <see cref="ChromiumGoogleBrowser"/>) runs only with the hidden <c>MESSAGES_GOOGLE=1</c> (<see cref="PortsWithGoogle"/>) until
-/// 5.4 has shown live that Google renews a profile seeded on the server; without it a session here would die within two hours of every sign-in.</item>
+/// renewal (<see cref="ChromiumGoogleBrowser"/>) runs only with the hidden <c>MESSAGES_GOOGLE=1</c> (<see cref="PortsWithGoogle"/>) until
+/// a live run has shown that Google renews a profile seeded on the server; without it a session here would die within two hours of every sign-in.</item>
 /// <item>Google Voice: its renewal needs a browser profile of each account's own, which only the server's own Chrome keeps (<see cref="PortsWithGoogle"/> runs it beside that Chrome; the photo re-encoder is
-/// Skia's, step 4.4). Everywhere else it is refused.</item>
+/// Skia's). Everywhere else it is refused.</item>
 /// </list>
-/// Each account action and restore answers <c>account_failed</c> with <see cref="AccountFailureWords.NotOnThisHost"/>; the Google connect answers
+/// Each account action and restore answers <c>account_failed</c> with <see cref="AccountFailureWords.NotOnThisServer"/>; the Google connect answers
 /// <see cref="BackendFailure.Unsupported"/> with a sentence; a helper restart is refused with the same word. The reads say "nothing here" (not
 /// signed in, no accounts), the state a client already shows as a service not set up, never as one that is failing. Behind all of this, the
-/// host starts no helper but Messenger's and Instagram's (<see cref="Runs"/>, <c>HelperConnection.Allowed</c>; and Google Messages' when it runs), so a route missed here still cannot
+/// server starts no helper but Messenger's and Instagram's (<see cref="Runs"/>, <c>HelperConnection.Allowed</c>; and Google Messages' when it runs), so a route missed here still cannot
 /// reach those services.
 /// <para>
-/// Messenger and Instagram run. Instagram's helper keeps nothing on disk (the session it hands back is sealed by the host, under the host's key) and
-/// dies with the server as Messenger's does (<c>parentwatch_linux.go</c>). Its pacing is the backends' own, unchanged from Windows, and the host's
+/// Messenger and Instagram run. Instagram's helper keeps nothing on disk (the session it hands back is sealed by the server, under the server's key) and
+/// dies with the server as Messenger's does (<c>parentwatch_linux.go</c>). Its pacing is the backends' own, unchanged from Windows, and the server's
 /// restore of it is held by the same <c>RestoreLedger</c> as Messenger's.
 /// </para>
 /// </summary>
 internal static class UnavailableProviders
 {
-    /// <summary>The helpers this host starts, by file name.</summary>
+    /// <summary>The helpers this server starts, by file name.</summary>
     public const string MessengerHelper = "messenger-helper", InstagramHelper = "instagram-helper";
 
-    /// <summary>Whether this host may start the helper of that file name (<c>HelperConnection.Allowed</c>).</summary>
+    /// <summary>Whether this server may start the helper of that file name (<c>HelperConnection.Allowed</c>).</summary>
     public static bool Runs(string name) => name is MessengerHelper or InstagramHelper;
 
     // Instagram's port is left out, so the host builds the real one.
-    public static HostUnavailablePorts Ports(IHelperRestarter restarts) =>
+    public static ServerUnavailablePorts Ports(IHelperRestarter restarts) =>
         new(new UnavailableGoogleAccount(), null, new UnavailableVoiceAccounts(), new UnavailableGoogleBackend(), new HostedRestarts(restarts));
 
     /// <summary>
     /// The same with Google Messages run (<c>MESSAGES_GOOGLE=1</c>, <see cref="LinuxGoogle"/>): its account is the one given (the backend's, keeping a
     /// browser profile at each sign-in), its connect and restart are the backend's own. Instagram runs as without it. Google Voice stays refused unless <paramref name="voice"/> is given (the
-    /// server's own Chrome is there to sign it in and renew it, SWITCHBOARD.md 5.4): its accounts are then the real ones, behind a port that refuses the cookie hand-over from a client, and
+    /// server's own Chrome is there to sign it in and renew it): its accounts are then the real ones, behind a port that refuses the cookie hand-over from a client, and
     /// their restart is the real one's.
     /// </summary>
-    public static HostUnavailablePorts PortsWithGoogle(IHelperRestarter restarts, IGoogleMessagesAccount google, IGoogleVoiceAccounts? voice = null) =>
+    public static ServerUnavailablePorts PortsWithGoogle(IHelperRestarter restarts, IGoogleMessagesAccount google, IGoogleVoiceAccounts? voice = null) =>
         voice is null ? new(google, null, new UnavailableVoiceAccounts(), null, new HostedRestarts(restarts, google: true), GoogleRuns: true)
             : new(google, null, new ServerSignInVoiceAccounts(voice), null, new HostedRestarts(restarts, google: true, voice: true), GoogleRuns: true, VoiceRuns: true);
 
-    internal static InvalidOperationException Refused() => new(AccountFailureWords.NotOnThisHost);
+    internal static InvalidOperationException Refused() => new(AccountFailureWords.NotOnThisServer);
 }
 
 internal sealed class UnavailableGoogleAccount : IGoogleMessagesAccount
@@ -119,7 +119,7 @@ internal sealed class HostedRestarts(IHelperRestarter inner, bool google = false
         scope is ProviderScopes.Messenger or ProviderScopes.Instagram || google && scope == ProviderScopes.Google || voice && HelperRestartScope.Service(scope) == "gvoice"
             || HelperRestartScope.Service(scope) is null
             ? inner.RestartAsync(scope, signingIn, force, token, settle)
-            : Task.FromResult(new HelperRestartResult("refused", AccountFailureWords.NotOnThisHost, 0));
+            : Task.FromResult(new HelperRestartResult("refused", AccountFailureWords.NotOnThisServer, 0));
 }
 
 // The browser only Google Voice and the Google renewal ask of a host. Registered because the container builds those backends (their routes are refused
@@ -128,7 +128,7 @@ internal sealed class HostedRestarts(IHelperRestarter inner, bool google = false
 internal sealed class UnavailableGoogleBrowser : MessageLink.App.Services.IGoogleBrowser
 {
     public Task<MessageLink.App.Services.GoogleMessages.GoogleRefreshResult> RefreshAsync(string service, string profileId, CancellationToken cancellationToken) =>
-        Task.FromResult(new MessageLink.App.Services.GoogleMessages.GoogleRefreshResult(null, AccountFailureWords.NotOnThisHost));
+        Task.FromResult(new MessageLink.App.Services.GoogleMessages.GoogleRefreshResult(null, AccountFailureWords.NotOnThisServer));
     public Task<MessageLink.App.GoogleSignInResult?> CreateProfileAsync(IReadOnlyDictionary<string, string> cookies, CancellationToken cancellationToken) =>
         Task.FromResult<MessageLink.App.GoogleSignInResult?>(null);
     // A kept profile is never forgotten for being unreadable here: a Voice account's profile id is dropped only when its profile is known to be gone.

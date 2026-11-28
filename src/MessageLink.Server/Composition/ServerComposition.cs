@@ -15,9 +15,9 @@ namespace MessageLink.Server;
 
 /// <summary>
 /// What every server is built from (GLOSSARY.md, "Server composition"): its stores where <see cref="ServerLayout"/> puts them, the backends and the
-/// routers over them, the protocol host and its backup, and each account's restore step. The app's <c>OnLaunched</c> without anything that draws: no
-/// window, no notifications, no decorators (merges, labels, local preferences, the search catalogue and the conversation cache stay in the client,
-/// SWITCHBOARD.md stage 3). A platform adds only what differs (<see cref="ServerPlatform"/>). Building it connects nothing: the providers start only
+/// routers over them, the protocol server and its backup, and each account's restore step. The app's <c>OnLaunched</c> without anything that draws: no
+/// window, no notifications, no decorators (merges, labels, local preferences, the search catalogue and the conversation cache stay in the client).
+/// A platform adds only what differs (<see cref="ServerPlatform"/>). Building it connects nothing: the providers start only
 /// when the platform's restore runs the steps of <see cref="ComposedServer"/>.
 /// </summary>
 internal static class ServerComposition
@@ -32,7 +32,7 @@ internal static class ServerComposition
         collection.AddSingleton(platform.Photos);
         if (platform.VideoFrames is { } frames) collection.AddSingleton(frames);
         collection.AddSingleton(platform.GoogleBrowser);
-        // The stores the backends keep their state in, at the same paths as the app's: one host per data root, so only one of them is open.
+        // The stores the backends keep their state in, at the same paths as the app's: one server per data root, so only one of them is open.
         collection.AddSingleton<IPrivateStateStore>(sp => new MessageLink.Storage.SqlitePrivateStateStore(layout.State, sp.GetRequiredService<IStateProtector>()));
         collection.AddSingleton<PrivateState>();
         collection.AddSingleton(sp => new MessageLink.Storage.MediaDiskCache(layout.Media, sp.GetRequiredService<IStateProtector>()));
@@ -42,14 +42,14 @@ internal static class ServerComposition
         collection.AddSingleton<ComposerActivity>();
         // The providers and the routers over them.
         collection.AddBackends();
-        // What the host knows of its clients (client.state): Instagram's poll, the Google keeper's busy check and the routers' private-reading net read it.
-        // With no client connected it says nobody is looking, so a headless host never polls at the "present" pace.
-        collection.AddSingleton(sp => new HostClientState(layout.ClientState, sp.GetRequiredService<IStateProtector>(), AppLog.Write));
-        collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<HostClientState>());
-        collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<HostClientState>());
-        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<HostClientState>().Reading)));
+        // What the server knows of its clients (client.state): Instagram's poll, the Google keeper's busy check and the routers' private-reading net read it.
+        // With no client connected it says nobody is looking, so a headless server never polls at the "present" pace.
+        collection.AddSingleton(sp => new ServerClientState(layout.ClientState, sp.GetRequiredService<IStateProtector>(), AppLog.Write));
+        collection.AddSingleton<IClientBusy>(sp => sp.GetRequiredService<ServerClientState>());
+        collection.AddSingleton<IAppPresence>(sp => sp.GetRequiredService<ServerClientState>());
+        collection.Replace(ServiceDescriptor.Singleton(sp => new MessagingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<ServerClientState>().Reading)));
         collection.Replace(ServiceDescriptor.Singleton(sp => new TypingRouter(sp.GetRequiredService<ConversationOwners>(), sp.GetRequiredService<ComposerActivity>(),
-            sp.GetRequiredService<HostClientState>().Reading)));
+            sp.GetRequiredService<ServerClientState>().Reading)));
         // The avatar reader AddBackends registers reads chats through the port the window decorates; here nothing decorates it.
         collection.AddSingleton<IChatReader>(sp => sp.GetRequiredService<MessagingRouter>());
         step.Took("registrations");
@@ -58,8 +58,8 @@ internal static class ServerComposition
 
         var protector = platform.Protector;
         var gates = new LoginGates();
-        // What the administration asks of the host itself (Google's connection) exists only once the host does.
-        ProtocolHost? built = null;
+        // What the administration asks of the server itself (Google's connection) exists only once the server does.
+        ProtocolServer? built = null;
         var backends = new ServerBackends(services, platform, gates,
             () => built?.StatePublisher.Latest?.State.Scopes.Any(scope => scope.Scope == ProviderScopes.Google && scope.Connected) == true);
         var google = backends.Google;
@@ -72,48 +72,48 @@ internal static class ServerComposition
         backends.Unavailable = platform.Unavailable?.Invoke(backends);
         var remoteSignIn = platform.RemoteSignIn?.Invoke(backends) ?? new RemoteSignIns(null, null, null);
         step.Took("feed");
-        // Made on first use, never by the app's in-process host (stage 6). The host's snoozes are rows of it (slice 3), and its ChatSnoozes-v1 files (the
+        // Made on first use, never by the app's in-process server. The server's snoozes are rows of it, and its ChatSnoozes-v1 files (the
         // in-process app's too, on a root they share) are taken in once, at that first use, and left as they are.
         var shared = new SharedStateStore(layout.Shared, protector, log);
         // A space nobody has chosen private reading in reads it off, as the guide says, and not private for every service (no row is private to a client).
         shared.GiveReadingDefaults();
-        // Its status, its accounts and their removal, for its page and its owner (SWITCHBOARD.md 4.6, 10.7; protocol 20).
+        // Its status, its accounts and their removal, for its page and its owner (protocol 20).
         var admin = platform.Admin(backends);
         var kept = platform.KeptHistory?.Invoke(backends);
-        // The server's own backup (SWITCHBOARD.md stage 10): its data and identity, never a sign-in, into the folder chosen for it.
+        // The server's own backup: its data and identity, never a sign-in, into the folder chosen for it.
         var backup = new ServerBackupService(layout.BackupPaths, protector, platform.BackupFolder(), new BackendBackupMessenger(messenger, backends.Accounts), platform.Version, log);
-        var options = new ProtocolHostOptions(services.GetRequiredService<MessagingRouter>(), services.GetRequiredService<DirectoryRouter>(),
+        var options = new ProtocolServerOptions(services.GetRequiredService<MessagingRouter>(), services.GetRequiredService<DirectoryRouter>(),
             services.GetRequiredService<MediaRouter>(), services.GetRequiredService<TypingRouter>(), google, services.GetRequiredService<GoogleMediaBackend>(),
             messenger, instagram, voice, feed, SharedChatSnoozes.Over(shared, platform.Snoozes),
-            platform.Version, log, services.GetRequiredService<HostDiagnosticsSource>(),
-            backends.Keeper, services.GetRequiredKeyedService<IAccessTokenStore>(BackendServices.HostTokensKey),
+            platform.Version, log, services.GetRequiredService<ServerDiagnosticsSource>(),
+            backends.Keeper, services.GetRequiredKeyedService<IAccessTokenStore>(BackendServices.ServerTokensKey),
             JournalStore: new ProtectedFileJournalStore(layout.Journal, protector),
             KeptHistory: kept,
             IncomingCards: services.GetRequiredService<IncomingCardRequester>(),
-            ClientState: services.GetRequiredService<HostClientState>(),
+            ClientState: services.GetRequiredService<ServerClientState>(),
             UploadFolder: layout.Uploads, Restores: platform.Restores, Unavailable: backends.Unavailable,
-            // The incoming unarchive is the server's, once for all its clients (stage 6 slice 9). Its watermarks are the host's own state.db rows, the
+            // The incoming unarchive is the server's, once for all its clients. Its watermarks are the server's own state.db rows, the
             // same ones the in-process app keeps on this root: a run of either after the other then never asks again for an arrival the other asked for.
-            IncomingUnarchive: new HostUnarchive(services.GetRequiredKeyedService<PrivateState>(BackendServices.HostTokensKey)),
-            // The originals of the clients' saved photos are the server's to keep (stage 6 slice 8): its own store, read through its own media router.
+            IncomingUnarchive: new ServerUnarchive(services.GetRequiredKeyedService<PrivateState>(BackendServices.ServerTokensKey)),
+            // The originals of the clients' saved photos are the server's to keep: its own store, read through its own media router.
             SavedPhotos: services.GetRequiredService<SavedPhotos>(), SharedState: shared,
-            // The scheduled sends are the server's too (stage 6 slice 11): kept as rows of the shared state, fired by this host with every client closed.
-            Scheduled: new HostScheduled(),
+            // The scheduled sends are the server's too: kept as rows of the shared state, fired by this server with every client closed.
+            Scheduled: new ServerScheduled(),
             // Each provider's lifecycle lock in front of the ports the page and the clients sign in through, shared with the start's restore and a removal.
             AccountLocks: gates.For,
             RemoteSignIn: remoteSignIn.Messages, VoiceRemoteSignIn: remoteSignIn.Voice, MetaRemoteSignIn: remoteSignIn.Meta,
             BrowserOutOfDate: platform.BrowserOutOfDate,
-            // The host's own logs, by name, for its owner's copies (protocol 18): never a path from a client, and nothing but the fixed-format logs.
+            // The server's own logs, by name, for its owner's copies (protocol 18): never a path from a client, and nothing but the fixed-format logs.
             Logs: platform.Logs, Admin: admin,
             // The conversation list's revisions (protocol 23) in its own protected state.db, so a phone's sync after a restart is a delta, not the whole list again.
             ConversationSyncStore: services.GetRequiredService<IPrivateStateStore>(),
-            // Every conversation kept whole (SWITCHBOARD.md stage 8, protocol 24), sealed under the state key like the other stores; the app's in-process host keeps none.
+            // Every conversation kept whole (protocol 24), sealed under the state key like the other stores; the app's in-process server keeps none.
             WholeHistory: new MessageLink.Storage.HistoryDatabase(layout.History, protector),
             // Its status to every device, Back up now and its password to the owner (protocol 26).
             Backup: backup, Accounts: backends.Accounts, HelperCells: platform.HelperCells, Hermes: hermes);
-        var host = ProtocolHost.Create(options);
+        var host = ProtocolServer.Create(options);
         built = host;
-        // Each change in how the backup stands is a signal in the host's sequence, so a client of 26 reads the status again.
+        // Each change in how the backup stands is a signal in the server's sequence, so a client of 26 reads the status again.
         backup.Changed += status => host.Services.Events?.AppendSignal(new AccountSignal(AccountSignals.Backup, !status.Stale));
         // A PC backup's choices wait for the key the shared state is filed under, then go in once (SharedStateStore.ImportBundleAsync).
         backup.CurrentKey = shared.Space.CurrentKeyAsync;
@@ -122,7 +122,7 @@ internal static class ServerComposition
             var imported = await shared.ImportBundleAsync(bundle, resume: true, ct).ConfigureAwait(false);
             return (imported.Status, imported.Added, imported.Skipped, imported.Refused);
         };
-        // An account removed on the server's own page takes what the host kept of it, as a client's sign-out does (the whole history's copies).
+        // An account removed on the server's own page takes what the server kept of it, as a client's sign-out does (the whole history's copies).
         admin.Ended = host.Services.AccountEnded;
         step.Took("host");
         return new ComposedServer(layout, services, host, feed, scopes, backup, shared, admin, options, platform.Restores, gates, log);
@@ -148,21 +148,21 @@ internal static class ServerComposition
 
 /// <summary>
 /// A composed server: its container, host, feed and backup, and the steps a platform's restore is made of. Each step goes through the host's one slot for
-/// its provider (<see cref="RestoreOnce"/>), so the restore a client asks for is answered with the host's result or waits for it, and never logs in a second
+/// its provider (<see cref="RestoreOnce"/>), so the restore a client asks for is answered with the server's result or waits for it, and never logs in a second
 /// time. Outcomes are logged as words and counts, never a name.
 /// </summary>
-internal sealed class ComposedServer(ServerLayout layout, ServiceProvider services, ProtocolHost host, GatedRealtimeFeed feed, IReadOnlyList<string> feedScopes,
-    ServerBackupService backup, SharedStateStore shared, IHostAdmin admin, ProtocolHostOptions options, RestoreOnce restores, LoginGates gates, Action<string> log) : IDisposable
+internal sealed class ComposedServer(ServerLayout layout, ServiceProvider services, ProtocolServer host, GatedRealtimeFeed feed, IReadOnlyList<string> feedScopes,
+    ServerBackupService backup, SharedStateStore shared, IComposedServerAdmin admin, ProtocolServerOptions options, RestoreOnce restores, LoginGates gates, Action<string> log) : IDisposable
 {
     public ServerLayout Layout => layout;
     public ServiceProvider Services => services;
-    public ProtocolHost Host => host;
+    public ProtocolServer Host => host;
     /// <summary>The server's own backup, whose schedule the run starts beside the host.</summary>
     public ServerBackupService Backup => backup;
     public SharedStateStore Shared => shared;
-    public IHostAdmin Admin => admin;
-    /// <summary>What the host was made from, for the harness.</summary>
-    internal ProtocolHostOptions Options => options;
+    public IComposedServerAdmin Admin => admin;
+    /// <summary>What the server was made from, for the harness.</summary>
+    internal ProtocolServerOptions Options => options;
     /// <summary>The providers' feeds, by scope, in the order they run.</summary>
     public IReadOnlyList<string> FeedScopes => feedScopes;
     public RestoreOnce Restores => restores;
@@ -176,7 +176,7 @@ internal sealed class ComposedServer(ServerLayout layout, ServiceProvider servic
     /// <summary>The start's restore is skipped or held: every feed but Google's own goes now, so Hermes and an account connected meanwhile are heard.</summary>
     public void OpenPassiveFeed() => feed.OpenPassive();
 
-    /// <summary>The host's restore will not run, or has ended: a client waiting on it is answered skipped rather than left waiting.</summary>
+    /// <summary>The server's restore will not run, or has ended: a client waiting on it is answered skipped rather than left waiting.</summary>
     public void EndRestores() => restores.End();
 
     /// <summary>

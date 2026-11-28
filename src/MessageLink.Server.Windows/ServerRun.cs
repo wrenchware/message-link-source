@@ -12,7 +12,7 @@ namespace MessageLink.Server.Windows;
 /// <param name="previousExit">The run marker's word for how the last run ended (<c>clean</c>, <c>unclean</c>, ...), which paces the restore (<see cref="RestoreLedger"/>).</param>
 internal sealed class ServerRun(ServerOptions options, string previousExit = "clean") : IServerLifecycle
 {
-    private HostStartup? startup;
+    private WindowsServerStartup? startup;
     private ServerPipe? pipe;
     private ServerNetwork? network;
     private OwnerWatch? owner;
@@ -42,7 +42,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
         return true;
     }
 
-    /// <summary>Composes the host off the shell's thread, so the window answers a quit while a slow start is under way.</summary>
+    /// <summary>Composes the server off the shell's thread, so the window answers a quit while a slow start is under way.</summary>
     public void Start(ServerShell shell)
     {
         Volatile.Write(ref this.shell, shell);
@@ -60,7 +60,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
             try
             {
                 queued.Took("start");
-                var composed = HostStartup.Compose(AppLog.Write, shell.Sta ?? throw new InvalidOperationException("no_sta"), options.Connects);
+                var composed = WindowsServerStartup.Compose(AppLog.Write, shell.Sta ?? throw new InvalidOperationException("no_sta"), options.Connects);
                 Volatile.Write(ref startup, composed);
                 AppLog.Write($"server ready ms={clock.ElapsedMilliseconds}");
                 // A stop that came while composing opens nothing.
@@ -68,7 +68,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
                 if (!await ServeAsync(composed, shell)) return;
                 if (options.Connects && !stop.IsCancellationRequested)
                 {
-                    // The page and the phones' door (SWITCHBOARD.md 10.7), beside the restore rather than ahead of it: this PC's own window is on the pipe already.
+                    // The page and the phones' door, beside the restore rather than ahead of it: this PC's own window is on the pipe already.
                     networking = Task.Run(() => StartNetworkAsync(composed));
                     // The daily backup into the person's folder, its first look minutes after the start, at below-normal priority.
                     if (composed.Backup is { } backup) backingUp = Task.Run(() => backup.RunScheduleAsync(stop.Token));
@@ -106,7 +106,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
     }
 
     // The network door and page; a failure leaves the pipe serving (ServerNetwork says why). A stop that began meanwhile closes what opened.
-    private async Task StartNetworkAsync(HostStartup composed)
+    private async Task StartNetworkAsync(WindowsServerStartup composed)
     {
         var clock = Stopwatch.StartNew();
         try
@@ -122,13 +122,13 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
     }
 
     /// <summary>
-    /// The start's restore, held as long as <see cref="RestoreLedger"/> says (SWITCHBOARD.md 3.3: Instagram's pacing persisted, so a server that keeps crashing, or a PC that
-    /// signs in and out, never logs Messenger and Instagram in faster than the Linux host may). The door is open meanwhile; a client asking for the restore is answered
+    /// The start's restore, held as long as <see cref="RestoreLedger"/> says (Instagram's pacing persisted, so a server that keeps crashing, or a PC that
+    /// signs in and out, never logs Messenger and Instagram in faster than the Linux server may). The door is open meanwhile; a client asking for the restore is answered
     /// skipped. Only a restore that would log Messenger or Instagram in is counted against the hour; a ledger that cannot be read or written means no restore this run.
     /// </summary>
-    private async Task PacedRestoreAsync(HostStartup composed, CancellationToken stopping)
+    private async Task PacedRestoreAsync(WindowsServerStartup composed, CancellationToken stopping)
     {
-        // This root's own, beside the Linux host's name for it (<root>\Server\restores.protected), sealed with DPAPI like the server's other files.
+        // This root's own, beside the Linux server's name for it (<root>\Server\restores.protected), sealed with DPAPI like the server's other files.
         var ledger = RestoreLedger.For(AppPaths.DataRoot, composed.Services.GetRequiredService<IStateProtector>(), TimeProvider.System, AppLog.Write);
         var counted = composed.RestoresAccounts;
         RestoreLedger.Decision decision;
@@ -169,7 +169,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
 
     // The clients' door, open before the providers connect so a client sees the state as the restore changes it. False when the pipe's name was
     // taken, which has stopped the server.
-    private async Task<bool> ServeAsync(HostStartup composed, ServerShell shell)
+    private async Task<bool> ServeAsync(WindowsServerStartup composed, ServerShell shell)
     {
         var step = new StepClock(AppLog.Write);
         var shutdown = new ServerShutdown(options.OwnerPid is not null, RefuseQuit, shell.Stop, AppLog.Write);
@@ -194,7 +194,7 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
     }
 
     // Mutations the providers have made and not yet heard back from, and requests the host has begun and not yet answered (a send, a sign-in, a
-    // restore a client asked for): a quit now would leave their outcome unknown. The journal's count is what the host itself is waiting on; the
+    // restore a client asked for): a quit now would leave their outcome unknown. The journal's count is what the server itself is waiting on; the
     // helpers' is what has reached a provider.
     public string? RefuseQuit() => HelperConnection.MutationsInFlight > 0 || Volatile.Read(ref startup)?.Host.Journal.RunningCount > 0 ? "busy" : null;
 
@@ -238,11 +238,11 @@ internal sealed class ServerRun(ServerOptions options, string previousExit = "cl
         // After the start has ended, so a pipe still being opened is not missed. No new client; then the ones connected are given the time sends get
         // to have the answers to what they already asked written (the request that began this stop is one of them); and only then are the providers
         // closed, so nothing a client sent is cut off by the providers going first.
-        // The network door (SWITCHBOARD.md 10.7) closes beside the pipe and within the pipe's own bound (its drain, then the tailnet door), so the stop's worst case
+        // The network door closes beside the pipe and within the pipe's own bound (its drain, then the tailnet door), so the stop's worst case
         // (ServerStopBounds.WorstCase) is unchanged by it.
         var pipeStop = Volatile.Read(ref pipe) is { } served ? StopPipeAsync(served, budget.Sends) : Task.CompletedTask;
         var networkStop = StopNetworkAsync(budget.Sends);
-        try { await Task.WhenAll(pipeStop, networkStop).WaitAsync(budget.Sends + PipeHost.WorstStop); }
+        try { await Task.WhenAll(pipeStop, networkStop).WaitAsync(budget.Sends + PipeServer.WorstStop); }
         catch (TimeoutException) { AppLog.Write("server stop doors_still_closing"); }
         catch (Exception) { }
         // A backup being written stops with the run and leaves no file behind (its temporary is removed), within the stop's slack.

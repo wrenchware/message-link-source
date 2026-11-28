@@ -3,12 +3,12 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.App.Services;
 
-// The server's counterpart to WindowsStateProtector: AES-256-GCM under a 32-byte key kept in a file the host names,
+// The server's counterpart to WindowsStateProtector: AES-256-GCM under a 32-byte key kept in a file the server names,
 // private to its owner. Layout: "MSK" 1 | 12-byte nonce | 16-byte tag | ciphertext. The prefix and associated data
 // differ from the Messenger helper's sealed values ("MSP" 2, protection_linux.go), so neither format opens as the other.
 // The key is read for each operation and zeroed straight after, so a loosened or replaced file takes effect at once.
-// Generating a key is the host's job, and only where nothing sealed exists yet: a replacement key silently orphans
-// every sealed value (the server foundation's PrivateStore refuses to, and so should the host).
+// Generating a key is the server's job, and only where nothing sealed exists yet: a replacement key silently orphans
+// every sealed value (the server foundation's PrivateStore refuses to, and so should the server).
 public sealed class FileKeyStateProtector : IStateProtector
 {
     private static readonly byte[] Prefix = [(byte)'M', (byte)'S', (byte)'K', 1];
@@ -16,7 +16,7 @@ public sealed class FileKeyStateProtector : IStateProtector
     private const int KeyLength = 32, NonceLength = 12, TagLength = 16;
     private readonly string keyPath;
 
-    // Reads the key once, so a missing, shared or wrong-sized key file fails when the host starts, not on first use.
+    // Reads the key once, so a missing, shared or wrong-sized key file fails when the server starts, not on first use.
     public FileKeyStateProtector(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath)) throw new ArgumentException("A key file path is required.", nameof(keyPath));
@@ -66,7 +66,7 @@ public sealed class FileKeyStateProtector : IStateProtector
     private byte[] ReadKey() => ReadKey(keyPath);
 
     // The mode is read from the open handle, not the path, so it cannot change between the check and the read. Windows
-    // has no mode bits; the host's folder permissions are what protect the file there. The Messenger helper's key is read
+    // has no mode bits; the server's folder permissions are what protect the file there. The Messenger helper's key is read
     // by the same rules (HelperKeyFileCells; protectionKey in protection_linux.go).
     internal static byte[] ReadKey(string keyPath)
     {

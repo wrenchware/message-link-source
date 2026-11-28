@@ -1,6 +1,6 @@
 namespace MessageLink.Protocol;
 
-// Moving a PC's choices onto a Messages Server (SWITCHBOARD.md stage 6 slice 13; protocol version 11). The PC reads its own stores (a MoveBundle), hands the bundle
+// Moving a PC's choices onto a Messages Server (protocol version 11). The PC reads its own stores (a MoveBundle), hands the bundle
 // up like a file (media.upload*, so it is encrypted at rest on the host and never a frame of its own), and asks for it to be taken in once:
 //
 //   state.import   Journaled by its operation id (the move's id), so a repeat of that id answers the first answer. Takes the bundle's rows into the shared
@@ -27,7 +27,7 @@ public static partial class ProtocolMethods
 /// </param>
 public sealed record StateImportParams(string ClientOpId, UploadRef Bundle, bool Resume = false) : MutationParams(ClientOpId);
 
-/// <summary>The words <see cref="StateImportResult.Status"/> carries; plain strings so a word a newer host adds is simply not one this build knows.</summary>
+/// <summary>The words <see cref="StateImportResult.Status"/> carries; plain strings so a word a newer server adds is simply not one this build knows.</summary>
 public static class StateImportStatuses
 {
     /// <summary>The bundle was taken in (every row added or already there); the counts say how it went.</summary>
@@ -42,7 +42,7 @@ public static class StateImportStatuses
 
 /// <summary>
 /// What the import did. <paramref name="Added"/>: rows that were new to the space. <paramref name="Skipped"/>: rows it already held (live or ended), left as they
-/// were. <paramref name="Refused"/>: rows the server does not keep (not a shared kind, too large, another host's). <paramref name="PerKind"/> and
+/// were. <paramref name="Refused"/>: rows the server does not keep (not a shared kind, too large, another server's). <paramref name="PerKind"/> and
 /// <paramref name="Digest"/> are <see cref="MoveCounts"/> of the bundle's keys the space holds live now, and <paramref name="Values"/> is
 /// <c>MoveCounts.ValuesDigestOf</c> of those keys with the values it stores, so a whole move answers the very counts and
 /// digests the bundle carried; a key ended since, or held with another value, does not. <paramref name="Epoch"/> and <paramref name="Rev"/> are where the space stands after it.
@@ -50,7 +50,7 @@ public static class StateImportStatuses
 public sealed record StateImportResult(string Status, int Added = 0, int Skipped = 0, int Refused = 0, IReadOnlyDictionary<string, int>? PerKind = null,
     string? Digest = null, string? Epoch = null, long Rev = 0, string? Values = null);
 
-/// <summary>The server's import as the dispatcher serves it: the host's own, or a client's proxy. A host without a shared state leaves it null and the method answers <c>not_supported</c>.</summary>
+/// <summary>The server's import as the dispatcher serves it: the server's own, or a client's proxy. A server without a shared state leaves it null and the method answers <c>not_supported</c>.</summary>
 public interface IStateImport
 {
     Task<StateImportResult> ImportAsync(StateImportParams request, CancellationToken cancellationToken = default);

@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// Which Chrome this is and how old (SWITCHBOARD.md 5.4, Chrome on the server): the image is meant to always take the newest stable Chrome when it is built, and the server to say when it has been
+/// Which Chrome this is and how old (Chrome on the server): the image is meant to always take the newest stable Chrome when it is built, and the server to say when it has been
 /// left running on one for too long. The version is what <c>google-chrome --version</c> prints. The age counts from when the image was built (<c>MESSAGES_CHROME_BUILT</c>, written by the Dockerfile from the
 /// build argument <c>CHROME_REFRESH</c> that <c>install-unraid.sh</c> sets to the build time, as <c>yyyyMMddTHHmmssZ</c>); an image built by hand without it falls back to the date of Chrome's own program file,
 /// which is when Google built it (older than the image, so it flags a stale Chrome a little early rather than late).

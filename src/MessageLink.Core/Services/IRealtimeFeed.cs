@@ -14,9 +14,9 @@ public sealed record RealtimeEvent(RealtimeKind Kind, string? ChatId = null, IRe
     // A fetched history snapshot, including its reactions and receipts, rather than a live change. It refreshes the
     // local baseline without announcing old state as new activity. Providers set this only when origin is known.
     bool IsHistory = false,
-    // On Disconnected: the client lost its connection to the host that serves its feed (RealtimeFeedProxy), not a provider its connection to its service. The host
+    // On Disconnected: the client lost its connection to the server that serves its feed (RealtimeFeedProxy), not a provider its connection to its service. The server
     // and its providers may have run all the while, and a resumed feed replays what the client missed, so a reader that treats a provider's disconnect as "what
-    // follows may be backfill" (NotificationObserver) must not treat this one so. Set only by the proxy, never by a host, so it is not on the wire.
+    // follows may be backfill" (NotificationObserver) must not treat this one so. Set only by the proxy, never by a server, so it is not on the wire.
     bool? ClientLink = null)
 {
     public bool Affects(string chatId) => ChatId == chatId ||

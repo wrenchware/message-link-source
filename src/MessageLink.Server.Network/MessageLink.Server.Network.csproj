@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The host's door on the network (SWITCHBOARD.md stage 4, the first Unraid test): Kestrel on one TCP port, HTTPS only, one WebSocket
+  <!-- The host's door on the network (the first Unraid test): Kestrel on one TCP port, HTTPS only, one WebSocket
        endpoint carrying the protocol's text frames to a dispatcher per connection, a self-signed certificate the client pins, and per-device
        tokens given out by pairing. Only this project and the Linux server reference ASP.NET Core; the Windows app never does (a harness check
        holds it to that), and its client end of this transport is NetworkEndpoint, in Protocol, on ClientWebSocket alone. -->
@@ -9,10 +9,10 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="messages-server" />
-    <!-- The Windows server hosts the same door on 127.0.0.1 and the tailnet (SWITCHBOARD.md 10.7). -->
+    <!-- The Windows server hosts the same door on 127.0.0.1 and the tailnet. -->
     <InternalsVisibleTo Include="MessageLinkServer" />
     <InternalsVisibleTo Include="MessageLink.ContractTests" />
-    <!-- The sample-data server (tools/MessageLink.SampleServer, SWITCHBOARD.md 7.2): this door in front of made-up people. -->
+    <!-- The sample-data server (tools/MessageLink.SampleServer): this door in front of made-up people. -->
     <InternalsVisibleTo Include="messages-sample-server" />
   </ItemGroup>
   <ItemGroup>

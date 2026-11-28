@@ -47,7 +47,7 @@ internal sealed record ChromiumRenewalTarget(string Service, string Url, Func<st
     /// <summary>
     /// What the sign-in's page itself may be (a main-frame document, shown with no address bar): Google's own pages, <c>google.com</c> and everything under <c>.google.com</c> (the
     /// account, recovery, passkey and two-step pages are all on <c>accounts.google.com</c>), and the one address on <c>accounts.youtube.com</c> the sign-in passes through. Narrower
-    /// than <see cref="GoogleHost"/>, which also admits hosts that serve anyone's content (<c>*.googleusercontent.com</c>, <c>*.googleapis.com</c>, <c>*.gstatic.com</c>): fine for a
+    /// than <see cref="GoogleHost"/>, which also admits servers that serve anyone's content (<c>*.googleusercontent.com</c>, <c>*.googleapis.com</c>, <c>*.gstatic.com</c>): fine for a
     /// script or an image, not for what a person is asked to type a password into.
     /// </summary>
     public static bool GoogleMainFrame(string? url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo.Length == 0

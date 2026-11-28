@@ -6,7 +6,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The host's TLS certificate (SWITCHBOARD.md stage 4): self-signed, ECDSA P-256, made on the first start and kept with its private key in
+/// The host's TLS certificate: self-signed, ECDSA P-256, made on the first start and kept with its private key in
 /// <c>&lt;data&gt;/tls/</c> (<c>server.crt</c> and <c>server.key</c>, PEM; the folder 0700 and the files 0600 off Windows). Every later start reuses it, so
 /// the fingerprint a client pinned stays good; it changes only when the owner deletes the files. Each start logs
 /// <c>server tls fingerprint sha256=&lt;hex&gt;</c> (not a secret: it is what the owner pins). The key is never logged.
@@ -25,7 +25,7 @@ internal static class ServerCertificate
     /// The certificate with its key, made first if there is none. <paramref name="hostNames"/> (names and addresses) and the machine's name go in a new
     /// certificate's subject alternative names; an existing one is never remade to add them, because that would change its fingerprint. A certificate
     /// with no key beside it is refused rather than replaced: the owner deletes the folder to rotate, and every client pins the new fingerprint.
-    /// With <paramref name="seal"/> (the Windows server, SWITCHBOARD.md 10.7) the key file holds the PEM sealed with it (DPAPI, to the server's user), and a plain
+    /// With <paramref name="seal"/> (the Windows server) the key file holds the PEM sealed with it (DPAPI, to the server's user), and a plain
     /// one found there is sealed in place; without it (Linux) the key is plain PEM in the keys volume, as before.
     /// </summary>
     public static X509Certificate2 LoadOrCreate(string dataFolder, IEnumerable<string> hostNames, Action<string> log, MessageLink.Core.Services.IStateProtector? seal = null)
@@ -57,7 +57,7 @@ internal static class ServerCertificate
         if (seal is null || stored.AsSpan().StartsWith("-----BEGIN"u8))
         {
             keyPem = System.Text.Encoding.UTF8.GetString(stored);
-            // A plain key where the host seals them (written before it did, or put there by hand): sealed in place now.
+            // A plain key where the server seals them (written before it did, or put there by hand): sealed in place now.
             if (seal is not null)
             {
                 WritePrivate(keyPath, seal.ProtectAsync(stored).GetAwaiter().GetResult());

@@ -3,10 +3,10 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The composer's edits as the client sends them to a host (SWITCHBOARD.md 3.0b, <c>typing.noteActivity</c>). Fire and forget: the composer
-/// never waits for a call or sees it fail, and an edit that cannot be told to the host is lost, which at worst lets a typing stop go
+/// The composer's edits as the client sends them to a server (<c>typing.noteActivity</c>). Fire and forget: the composer
+/// never waits for a call or sees it fail, and an edit that cannot be told to the server is lost, which at worst lets a typing stop go
 /// out when it was due. At most one call per <see cref="Interval"/> per conversation, and the first edit after a quiet interval goes at once.
-/// Every stop timer in the backends is five seconds, so a pause of up to <see cref="Interval"/> in what the host hears leaves a stop due
+/// Every stop timer in the backends is five seconds, so a pause of up to <see cref="Interval"/> in what the server hears leaves a stop due
 /// between four and five seconds after the last edit, never earlier. The shared composer clock the interface thread reads
 /// (<c>ComposerActivity</c>, 0.9 s) is not served through here: the client notes it for every edit.
 /// </summary>

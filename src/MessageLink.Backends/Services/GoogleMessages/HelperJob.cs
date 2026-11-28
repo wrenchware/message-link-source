@@ -37,7 +37,7 @@ internal static class HelperJob
     // "parent" on Linux, where the helper watches this process instead (Start); "none" elsewhere.
     public static string Assign(Process process) => OperatingSystem.IsWindows() ? Assign(Shared.Value, process) : OperatingSystem.IsLinux() ? "parent" : "none";
 
-    // The Linux side of the job (SWITCHBOARD.md 4.2). Each helper is started in this process's group, with this process's
+    // The Linux side of the job. Each helper is started in this process's group, with this process's
     // id in MESSAGES_HELPER_PARENT_PID (HelperConnection.StartInfo); a helper given it asks Linux for a parent-death
     // signal and also ends when its parent changes (the Messenger helper's parentwatch_linux.go). Linux sends that signal
     // when the *thread* that started the child ends, not the process, and a pool thread retires after a while idle: a

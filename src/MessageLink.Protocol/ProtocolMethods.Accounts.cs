@@ -3,11 +3,11 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// The account actions on the wire (SWITCHBOARD.md 2.6c): what the four account ports do, as methods named accounts.<service>.<verb>.
+// The account actions on the wire: what the four account ports do, as methods named accounts.<service>.<verb>.
 //
 //   A mutation changes an account or a session (connect, sign in, restore, sign out, encryption on, a reset, history indexing, forgetting
-//   avatars). Each carries a clientOpId and goes through the host's OperationJournal: at most once, a repeat answered from the journal, an
-//   interrupted one an unknown outcome, never retried. After one the host appends the state it caused before it answers (the dispatcher's
+//   avatars). Each carries a clientOpId and goes through the server's OperationJournal: at most once, a repeat answered from the journal, an
+//   interrupted one an unknown outcome, never retried. After one the server appends the state it caused before it answers (the dispatcher's
 //   "settle"), so the caller's next read of State is current.
 //
 //   A read asks a question per call (is a saved session usable, which SIM does this conversation send from, what does the phone's archive
@@ -107,7 +107,7 @@ public sealed record MessengerConnectParams(string ClientOpId, Dictionary<string
 public sealed record InstagramConnectParams(string ClientOpId, Dictionary<string, string> Cookies) : MutationParams(ClientOpId);
 /// <summary>
 /// A Google sign-in: the cookies the helper reads, and, from a client of a server only, every Google cookie the sign-in browser held (<c>profileCookies</c>, for a
-/// host that seeds a browser profile of its own, SWITCHBOARD.md 5.4). The second is an added optional member: an older host ignores it, an older client never sends it.
+/// host that seeds a browser profile of its own). The second is an added optional member: an older host ignores it, an older client never sends it.
 /// </summary>
 public sealed record GoogleSignInParams(string ClientOpId, Dictionary<string, string> Cookies, bool AsNewDevice, IReadOnlyList<GoogleProfileCookie>? ProfileCookies = null) : MutationParams(ClientOpId);
 public sealed record GoogleIndexingParams(string ClientOpId, bool Enabled) : MutationParams(ClientOpId);

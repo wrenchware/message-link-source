@@ -131,7 +131,7 @@ func firstV4(ips []netip.Addr) string {
 	return ""
 }
 
-// phonePrefix is how Message Link names its own node on the tailnet, on a phone (7.4) and on a Windows PC alike; a server is messages-server, or another
+// phonePrefix is how Message Link names its own node on the tailnet, on a phone and on a Windows PC alike; a server is messages-server, or another
 // name the owner gave it, and is never listed.
 const phonePrefix = "messagelink-"
 

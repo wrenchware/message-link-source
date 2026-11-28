@@ -2,7 +2,7 @@ using MessageLink.Protocol;
 
 namespace MessageLink.Server.Network;
 
-/// <summary>What became of the owner's test push (10.9), as the server's page says it.</summary>
+/// <summary>What became of the owner's test push, as the server's page says it.</summary>
 internal enum PushTestState { Waiting, Shown, TimedOut, Refused, Unreachable, Gone, NotSignedUp }
 
 /// <summary>
@@ -12,7 +12,7 @@ internal enum PushTestState { Waiting, Shown, TimedOut, Refused, Unreachable, Go
 internal sealed record PushTest(string Id, string DeviceId, string Name, DateTimeOffset At, PushTestState State, int Status = 0, DateTimeOffset? ShownAt = null);
 
 /// <summary>
-/// How the server's pushes are doing (SWITCHBOARD.md 10.9), kept in memory since the start: when one last went, the failures per phone since the last that went to
+/// How the server's pushes are doing, kept in memory since the start: when one last went, the failures per phone since the last that went to
 /// it with the newest reason, which phones asked for the offer while pushes were on (a PC never does), and the owner's test push. The page's card and
 /// <c>push.status</c> read it. Logged by outcome and counts only: <c>push test sent outcome= status=</c>, <c>push test shown ms=</c>; never a token or a name.
 /// </summary>

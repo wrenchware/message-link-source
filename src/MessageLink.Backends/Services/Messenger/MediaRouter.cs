@@ -8,13 +8,13 @@ namespace MessageLink.App.Services.Messenger;
 // service that owns the conversation. What every service shares stays here: drafts, saved originals, the disk cache,
 // clips kept ahead, pictures warmed ahead and stills made from videos.
 internal sealed class MediaRouter(ConversationOwners owners,
-    [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens,
+    [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.ServerTokensKey)] IAccessTokenStore tokens,
     MessageLink.Storage.MediaDiskCache disk, MessageLink.Presentation.Services.SavedPhotos? kept = null,
     IVideoFrameExtractor? frames = null)
     : IMediaReader, IAttachmentBackend, IAttachmentBatchBackend, IMediaPreparer
 {
     internal ProviderAccounts? Accounts { get => owners.Accounts; set => owners.Accounts = value; }
-    // Null where the host cannot make a frame from a video: a video that came with no still then draws as it did.
+    // Null where the server cannot make a frame from a video: a video that came with no still then draws as it did.
     private readonly VideoStills? stills = frames is null ? null : new(frames, disk, tokens);
 
     // A saved message's photo has its original kept on this PC (SavedPhotos). Opening it (not inline) reads that first, so

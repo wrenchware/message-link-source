@@ -25,7 +25,7 @@ public sealed class PrivateState
         return bytes is null ? default : JsonSerializer.Deserialize<T>(bytes);
     }
     public Task WriteAsync<T>(string profile, string category, string id, T value) => store.WriteAsync(Key(profile, category, id), JsonSerializer.SerializeToUtf8Bytes(value));
-    // The rows other devices write as well, when this store is a client's replica of a server's shared state (stage 6 slice 5); null for state.db.
+    // The rows other devices write as well, when this store is a client's replica of a server's shared state; null for state.db.
     public ISharedRows? Shared => store as ISharedRows;
     // A change to a row a follower holds (ISharedRows), tagged with its newest change; a store that shares nothing just writes it.
     public Task WriteAsync<T>(string profile, string category, string id, T value, long tag) => store is ISharedRows shared
@@ -37,7 +37,7 @@ public sealed class PrivateState
         var bytes = store is ISharedRows shared ? await shared.FollowAsync(Key(profile, category, id), follower) : await store.ReadAsync(Key(profile, category, id));
         return bytes is null ? default : JsonSerializer.Deserialize<T>(bytes);
     }
-    // Whether changes to the row go to a host now, to be made again if they lose (ISharedRows.Shares); never for a store that shares nothing.
+    // Whether changes to the row go to a server now, to be made again if they lose (ISharedRows.Shares); never for a store that shares nothing.
     public bool Shares(string profile, string category, string id) => Shared?.Shares(Key(profile, category, id), profile) == true;
     // Without moving the row up among the expendable copies (IPrivateStateStore.WriteInPlaceAsync).
     public Task WriteInPlaceAsync<T>(string profile, string category, string id, T value) => store.WriteInPlaceAsync(Key(profile, category, id), JsonSerializer.SerializeToUtf8Bytes(value));

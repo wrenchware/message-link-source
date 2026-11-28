@@ -19,7 +19,7 @@ internal static class GoogleVoiceSignInRules
             !uri.IsDefaultPort || uri.UserInfo.Length != 0) return false;
         if (uri.Host == "google.com" || uri.Host.EndsWith(".google.com", StringComparison.Ordinal)) return true;
         // Google may finish its own account SSO by briefly visiting this exact YouTube cookie handoff before returning
-        // to Voice. Keep the exception narrower than the prior all-HTTPS rule: no other YouTube host or path is allowed.
+        // to Voice. Keep the exception narrower than the prior all-HTTPS rule: no other YouTube server or path is allowed.
         return uri.Host == "accounts.youtube.com" &&
             uri.AbsolutePath.Equals("/accounts/SetSID", StringComparison.OrdinalIgnoreCase);
     }

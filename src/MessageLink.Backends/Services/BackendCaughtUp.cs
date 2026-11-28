@@ -8,8 +8,8 @@ namespace MessageLink.App.Services;
 /// <summary>
 /// The three providers' catch-ups as one feed (<see cref="ICaughtUpFeed"/>): what came while the app was closed, named as each connection
 /// starts. Messenger delivers its messages as it connects and announces them, so its notice says so (<c>Announced</c>); Instagram's and
-/// Google Messages' are page reads that no event follows. A host serves this as the <c>caughtUp</c> kind of its event feed, and an
-/// application in the host's process hears it directly.
+/// Google Messages' are page reads that no event follows. A server serves this as the <c>caughtUp</c> kind of its event feed, and an
+/// application in the server's process hears it directly.
 /// </summary>
 internal sealed class BackendCaughtUp : ICaughtUpFeed, IDisposable
 {

@@ -11,7 +11,7 @@ namespace MessageLink.Presentation.Services;
 /// straight away; each change is written behind it, off that thread, in order, so the last change is the one kept.
 /// A saved book that cannot be read leaves labels off, and loadFailed hears the error's type name, never its message.
 /// <para>Each change is made as a transform over the book (<see cref="LabelBook"/>, which holds the rules a name keeps), so a client of a Messages Server, whose book is one row shared with the
-/// server's other clients (SWITCHBOARD.md stage 6, slice 5), can make its changes again over another device's book when its write lost to one
+/// server's other clients, can make its changes again over another device's book when its write lost to one
 /// (<see cref="CatchUpAsync"/>). The in-process app and the loopback make and write each change exactly as before.</para>
 /// </remarks>
 public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = null)
@@ -57,10 +57,10 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
         try
         {
             var next = await state.ProfileAsync();
-            // A client of a server whose replica could not bring it to the host's book (AbandonAsync) reads it again.
+            // A client of a server whose replica could not bring it to the server's book (AbandonAsync) reads it again.
             if (next == profile && !reload && !stale) return;
-            // A client of a server holding changes the host has not taken yet holds more than its replica says while they are on their way; the replica
-            // brings the host's book to it as it comes (CatchUpAsync), never by a read here.
+            // A client of a server holding changes the server has not taken yet holds more than its replica says while they are on their way; the replica
+            // brings the server's book to it as it comes (CatchUpAsync), never by a read here.
             if (next == profile && !stale && Unconfirmed > 0) return;
             // A write still queued lands first, so a profile read again never comes back without its latest change.
             try { await LastSave; } catch (Exception) { /* That change's own caller heard about it. */ }
@@ -68,7 +68,7 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
             Exception? unreadable = null;
             if (next is not null)
             {
-                // A client of a server reads the book and becomes its follower in one step, so a host book the replica takes after this read is handed
+                // A client of a server reads the book and becomes its follower in one step, so a server book the replica takes after this read is handed
                 // here (CatchUpAsync) and none taken before it is missed: what this holds is always what the replica's rev says.
                 try
                 {
@@ -267,7 +267,7 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
     // Under the lock: the change made on the book held, and, when it changed it, committed.
     private Done Apply(Func<LabelBook, Done> change)
     {
-        // A client of a server whose replica could not bring the book to the host's changes nothing until it has read it again.
+        // A client of a server whose replica could not bring the book to the server's changes nothing until it has read it again.
         if (stale) return Done.Unchanged;
         var done = change(book);
         if (done == Done.Changed) Commit(change);
@@ -286,8 +286,8 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
             saving = WriteAfterAsync(saving, owner, book.Copy());
             return;
         }
-        // A client of a server: the change is kept, to be made again if the write loses to another device's (CatchUpAsync), until the host has taken it;
-        // only while the host keeps the book (protocol 5 and later). Before that it stays here, nothing is confirmed, and nothing needs making again.
+        // A client of a server: the change is kept, to be made again if the write loses to another device's (CatchUpAsync), until the server has taken it;
+        // only while the server keeps the book (protocol 5 and later). Before that it stays here, nothing is confirmed, and nothing needs making again.
         var kept = new LabelChange(change, SharedRowTags.Next());
         if (state.Shares(owner, Category, BookId)) unconfirmed.Add(kept);
         saving = WriteAfterAsync(saving, owner, book.Copy(), kept.Tag);
@@ -300,12 +300,12 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
         else await Task.Run(() => state.WriteAsync(owner, Category, BookId, snapshot)).ConfigureAwait(false);
     }
 
-    // ---- A client of a Messages Server (stage 6, slice 5) ----
+    // ---- A client of a Messages Server ----
 
     private sealed record LabelChange(Func<LabelBook, Done> Apply, long Tag);
-    // Under the lock: the changes the host has not taken yet, in the order they were made.
+    // Under the lock: the changes the server has not taken yet, in the order they were made.
     private readonly List<LabelChange> unconfirmed = [];
-    // Under the lock: the replica could not bring the book to the host's (AbandonAsync); read again before the next change, and no change until then.
+    // Under the lock: the replica could not bring the book to the server's (AbandonAsync); read again before the next change, and no change until then.
     private bool stale;
 
     private int Unconfirmed { get { lock (sync) return unconfirmed.Count; } }
@@ -316,10 +316,10 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
     /// </summary>
     public event EventHandler<int>? ChangedElsewhere;
 
-    // The host's book, handed over by the replica: each change still kept is made again over it, as it was made here. A change that no longer holds there is
+    // The server's book, handed over by the replica: each change still kept is made again over it, as it was made here. A change that no longer holds there is
     // left out and said to be. The writes of changes made before this are awaited first (they were made over the old book, and land ahead of this one), and
     // so is this one's, so the replica sends nothing in between.
-    // Under the load's gate, as MergedConversations' catch-up is under its own: a host book the replica takes while a load is still on its way (registered,
+    // Under the load's gate, as MergedConversations' catch-up is under its own: a server book the replica takes while a load is still on its way (registered,
     // read, not yet put in memory) is handed here only once that load has put its older book in place, so the load never puts it back over this one.
     // Before, a first load dropped the newer book (no profile yet) and a reload wrote the older one over it, while the replica held the newer rev: the next
     // change was then made from the older book and written over another device's.
@@ -361,7 +361,7 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
             }
             else
             {
-                // Nothing of this device's is left to send (left out, or already in the host's book): the host's book as it is.
+                // Nothing of this device's is left to send (left out, or already in the server's book): the server's book as it is.
                 book = host;
                 outcome = new(false, through);
             }
@@ -381,7 +381,7 @@ public sealed class LabelStore(PrivateState state, Action<string>? loadFailed = 
         lock (sync) unconfirmed.RemoveAll(change => change.Tag <= tag);
     }
 
-    // The replica could not bring the book to the host's: the kept changes go (said to be), nothing changes until the book is read again, and every write of
+    // The replica could not bring the book to the server's: the kept changes go (said to be), nothing changes until the book is read again, and every write of
     // a change made before has landed when this returns (the replica then drops them).
     private async Task AbandonAsync(string owner)
     {

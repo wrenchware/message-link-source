@@ -1,22 +1,22 @@
 namespace MessageLink.Server.Backup;
 
 /// <summary>
-/// Where a server keeps what its backup reads and its restore writes (SWITCHBOARD.md stage 10): the data folder and the keys folder, which a Windows server without
-/// a keys folder of its own gives as the same folder. The host names its folders; everything below them is fixed here. The names a network host owns
+/// Where a server keeps what its backup reads and its restore writes: the data folder and the keys folder, which a Windows server without
+/// a keys folder of its own gives as the same folder. The server names its folders; everything below them is fixed here. The names a network server owns
 /// (<c>devices.json</c>, <c>push.json</c>, <c>tls/</c>, <c>push/</c>, <c>join-requests-paused</c>, <c>devices.generation</c>) are its own constants, which this
 /// project cannot see: the harness holds the two together (ServerBackupChecks).
 /// </summary>
 internal sealed record ServerBackupPaths(string Data, string Keys)
 {
-    // The stores themselves are where the host opens them (ServerLayout), so a backup never reads a place the host does not write.
+    // The stores themselves are where the server opens them (ServerLayout), so a backup never reads a place the server does not write.
     private ServerLayout Layout => new(Data, Keys, HistoryFile ?? ServerLayout.BesideTheStores(Data), TlsKeySealed);
     public string State => Layout.State;
     public string Shared => Layout.Shared;
     public string Space => Layout.Space;
     public string History => Layout.History;
-    /// <summary>Where a host keeps its whole history when not beside the data (the Windows server's <c>&lt;root&gt;\Server\history.db</c>, SWITCHBOARD.md 10.7).</summary>
+    /// <summary>Where a server keeps its whole history when not beside the data (the Windows server's <c>&lt;root&gt;\Server\history.db</c>).</summary>
     public string? HistoryFile { get; init; }
-    /// <summary>The certificate's key is kept sealed with the host's protector (the Windows server's DPAPI, SWITCHBOARD.md 10.7); on Linux it is plain PEM in the keys volume.</summary>
+    /// <summary>The certificate's key is kept sealed with the host's protector (the Windows server's DPAPI); on Linux it is plain PEM in the keys volume.</summary>
     public bool TlsKeySealed { get; init; }
     public string Archive => Layout.Archive;
     public string Photos => Layout.SavedPhotos;
@@ -39,6 +39,6 @@ internal sealed record ServerBackupPaths(string Data, string Keys)
     public const string FirebaseSettings = "google-services.json", FirebaseAccount = "service-account.json";
     public string JoinPause => Path.Combine(Keys, "join-requests-paused");
     public string DevicesGeneration => Path.Combine(Keys, "devices.generation");
-    /// <summary>The page's password as its first run kept it: a salted hash, never the password (the network host's StoredPassword).</summary>
+    /// <summary>The page's password as its first run kept it: a salted hash, never the password (the network server's StoredPassword).</summary>
     public string PagePassword => Path.Combine(Keys, "server-page.password");
 }

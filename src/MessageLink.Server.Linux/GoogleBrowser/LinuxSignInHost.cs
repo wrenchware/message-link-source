@@ -65,7 +65,7 @@ internal sealed class SerialQueue : IDisposable
 /// restore's; reconnecting connects Google Messages only; pausing sync does nothing (each client's own); and a renewal's end publishes a Google-scoped
 /// resync, so every client re-reads after the helper swap.
 /// </summary>
-internal sealed class LinuxSignInHost(SerialQueue queue, HostClientState clients, Func<CancellationToken, Task> connect, CancellationToken stop,
+internal sealed class LinuxSignInHost(SerialQueue queue, ServerClientState clients, Func<CancellationToken, Task> connect, CancellationToken stop,
     Action<string> log, Action? resync = null) : IGoogleSignInHost
 {
     private readonly TaskCompletionSource startupLoad = new(TaskCreationOptions.RunContinuationsAsynchronously);

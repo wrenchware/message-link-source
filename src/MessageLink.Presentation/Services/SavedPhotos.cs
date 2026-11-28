@@ -60,7 +60,7 @@ public sealed class SavedPhotos(ISavedPhotoStore store, Func<IMediaReader?> read
 
     /// <summary>
     /// As <see cref="Keep(SavedMessage)"/> under a reference of the caller's: a server keeps the originals for the saved messages of every device and names each
-    /// by the shared row's key (HostSavedPhotos), which it holds when the row is deleted and nothing else is left to say which message it was.
+    /// by the shared row's key (ServerSavedPhotos), which it holds when the row is deleted and nothing else is left to say which message it was.
     /// </summary>
     public int Keep(SavedMessage saved, string reference)
     {

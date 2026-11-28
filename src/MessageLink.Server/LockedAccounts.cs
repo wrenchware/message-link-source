@@ -4,7 +4,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The Messenger account port as the host serves it, behind the provider's lifecycle lock (<see cref="ProtocolHostOptions.AccountLocks"/>): a sign-in, a restore, a
+/// The Messenger account port as the host serves it, behind the provider's lifecycle lock (<see cref="ProtocolServerOptions.AccountLocks"/>): a sign-in, a restore, a
 /// connect, encryption and a sign-out wait for one another, and for what else takes the lock (the start's restore, a removal on the server's page). Without it a
 /// sign-in finishing in another tab could replace the session a removal had just read, or reopen the device between its sign-out and setting its files aside.
 /// Reads and the state pass through. Code that already holds the lock uses the backend's own port, never this one: the lock is not reentrant.

@@ -4,7 +4,7 @@ namespace MessageLink.Protocol;
 
 public sealed partial class ProtocolDispatcher
 {
-    // Contacts saved through the phone (protocol 29): only to a connection that negotiated it, and only on a host that keeps them (a server's network door). Every
+    // Contacts saved through the phone (protocol 29): only to a connection that negotiated it, and only on a server that keeps them (a server's network door). Every
     // request is held to its limits here, so the port sees only what fits.
     private static Dictionary<string, Route> AddPhoneContactsRoutes(Dictionary<string, Route> routes)
     {

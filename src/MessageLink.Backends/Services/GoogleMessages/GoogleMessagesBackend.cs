@@ -11,7 +11,7 @@ using MessageLink.Presentation.Services;
 
 namespace MessageLink.App.Services.GoogleMessages;
 
-internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] IAccessTokenStore tokens, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.HostTokensKey)] PrivateState privateState, IStateProtector protector, ProviderAccountSlot? accountSlot = null) : IChatBackend, IChatReader, IMessageSender, IRealtimeFeed, ITypingService, IReadStateWriter, IMessageActions, ILinkPreviewLoader, IMessageMutations, IDisposable
+internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.ServerTokensKey)] IAccessTokenStore tokens, [Microsoft.Extensions.DependencyInjection.FromKeyedServices(BackendServices.ServerTokensKey)] PrivateState privateState, IStateProtector protector, ProviderAccountSlot? accountSlot = null) : IChatBackend, IChatReader, IMessageSender, IRealtimeFeed, ITypingService, IReadStateWriter, IMessageActions, ILinkPreviewLoader, IMessageMutations, IDisposable
 {
     internal ProviderAccountSlot Slot { get; } = accountSlot ?? ProviderAccountSlot.Legacy;
     internal GoogleSessionProfile Files { get; } = tokens as GoogleSessionProfile ?? new(protector, accountSlot);
@@ -380,7 +380,7 @@ internal sealed partial class GoogleMessagesBackend(GoogleArchive archive, [Micr
     private static async Task<JsonElement> DrainReadAsync(HelperConnection connection, string method, object? parameters, CancellationToken token)
     {
         // libgm allows up to 60s for the phone and the helper bounds requests at
-        // 120s. A shorter host timer killed healthy sessions during slow reads.
+        // 120s. A shorter server timer killed healthy sessions during slow reads.
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(135));
         return await connection.CallAsync(method, parameters, timeout.Token);

@@ -6,7 +6,7 @@ namespace MessageLink.Server;
 internal sealed class MultipleAccountAdmin(IServerAdmin original, ProviderAccounts accounts) : IServerAdmin
 {
     internal Action<string, string?>? Ended { get; set; }
-    public Task<HostStatus> StatusAsync(CancellationToken cancellationToken = default) => original.StatusAsync(cancellationToken);
+    public Task<ServerStatus> StatusAsync(CancellationToken cancellationToken = default) => original.StatusAsync(cancellationToken);
     public async Task<IReadOnlyList<ServerAccount>> AccountsAsync(CancellationToken cancellationToken = default)
     {
         var result = (await original.AccountsAsync(cancellationToken)).ToList();

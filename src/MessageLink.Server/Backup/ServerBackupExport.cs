@@ -9,7 +9,7 @@ using MessageLink.Storage;
 namespace MessageLink.Server.Backup;
 
 /// <summary>
-/// Reads a server's stores into a backup payload (SWITCHBOARD.md stage 10, "What a server backup holds"). Every value its server's key sealed is unsealed into the
+/// Reads a server's stores into a backup payload ("What a server backup holds"). Every value its server's key sealed is unsealed into the
 /// backup, which is itself sealed under the backup's password; the restoring server seals each again with its own key. Each store is read in one transaction
 /// (each store's own <c>ExportRaw</c>), the history's under its write-ahead log's snapshot, Messenger's through the helper's own export.
 /// </summary>
@@ -141,7 +141,7 @@ internal static class ServerBackupExport
         return manifest;
     }
 
-    /// <summary>The server's identity as it is now, unsealed (D8): certificate, devices, push, the Firebase files, the join pause, the space key and the backup's settings.</summary>
+    /// <summary>The server's identity as it is now, unsealed: certificate, devices, push, the Firebase files, the join pause, the space key and the backup's settings.</summary>
     internal static ServerIdentityPart Identity(ServerBackupPaths paths, IStateProtector protector, BackupSettingsPart settings)
     {
         byte[]? Opened(string path) => File.Exists(path) ? protector.UnprotectAsync(File.ReadAllBytes(path)).GetAwaiter().GetResult() : null;

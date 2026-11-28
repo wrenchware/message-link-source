@@ -10,7 +10,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The server's own page (SWITCHBOARD.md 4.6), for its owner in a browser on the home network: what the server is and holds, its paired devices, its accounts (connected and removed here), a new pairing code with the address and fingerprint a PC needs, and the server's recent log.
+/// The server's own page, for its owner in a browser on the home network: what the server is and holds, its paired devices, its accounts (connected and removed here), a new pairing code with the address and fingerprint a PC needs, and the server's recent log.
 /// <para>
 /// It is served on the host's one HTTPS port beside <c>/v1/socket</c>, and only when the owner set a password (<c>MESSAGES_ADMIN_PASSWORD</c>, at least
 /// <see cref="MinimumPassword"/> characters); without one every path but the socket stays 404. Signing in sets a cookie good for <see cref="SessionLifetime"/>, made with a key
@@ -67,7 +67,7 @@ internal sealed partial class ServerPage
     private readonly JoinRequests joins;
     private readonly Func<string> fingerprint;
     private readonly IServerAdmin? admin;
-    private readonly IHostLogs? logs;
+    private readonly IServerLogs? logs;
     private readonly TailnetBoard? tailnet;
     private readonly Pushes? pushes;
     private readonly TimeProvider time;
@@ -89,7 +89,7 @@ internal sealed partial class ServerPage
 
     // credential is the environment's password (MAC), or null with the stored one (stored) or with none yet (first run, setting up).
     private ServerPage(byte[]? credential, StoredPassword? stored, byte[] secret, string keysFolder, long generation, string passwordCheck, DeviceRegistry devices, PairingCodes pairing,
-        JoinRequests joins, Func<string> fingerprint, IServerAdmin? admin, IHostLogs? logs, TimeProvider time, Action<string> log, TailnetBoard? tailnet, Pushes? pushes,
+        JoinRequests joins, Func<string> fingerprint, IServerAdmin? admin, IServerLogs? logs, TimeProvider time, Action<string> log, TailnetBoard? tailnet, Pushes? pushes,
         IWholeHistory? history, ServerPageBackups? backups, ServerPageSetup? setup)
     {
         this.history = history;
@@ -114,12 +114,12 @@ internal sealed partial class ServerPage
     /// A transition that cannot keep that invalidation refuses startup rather than let an earlier password revive old sign-ins on a later restart.
     /// </summary>
     /// <para>
-    /// With <paramref name="setup"/> (the server's first run, SWITCHBOARD.md 10.4) and no password in the environment, the page is on all the same: with the password the
+    /// With <paramref name="setup"/> (the server's first run) and no password in the environment, the page is on all the same: with the password the
     /// owner chose on it, kept as a slow hash with the keys (<see cref="StoredPassword"/>, <c>server page on password=stored</c>), or, before one is chosen, as a setup screen
     /// that takes a one-time setup code printed to the container's output (<c>server page setup</c>). A password in the environment always wins.
     /// </para>
     public static ServerPage? Create(string? password, string keysFolder, DeviceRegistry devices, PairingCodes pairing, JoinRequests joins, Func<string> fingerprint, IServerAdmin? admin,
-        IHostLogs? logs, TimeProvider time, Action<string> log, TailnetBoard? tailnet = null, Pushes? pushes = null, IWholeHistory? history = null, ServerPageBackups? backups = null,
+        IServerLogs? logs, TimeProvider time, Action<string> log, TailnetBoard? tailnet = null, Pushes? pushes = null, IWholeHistory? history = null, ServerPageBackups? backups = null,
         ServerPageSetup? setup = null)
     {
         var stateFile = Path.Combine(keysFolder, SignedOutFile);
@@ -630,7 +630,7 @@ internal sealed partial class ServerPage
     private string PairBody(HttpRequest request, string code, bool fromSetup = false)
     {
         var body = new StringBuilder("<section>");
-        // Add a PC (SWITCHBOARD.md 10.4): the three in one line, which the PC's server dialog takes pasted whole.
+        // Add a PC: the three in one line, which the PC's server dialog takes pasted whole.
         body.Append(Para($"In Message Link on the PC, open Settings → Connections → Message Link Server, and paste this line where it asks for the server's address. The code in it works once, for the next {(int)PairingCodes.Lifetime.TotalMinutes} minutes; making another replaces it."));
         body.Append("<p class=\"copy block line\">").Append(Html(JoinLink.Line(PairAddress(request), fingerprint(), code))).Append("</p>");
         // The address is this server's Tailscale name: the other PC reaches it through Message Link's own Tailscale, with no Tailscale app of its own.
@@ -687,7 +687,7 @@ internal sealed partial class ServerPage
             .Append("<button type=\"submit\"").Append(danger ? " class=\"danger\"" : "").Append('>').Append(Html(button)).Append("</button><a class=\"cancel\" href=\"/\">Cancel</a></form>").ToString();
     }
 
-    // The server's check of its copy against each service (SWITCHBOARD.md stage 9): what the newest one found, and a button to check now.
+    // The server's check of its copy against each service: what the newest one found, and a button to check now.
     // Whether a check runs: the page then looks again sooner, so its state turns into the results.
     private async Task<bool> CopiesCardAsync(StringBuilder body, string token, CancellationToken cancellationToken)
     {

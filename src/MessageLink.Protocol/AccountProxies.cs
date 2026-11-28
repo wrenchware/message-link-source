@@ -4,14 +4,14 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// Client-side stand-ins for the four account ports (SWITCHBOARD.md 2.6c). They hold no object of the host's: everything goes over
-// the wire or is read from the host's pushed state.
+// Client-side stand-ins for the four account ports. They hold no object of the host's: everything goes over
+// the wire or is read from the server's pushed state.
 //
-//   what is read       the snapshot and Changed come from the pushed state (HostStateCache), the events no state shows (SimsChanged,
-//                      DefaultSmsAppChanged, RenumberedChanged, ReconnectAbandoned) from the account signals the host appends to its
+//   what is read       the snapshot and Changed come from the pushed state (ServerStateCache), the events no state shows (SimsChanged,
+//                      DefaultSmsAppChanged, RenumberedChanged, ReconnectAbandoned) from the account signals the server appends to its
 //                      log, and each question per call is a request.
 //   what is done       every action that changes an account or a session is a journaled mutation (accounts.<service>.<verb>): one
-//                      operation id per call, never retried, an interrupted one an unknown outcome. The host appends the state the action
+//                      operation id per call, never retried, an interrupted one an unknown outcome. The server appends the state the action
 //                      caused before it answers and the client applies a state the moment it reads it, so State read right after an
 //                      action is already the new one: nothing here settles anything.
 //   what cannot wait   SimFor, AnswersFromMemory and KnownConversations are synchronous members read on a window's thread, so a
@@ -25,7 +25,7 @@ internal static class AccountWire
 {
     /// <summary>
     /// A mutation on an account. A cancel that ends it is the caller's own cancel, which a direct call reports as
-    /// <see cref="OperationCanceledException"/>: the unknown outcome the host records for a cancel after the start is not the caller's news.
+    /// <see cref="OperationCanceledException"/>: the unknown outcome the server records for a cancel after the start is not the caller's news.
     /// </summary>
     public static async Task<TResult> MutateAsync<TParams, TResult>(ProtocolClient client, string method, TParams parameters, CancellationToken cancellationToken = default,
         IProgress<string>? progress = null) where TParams : MutationParams
@@ -41,7 +41,7 @@ internal static class AccountWire
 
     /// <summary>
     /// A restore that stops when the caller's flag does. The flag is a function, which cannot cross; the call is cancelled instead, and
-    /// the host's own flag is that cancel. Returns false when it was stopped, whatever became of the restore: nobody is waiting for it.
+    /// the server's own flag is that cancel. Returns false when it was stopped, whatever became of the restore: nobody is waiting for it.
     /// </summary>
     public static async Task<(bool Stopped, TResult? Result)> RestoreAsync<TResult>(Func<bool> stopped, Func<CancellationToken, Task<TResult>> call)
     {
@@ -56,8 +56,8 @@ internal static class AccountWire
     }
 }
 
-/// <summary>Messenger's account over the wire: its snapshot and <c>Changed</c> from the host's state, every action as a mutation.</summary>
-public sealed class MessengerAccountProxy(ProtocolClient client, HostStateCache cache) : IMessengerAccount
+/// <summary>Messenger's account over the wire: its snapshot and <c>Changed</c> from the server's state, every action as a mutation.</summary>
+public sealed class MessengerAccountProxy(ProtocolClient client, ServerStateCache cache) : IMessengerAccount
 {
     public MessengerAccountState State => cache.Messenger;
 
@@ -100,15 +100,15 @@ public sealed class MessengerAccountProxy(ProtocolClient client, HostStateCache 
 public sealed class InstagramAccountProxy : IInstagramAccount
 {
     private readonly ProtocolClient client;
-    private readonly HostStateCache cache;
+    private readonly ServerStateCache cache;
     private readonly Remembered<(string Chat, string Message), bool> held;
 
     /// <param name="memoryLifetime">How long an answer to <see cref="AnswersFromMemory"/> stands before it is asked again.</param>
-    public InstagramAccountProxy(ProtocolClient client, HostStateCache cache, TimeSpan? memoryLifetime = null)
+    public InstagramAccountProxy(ProtocolClient client, ServerStateCache cache, TimeSpan? memoryLifetime = null)
     {
         this.client = client;
         this.cache = cache;
-        // Not in memory until the host says so: Up then does nothing rather than read the thread on a key press (EditTarget).
+        // Not in memory until the server says so: Up then does nothing rather than read the thread on a key press (EditTarget).
         held = new(key => client.CallAsync<MessageIdParams, bool>(ProtocolMethods.AccountsInstagramAnswersFromMemory, new(key.Chat, key.Message)),
             false, memoryLifetime ?? TimeSpan.FromSeconds(5));
     }
@@ -121,7 +121,7 @@ public sealed class InstagramAccountProxy : IInstagramAccount
         remove => cache.InstagramChanged -= value;
     }
 
-    // The host stops retrying, which is no change of any flag; it announces it as an account signal.
+    // The server stops retrying, which is no change of any flag; it announces it as an account signal.
     public event EventHandler? ReconnectAbandoned
     {
         add => cache.ReconnectAbandoned += value;
@@ -138,7 +138,7 @@ public sealed class InstagramAccountProxy : IInstagramAccount
     {
         var (wasStopped, result) = await AccountWire.RestoreAsync(stopped, token =>
             AccountWire.MutateAsync<AccountOpParams, AccountRestore>(client, ProtocolMethods.AccountsInstagramRestore, new(AccountWire.OperationId()), token)).ConfigureAwait(false);
-        // A restore that stopped because the host is closing says nothing, and the window uses its generic line.
+        // A restore that stopped because the server is closing says nothing, and the window uses its generic line.
         return wasStopped || result is null ? new AccountRestore(null) : result;
     }
 
@@ -153,18 +153,18 @@ public sealed class InstagramAccountProxy : IInstagramAccount
 public sealed class GoogleMessagesAccountProxy : IGoogleMessagesAccount
 {
     private readonly ProtocolClient client;
-    private readonly HostStateCache cache;
+    private readonly ServerStateCache cache;
     private readonly Remembered<string, GoogleSimChip?> sims;
     private readonly Remembered<int, IReadOnlyList<ChatSummary>> known;
 
     /// <param name="lifetime">How long a copy of a per-conversation answer (a SIM, the known conversations) stands before it is asked again.</param>
-    public GoogleMessagesAccountProxy(ProtocolClient client, HostStateCache cache, TimeSpan? lifetime = null)
+    public GoogleMessagesAccountProxy(ProtocolClient client, ServerStateCache cache, TimeSpan? lifetime = null)
     {
         this.client = client;
         this.cache = cache;
         var age = lifetime ?? TimeSpan.FromSeconds(3);
         // A conversation moved to the other SIM on the phone arrives as a changed summary, which asks again; an answer that differs
-        // is a change of SIMs to everyone listening, as the host's own announcement is.
+        // is a change of SIMs to everyone listening, as the server's own announcement is.
         sims = new(async chat => await client.CallNullableAsync<SimForParams, GoogleSimChip>(ProtocolMethods.AccountsGoogleSimFor, new(chat.Length == 0 ? null : chat)).ConfigureAwait(false),
             null, age, (_, _, _) => SimsChanged?.Invoke(this, EventArgs.Empty));
         known = new(_ => client.CallAsync<IReadOnlyList<ChatSummary>>(ProtocolMethods.AccountsGoogleKnownConversations), [], age * 2);
@@ -228,7 +228,7 @@ public sealed class GoogleMessagesAccountProxy : IGoogleMessagesAccount
         catch (Exception) { /* a warm-up that did not start is only slower */ }
     });
 
-    // Conversations, not flags: a copy of the host's list, refreshed when it is read after its lifetime.
+    // Conversations, not flags: a copy of the server's list, refreshed when it is read after its lifetime.
     public IReadOnlyList<ChatSummary> KnownConversations => known.Get(0);
 
     public Task<IReadOnlyList<GoogleKnownChat>> KnownChatsForResetAsync(CancellationToken cancellationToken = default) =>
@@ -244,8 +244,8 @@ public sealed class GoogleMessagesAccountProxy : IGoogleMessagesAccount
         AccountWire.MutateAsync(client, ProtocolMethods.AccountsGoogleReset, new GoogleResetParams(AccountWire.OperationId(), profile));
 }
 
-/// <summary>The Google Voice accounts over the wire: the list and <c>Changed</c> from the host's state, restore, add and sign out as mutations.</summary>
-public sealed class GoogleVoiceAccountsProxy(ProtocolClient client, HostStateCache cache) : IGoogleVoiceAccounts
+/// <summary>The Google Voice accounts over the wire: the list and <c>Changed</c> from the server's state, restore, add and sign out as mutations.</summary>
+public sealed class GoogleVoiceAccountsProxy(ProtocolClient client, ServerStateCache cache) : IGoogleVoiceAccounts
 {
     public IReadOnlyList<GoogleVoiceAccountState> Accounts => cache.VoiceAccounts;
     public IReadOnlyList<string> KnownAccountKeys => cache.VoiceKnownKeys;

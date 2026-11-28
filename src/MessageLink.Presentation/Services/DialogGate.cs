@@ -4,7 +4,7 @@ namespace MessageLink.Presentation.Services;
 /// One dialog at a time across every window of the app: the main window's, each conversation's (its own window's too) and the message
 /// actions'. A dialog site takes a lease before it shows anything and disposes it when it is done (<c>using var lease = ...</c>), so a dialog
 /// that throws or returns early still lets the next one open. Whether one is open is part of "is the app free to leave?" (<see cref="LeavePolicy"/>),
-/// and the Windows app tells a host in another process (AppBusy).
+/// and the Windows app tells a server in another process (AppBusy).
 /// </summary>
 public sealed class DialogGate
 {

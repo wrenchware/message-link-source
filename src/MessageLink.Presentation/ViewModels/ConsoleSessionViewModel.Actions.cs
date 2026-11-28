@@ -7,7 +7,7 @@ namespace MessageLink.Presentation.ViewModels;
 
 // Acting on a conversation or a message from the console: /msgs and the message references it numbers, then the
 // conversation menu's actions (archive, pin, unread, delete, block, not spam, labels, snooze) and the message menu's (react, reply, edit,
-// unsend, delete, copy, save, remind). Every one goes through the host, which calls the same action the menu does, with
+// unsend, delete, copy, save, remind). Every one goes through the server, which calls the same action the menu does, with
 // the same checks; nothing is retried, and an uncertain outcome is said to be unknown. /msgs reads the server's copy of a
 // conversation it names (over every conversation, only what is already held) and marks nothing read. The log gets the command, the provider and the outcome; never words or names.
 public sealed partial class ConsoleSessionViewModel
@@ -198,7 +198,7 @@ public sealed partial class ConsoleSessionViewModel
 
     private static string Preview(ChatMessage message) => ConsoleLineFormatter.Quote(ConsoleLineFormatter.Words(message));
 
-    // The message menu's options; null (said) when the host can't say, which counts as nothing offered.
+    // The message menu's options; null (said) when the server can't say, which counts as nothing offered.
     private async Task<MessageActionOptions?> OptionsAsync(MessageRef item, string what)
     {
         MessageActionOptions? options;

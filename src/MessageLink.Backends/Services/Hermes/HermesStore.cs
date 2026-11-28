@@ -56,7 +56,7 @@ public sealed record HermesThread(string Profile, string SessionId, IReadOnlyLis
     string? Handoff = null);
 
 /// <summary>
-/// Everything Hermes keeps between runs, under the data folder's <c>Hermes</c> folder, each file sealed by the host's protector:
+/// Everything Hermes keeps between runs, under the data folder's <c>Hermes</c> folder, each file sealed by the server's protector:
 /// the settings (address, profiles and their keys), one file a thread (its session id and messages), and the pictures sent to it.
 /// Message bodies are private, so nothing here is written in the clear.
 /// </summary>
@@ -110,7 +110,7 @@ public sealed class HermesStore(string root, IStateProtector protector)
         catch (Exception exception) when (exception is IOException or CryptographicException or UnauthorizedAccessException) { return null; }
     }
 
-    /// <summary>Fixed words for the host's log: a file that couldn't be read, by its kind only.</summary>
+    /// <summary>Fixed words for the server's log: a file that couldn't be read, by its kind only.</summary>
     internal Action<string>? Log { get; set; }
     internal TimeSpan ReadRetryDelay { get; set; } = TimeSpan.FromMilliseconds(250);
     // Files that are there but couldn't be read (still failing after one retry): nothing is written over them in this run.

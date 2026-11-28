@@ -5,7 +5,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// What a Messenger or Instagram sign-in in the server's Chrome opens and keeps (SWITCHBOARD.md 10.5): the same login page and the same cookie rules as the PC's own sign-in window
+/// What a Messenger or Instagram sign-in in the server's Chrome opens and keeps: the same login page and the same cookie rules as the PC's own sign-in window
 /// (<see cref="MessengerSignInRules"/>, <see cref="InstagramSignInRules"/>), read from Chrome's cookie file by <see cref="ChromeCookieStore"/> instead of from the window's cookie manager.
 /// <para>
 /// The hosts read are the ones the PC's window asks its cookie manager for: Messenger's cookies from <c>facebook.com</c> (the window asks for <c>https://www.facebook.com/</c>, and its rules take only
@@ -39,7 +39,7 @@ internal sealed record MetaSignInTarget(string Service, string LoginUrl, Chromiu
 }
 
 /// <summary>
-/// A Chrome profile made for one Messenger or Instagram sign-in and deleted when it ends, like the PC's InPrivate window (SWITCHBOARD.md 10.5). The folders sit beside the Google profiles on the keys
+/// A Chrome profile made for one Messenger or Instagram sign-in and deleted when it ends, like the PC's InPrivate window. The folders sit beside the Google profiles on the keys
 /// volume (<c>&lt;keys&gt;/SignIn/&lt;id&gt;</c>), private to the server's account, since for the minutes one exists it holds a whole sign-in. Ids are opaque GUIDs, checked again before a delete, and a
 /// link is never followed. Whatever a stopped server left is removed at the next start (<see cref="Sweep"/>): nothing in this folder is ever kept.
 /// </summary>

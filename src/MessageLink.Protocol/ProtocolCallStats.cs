@@ -6,7 +6,7 @@ namespace MessageLink.Protocol;
 /// How long each method's calls took, written as one fixed-format line per method at most once a minute:
 /// <c>protocol calls method=chats.get n=12 avg_ms=0.31 worst_ms=1.40</c>. Only method names (fixed by the catalogue),
 /// counts and times; nothing a call carried. <paramref name="label"/> is the line's first words, so the client's and the
-/// host's measurements of the same method can be told apart (the difference is what the transport costs).
+/// server's measurements of the same method can be told apart (the difference is what the transport costs).
 /// </summary>
 public sealed class ProtocolCallStats(string label, Action<string>? log, TimeProvider? clock = null, TimeSpan? interval = null)
 {

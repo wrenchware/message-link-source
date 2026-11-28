@@ -36,7 +36,7 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
     private DateTimeOffset? lostLinkAt;
 
     /// <summary>
-    /// The longest a client can have been cut off from its host and still have what the host replays on reconnecting count as news. Longer than that the replay is
+    /// The longest a client can have been cut off from its server and still have what the server replays on reconnecting count as news. Longer than that the replay is
     /// a backlog (a laptop that slept), and moving the cutoff to the reconnect keeps it from toasting everything that arrived meanwhile in one burst.
     /// </summary>
     public TimeSpan ReplayWindow { get; init; } = TimeSpan.FromMinutes(10);
@@ -75,8 +75,8 @@ public sealed class NotificationObserver(IChatReader chats, IMessageSender messa
         }
     }
 
-    /// <param name="unarchiving">The host is returning this conversation to the inbox for this arrival (stage 6 slice 9, <see cref="UnarchiveOutcome.LeftToHost"/>), and
-    /// its answer comes after this decision: the arrival is judged as not archived. Should the host's unarchive fail, it was still shown, the safer mistake.</param>
+    /// <param name="unarchiving">The server is returning this conversation to the inbox for this arrival (<see cref="UnarchiveOutcome.LeftToServer"/>), and
+    /// its answer comes after this decision: the arrival is judged as not archived. Should the server's unarchive fail, it was still shown, the safer mistake.</param>
     public async Task ObserveAsync(RealtimeEvent change, CancellationToken token, bool unarchiving = false)
     {
         // The client's own link to its host dropped (RealtimeFeedProxy), not a provider's connection to its service. The host kept running, and a feed that resumes

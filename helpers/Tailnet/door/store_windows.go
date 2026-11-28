@@ -15,7 +15,7 @@ import (
 )
 
 // sealedStateFile holds the node's state (its machine and node keys, which are the door's identity on the tailnet) sealed
-// to the signed-in Windows user with DPAPI (SWITCHBOARD.md 10.7). The Windows server runs as that user, in that user's data
+// to the signed-in Windows user with DPAPI. The Windows server runs as that user, in that user's data
 // folder: another account on the PC, or a copy of the folder taken to another machine, cannot open it and so cannot be this
 // node. tsnet's own store would keep the same state as plain JSON beside it.
 const sealedStateFile = "tailscaled.state.sealed"

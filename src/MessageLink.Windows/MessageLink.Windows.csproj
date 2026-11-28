@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- What only Windows can do for the backends' ports: DPAPI, the media player and imaging (SWITCHBOARD.md stage 3), and the Google
-       renewal's browser (SWITCHBOARD.md 3.1c): GoogleBrowserRecovery and WebViewGoogleBrowser, which load a kept Google sign-in profile
+  <!-- What only Windows can do for the backends' ports: DPAPI, the media player and imaging, and the Google
+       renewal's browser: GoogleBrowserRecovery and WebViewGoogleBrowser, which load a kept Google sign-in profile
        in WebView2 on a thread the host gives them through IStaQueue. The app (over its DispatcherQueue) and MessageLinkServer.exe (over
        its own STA thread) both use it. It uses the Windows SDK's own WinRT projection and WebView2 and nothing of WinUI or the Windows
        App SDK, so a MessageLinkServer.exe without the Windows App SDK loads the same code; a harness check fails if this project ever
@@ -14,7 +14,7 @@
     <!-- The WinRT form of WebView2 (the CsWinRT projection and runtimes\win-x64\native_uap\Microsoft.Web.WebView2.Core.dll), the pair the app
          already publishes: with the App SDK's package dir set the package turns this on by itself, outside the App SDK it is set by hand
          (here and in every program that references this library without the App SDK). WebView2UseWinRT=true does not build on .NET 10
-         (NETSDK1130). A spike proved this pairing (SWITCHBOARD.md 3.1). -->
+         (NETSDK1130). A spike proved this pairing. -->
     <WebView2EnableCsWinRTProjection>true</WebView2EnableCsWinRTProjection>
   </PropertyGroup>
   <ItemGroup>

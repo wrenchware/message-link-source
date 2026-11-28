@@ -21,7 +21,7 @@ public static class MessageText
     // host, Windows' own Uri refuses it, and the Hyperlink given it threw, leaving the rest of a Hermes reply undrawn (2026-11-19).
     public static Uri? WebLink(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
         uri.Scheme is "http" or "https" && RealHost(uri) && string.IsNullOrEmpty(uri.UserInfo) ? uri : null;
-    // IdnHost itself throws on a host IDN refuses.
+    // IdnHost itself throws on a server IDN refuses.
     private static bool RealHost(Uri uri)
     {
         try { return Uri.CheckHostName(uri.IdnHost) != UriHostNameType.Unknown; }

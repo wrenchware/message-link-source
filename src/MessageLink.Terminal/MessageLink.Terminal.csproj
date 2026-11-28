@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- mlink (SWITCHBOARD.md stage 13): the chat console as a terminal program of its own, a client of Message Link Server over the protocol. Plain
+  <!-- mlink: the chat console as a terminal program of its own, a client of Message Link Server over the protocol. Plain
        net10.0 for Windows x64 and Linux x64; what only Windows can do (DPAPI, the console's VT mode, the named pipe's owner check) sits behind
        OperatingSystem.IsWindows(). Everything a person can see says "Message Link". The types the harness
        checks are public: the files linked from the app below are internal here too, and the harness compiles its own copies of them. -->
@@ -18,7 +18,7 @@
     <AssemblyTitle>Message Link</AssemblyTitle>
     <Description>Message Link in a terminal</Description>
     <Company>wrenchware</Company>
-    <!-- One version for the app and every program built beside it (SWITCHBOARD.md decisions), read from the app's project as the servers read it. -->
+    <!-- One version for the app and every program built beside it, read from the app's project as the servers read it. -->
     <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../MessageLink.App/MessageLink.App.csproj')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>
     <!-- CS0649: the replica's row watch is set by the app's private-reading wiring, which mlink does not link (it reads only when asked: /read). -->
     <NoWarn>$(NoWarn);CS0649</NoWarn>

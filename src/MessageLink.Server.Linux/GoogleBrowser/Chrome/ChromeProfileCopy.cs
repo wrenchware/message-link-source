@@ -1,7 +1,7 @@
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// A copy of Chrome's profile folder, so that a sign-in can be made on the copy and replace the original only when the phone has accepted it (SWITCHBOARD.md 5.4, Chrome on the server). Made while Chrome
+/// A copy of Chrome's profile folder, so that a sign-in can be made on the copy and replace the original only when the phone has accepted it (Chrome on the server). Made while Chrome
 /// is closed, so the copy is whole. Left out: the caches (large, and rebuilt), the display's key and number, the lock and socket Chrome leaves for the next start, our own cookie copies, and the
 /// browser's home (its caches; the launcher makes it again). Symbolic links are never followed or copied. Every folder and file is the server account's alone.
 /// </summary>

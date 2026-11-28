@@ -4,7 +4,7 @@ namespace MessageLink.Presentation.Services;
 
 /// <summary>
 /// /top: a live monitor in three pages: overview, workers (the server's helper processes) and queues (sends in flight and
-/// scheduled). Everything comes from snapshots the host already keeps; refreshing asks no service for anything. Message
+/// scheduled). Everything comes from snapshots the server already keeps; refreshing asks no service for anything. Message
 /// text never appears except the user's own queued sends.
 /// </summary>
 public sealed class TopApp(IConsoleAppHost shell, string page = "overview") : ConsoleApp(shell)

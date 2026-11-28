@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Server;
 
-internal sealed class MultipleAccountIdentity(IHostIdentity original, ProviderAccounts accounts) : IHostIdentity
+internal sealed class MultipleAccountIdentity(IServerIdentity original, ProviderAccounts accounts) : IServerIdentity
 {
     public bool GooglePaired => original.GooglePaired;
     public event EventHandler? Changed
@@ -14,7 +14,7 @@ internal sealed class MultipleAccountIdentity(IHostIdentity original, ProviderAc
     }
     private readonly Dictionary<EventHandler, Action> relays = [];
     public Task RefreshAsync(CancellationToken cancellationToken = default) => original.RefreshAsync(cancellationToken);
-    public async Task<HostIdentity> ReadAsync(CancellationToken cancellationToken = default)
+    public async Task<ServerIdentity> ReadAsync(CancellationToken cancellationToken = default)
     {
         var before = await original.ReadAsync(cancellationToken);
         var added = await accounts.CatalogAsync(cancellationToken);

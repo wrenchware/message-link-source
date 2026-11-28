@@ -6,7 +6,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Network;
 
 /// <summary>
-/// The server page's face of a sign-in in the server's own browser (SWITCHBOARD.md 10.6): the object that holds the sign-in (<see cref="RemoteSignInDriver.Owner"/>), where its pictures go and where
+/// The server page's face of a sign-in in the server's own browser: the object that holds the sign-in (<see cref="RemoteSignInDriver.Owner"/>), where its pictures go and where
 /// its progress goes, all onto the page's one WebSocket. A picture is sent as the JPEG itself in a binary message, after a <c>size</c> message whenever the page's size in its own pixels changes; the
 /// newest picture is the only one kept, so one the browser is too slow for is replaced, never queued. Google's emoji, the connect's stages and "signed in" go in order as small JSON messages. One
 /// writer at a time. Nothing it carries is logged, kept or printed: a picture may show an address or a code.

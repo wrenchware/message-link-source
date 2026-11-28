@@ -11,47 +11,47 @@ using MessageLink.Storage;
 namespace MessageLink.App.Services;
 
 /// <summary>
-/// The window's protected state when it is a client of a Messages Server (<c>local</c> and <c>remote</c>, SWITCHBOARD.md stage 6, slice 1): a replica of the
-/// host's shared state at <c>&lt;root&gt;\Replica\&lt;server id&gt;\state.db</c> (<see cref="ServerIdOf"/>), which every read draws from. The in-process app and
+/// The window's protected state when it is a client of a Messages Server (<c>local</c> and <c>remote</c>): a replica of the
+/// server's shared state at <c>&lt;root&gt;\Replica\&lt;server id&gt;\state.db</c> (<see cref="ServerIdOf"/>), which every read draws from. The in-process app and
 /// the loopback never register it, so their <c>state.db</c> is untouched, and data from two hosts never mixes.
 /// </summary>
 /// <remarks>
 /// <para><b>Writes.</b> A key <see cref="SharedCategories"/> names (under the profile the keys are filed under) goes into the replica and, in the same
-/// transaction, into a persisted <c>pending</c> table with an operation id made now. A worker sends the pending writes once a host that keeps the shared
-/// state (protocol version 2) is connected, and again after a reconnect with the same id, which the host answers with its first answer (a <c>state.put</c> is
+/// transaction, into a persisted <c>pending</c> table with an operation id made now. A worker sends the pending writes once a server that keeps the shared
+/// state (protocol version 2) is connected, and again after a reconnect with the same id, which the server answers with its first answer (a <c>state.put</c> is
 /// never a provider mutation, so sending it again is safe). Writes to one key not sent yet are folded into the newest before it goes, so a burst of edits
 /// is one put. Every other key stays in the replica only, as it stayed on this PC before. Nothing that leads to a send is ever kept here.</para>
 /// <para><b>Remote changes.</b> A <c>shared</c> event, a <c>state.sync</c> on every connection and after every resync, and the answer to each put fill the
 /// replica. Only rows this client shares itself are taken (a row of a category it does not know, or of another profile, is left alone, and never touches a
 /// row of its own). A row's rev orders it: an older one is ignored. A row with a pending write keeps the words written here, since that write follows in
-/// the host's order; the newest rev seen for it meanwhile is kept (<c>overtaken</c>), and if the host's answer is older than that (the put had been
-/// committed before, and its answer lost), the host's row is read and taken once nothing is pending for it. A write the host refuses is replaced by the
-/// host's row, or dropped. <see cref="RemoteChanged"/> names the keys that changed. A snapshot (another epoch, a position the host no longer covers, or a
-/// new profile) replaces the shared rows held from the host and keeps every pending write.</para>
+/// the server's order; the newest rev seen for it meanwhile is kept (<c>overtaken</c>), and if the server's answer is older than that (the put had been
+/// committed before, and its answer lost), the server's row is read and taken once nothing is pending for it. A write the server refuses is replaced by the
+/// server's row, or dropped. <see cref="RemoteChanged"/> names the keys that changed. A snapshot (another epoch, a position the server no longer covers, or a
+/// new profile) replaces the shared rows held from the server and keeps every pending write.</para>
 /// <para><b>A root that was used in process.</b> When the replica is made, the one row of <c>state.db</c> a client must not lose is copied in, read-only:
 /// the sends whose outcome is unknown (<c>outbox:</c>, InterruptedSends), so their warning stays and they are still asked about with <c>ops.status</c>.
 /// Scheduled sends are not copied: a copy would make two places that fire them.</para>
 /// <para><b>Versions.</b> The categories grow with the protocol version (slice 3 added the chat preferences, names, snoozes and pinned order at version 3). A
-/// write of a category newer than the connection's version waits in the queue, unsent, for a host that keeps it (one sent now would be refused and give way
-/// to the host's row, or to none), and a snapshot drops only the rows of the categories its connection knows. The version the host last spoke is kept here
-/// (<see cref="HostProtocolAsync"/>): the stores that were files draw from these rows only when it is 3 or more.</para>
-/// <para><b>Compare-and-set rows</b> (slice 5, <see cref="SharedConflictPolicy.CompareAndSet"/>: the merges and the labels, each one row). A write is queued
+/// write of a category newer than the connection's version waits in the queue, unsent, for a server that keeps it (one sent now would be refused and give way
+/// to the server's row, or to none), and a snapshot drops only the rows of the categories its connection knows. The version the server last spoke is kept here
+/// (<see cref="ServerProtocolAsync"/>): the stores that were files draw from these rows only when it is 3 or more.</para>
+/// <para><b>Compare-and-set rows</b> (<see cref="SharedConflictPolicy.CompareAndSet"/>: the merges and the labels, each one row). A write is queued
 /// with the rev the replica holds for the row (<c>if_rev</c>, 0 for none: create only), and with the tag of the newest change of its follower's it holds
 /// (<see cref="ISharedRows"/>). What holds the row in memory (MergedConversations, LabelStore) reads it and becomes its follower in one step under the
-/// replica's gate (<see cref="FollowAsync"/>), so its memory and the replica's rev never part: every row of the host's this replica takes for it afterwards is
-/// handed to it (<see cref="ISharedRowFollower.CatchUpAsync"/>), as is the host's row when a write loses (<c>conflict</c>), after the replica holds the host's
+/// replica's gate (<see cref="FollowAsync"/>), so its memory and the replica's rev never part: every row of the server's this replica takes for it afterwards is
+/// handed to it (<see cref="ISharedRowFollower.CatchUpAsync"/>), as is the server's row when a write loses (<c>conflict</c>), after the replica holds the server's
 /// row and has dropped the writes made before; the follower makes its changes again over it and writes the result. This is done by the worker, which sends
-/// nothing meanwhile, so a write made from what the follower held before never reaches the host after the one made from the host's row. A follower that
-/// cannot be brought to the row is abandoned (<see cref="ISharedRowFollower.AbandonAsync"/>). A write the host took is confirmed to the follower by its tag,
+/// nothing meanwhile, so a write made from what the follower held before never reaches the server after the one made from the server's row. A follower that
+/// cannot be brought to the row is abandoned (<see cref="ISharedRowFollower.AbandonAsync"/>). A write the server took is confirmed to the follower by its tag,
 /// and the writes queued behind it take its rev as theirs. A row that loses more than <see cref="ReapplyLimit"/> times in a row keeps what this device holds
-/// and its write, which waits (<see cref="ParkFirst"/>, doubling) until a newer row of the host's arrives, the wait ends, or the next connection, and says so
+/// and its write, which waits (<see cref="ParkFirst"/>, doubling) until a newer row of the server's arrives, the wait ends, or the next connection, and says so
 /// (<see cref="Told"/>). A row of such a category that this replica held before it was shared (no rev, nothing queued) is kept through a snapshot and offered
 /// at the end of every sync, create only: if another device's is there first, that one wins, and a copy of this device's is kept under
 /// <see cref="ReplacedPrefix"/> and said to be.</para>
-/// <para><b>Drafts</b> (slice 6, protocol 6: <c>draft:</c> and <c>draft-owner:</c>, last writer wins) are plain rows of the replica; the composers keep them in
-/// memory and are told of the host's changes by <see cref="HostChanged"/> (the keys <see cref="RemoteChanged"/> names), which they judge themselves: a row
+/// <para><b>Drafts</b> (protocol 6: <c>draft:</c> and <c>draft-owner:</c>, last writer wins) are plain rows of the replica; the composers keep them in
+/// memory and are told of the server's changes by <see cref="ServerChanged"/> (the keys <see cref="RemoteChanged"/> names), which they judge themselves: a row
 /// with a write pending here is never raised, so the words typed on this device stand, as the other rows with a pending write do. Rows made by an earlier
-/// build in a replica, with no rev from a host and nothing queued, are dropped by the first snapshot of a host that keeps them (as the other last-writer-wins
+/// build in a replica, with no rev from a server and nothing queued, are dropped by the first snapshot of a server that keeps them (as the other last-writer-wins
 /// rows are; only the compare-and-set rows are offered).</para>
 /// <para>Values are sealed by the client's own protector here, as in <c>state.db</c>. Logs carry counts and fixed words only: <c>shared pending n=</c>,
 /// <c>shared sync reset= rows= ms=</c>, <c>shared put n= conflicts= ms=</c>, <c>shared applied rows= ms=</c>, <c>shared reapply n=</c>,
@@ -96,15 +96,15 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     private int connected, syncWanted, flushWanted;
     // The newest commit an event has shown, so a sync that ends short of it goes on.
     private long seen;
-    // This connection's host keeps no shared state (version 1, or a host without the store); false again on the next connection.
+    // This connection's server keeps no shared state (version 1, or a server without the store); false again on the next connection.
     private volatile bool hostLacks;
-    // The last host version heard (HostProtocolAsync), as the replica keeps it; -1 until read.
+    // The last server version heard (ServerProtocolAsync), as the replica keeps it; -1 until read.
     private int hostProtocol = -1;
     // Connections made (OnConnected), and the last of them whose version is settled (SettleAsync).
     private int connections, settled;
     // The client's connection number (ProtocolClient.ConnectionNumber) of the connection OnConnected last heard of: a higher one is up and not heard of yet.
     private int connectionSeen;
-    // A connection has settled during this run: until one has, what the rows hold is last run's and the host may have changed since (HostVersionNow).
+    // A connection has settled during this run: until one has, what the rows hold is last run's and the server may have changed since (ServerVersionNow).
     private int everSettled;
     // The meta table has the column a replica made by slice 1 lacks, and the pending table those made before slice 5 lack (Open, once per instance).
     private bool metaReady;
@@ -112,12 +112,12 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     // What holds each compare-and-set row in memory (FollowAsync); how many times in a row each lost, this connection.
     private readonly ConcurrentDictionary<string, ISharedRowFollower> followers = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> losses = new(StringComparer.Ordinal);
-    // A parked row: the host's rev it lost to last (a newer one arriving unparks it), and how many times it gave up this connection (the wait doubles).
+    // A parked row: the server's rev it lost to last (a newer one arriving unparks it), and how many times it gave up this connection (the wait doubles).
     private readonly ConcurrentDictionary<string, long> parked = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> parkings = new(StringComparer.Ordinal);
 
     /// <param name="carryFrom">The root's own <c>state.db</c>, from which the unsettled sends are copied when this replica is made; null copies nothing.</param>
-    /// <param name="remote">The host's shared state; the proxy over <paramref name="client"/> unless a test gives its own.</param>
+    /// <param name="remote">The server's shared state; the proxy over <paramref name="client"/> unless a test gives its own.</param>
     public ReplicatedStateStore(string path, IStateProtector protector, ProtocolClient client, IAccessTokenStore tokens, Action<string>? log = null, ISharedState? remote = null,
         string? carryFrom = null)
     {
@@ -127,10 +127,10 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         client.SharedChanged += OnShared;
         client.FeedResynced += OnResynced;
         worker = Task.Run(RunAsync, CancellationToken.None);
-        // The last host version, read ahead so Shares answers from it before a connection settles.
+        // The last server version, read ahead so Shares answers from it before a connection settles.
         _ = Task.Run(async () =>
         {
-            try { await KnownHostProtocolAsync(stop.Token).ConfigureAwait(false); } catch (Exception) { /* Shares answers 0 until a connection settles */ }
+            try { await KnownServerProtocolAsync(stop.Token).ConfigureAwait(false); } catch (Exception) { /* Shares answers 0 until a connection settles */ }
         });
         // Made after the client was already connected: what a connection would have started, now.
         if (client.IsConnected) OnConnected(client, EventArgs.Empty);
@@ -138,12 +138,12 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     /// <summary>
     /// The folder name for a server on the network (<c>remote</c>): the pinned certificate fingerprint in lower-case hex, so a client paired with another server
-    /// starts another replica rather than mixing two hosts' rows. The <c>local</c> mode's is <see cref="LocalServer"/>.
+    /// starts another replica rather than mixing two servers' rows. The <c>local</c> mode's is <see cref="LocalServer"/>.
     /// </summary>
     public static string ServerIdOf(byte[]? fingerprint) => fingerprint is { Length: > 0 } pin ? Convert.ToHexStringLower(pin) : UnpinnedServer;
 
     /// <summary>
-    /// Keys whose value changed because of the host (another device's write, or a snapshot); raised after the replica holds them, off the caller's thread, with
+    /// Keys whose value changed because of the server (another device's write, or a snapshot); raised after the replica holds them, off the caller's thread, with
     /// the moment what brought them arrived, so a consumer can say how long the whole way to the screen took (<c>shared list applied</c>).
     /// </summary>
     public event EventHandler<SharedRowsChange>? RemoteChanged;
@@ -173,8 +173,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     public Task WriteAsync(string key, byte[] value, long tag, CancellationToken cancellationToken = default) => WriteAsync(key, value, keepPlace: false, tag, cancellationToken);
 
     /// <summary>
-    /// Reads the compare-and-set row <paramref name="key"/> for what will hold it in memory, which from then on is told of the host's rows and of its own
-    /// writes the host took. Both under the gate the worker takes a host row under: a row taken before is in what is read, and one taken after is handed to
+    /// Reads the compare-and-set row <paramref name="key"/> for what will hold it in memory, which from then on is told of the server's rows and of its own
+    /// writes the server took. Both under the gate the worker takes a server row under: a row taken before is in what is read, and one taken after is handed to
     /// the follower, so the rev a write is conditional on (the replica's) is always the one the follower's memory was made from.
     /// </summary>
     public async Task<byte[]?> FollowAsync(string key, ISharedRowFollower follower, CancellationToken cancellationToken = default)
@@ -195,23 +195,23 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     /// <summary>
-    /// Whether the host keeps the row's category now: the version of the connection when it is settled, otherwise the last one heard (0 before any, and 1 for a
-    /// host that keeps no shared state). Read without waiting, for a follower deciding whether to keep a change to make again.
+    /// Whether the server keeps the row's category now: the version of the connection when it is settled, otherwise the last one heard (0 before any, and 1 for a
+    /// server that keeps no shared state). Read without waiting, for a follower deciding whether to keep a change to make again.
     /// </summary>
     public bool Shares(string key, string profile) =>
-        // A category with no fixed row shares every key under its prefix only for the drafts (slice 6), the saved messages and the avatars (slice 8); the others
+        // A category with no fixed row shares every key under its prefix only for the drafts, the saved messages and the avatars; the others
         // are one row each, found by their key under the profile.
         SharedCategories.Match(key, profile) is { } category && (category.Row is not null || SharedCategories.SharesEveryKey(category))
-        && category.Since <= HostVersionNow().Version;
+        && category.Since <= ServerVersionNow().Version;
 
     public int SharedValueLimit => SharedLimits.ValueBytes;
 
     /// <summary>
-    /// What this replica knows of its host's version without waiting: <c>Settling</c> while a connection is up whose first sync is not applied yet (its version
+    /// What this replica knows of its server's version without waiting: <c>Settling</c> while a connection is up whose first sync is not applied yet (its version
     /// is not the one the rows held here belong to), and while no connection has settled during this run at all (the rows are last run's); otherwise the
-    /// connection's version once settled, or the last one heard when there is no connection (0 before any, 1 for a host that keeps no shared state).
+    /// connection's version once settled, or the last one heard when there is no connection (0 before any, 1 for a server that keeps no shared state).
     /// </summary>
-    internal (bool Settling, int Version) HostVersionNow()
+    internal (bool Settling, int Version) ServerVersionNow()
     {
         if (client.IsConnected && client.Version is { } connected)
         {
@@ -221,31 +221,31 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 return (true, Math.Max(0, Volatile.Read(ref hostProtocol)));
             return (false, hostLacks ? ProtocolVersion.Minimum : connected);
         }
-        // No connection: after one settled this run, the last version heard is this run's, and the rows are the host's as of then; before any has, they are last
-        // run's, which a host that has been changed since (another device's private reading turned on) may no longer hold.
+        // No connection: after one settled this run, the last version heard is this run's, and the rows are the server's as of then; before any has, they are last
+        // run's, which a server that has been changed since (another device's private reading turned on) may no longer hold.
         return (Volatile.Read(ref everSettled) == 0, Math.Max(0, Volatile.Read(ref hostProtocol)));
     }
 
     /// <summary>
-    /// <see cref="HostVersionNow"/> with the last version heard read from the replica's file when none has been this run (<c>HostProtocolAsync</c> reads it too).
-    /// What a choice shared with the other devices (SharedPrivateReading) decides from: it must know whether the host keeps it and whether the rows are current.
+    /// <see cref="ServerVersionNow"/> with the last version heard read from the replica's file when none has been this run (<c>ServerProtocolAsync</c> reads it too).
+    /// What a choice shared with the other devices (SharedPrivateReading) decides from: it must know whether the server keeps it and whether the rows are current.
     /// </summary>
-    internal async ValueTask<(bool Settling, int Version)> HostViewAsync(CancellationToken cancellationToken = default)
+    internal async ValueTask<(bool Settling, int Version)> ServerViewAsync(CancellationToken cancellationToken = default)
     {
-        await KnownHostProtocolAsync(cancellationToken).ConfigureAwait(false);
-        return HostVersionNow();
+        await KnownServerProtocolAsync(cancellationToken).ConfigureAwait(false);
+        return ServerVersionNow();
     }
 
     /// <summary>
-    /// Raised, off the caller's thread, when what <see cref="HostVersionNow"/> says may have changed: a connection began (settling again) or settled. A
+    /// Raised, off the caller's thread, when what <see cref="ServerVersionNow"/> says may have changed: a connection began (settling again) or settled. A
     /// listener recomputes from it; it carries nothing.
     /// </summary>
-    internal event EventHandler? HostKnowledgeChanged;
+    internal event EventHandler? ServerKnowledgeChanged;
 
     /// <summary>The rows a watcher is told of the moment the replica takes them, before its transaction commits and before any await: a boolean row's value, none for a row that is gone.</summary>
     internal sealed record RowWatch(HashSet<string> Keys, Action<string, bool?, long, string?> Told);
 
-    /// <summary>Who is told when a row of its keys is taken from the host (or goes with a snapshot). One watcher: the private reading choice (SharedPrivateReading).</summary>
+    /// <summary>Who is told when a row of its keys is taken from the server (or goes with a snapshot). One watcher: the private reading choice (SharedPrivateReading).</summary>
     internal volatile RowWatch? Watched;
 
     // A boolean row's value as the private reading choice reads it: no row, a row that is not a boolean and one that cannot be read are all private.
@@ -256,8 +256,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     /// <summary>
-    /// Of these watched keys, those a write of this device's is (or was, until the host's row is read back) pending for, whose newest rev passed over said private or was a delete,
-    /// with that rev. The row the replica holds for such a key is this device's own words at an older rev; what the host said is this, and survives a restart.
+    /// Of these watched keys, those a write of this device's is (or was, until the server's row is read back) pending for, whose newest rev passed over said private or was a delete,
+    /// with that rev. The row the replica holds for such a key is this device's own words at an older rev; what the server said is this, and survives a restart.
     /// </summary>
     internal async Task<IReadOnlyDictionary<string, long>> PassedOverPrivateAsync(IReadOnlyCollection<string> keys, CancellationToken cancellationToken = default)
     {
@@ -288,11 +288,11 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     private void KnowledgeChanged()
     {
-        try { HostKnowledgeChanged?.Invoke(this, EventArgs.Empty); } catch (Exception) { /* a listener that fails must not stop the replica */ }
+        try { ServerKnowledgeChanged?.Invoke(this, EventArgs.Empty); } catch (Exception) { /* a listener that fails must not stop the replica */ }
     }
 
     /// <summary>
-    /// A followed row this device could not get to the host, raised off the caller's thread: its write lost <see cref="ReapplyLimit"/> times more and waits
+    /// A followed row this device could not get to the server, raised off the caller's thread: its write lost <see cref="ReapplyLimit"/> times more and waits
     /// (<see cref="SharedRowTold.Held"/>), or another device's row replaced one this device held before sharing (<see cref="SharedRowTold.Replaced"/>).
     /// </summary>
     public event EventHandler<SharedRowTold>? Told;
@@ -302,17 +302,17 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     public TimeSpan ParkLongest { get; set; } = TimeSpan.FromMinutes(2);
 
     /// <summary>
-    /// A write of a last-writer-wins row that goes to the host only while the row is still at <paramref name="ifRev"/> there (0: while there is none). The replica
-    /// holds the value at once; if the host's row has moved on, the host's is taken instead and this is dropped.
+    /// A write of a last-writer-wins row that goes to the server only while the row is still at <paramref name="ifRev"/> there (0: while there is none). The replica
+    /// holds the value at once; if the server's row has moved on, the server's is taken instead and this is dropped.
     /// </summary>
     public Task WriteIfAsync(string key, byte[] value, long ifRev, string? epoch, CancellationToken cancellationToken = default) =>
         WriteAsync(key, value, keepPlace: false, null, cancellationToken, ifRev, epoch);
 
     /// <summary>
-    /// A write of a last-writer-wins row this device made and the host has not taken yet (the replica holds no rev for it), made from what that write says. It goes
-    /// only while the host's row is as that write leaves it: when a write of the row is on its way (sent, no answer yet) it waits for the answer and is made against
+    /// A write of a last-writer-wins row this device made and the server has not taken yet (the replica holds no rev for it), made from what that write says. It goes
+    /// only while the server's row is as that write leaves it: when a write of the row is on its way (sent, no answer yet) it waits for the answer and is made against
     /// the rev the answer gives; when none is (the write has not gone, and is folded into this one), against no row, which is create only. Never unconditionally,
-    /// or it would undo what another device wrote between the two. One that finds the host's row moved on is dropped and the host's row taken.
+    /// or it would undo what another device wrote between the two. One that finds the server's row moved on is dropped and the server's row taken.
     /// </summary>
     public Task WriteAfterPendingAsync(string key, byte[] value, CancellationToken cancellationToken = default) =>
         WriteAsync(key, value, keepPlace: false, null, cancellationToken, AfterPending);
@@ -321,7 +321,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     private const long AfterPending = -1;
 
     /// <summary>
-    /// The value and the rev the replica holds for a key (0 for no rev from the host), with the epoch the rev belongs to, read together under the gate: a snapshot of another
+    /// The value and the rev the replica holds for a key (0 for no rev from the server), with the epoch the rev belongs to, read together under the gate: a snapshot of another
     /// space moves the replica's epoch on, and a rev kept from before it must not be taken for one of the new space.
     /// </summary>
     public async Task<(byte[]? Value, long Rev, string? Epoch)> ReadWithRevAsync(string key, CancellationToken cancellationToken = default)
@@ -415,7 +415,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             {
                 using var connection = Open();
                 using var transaction = connection.BeginTransaction();
-                // A row the host has a rev for keeps it, as a delete, so an older value of it arriving later is known to be older.
+                // A row the server has a rev for keeps it, as a delete, so an older value of it arriving later is known to be older.
                 if (shared) Execute(connection, transaction, "UPDATE rows SET payload = NULL WHERE key = $key AND rev > 0", ("$key", key));
                 Execute(connection, transaction, shared ? "DELETE FROM rows WHERE key = $key AND rev = 0" : "DELETE FROM rows WHERE key = $key", ("$key", key));
                 if (shared) Queue(connection, transaction, key, null, category!, null);
@@ -475,8 +475,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     /// <summary>
-    /// <see cref="ReadPrefixAsync"/> with the rev each row has from the host (0 for a row written here and not yet taken back): the scheduled sends, which a
-    /// command is made against the rev of (<see cref="ScheduledHostLink"/>).
+    /// <see cref="ReadPrefixAsync"/> with the rev each row has from the server (0 for a row written here and not yet taken back): the scheduled sends, which a
+    /// command is made against the rev of (<see cref="ScheduledServerLink"/>).
     /// </summary>
     internal async Task<IReadOnlyList<(string Key, byte[] Value, long Rev)>> ReadPrefixWithRevAsync(string prefix, CancellationToken cancellationToken = default)
     {
@@ -503,21 +503,21 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     /// <summary>
-    /// The protocol version of this replica's host: the connection's while there is one (the first version when it turned out to keep no shared state),
+    /// The protocol version of this replica's server: the connection's while there is one (the first version when it turned out to keep no shared state),
     /// otherwise the last one heard, which the replica keeps so that a launch draws from the same place the last connection did before it connects again;
-    /// 0 before any host was heard. The stores that were files go by it (<see cref="ReplicaRows"/>): below <see cref="ProtocolVersion.SharedPreferences"/>
+    /// 0 before any server was heard. The stores that were files go by it (<see cref="ReplicaRows"/>): below <see cref="ProtocolVersion.SharedPreferences"/>
     /// they stay on their files, exactly as before.
     /// </summary>
-    internal async ValueTask<int> HostProtocolAsync(CancellationToken cancellationToken = default)
+    internal async ValueTask<int> ServerProtocolAsync(CancellationToken cancellationToken = default)
     {
         // The connection's version counts only once it is settled: its first sync applied (or it keeps no shared state). Before that the replica may not
         // hold the rows yet, and the last version heard is what the rows here belong to.
         if (client.IsConnected && client.Version is { } version && Volatile.Read(ref settled) == Volatile.Read(ref connections))
             return hostLacks ? ProtocolVersion.Minimum : version;
-        return await KnownHostProtocolAsync(cancellationToken).ConfigureAwait(false);
+        return await KnownServerProtocolAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<int> KnownHostProtocolAsync(CancellationToken cancellationToken)
+    private async ValueTask<int> KnownServerProtocolAsync(CancellationToken cancellationToken)
     {
         var known = Volatile.Read(ref hostProtocol);
         if (known >= 0) return known;
@@ -527,21 +527,21 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     /// <summary>
-    /// What <see cref="HostProtocolAsync"/> says changed (a connection settled on another version than the last one heard): raised off the caller's thread,
+    /// What <see cref="ServerProtocolAsync"/> says changed (a connection settled on another version than the last one heard): raised off the caller's thread,
     /// so what reads by it (the snooze reminders, ReplicaChatSnoozes) reads again.
     /// </summary>
-    public event EventHandler? HostProtocolChanged;
+    public event EventHandler? ServerProtocolChanged;
 
-    // The worker, once connection `number` is settled: its version is what HostProtocolAsync answers from now, and what the replica keeps for the next launch.
+    // The worker, once connection `number` is settled: its version is what ServerProtocolAsync answers from now, and what the replica keeps for the next launch.
     private async Task SettleAsync(int number, int version, CancellationToken token)
     {
-        var before = await KnownHostProtocolAsync(token).ConfigureAwait(false);
+        var before = await KnownServerProtocolAsync(token).ConfigureAwait(false);
         await KeepHostProtocolAsync(version, token).ConfigureAwait(false);
         Volatile.Write(ref settled, number);
         Volatile.Write(ref everSettled, 1);
         KnowledgeChanged();
         if (before != version)
-            try { HostProtocolChanged?.Invoke(this, EventArgs.Empty); } catch (Exception) { /* a listener that fails must not stop the replica */ }
+            try { ServerProtocolChanged?.Invoke(this, EventArgs.Empty); } catch (Exception) { /* a listener that fails must not stop the replica */ }
     }
 
     private async Task KeepHostProtocolAsync(int version, CancellationToken token)
@@ -618,13 +618,13 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     private Task<string?> ProfileAsync(CancellationToken cancellationToken) => NotificationIdentity.ProfileAsync(tokens, cancellationToken);
 
-    // The category a write of this key goes to the host under, or null when it stays here. Only a category that holds a shared row costs the profile; a value
-    // that is not JSON, or too large for the host, stays on this PC (it would only ever be refused), and says so once per write.
+    // The category a write of this key goes to the server under, or null when it stays here. Only a category that holds a shared row costs the profile; a value
+    // that is not JSON, or too large for the server, stays on this PC (it would only ever be refused), and says so once per write.
     private async Task<SharedCategory?> SharedAsync(string key, byte[]? value, CancellationToken cancellationToken)
     {
         if (!SharedCategories.MayBeShared(key)) return null;
         if (SharedCategories.Match(key, await ProfileAsync(cancellationToken).ConfigureAwait(false)) is not { } category) return null;
-        // The host's own rows (the scheduled sends) are never sent: a client changes them only through the host's typed methods, and the host refuses a put anyway.
+        // The server's own rows (the scheduled sends) are never sent: a client changes them only through the server's typed methods, and the server refuses a put anyway.
         if (category.HostOwned) return null;
         if (value is null) return category;
         if (value.Length > SharedLimits.ValueBytes)
@@ -642,9 +642,9 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     // In the write's own transaction: the batch and its operation id are on disk with the value, or neither is. The writes of the key not sent yet are folded
-    // into this one here, so the queue holds at most one unsent write a key however long it waits (a pinned order held for a host of an older version is
+    // into this one here, so the queue holds at most one unsent write a key however long it waits (a pinned order held for a server of an older version is
     // written at every pin); one already sent stays, to be sent again as it was. A compare-and-set row's write is made from what the replica holds, whose rev
-    // is the host's row this device last took (its own writes keep it): that is its condition, and 0 (create only) where the host has given none.
+    // is the server's row this device last took (its own writes keep it): that is its condition, and 0 (create only) where the server has given none.
     // A last-writer-wins row can be written with a condition of the caller's (<paramref name="ifRevOverride"/>): the private reading choice's less private answer
     // is made against the rev it was chosen against, so a stale one never lands over a newer write of another device's (SharedPrivateReading).
     private static void Queue(SqliteConnection connection, SqliteTransaction transaction, string key, byte[]? sealedValue, SharedCategory category, long? tag,
@@ -659,7 +659,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         if (ifRev is >= 0 and var knew) Execute(connection, transaction, "UPDATE overtaken SET priv = NULL WHERE key = $key AND rev <= $rev", ("$key", key), ("$rev", knew));
         Execute(connection, transaction, "DELETE FROM pending WHERE key = $key AND sent = 0", ("$key", key));
         // The space the condition's rev was read in. A caller that read the rev earlier names that epoch, and it is kept as it is even when the replica has moved to another
-        // space since (a snapshot between the read and this write): the host then answers the write as lost, where re-tagging it with the replica's epoch would let a rev of the old
+        // space since (a snapshot between the read and this write): the server then answers the write as lost, where re-tagging it with the replica's epoch would let a rev of the old
         // space match a different row of the new one. A compare-and-set row's rev is the replica's own at this moment, so is its epoch; a write that waits for another's rev gets
         // both when that one is answered (SettleAsync).
         var epoch = ifRev is >= 0 ? ifEpochOverride ?? Scalar(connection, transaction, "SELECT epoch FROM meta WHERE id = 1") as string : null;
@@ -672,7 +672,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     private void OnConnected(object? sender, EventArgs e)
     {
-        // A new connection: its version counts only once settled (HostProtocolAsync).
+        // A new connection: its version counts only once settled (ServerProtocolAsync).
         // The count first: a reader that sees the new connection number before connectionSeen has caught up sees an unsettled connection either way.
         Interlocked.Increment(ref connections);
         Volatile.Write(ref connectionSeen, client.ConnectionNumber);
@@ -706,7 +706,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     private bool Available => !hostLacks && client.IsConnected && client.Version >= ProtocolVersion.SharedState;
 
-    // One worker, so the replica's changes from the host are applied in the order they came and no two syncs or flushes overlap.
+    // One worker, so the replica's changes from the server are applied in the order they came and no two syncs or flushes overlap.
     private async Task RunAsync()
     {
         var token = stop.Token;
@@ -735,7 +735,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         if (!client.IsConnected) return;
         if (client.Version is { } version && version < ProtocolVersion.SharedState)
         {
-            // Everything stays in the replica, as it stayed on this PC before; what is pending waits for a host that keeps it.
+            // Everything stays in the replica, as it stayed on this PC before; what is pending waits for a server that keeps it.
             hostLacks = true;
             log?.Invoke($"shared state unavailable host_protocol={version}");
             await SettleAsync(number, version, token).ConfigureAwait(false);
@@ -746,7 +746,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         Interlocked.Exchange(ref flushWanted, 1);
     }
 
-    // ---- Applying what the host says ----
+    // ---- Applying what the server says ----
 
     private async Task ArrivedAsync(Arrival arrival, CancellationToken token)
     {
@@ -787,7 +787,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         var reset = false;
         var number = Volatile.Read(ref connections);
         // The version this connection speaks: a snapshot replaces only the rows of the categories it knows, and keeps the rest (a newer category's
-        // rows, held here for a host that will take them) as they are.
+        // rows, held here for a server that will take them) as they are.
         var version = client.Version ?? ProtocolVersion.Current;
         try
         {
@@ -815,7 +815,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 // An event showed a commit this sync had not reached when it read its last page.
                 if (Volatile.Read(ref seen) <= (await MetaAsync(token).ConfigureAwait(false)).Rev) break;
             }
-            // Rows whose own write was overtaken or refused, left from a connection that ended before the host's row was read.
+            // Rows whose own write was overtaken or refused, left from a connection that ended before the server's row was read.
             await ResolveAsync(token).ConfigureAwait(false);
             await OfferLocalAsync(profile, version, token).ConfigureAwait(false);
         }
@@ -859,7 +859,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 read[row.Key] = row;
                 progressed |= wanted.Remove(row.Key);
             }
-            // A key the host no longer holds at all: nothing to read.
+            // A key the server no longer holds at all: nothing to read.
             foreach (var key in asked.Where(key => answer.Rows.All(row => row.Key != key))) progressed |= wanted.Remove(key);
             if (!progressed) throw new BackendException(BackendFailure.InvalidResponse, ProtocolClient.UnreadableSentence);
         }
@@ -891,15 +891,15 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         finally { gate.Release(); }
     }
 
-    // Rows from the host into the replica, with the new position when there is one, in one transaction. Only rows this client shares under `profile` are
+    // Rows from the server into the replica, with the new position when there is one, in one transaction. Only rows this client shares under `profile` are
     // taken. A snapshot first drops the shared rows held from before of the categories `version` knows (the snapshot's connection's), but for those a write
-    // here is still pending for: a newer category's rows were never the host's to give, so they are not its to drop.
+    // here is still pending for: a newer category's rows were never the server's to give, so they are not its to drop.
     // `arrived`: when what brought the rows came (the event, the sync page); now when not given (a put's answer, a row read back).
     private async Task ApplyAsync(IReadOnlyList<SharedRow> rows, Meta? position, bool reset, string? profile, CancellationToken token, int version = ProtocolVersion.Current,
         long? arrived = null)
     {
         rows = rows.Where(row => SharedCategories.Match(row.Key, profile) is not null).ToList();
-        // The private reading choice's rows under this profile, for which what the host said is kept while a write of this device's is pending.
+        // The private reading choice's rows under this profile, for which what the server said is kept while a write of this device's is pending.
         var privateKeys = profile is null ? [] : SharedCategories.PrivateReadingWords.Select(word => SharedCategories.PrivateReadingKey(profile, word)).ToHashSet(StringComparer.Ordinal);
         var plainValues = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var sealedValues = new Dictionary<string, byte[]>(StringComparer.Ordinal);
@@ -910,7 +910,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 sealedValues[row.Key] = await protector.ProtectAsync(plainValues[row.Key]).ConfigureAwait(false);
             }
         List<string> changed;
-        // The compare-and-set rows a follower holds whose host row the replica took here, with that row (null: none), handed to the follower once committed.
+        // The compare-and-set rows a follower holds whose server row the replica took here, with that row (null: none), handed to the follower once committed.
         var followed = new Dictionary<string, byte[]?>(StringComparer.Ordinal);
         var unparked = new List<string>();
         // Compare-and-set rows held before they were shared, which a snapshot keeps, and how many of them another device's row replaced here.
@@ -928,16 +928,16 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 var epochNow = position?.Epoch ?? Scalar(connection, transaction, "SELECT epoch FROM meta WHERE id = 1") as string;
                 if (reset)
                 {
-                    // Only the rows this client shares: a per-device row is never the host's to replace.
+                    // Only the rows this client shares: a per-device row is never the server's to replace.
                     var prefixes = SharedCategories.All.Select(category => category.Category + ":").Distinct().ToArray();
                     foreach (var (key, live) in Rows(connection, transaction, "SELECT key, payload IS NOT NULL FROM rows WHERE key NOT IN (SELECT key FROM pending)"))
                     {
                         if (!prefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal)) || SharedCategories.Match(key, profile, version) is not { } category) continue;
-                        // A host-owned row (the scheduled and unsettled sends) is dropped only if it came from a host (it has a rev): the in-process app's whole-list rows
+                        // A host-owned row (the scheduled and unsettled sends) is dropped only if it came from a server (it has a rev): the in-process app's whole-list rows
                         // share those prefixes under the key of whichever profile wrote them, which no category can tell by its key, and a snapshot is not theirs to drop.
                         if (category.HostOwned && Convert.ToInt64(Scalar(connection, transaction, "SELECT rev FROM rows WHERE key = $key", ("$key", key))) == 0) continue;
-                        // A compare-and-set row this replica held before it was shared (no rev from the host, nothing queued) is kept, not dropped: the sync
-                        // offers it to the host when it ends (OfferLocalAsync).
+                        // A compare-and-set row this replica held before it was shared (no rev from the server, nothing queued) is kept, not dropped: the sync
+                        // offers it to the server when it ends (OfferLocalAsync).
                         if (live && category.Policy == SharedConflictPolicy.CompareAndSet
                             && Convert.ToInt64(Scalar(connection, transaction, "SELECT rev FROM rows WHERE key = $key", ("$key", key))) == 0)
                         {
@@ -951,8 +951,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                     }
                     // Revs and overtaken writes from before the snapshot mean nothing now. A key with a write still pending is noted as overtaken at the
                     // snapshot's own rev: the snapshot holds live rows only, so it says nothing of a key deleted meanwhile, and the pending write's answer may be
-                    // an earlier commit's (its answer was lost, and the host answers the repeat from its record). An answer older than the snapshot then has the
-                    // host's row read back (SettleAsync, ResolveAsync); a write committed after the snapshot stands. The snapshot's rows raise these as usual.
+                    // an earlier commit's (its answer was lost, and the server answers the repeat from its record). An answer older than the snapshot then has the
+                    // server's row read back (SettleAsync, ResolveAsync); a write committed after the snapshot stands. The snapshot's rows raise these as usual.
                     Execute(connection, transaction, "UPDATE rows SET rev = 0 WHERE rev > 0");
                     Execute(connection, transaction, "DELETE FROM overtaken");
                     Execute(connection, transaction, "INSERT INTO overtaken(key, rev) SELECT DISTINCT key, $rev FROM pending WHERE true ON CONFLICT(key) DO NOTHING",
@@ -960,8 +960,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 }
                 foreach (var row in rows)
                 {
-                    // A write made here is on its way and will come after this in the host's order: the replica keeps its words, and notes the newest rev
-                    // it passed over, which settles what the host's answer means (SettleAsync).
+                    // A write made here is on its way and will come after this in the server's order: the replica keeps its words, and notes the newest rev
+                    // it passed over, which settles what the server's answer means (SettleAsync).
                     if (Scalar(connection, transaction, "SELECT 1 FROM pending WHERE key = $key LIMIT 1", ("$key", row.Key)) is not null)
                     {
                         Execute(connection, transaction, "INSERT INTO overtaken(key, rev) VALUES($key, $rev) ON CONFLICT(key) DO UPDATE SET rev = MAX(rev, excluded.rev)",
@@ -980,7 +980,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                         {
                             var plain = row.Deleted ? null : plainValues[row.Key];
                             if (watchedRow) NoteWatched(pendingWatch!, row.Key, plain, row.Rev, epochNow);
-                            // And kept, with the rows: a connection that ends (or an app that restarts) before the write is answered must not lose what the host said, for the
+                            // And kept, with the rows: a connection that ends (or an app that restarts) before the write is answered must not lose what the server said, for the
                             // sync that follows starts after this rev and the replica's row is still this device's own words.
                             Execute(connection, transaction, "UPDATE overtaken SET priv = $priv WHERE key = $key AND rev = $rev",
                                 ("$priv", IsPrivateValue(plain) ? 1 : 0), ("$key", row.Key), ("$rev", row.Rev));
@@ -994,7 +994,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                     if (Watched is { } watching && watching.Keys.Contains(row.Key)) NoteWatched(watching, row.Key, row.Deleted ? null : plainValues[row.Key], row.Rev, epochNow);
                     var payload = row.Deleted ? null : sealedValues[row.Key];
                     var had = Scalar(connection, transaction, "SELECT 1 FROM rows WHERE key = $key AND payload IS NOT NULL", ("$key", row.Key)) is not null;
-                    // Another device's row over a compare-and-set row this device held before it was shared (no rev from the host, nothing queued; a
+                    // Another device's row over a compare-and-set row this device held before it was shared (no rev from the server, nothing queued; a
                     // snapshot's revs are all 0 by now, so it goes by the rows it kept): this device's words are kept, and said to be.
                     // (The read-here marks are merged by their follower instead, with nothing replaced and nothing said: ReadHereMarks.)
                     if (had && IsCompareAndSet(row.Key, profile) && !(profile is not null && row.Key == SharedCategories.ReadHereKey(profile)) && (reset ? localOnly.Contains(row.Key) : held == 0))
@@ -1035,8 +1035,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         if (changed.Count > 0) Raise(changed.Distinct(StringComparer.Ordinal).ToArray(), arrived ?? Stopwatch.GetTimestamp());
     }
 
-    // At the end of every sync: a compare-and-set row this replica holds that the host never gave it and nothing here is sending (no rev, nothing queued) was
-    // made before the row was shared (a client from before slice 5, or a host below 5 then). It is offered to the host, create only: kept there if the host
+    // At the end of every sync: a compare-and-set row this replica holds that the server never gave it and nothing here is sending (no rev, nothing queued) was
+    // made before the row was shared (a client from before slice 5, or a server below 5 then). It is offered to the server, create only: kept there if the server
     // has none, and if another device's is there first, that one wins and a copy of this one is kept (KeepReplacedAsync).
     private async Task OfferLocalAsync(string? profile, int version, CancellationToken token)
     {
@@ -1074,10 +1074,10 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     private static bool IsCompareAndSet(string key, string? profile) =>
         SharedCategories.Match(key, profile) is { Policy: SharedConflictPolicy.CompareAndSet };
 
-    // The replica holds the host's row of a followed key now (null: none): its follower is brought to it, here in the worker, which sends nothing meanwhile.
-    // A follower that holds the host's row as it is leaves its writes from before to be dropped, up to the tag it names, and the replica the host's row; one
-    // that wrote has folded them into its own. One that fails is treated as one that holds the host's row: what it had sent may be lost, but nothing made
-    // from an older row reaches the host over a newer one.
+    // The replica holds the server's row of a followed key now (null: none): its follower is brought to it, here in the worker, which sends nothing meanwhile.
+    // A follower that holds the server's row as it is leaves its writes from before to be dropped, up to the tag it names, and the replica the server's row; one
+    // that wrote has folded them into its own. One that fails is treated as one that holds the server's row: what it had sent may be lost, but nothing made
+    // from an older row reaches the server over a newer one.
     // Returns what the follower did (none when there is none). A follower that fails is abandoned
     // (ISharedRowFollower.AbandonAsync): it drops its kept changes, refuses new ones until it reads the row again, and has landed every write it made, which
     // are all dropped here.
@@ -1123,11 +1123,11 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     private void Raise(IReadOnlyList<string> keys, long arrived)
     {
         try { RemoteChanged?.Invoke(this, new SharedRowsChange(keys, arrived)); } catch (Exception) { /* a listener that fails must not stop the replica */ }
-        try { HostChanged?.Invoke(this, keys); } catch (Exception) { /* nor must a composer */ }
+        try { ServerChanged?.Invoke(this, keys); } catch (Exception) { /* nor must a composer */ }
     }
 
-    /// <summary>The same keys as <see cref="RemoteChanged"/>, for what holds rows in memory without a follower (<see cref="ISharedRows.HostChanged"/>: the composers' drafts).</summary>
-    public event EventHandler<IReadOnlyList<string>>? HostChanged;
+    /// <summary>The same keys as <see cref="RemoteChanged"/>, for what holds rows in memory without a follower (<see cref="ISharedRows.ServerChanged"/>: the composers' drafts).</summary>
+    public event EventHandler<IReadOnlyList<string>>? ServerChanged;
 
     // ---- Sending what is pending ----
 
@@ -1135,8 +1135,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     {
         while (!token.IsCancellationRequested && Available)
         {
-            // A write of a category newer than this connection's version waits for a host that keeps it: sent now, it would be refused, and a refused write
-            // gives way to the host's row (or to none), which would lose it.
+            // A write of a category newer than this connection's version waits for a server that keeps it: sent now, it would be refused, and a refused write
+            // gives way to the server's row (or to none), which would lose it.
             var profile = await ProfileAsync(token).ConfigureAwait(false);
             var version = client.Version ?? ProtocolVersion.Current;
             // A compare-and-set row that gave up waits for the next connection.
@@ -1146,7 +1146,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             JsonElement? value = next.Payload is null ? null : JsonSerializer.Deserialize<JsonElement>(await protector.UnprotectAsync(next.Payload).ConfigureAwait(false));
             var clock = Stopwatch.StartNew();
             StatePutResult result;
-            // The epoch the write's condition was read in, not the replica's now (a snapshot of a new space moves that on while the write waits): the host judges a rev of another space as lost.
+            // The epoch the write's condition was read in, not the replica's now (a snapshot of a new space moves that on while the write waits): the server judges a rev of another space as lost.
             try { result = await remote.PutAsync(new StatePutParams(next.ClientOpId, [new SharedWrite(next.Key, value, next.IfRev)], next.Epoch), cancellationToken: token).ConfigureAwait(false); }
             catch (NotSupportedException)
             {
@@ -1157,8 +1157,8 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                // The connection went, or the host could not answer or would not read the request: this and everything behind it wait, in order, for the next
-                // connection, and go again with the same operation id. Only a write the host answers refused is given up (SettleAsync).
+                // The connection went, or the server could not answer or would not read the request: this and everything behind it wait, in order, for the next
+                // connection, and go again with the same operation id. Only a write the server answers refused is given up (SettleAsync).
                 var reason = ex switch
                 {
                     BackendException { Failure: BackendFailure.Unavailable } => "unavailable",
@@ -1174,13 +1174,13 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         }
     }
 
-    // The batch is done with: off the pending table, and what the host made of it into the replica. When nothing more is pending for the key, a write the host
+    // The batch is done with: off the pending table, and what the server made of it into the replica. When nothing more is pending for the key, a write the server
     // refused, or one whose answer is older than a rev the replica passed over while it was pending (the put had been committed before and its answer lost,
-    // and another device wrote after it), leaves the key to be read back from the host (ResolveAsync).
+    // and another device wrote after it), leaves the key to be read back from the server (ResolveAsync).
     private async Task SettleAsync(Pending sent, SharedWriteResult? outcome, CancellationToken token)
     {
         if (outcome is { Status: SharedWriteStatus.Refused }) log?.Invoke("shared put refused n=1");
-        // A compare-and-set row something holds in memory lost to another device's write: made again from the host's row.
+        // A compare-and-set row something holds in memory lost to another device's write: made again from the server's row.
         if (outcome is { Status: SharedWriteStatus.Conflict } && sent.IfRev is not null && Followed(sent.Key, await ProfileAsync(token).ConfigureAwait(false)))
         {
             await LostAsync(sent, outcome.Current, token).ConfigureAwait(false);
@@ -1210,7 +1210,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 {
                     if (!more && overtaken > outcome.Rev)
                     {
-                        // The host's row is newer than this write: the replica's rev is this write's, so the row read back is taken.
+                        // The server's row is newer than this write: the replica's rev is this write's, so the row read back is taken.
                         Execute(connection, transaction, "UPDATE rows SET rev = $rev WHERE key = $key", ("$key", sent.Key), ("$rev", outcome.Rev));
                         resolve = true;
                     }
@@ -1218,14 +1218,14 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                     {
                         Execute(connection, transaction, "UPDATE rows SET rev = MAX(rev, $rev) WHERE key = $key", ("$key", sent.Key), ("$rev", outcome.Rev));
                         // A compare-and-set row's writes queued behind this one were made from it: their condition is the rev it made. A write with no condition (the private
-                        // choice made private, which must land whatever the host holds) stays without one.
-                        // The rev is the answering space's, which is the replica's epoch: the worker applies no snapshot between a put and settling it. (Were the host made anew in between, the
+                        // choice made private, which must land whatever the server holds) stays without one.
+                        // The rev is the answering space's, which is the replica's epoch: the worker applies no snapshot between a put and settling it. (Were the server made anew in between, the
                         // replica's older epoch makes the condition fail, never match.)
                         if (sent.IfRev is not null)
                             Execute(connection, transaction, "UPDATE pending SET if_rev = $rev, epoch = (SELECT epoch FROM meta WHERE id = 1) WHERE key = $key AND sent = 0 AND if_rev IS NOT NULL", ("$key", sent.Key), ("$rev", outcome.Rev));
                         else
                             Execute(connection, transaction, "UPDATE pending SET if_rev = $rev, epoch = (SELECT epoch FROM meta WHERE id = 1) WHERE key = $key AND sent = 0 AND if_rev = $after", ("$key", sent.Key), ("$rev", outcome.Rev), ("$after", AfterPending));
-                        // A delete the host made keeps its rev here, so the value it replaced cannot come back from an event that was late.
+                        // A delete the server made keeps its rev here, so the value it replaced cannot come back from an event that was late.
                         if (sent.Payload is null)
                             Execute(connection, transaction, "INSERT INTO rows(key, payload, rev, updated) VALUES($key, NULL, $rev, $now) ON CONFLICT(key) DO NOTHING",
                                 ("$key", sent.Key), ("$rev", outcome.Rev), ("$now", Now()));
@@ -1234,7 +1234,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 }
                 else if (outcome is null or { Status: SharedWriteStatus.Refused } or { Status: SharedWriteStatus.Conflict, Current: null })
                 {
-                    // The host does not keep what this replica holds for the key (or, for a conflict that names no row, has none: a condition from another space): unless a later
+                    // The server does not keep what this replica holds for the key (or, for a conflict that names no row, has none: a condition from another space): unless a later
                     // write is pending, its own row (or none) replaces it.
                     if (!more)
                     {
@@ -1245,7 +1245,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 else if (!more)
                 {
                     Execute(connection, transaction, "DELETE FROM overtaken WHERE key = $key", ("$key", sent.Key));
-                    // A condition from another space loses to a row that may carry the very rev number the replica holds (revs start again in a space made anew), so the host's
+                    // A condition from another space loses to a row that may carry the very rev number the replica holds (revs start again in a space made anew), so the server's
                     // row is taken whatever rev is held. Only then: within one space a held rev above the answer's is a newer row already taken, never to be put back.
                     if (outcome is { Status: SharedWriteStatus.Conflict } && sent.Epoch is { } asked
                         && !string.Equals(asked, Scalar(connection, transaction, "SELECT epoch FROM meta WHERE id = 1") as string, StringComparison.Ordinal))
@@ -1260,21 +1260,21 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         {
             losses.TryRemove(sent.Key, out _);
             parkings.TryRemove(sent.Key, out _);
-            // Before the host's newer row is read back (resolve), so the follower does not make again what the host already holds.
+            // Before the server's newer row is read back (resolve), so the follower does not make again what the server already holds.
             if (sent.Tag is { } tag && followers.TryGetValue(sent.Key, out var follower))
                 try { follower.Confirmed(tag); } catch (Exception) { /* a follower that fails must not stop the replica */ }
         }
-        // Last writer wins never conflicts; a conditional write that lost takes the host's row unless this PC has written again since.
+        // Last writer wins never conflicts; a conditional write that lost takes the server's row unless this PC has written again since.
         if (current is not null) await ApplyAsync([current], null, reset: false, await ProfileAsync(token).ConfigureAwait(false), token).ConfigureAwait(false);
         if (resolve) await ResolveAsync(token).ConfigureAwait(false);
     }
 
-    // A followed compare-and-set row's write lost (`conflict`): the replica takes the host's row, drops every write of the row made from the one before, and
+    // A followed compare-and-set row's write lost (`conflict`): the replica takes the server's row, drops every write of the row made from the one before, and
     // hands the row to the follower, which makes its changes again over it and writes them (CatchUpAsync). After more than ReapplyLimit losses in a row
     // this connection, the row keeps what this device holds and its write waits, unsent, for the next connection.
     private async Task LostAsync(Pending sent, SharedRow? current, CancellationToken token)
     {
-        // The host's row whole: one that came by its size is read.
+        // The server's row whole: one that came by its size is read.
         if (current is { SizeOnly: true })
             current = (await remote.GetAsync(new StateGetParams([sent.Key]), cancellationToken: token).ConfigureAwait(false)).Rows.FirstOrDefault(row => row.Key == sent.Key && !row.SizeOnly)
                 ?? throw new BackendException(BackendFailure.InvalidResponse, ProtocolClient.UnreadableSentence);
@@ -1293,7 +1293,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             {
                 using var connection = Open();
                 using var transaction = connection.BeginTransaction();
-                // This write and those queued behind it were all made from a row the host no longer holds.
+                // This write and those queued behind it were all made from a row the server no longer holds.
                 Execute(connection, transaction, "DELETE FROM pending WHERE key = $key", ("$key", sent.Key));
                 if (current is null) Execute(connection, transaction, "DELETE FROM rows WHERE key = $key", ("$key", sent.Key));
                 else
@@ -1308,18 +1308,18 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         log?.Invoke($"shared reapply n={losing}");
         var caught = await CatchUpAsync(sent.Key, plain, token).ConfigureAwait(false);
         // A create-only write the follower kept no changes for (its words were made before the row was shared, or by a run before this one) and wrote nothing
-        // over: another device's replaced it. One whose changes were left out says so itself; one whose changes the host already held lost nothing.
+        // over: another device's replaced it. One whose changes were left out says so itself; one whose changes the server already held lost nothing.
         if (sent.IfRev == 0 && caught is { Wrote: false, Through: 0 }) await KeepReplacedAsync(sent, token).ConfigureAwait(false);
         // What the follower holds now has another device's change in it.
         Raise([sent.Key], Stopwatch.GetTimestamp());
     }
 
-    // This device's words of a row another device's replaced, kept under `replaced:` and the row's key (a category no host keeps, so it stays on this device:
+    // This device's words of a row another device's replaced, kept under `replaced:` and the row's key (a category no server keeps, so it stays on this device:
     // the one copy, the latest, for whoever needs it back), and said to be.
     private async Task KeepReplacedAsync(Pending sent, CancellationToken token)
     {
         if (sent.Payload is null) return;
-        // The read-here marks merge by the later moment per conversation (ReadHereMarks folds what this device made before the row was shared over the host's),
+        // The read-here marks merge by the later moment per conversation (ReadHereMarks folds what this device made before the row was shared over the server's),
         // so nothing of this device's is replaced and nothing is said.
         if (await ProfileAsync(token).ConfigureAwait(false) is { } profile && sent.Key == SharedCategories.ReadHereKey(profile)) return;
         await gate.WaitAsync(token).ConfigureAwait(false);
@@ -1348,7 +1348,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         try { Told?.Invoke(this, what); } catch (Exception) { /* a listener that fails must not stop the replica */ }
     }
 
-    // A parked row goes again (a newer row of the host's arrived, or its wait is over): its write first, as it was, then once more made again.
+    // A parked row goes again (a newer row of the server's arrived, or its wait is over): its write first, as it was, then once more made again.
     private void Unpark(string key)
     {
         if (!parked.TryRemove(key, out _)) return;
@@ -1357,7 +1357,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     // The lost write goes back on the queue as it was (its condition, its tag, the words the replica holds) and is parked: held for a wait that doubles each
-    // time this connection, until a newer row of the host's arrives, or until the next connection, whichever is first. It then loses again unless the other
+    // time this connection, until a newer row of the server's arrives, or until the next connection, whichever is first. It then loses again unless the other
     // device has stopped, and is made again. Meanwhile this device keeps its own words, and says so.
     private async Task GiveUpAsync(Pending sent, long lostTo, CancellationToken token)
     {
@@ -1395,7 +1395,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         if (parked.TryGetValue(key, out var still) && still == lostTo) Unpark(key);
     }
 
-    // Every key left to be read back from the host (noted in `overtaken` with nothing pending for it): the host's row replaces the replica's, or, when the host
+    // Every key left to be read back from the server (noted in `overtaken` with nothing pending for it): the server's row replaces the replica's, or, when the server
     // holds none, the replica's goes. A key whose read fails stays noted for the next sync.
     private async Task ResolveAsync(CancellationToken token)
     {
@@ -1412,7 +1412,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         finally { gate.Release(); }
         if (keys.Count == 0) return;
         var profile = await ProfileAsync(token).ConfigureAwait(false);
-        // A key of a category newer than this connection stays noted for a host that knows it: this one would answer it missing (it gives a connection only
+        // A key of a category newer than this connection stays noted for a server that knows it: this one would answer it missing (it gives a connection only
         // the categories its version knows), and the replica's row would go.
         var version = client.Version ?? ProtocolVersion.Current;
         keys = [.. keys.Where(key => SharedCategories.SinceOf(key, profile) is not { } since || since <= version)];
@@ -1451,7 +1451,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 
     // The next batch to send. A write not sent yet takes with it every later write to the same key, folded into the newest (which keeps its own operation id),
     // and is marked sent before it goes, in one transaction: from then on it is sent again only as it is, with that id. A write already sent is never folded.
-    // Writes of keys the connection may not take yet (`sendable`) are passed over and stay as they are, in their order, for a host that takes them.
+    // Writes of keys the connection may not take yet (`sendable`) are passed over and stay as they are, in their order, for a server that takes them.
     private async Task<Pending?> NextPendingAsync(Func<string, bool> sendable, CancellationToken token)
     {
         await gate.WaitAsync(token).ConfigureAwait(false);
@@ -1514,7 +1514,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
         finally { gate.Release(); }
     }
 
-    /// <summary>Where the replica stands against its host: the space's epoch (null before the first sync) and the last commit it holds whole.</summary>
+    /// <summary>Where the replica stands against its server: the space's epoch (null before the first sync) and the last commit it holds whole.</summary>
     internal async Task<(string? Epoch, long Rev)> PositionAsync(CancellationToken token = default)
     {
         var meta = await MetaAsync(token).ConfigureAwait(false);
@@ -1560,10 +1560,10 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                 command.CommandText = "PRAGMA user_version";
                 if (Convert.ToInt32(command.ExecuteScalar()) == 0)
                 {
-                    // rows: what every read draws from (payload NULL: a delete the host has a rev for). pending: the writes on their way, each with its own
-                    // operation id, `sent` once it may have reached the host, and for a compare-and-set row its condition (`if_rev`) and its follower's tag.
-                    // overtaken: the newest rev passed over for a key while a write of it was pending, or a key to read back from the host. meta: the last
-                    // commit held whole, whether a snapshot is still being read, the profile then, and the version the host last spoke (HostProtocolAsync).
+                    // rows: what every read draws from (payload NULL: a delete the server has a rev for). pending: the writes on their way, each with its own
+                    // operation id, `sent` once it may have reached the server, and for a compare-and-set row its condition (`if_rev`) and its follower's tag.
+                    // overtaken: the newest rev passed over for a key while a write of it was pending, or a key to read back from the server. meta: the last
+                    // commit held whole, whether a snapshot is still being read, the profile then, and the version the server last spoke (ServerProtocolAsync).
                     command.CommandText =
                         "CREATE TABLE IF NOT EXISTS rows (key TEXT PRIMARY KEY, payload BLOB, rev INTEGER NOT NULL, updated INTEGER NOT NULL);" +
                         "CREATE TABLE IF NOT EXISTS pending (seq INTEGER PRIMARY KEY AUTOINCREMENT, client_op_id TEXT NOT NULL, key TEXT NOT NULL, payload BLOB, sent INTEGER NOT NULL, if_rev INTEGER, tag INTEGER, epoch TEXT);" +
@@ -1595,7 +1595,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
                     try
                     {
                         command.ExecuteNonQuery();
-                        // The writes an older build queued have no epoch, and a host takes none as a rev of its own space. Their revs were read before the last sync this replica
+                        // The writes an older build queued have no epoch, and a server takes none as a rev of its own space. Their revs were read before the last sync this replica
                         // made (the older build is what ran since), so the replica's epoch now is the one they belong to: labelled now, before a sync of a space made anew can move it on.
                         if (table == "pending" && column == "epoch")
                         {
@@ -1704,7 +1704,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
 }
 
 /// <summary>
-/// Keys the host changed in a replica (<see cref="ReplicatedStateStore.RemoteChanged"/>, <see cref="ReplicaRows.Changed"/>), and when what changed them arrived:
+/// Keys the server changed in a replica (<see cref="ReplicatedStateStore.RemoteChanged"/>, <see cref="ReplicaRows.Changed"/>), and when what changed them arrived:
 /// a <see cref="Stopwatch"/> timestamp of the <c>shared</c> event, the sync page or the put's answer.
 /// </summary>
 internal sealed record SharedRowsChange(IReadOnlyList<string> Keys, long Arrived);

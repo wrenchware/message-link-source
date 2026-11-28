@@ -1,8 +1,8 @@
 namespace MessageLink.Protocol;
 
-// Scheduled sends on the server (SWITCHBOARD.md stage 6 slice 11, docs/research/switchboard-stage6.md S1-S9; protocol version 9). A server's host holds the
+// Scheduled sends on the server (docs/research/switchboard-stage6.md S1-S9, protocol version 9). A server holds the
 // schedule and fires it itself, so a message goes at its time with every client closed, and goes once however many clients are looking at it. Its clients draw
-// the rows (`scheduled:<H(profile, id)>`, a SharedCategories category only the host writes) from their replica and change them only through these four
+// the rows (`scheduled:<H(profile, id)>`, a SharedCategories category only the server writes) from their replica and change them only through these four
 // journaled methods; none of them ever queues offline, so a client that is not connected is refused as a send is.
 //
 //   scheduled.create   Keeps a text for a time. The row's id is made from the client's operation id, so a lost answer is looked for in the replica, and the
@@ -11,13 +11,13 @@ namespace MessageLink.Protocol;
 //   scheduled.cancel   Removes a row that has not started sending.
 //   scheduled.sendNow  Asks a waiting or not-sent row to go now; it goes through the same checks as one whose time came.
 //
-// Each command on an existing row carries the rev of the row its client drew (`ifRev`); the host runs the commands on one row one at a time, so of two clients
+// Each command on an existing row carries the rev of the row its client drew (`ifRev`); the server runs the commands on one row one at a time, so of two clients
 // that act on the same row at once the second finds the row changed and is answered `conflict`, which is no failure (it redraws from its replica). A row that
 // has started sending answers `already_sending` to edit, cancel and sendNow: the message is on its way and nothing can take it back. All of this is in the
-// answer, not in an error, so the journal keeps it with the operation and a repeat answers the same. A real failure (not connected, the host cannot keep it)
+// answer, not in an error, so the journal keeps it with the operation and a repeat answers the same. A real failure (not connected, the server cannot keep it)
 // is an ordinary error.
 //
-// What a message does at the provider is not here: the host sends it through its OperationJournal under the fixed id `sched:<id>:<attempt>`, with the attempt
+// What a message does at the provider is not here: the server sends it through its OperationJournal under the fixed id `sched:<id>:<attempt>`, with the attempt
 // written in the row before the provider is asked, so no command, restart or second client can send the same attempt twice.
 public static partial class ProtocolMethods
 {
@@ -30,11 +30,11 @@ public static partial class ProtocolMethods
 
     private static Entry[] ScheduledEntries() =>
     [
-        new(ScheduledCreate, "IScheduledCommands.CreateAsync", typeof(ScheduledCreateParams), typeof(ScheduledAnswer), ProtocolVersion.HostScheduled, true),
-        new(ScheduledEdit, "IScheduledCommands.EditAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.HostScheduled, true),
-        new(ScheduledCancel, "IScheduledCommands.CancelAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.HostScheduled, true),
-        new(ScheduledSendNow, "IScheduledCommands.SendNowAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.HostScheduled, true),
-        new(OutboxDismiss, "IScheduledCommands.DismissAsync", typeof(OutboxDismissParams), typeof(Done), ProtocolVersion.HostScheduled, true),
+        new(ScheduledCreate, "IScheduledCommands.CreateAsync", typeof(ScheduledCreateParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
+        new(ScheduledEdit, "IScheduledCommands.EditAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
+        new(ScheduledCancel, "IScheduledCommands.CancelAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
+        new(ScheduledSendNow, "IScheduledCommands.SendNowAsync", typeof(ScheduledCommandParams), typeof(ScheduledAnswer), ProtocolVersion.ServerScheduled, true),
+        new(OutboxDismiss, "IScheduledCommands.DismissAsync", typeof(OutboxDismissParams), typeof(Done), ProtocolVersion.ServerScheduled, true),
     ];
 }
 
@@ -45,7 +45,7 @@ public static class ScheduledIds
     public static string Of(string clientOpId) => Prefix + clientOpId;
 }
 
-/// <summary>The words an answer of <see cref="ScheduledAnswer.Status"/> carries; plain strings so a word a newer host adds is simply not one this build knows.</summary>
+/// <summary>The words an answer of <see cref="ScheduledAnswer.Status"/> carries; plain strings so a word a newer server adds is simply not one this build knows.</summary>
 public static class ScheduledStatuses
 {
     /// <summary>The command was carried out.</summary>
@@ -54,7 +54,7 @@ public static class ScheduledStatuses
     public const string Conflict = "conflict";
     /// <summary>The row has started sending and cannot be edited, cancelled or sent again.</summary>
     public const string AlreadySending = "already_sending";
-    /// <summary>The host will not keep or send it, for the sentence in <see cref="ScheduledAnswer.Message"/> (authored to be shown, never a provider's words).</summary>
+    /// <summary>The server will not keep or send it, for the sentence in <see cref="ScheduledAnswer.Message"/> (authored to be shown, never a provider's words).</summary>
     public const string Refused = "refused";
     /// <summary>The id of this create belonged to a message that has since gone from the server (cancelled, taken back, sent): nothing was made, and the same operation id will never make it.</summary>
     public const string Retired = "retired";
@@ -62,19 +62,19 @@ public static class ScheduledStatuses
 
 /// <summary>
 /// Keeps <paramref name="Text"/> for <paramref name="Due"/> in the conversation <paramref name="ChatId"/>, answering the quoted message's id and preview when it
-/// is a reply. The host checks the time, the text and the limit as the composer's own schedule does.
+/// is a reply. The server checks the time, the text and the limit as the composer's own schedule does.
 /// </summary>
 public sealed record ScheduledCreateParams(string ClientOpId, string ChatId, string Text, DateTimeOffset Due, string? ReplyToId = null, string? ReplyPreview = null)
     : MutationParams(ClientOpId);
 
 /// <summary>
 /// Edit, cancel or send now for the row <paramref name="Id"/>, which the client drew at <paramref name="IfRev"/>. An edit or cancel with <paramref name="IfRev"/> 0 is for a row the client
-/// never saw (it holds a stand-in for a create whose outcome it could not tell): the host takes the message away if it made it, and otherwise closes the id for good, so the create can
+/// never saw (it holds a stand-in for a create whose outcome it could not tell): the server takes the message away if it made it, and otherwise closes the id for good, so the create can
 /// never make it. It never makes a message.
 /// </summary>
 public sealed record ScheduledCommandParams(string ClientOpId, string Id, long IfRev) : MutationParams(ClientOpId);
 
-/// <summary>Dismisses the unsettled send the operation <paramref name="OperationId"/> (the host's name for the attempt, <c>sched:&lt;id&gt;:&lt;n&gt;</c>) left.</summary>
+/// <summary>Dismisses the unsettled send the operation <paramref name="OperationId"/> (the server's name for the attempt, <c>sched:&lt;id&gt;:&lt;n&gt;</c>) left.</summary>
 public sealed record OutboxDismissParams(string ClientOpId, string OperationId) : MutationParams(ClientOpId);
 
 /// <summary>What <c>scheduled.edit</c> hands back: the row's words, for the composer.</summary>

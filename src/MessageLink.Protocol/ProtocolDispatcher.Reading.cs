@@ -15,10 +15,10 @@ public sealed partial class ProtocolDispatcher
     /// <summary>The most rows one side of a <see cref="ProtocolMethods.HistoryWindow"/> may ask for (the app asks for a few dozen).</summary>
     public const int MaxWindowRows = 1000;
 
-    /// <summary>The longest scope <see cref="ProtocolMethods.HostRestartHelper"/> names (the longest real one is a Voice account's, about 60).</summary>
+    /// <summary>The longest scope <see cref="ProtocolMethods.ServerRestartHelper"/> names (the longest real one is a Voice account's, about 60).</summary>
     public const int MaxRestartScope = 128;
 
-    /// <summary>The longest token a <see cref="ProtocolMethods.HostRestartHelper"/> gives back (the host's are two numbers and a dot).</summary>
+    /// <summary>The longest token a <see cref="ProtocolMethods.ServerRestartHelper"/> gives back (the server's are two numbers and a dot).</summary>
     public const int MaxRestartToken = 64;
 
     /// <summary>The most a <see cref="ProtocolMethods.HistoryWindowRefresh"/> waits for the fresher rows before it answers none.</summary>
@@ -33,8 +33,8 @@ public sealed partial class ProtocolDispatcher
     private static Dictionary<string, Route> AddReadingRoutes(Dictionary<string, Route> routes)
     {
         // The read marker, and whether the client's gate let it through. A port that cannot take the admission is called plain, which is
-        // unadmitted: a host that wants a private-reading conversation's read to reach its service on a client's say-so wraps its router
-        // in PrivateReadingHostReadState.
+        // unadmitted: a server that wants a private-reading conversation's read to reach its service on a client's say-so wraps its router
+        // in PrivateReadingServerReadState.
         routes[ProtocolMethods.ChatsMarkRead] = Of<IReadStateWriter, MarkReadParams, Done>(s => s.ReadState, async (port, p, ct) =>
         {
             if (port is IAdmittedReadStateWriter admitting) await admitting.MarkReadAsync(p.ChatId, p.MessageId, p.Admitted, p.Explicit, ct).ConfigureAwait(false);
@@ -59,9 +59,9 @@ public sealed partial class ProtocolDispatcher
             await port.LoadLinkPreviewsAsync(p.ChatId, p.MessageIds, ct).ConfigureAwait(false);
             return new Done();
         });
-        // Not journaled (see HelperRestartParams); every refusal and failure is the answer's own outcome and code word, so the host's log line
+        // Not journaled (see HelperRestartParams); every refusal and failure is the answer's own outcome and code word, so the server's log line
         // (HelperRestarts) and the window's sentence are the same whoever asked. The flag that says the caller is signing in must be stated.
-        routes[ProtocolMethods.HostRestartHelper] = new(typeof(HelperRestartParams), typeof(HelperRestartResult), async (services, _, request, _) =>
+        routes[ProtocolMethods.ServerRestartHelper] = new(typeof(HelperRestartParams), typeof(HelperRestartResult), async (services, _, request, _) =>
         {
             var parameters = ReadParams<HelperRestartParams>(request);
             if (!ParamsShape.HasRequiredValues(typeof(HelperRestartParams), request.Params) || parameters.Scope.Length is 0 or > MaxRestartScope || parameters.Token?.Length > MaxRestartToken) throw Invalid();

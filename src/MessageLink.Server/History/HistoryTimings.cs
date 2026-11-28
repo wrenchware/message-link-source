@@ -28,7 +28,7 @@ internal sealed class HistoryTimings
     /// on every copy it keeps: after a restart (every conversation suspect) one catch-up's 1,700 syncs queued 500 reads of the services (2026-10-30).
     /// </summary>
     public int SyncRefreshesPerMinute { get; set; } = 6;
-    /// <summary>When a change made through this host is read back, in case its service sends no event for it.</summary>
+    /// <summary>When a change made through this server is read back, in case its service sends no event for it.</summary>
     public IReadOnlyList<TimeSpan> ConfirmAfter { get; set; } = [TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(6)];
     /// <summary>A held message this young is not taken as gone for missing from a page: the service's page may not have it yet.</summary>
     public TimeSpan AbsenceGrace { get; set; } = TimeSpan.FromSeconds(5);

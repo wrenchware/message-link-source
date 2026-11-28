@@ -24,12 +24,12 @@ internal sealed partial class ServerPage
     ];
 
     // The end of the log, whole lines only.
-    private async Task<HostLogChunk?> LogEndAsync(CancellationToken cancellationToken)
+    private async Task<ServerLogChunk?> LogEndAsync(CancellationToken cancellationToken)
     {
         if (logs is null) return null;
-        var head = await logs.ReadAsync(HostLogNames.Server, long.MaxValue, cancellationToken).ConfigureAwait(false);
+        var head = await logs.ReadAsync(ServerLogNames.Server, long.MaxValue, cancellationToken).ConfigureAwait(false);
         if (!head.Exists) return null;
-        var chunk = await logs.ReadAsync(HostLogNames.Server, Math.Max(0, head.Length - LogTail), cancellationToken).ConfigureAwait(false);
+        var chunk = await logs.ReadAsync(ServerLogNames.Server, Math.Max(0, head.Length - LogTail), cancellationToken).ConfigureAwait(false);
         if (!chunk.Exists) return null;
         // From the end of the log, whole lines only.
         return chunk.Length > LogTail && chunk.Text.IndexOf('\n') is var first and >= 0 ? chunk with { Text = chunk.Text[(first + 1)..] } : chunk;
@@ -48,11 +48,11 @@ internal sealed partial class ServerPage
     {
         var cancellationToken = context.RequestAborted;
         var query = context.Request.Query;
-        HostLogChunk? chunk = null;
+        ServerLogChunk? chunk = null;
         var reset = true;
         if (logs is not null && long.TryParse(query["from"].ToString(), out var from) && from >= 0)
         {
-            var read = await logs.ReadAsync(HostLogNames.Server, from, cancellationToken).ConfigureAwait(false);
+            var read = await logs.ReadAsync(ServerLogNames.Server, from, cancellationToken).ConfigureAwait(false);
             if (read.Exists && read.Length >= from && read.Head == query["head"].ToString())
             {
                 chunk = read;

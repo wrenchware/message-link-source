@@ -2,19 +2,19 @@ using MessageLink.Core.Messaging;
 
 namespace MessageLink.Protocol;
 
-// What the incoming-photo and recent-photo services ask of the host (SWITCHBOARD.md 3.0b). Neither is journaled: both are reads from the
+// What the incoming-photo and recent-photo services ask of the server. Neither is journaled: both are reads from the
 // provider's point of view (a download into the host's cache; a request for a link's card, which the provider answers with the message's own
 // change), a repeat finds the cache or the card already there, and an interrupted call is an ordinary failure the services already treat as
 // "the conversation asks again when it is drawn".
 //
 //   media.prepare. An absent limit is a picture (IMediaPreparer.PrepareImageAsync); a present one is a GIF clip of at most that many bytes
-//   (PrepareClipAsync), and a host holds it to PreparedClipCeiling whatever it is asked. Nothing the host downloads comes back: a client that
+//   (PrepareClipAsync), and a server holds it to PreparedClipCeiling whatever it is asked. Nothing the server downloads comes back: a client that
 //   will draw a photo reads it with media.read, which fills the same cache.
 //
 //   media.requestCard. The client says what only it knows (whether link previews are on, and how its list shows the conversation); the host
 //   applies its own rules about whose links may be fetched on a person's behalf (GoogleIncomingCards).
 //
-//   The `caughtUp` kind of the event feed (EventKinds.CaughtUp, CaughtUpNotice) is the third part: it is in the host's sequence like any
+//   The `caughtUp` kind of the event feed (EventKinds.CaughtUp, CaughtUpNotice) is the third part: it is in the server's sequence like any
 //   event, so a client that resumes is given the ones it missed, and one that does not know the kind ignores it.
 public static partial class ProtocolMethods
 {

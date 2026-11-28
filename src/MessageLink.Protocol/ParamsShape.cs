@@ -6,7 +6,7 @@ namespace MessageLink.Protocol;
 /// <summary>
 /// Whether a deserialized params record has every member its declaration says is never null. System.Text.Json leaves a
 /// missing non-nullable string null instead of refusing it, and a backend handed that would fail somewhere deep with an
-/// internal error; the host answers <c>invalid_request</c> at the door instead. Struct members cannot be told apart from
+/// internal error; the server answers <c>invalid_request</c> at the door instead. Struct members cannot be told apart from
 /// their defaults and are not checked.
 /// </summary>
 internal static class ParamsShape

@@ -14,7 +14,7 @@ internal sealed record MirrorDifference(int Missing, int Extra, int Changed)
 }
 
 /// <summary>
-/// The mirror check (SWITCHBOARD.md stage 9, A2): now and then the most recently active conversations of each service held whole are read once, as any
+/// The mirror check: now and then the most recently active conversations of each service held whole are read once, as any
 /// background read, and what each read found against the copy is counted into that service's report. Counts only, never what differed.
 /// </summary>
 internal sealed class HistoryMirror(HistoryCopy copy, HistoryTimings timings, Action<string> log)

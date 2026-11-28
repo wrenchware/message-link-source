@@ -9,7 +9,7 @@ import "go.mau.fi/whatsmeow/store/sqlstore/upgrades"
 //
 // 2026-10-12: the server updates itself nightly from main while this PC updates only when released, so a move back can
 // bring home a device database a newer helper has upgraded. The app asks hello for this number and refuses such a
-// store before anything is changed (SWITCHBOARD.md slice 13). It is read from the library, never kept by hand, so it
+// store before anything is changed. It is read from the library, never kept by hand, so it
 // cannot drift from what this build actually opens.
 func deviceSchema() int {
 	return len(upgrades.Table)

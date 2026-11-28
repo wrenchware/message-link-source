@@ -70,7 +70,7 @@ internal static class LocalStateBackup
         ["preferences"] = ["pinned-order", "emoji-recents", "emoji-tone", "quick-replies"],
         ["merges"] = ["groups"],
         ["labels"] = ["book"],
-        // Which conversations a server has put the Marketplace label on, and which label it made (HostMarketplaceLabels), so a restored server does not
+        // Which conversations a server has put the Marketplace label on, and which label it made (ServerMarketplaceLabels), so a restored server does not
         // put it back on conversations it was taken off, or make it again after it was deleted. Only a server's own state holds it.
         ["auto-labels"] = ["marketplace"],
         // Custom photos for a conversation or person (LocalAvatarStore), and older releases' photos it moves on first read.
@@ -194,7 +194,7 @@ internal static class LocalStateBackup
         return [.. scopes.Where(IsOwnerScope).Distinct(StringComparer.Ordinal)];
     }
 
-    // An account's scope as the host names it: "messenger:" and a one-way value. Whatever else is not filed under any account.
+    // An account's scope as the server names it: "messenger:" and a one-way value. Whatever else is not filed under any account.
     private static bool IsOwnerScope(string? scope) => scope is { Length: > 10 and <= 256 } && scope.StartsWith("messenger:", StringComparison.Ordinal) && scope.All(c => c > ' ' && c != '\n');
 
     public static async Task<LocalRestoreResult> RestoreAsync(LocalStores stores, LocalStateSnapshot backup, string? profile,

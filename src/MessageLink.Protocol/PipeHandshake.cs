@@ -5,7 +5,7 @@ namespace MessageLink.Protocol;
 
 /// <summary>
 /// The upgrade at the start of a connection, shaped like the HTTP request a WebSocket client sends (<c>GET /v1/socket</c> with
-/// <c>Authorization: Bearer</c>) so the same check can sit in front of Kestrel later. A request is read whole and checked before the host
+/// <c>Authorization: Bearer</c>) so the same check can sit in front of Kestrel later. A request is read whole and checked before the server
 /// reads a single frame; a refusal is a status line, then the connection closes.
 /// </summary>
 internal static class PipeHandshake
@@ -24,7 +24,7 @@ internal static class PipeHandshake
         $"GET {Target} HTTP/1.1\r\nHost: messages.local\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n" +
         $"Authorization: {authorization}\r\n\r\n";
 
-    /// <summary>The host's side: reads the request, answers it, and says whether the connection may go on. On <see cref="Verdict.Accepted"/> the stream is ready for frames.</summary>
+    /// <summary>The server's side: reads the request, answers it, and says whether the connection may go on. On <see cref="Verdict.Accepted"/> the stream is ready for frames.</summary>
     public static async Task<(Verdict Verdict, Stream Stream)> AcceptAsync(Stream pipe, byte[] token, CancellationToken cancellationToken)
     {
         string head;

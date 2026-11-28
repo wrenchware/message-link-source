@@ -10,7 +10,7 @@ using MessageLink.Server;
 
 namespace MessageLink.Server.Linux;
 
-// messages-server (SWITCHBOARD.md stage 4): the backends for one data root on Linux, as a console service. One per root (the lease). Logs go to
+// messages-server: the backends for one data root on Linux, as a console service. One per root (the lease). Logs go to
 // standard output, where a container's log is read, and to <data>/server.log, in the Windows server's words. Nothing connects unless it was started
 // to restore.
 public static class Program
@@ -28,7 +28,7 @@ public static class Program
             Console.Error.WriteLine("messages-server: " + problem + ". Nothing was started.");
             return 2;
         }
-        // Everything this host and its helpers create (stores, logs, the helper's databases) is its owner's alone, whatever mask the shell or the
+        // Everything this server and its helpers create (stores, logs, the helper's databases) is its owner's alone, whatever mask the shell or the
         // image left; the helpers inherit it.
         var mask = PrivateFiles();
         // The server page's password, taken out of the environment before any helper or browser can be started, so none of them inherits it (ServerPage).
@@ -41,11 +41,11 @@ public static class Program
         var root = Path.GetFullPath(options.DataRoot);
         // Before anything is written: no log can be opened in a folder that is not there, so the refusal goes to standard output only.
         if (DataFolder.Refusal(root) is { } unusable) return Refused(unusable, toFile: false);
-        AppPaths.UseHostRoot(root);
-        // A reset of the shared state is a run of its own (stage 6 slice 13d): no log of its own, no keys, no helper; it takes the lease itself.
+        AppPaths.UseServerRoot(root);
+        // A reset of the shared state is a run of its own: no log of its own, no keys, no helper; it takes the lease itself.
         if (args.Contains(SpaceReset.Argument)) return ResetSpace(root);
         // Before the log: a refused start must not replace the log of the server that holds the lease.
-        using var lease = HostLease.TryAcquire(root);
+        using var lease = ServerLease.TryAcquire(root);
         if (lease is null) return Refused("host_locked", toFile: true);
 
         AppLog.Mirror = Console.Out.Write;
@@ -60,7 +60,7 @@ public static class Program
             AppLog.WriteNow($"unhandled exception type={(error.ExceptionObject as Exception)?.GetType().Name ?? "unknown"} thread=worker");
             FlushLogs();
         };
-        var (keys, refusal) = HostKeys.Prepare(root, options.KeysRoot, AppLog.Write);
+        var (keys, refusal) = LinuxServerKeys.Prepare(root, options.KeysRoot, AppLog.Write);
         if (keys is null)
         {
             AppLog.Write($"server start refused reason={refusal}");
@@ -76,7 +76,7 @@ public static class Program
         Environment.SetEnvironmentVariable(MessengerKeptAccount.PrivateRootVariable, keys.HelperFolder);
         HelperConnection.DataRoot = root;
         HelperConnection.Trace = AppLog.Write;
-        // Messenger's and Instagram's. Instagram's helper reads neither variable above: it keeps nothing on disk (the host seals its session).
+        // Messenger's and Instagram's. Instagram's helper reads neither variable above: it keeps nothing on disk (the server seals its session).
         HelperConnection.Allowed = UnavailableProviders.Runs;
         // Google Messages only when asked for and able to keep its sign-in (LinuxGoogle); then its helper may start too, and nothing else does.
         var google = LinuxGoogle.Prepare(options, keys, AppLog.Write);
@@ -85,16 +85,16 @@ public static class Program
             google.UseProfilesFolder();
             LinuxGoogle.SweepProfiles(AppLog.Write, google.VoiceKept(keys));
             HelperConnection.Allowed = name => UnavailableProviders.Runs(name) || name == LinuxGoogle.Helper;
-            // Google Voice's helper too, but only beside the server's own Chrome, which signs Voice in and renews it (SWITCHBOARD.md 5.4).
+            // Google Voice's helper too, but only beside the server's own Chrome, which signs Voice in and renews it.
             if (google.VoiceRuns) { var allowed = HelperConnection.Allowed; HelperConnection.Allowed = name => allowed(name) || name == LinuxGoogle.VoiceHelper; }
-            // Messenger's and Instagram's sign-in profiles are never kept: whatever a stopped server left goes (SWITCHBOARD.md 10.5).
+            // Messenger's and Instagram's sign-in profiles are never kept: whatever a stopped server left goes.
             ThrowawayChromeProfile.Sweep(google.SignInProfilesRoot, AppLog.Write);
         }
         // revision= and built= name the image: many nightlies share a version, and a promotion needs to know which one ran here and since when (docs/release.md, "Server image channels").
         var built = ServerImage.FromEnvironment(Environment.GetEnvironmentVariable);
         AppLog.Write($"server started version={typeof(Program).Assembly.GetName().Version?.ToString(3)} host=linux lease=ok previous_exit={previousExit} restore={options.Restore} umask={mask} " +
             $"revision={built.Revision ?? "none"} built={built.Built?.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture) ?? "none"}");
-        // Whether each helper this host runs is beside it, said once at start: a missing one otherwise shows only when that provider is first connected.
+        // Whether each helper this server runs is beside it, said once at start: a missing one otherwise shows only when that provider is first connected.
         // Google Messages' is named only when Google runs here (Prepare has already refused it, with no_helper, when it is missing).
         var helpers = google is null ? new[] { UnavailableProviders.MessengerHelper, UnavailableProviders.InstagramHelper }
             : new[] { UnavailableProviders.MessengerHelper, UnavailableProviders.InstagramHelper, LinuxGoogle.Helper }.Concat(google.VoiceRuns ? [LinuxGoogle.VoiceHelper] : []).ToArray();
@@ -116,7 +116,7 @@ public static class Program
         int code;
         while (true)
         {
-            // A restore or a reset chosen on the server's page (SWITCHBOARD.md stage 10) is applied here, before anything opens a store, and a half-finished one is finished or
+            // A restore or a reset chosen on the server's page is applied here, before anything opens a store, and a half-finished one is finished or
             // swept. Refused while any service is signed in here.
             if (deferRestore) AppLog.Write("server restore deferred reason=backup_running");
             else if (!ApplyRestore(backups, protector, options, string.IsNullOrEmpty(pagePassword))) { code = 4; break; }
@@ -149,13 +149,13 @@ public static class Program
     // The restore or reset waiting for this start, if any. A signed-in service refuses a restore: a session is never restored beside one in use. The files say what is
     // signed in, since nothing is open yet.
     // False: a restore's moves were begun and not finished, and the server must not open on half of them (the next start finishes them).
-    // pagePasswordFromBackup: the page's password hash comes back from the backup only when this server has none in its environment (SWITCHBOARD.md 10.4).
+    // pagePasswordFromBackup: the page's password hash comes back from the backup only when this server has none in its environment.
     private static bool ApplyRestore(MessageLink.Server.Backup.ServerBackupPaths paths, FileKeyStateProtector protector, LinuxServerOptions options, bool pagePasswordFromBackup)
     {
         if (!MessageLink.Server.Backup.ServerRestore.Planned(paths) && !MessageLink.Server.Backup.ServerRestore.ResetPlanned(paths)) return true;
         var keep = new HashSet<string>(StringComparer.Ordinal)
         {
-            "server.log", LogRotation.PreviousPath("server.log"), HostLease.FileName, "server-run.marker", RunMarker.VersionPath("server-run.marker"),
+            "server.log", LogRotation.PreviousPath("server.log"), ServerLease.FileName, "server-run.marker", RunMarker.VersionPath("server-run.marker"),
         };
         try
         {
@@ -229,7 +229,7 @@ public static class Program
     // Appended to the server's log, never rotated, as a refused start is: the line is fixed words and a count.
     private static int ResetSpace(string root)
     {
-        var outcome = SpaceReset.Run(root, HostLease.TryAcquire, !Console.IsInputRedirected, Console.In, Console.Out);
+        var outcome = SpaceReset.Run(root, ServerLease.TryAcquire, !Console.IsInputRedirected, Console.In, Console.Out);
         if (Diagnostics.Recording)
         {
             try { File.AppendAllText(AppPaths.Combine("server.log"), $"{DateTimeOffset.Now:HH:mm:ss.fff} {SpaceReset.LogLine(outcome)}\n"); }

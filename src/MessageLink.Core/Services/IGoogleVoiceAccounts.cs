@@ -7,7 +7,7 @@ namespace MessageLink.Core.Services;
 public sealed record GoogleVoiceAccountState(string Key, string? Number, string State, int? ConversationCount, bool Connected);
 
 /// <summary>
-/// The Google Voice accounts signed in on this PC, for any client (SWITCHBOARD.md 2.6). Each account has its own helper;
+/// The Google Voice accounts signed in on this PC, for any client. Each account has its own helper;
 /// renewals, restarts and recovery stay inside the host. The Google sign-in window is the client's: it hands the cookies
 /// and the browser profile it captured to <see cref="AddAsync"/>, and the host owns the session from then on.
 /// </summary>

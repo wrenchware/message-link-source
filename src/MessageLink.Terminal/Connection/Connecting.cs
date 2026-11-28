@@ -41,7 +41,7 @@ internal static class Connecting
         // The machine's own network: no Tailscale node of mlink's own, so a Tailscale name works only through a Tailscale app on this machine.
         var attempts = new Attempts();
         var connector = attempts.Watch(NetworkEndpoint.Connector(saved.Socket, saved.Fingerprint, _ => store.Token.ReadAsync(), context.Log));
-        var state = new HostStateCache();
+        var state = new ServerStateCache();
         var client = new ProtocolClient(connector, context.Version, MlinkContext.ClientWord, log: context.Log, cache: state);
         var clock = Stopwatch.StartNew();
         if (await FirstAsync(client, search.ConnectWait, cancellationToken).ConfigureAwait(false))
@@ -103,7 +103,7 @@ internal static class Connecting
         var token = new ClientToken(Path.Combine(root, ServerSearch.ServerFolder), search.AppProtector ?? context.Protector);
         var attempts = new Attempts();
         var connector = attempts.Watch(PipeEndpoint.Connector(PipeEndpoint.PipeNameForCurrentUser(search.PipeSuffix), token, context.Log, search.PipeOpenWait));
-        var state = new HostStateCache();
+        var state = new ServerStateCache();
         // A try is a pipe open, nothing more: a server that is starting is tried every tenth of a second.
         var client = new ProtocolClient(connector, context.Version, MlinkContext.ClientWord, log: context.Log, cache: state) { CallRetryInterval = TimeSpan.FromMilliseconds(100) };
         var clock = Stopwatch.StartNew();

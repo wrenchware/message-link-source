@@ -8,7 +8,7 @@ public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddHermesRoutes(Dictionary<string, Route> routes)
     {
-        // Keys cross only here, and only from a device the host takes them from: a server refuses every device (its page has the form).
+        // Keys cross only here, and only from a device the server takes them from: a server refuses every device (its page has the form).
         routes[ProtocolMethods.AccountsHermesConfigure] = PageOnly(ProtocolMethods.AccountsHermesConfigure,
             AccountMutation<IHermesAccount, HermesConfigureParams, Done>(s => s.HermesAccount, async (port, p, ct) =>
             {

@@ -8,11 +8,11 @@ using MessageLink.Protocol;
 namespace MessageLink.App.Services;
 
 /// <summary>
-/// What another device changed reaching what this one shows (SWITCHBOARD.md stage 6, slice 4), in a client of a Messages Server (<c>local</c> and <c>remote</c>)
+/// What another device changed reaching what this one shows, in a client of a Messages Server (<c>local</c> and <c>remote</c>)
 /// only: a pin, mute, marked unread, archive here, snooze or name (the rows of <see cref="ReplicaChatPreferences"/>, <see cref="ReplicaContactNames"/> and
 /// <see cref="ReplicaChatSnoozes"/>, once they hold the change), the pinned order, the merges and the labels (rows of the replica itself; slice 5 for the
 /// last two, which also tells the list's notice when one of this device's changes was left out), and the move between this PC's files and the
-/// rows (<see cref="ReplicatedStateStore.HostProtocolChanged"/>), which can change every row at once. The list and the open conversations' headers follow
+/// rows (<see cref="ReplicatedStateStore.ServerProtocolChanged"/>), which can change every row at once. The list and the open conversations' headers follow
 /// with no reload; Windows' snooze reminders already follow through ObservedChatSnoozes.
 /// </summary>
 /// <remarks>
@@ -31,7 +31,7 @@ internal sealed class SharedListChanges : IDisposable
     private sealed record Target(IUiDispatcher Ui, ChatListViewModel List, Action<IReadOnlyList<ReappliedChat>>? Shown, Action<string>? Told);
 
     /// <summary>
-    /// What the window says when another device's merges or labels left out a change made here (slice 5): the conversation is in another merge now, or the
+    /// What the window says when another device's merges or labels left out a change made here: the conversation is in another merge now, or the
     /// label was deleted. Said in the window's action notice, which stays until closed: the list's own line is the list's summary again at its next redraw,
     /// which the same change brings.
     /// </summary>
@@ -67,7 +67,7 @@ internal sealed class SharedListChanges : IDisposable
         categories = [preferences.Rows, names.Rows, snoozes.Rows];
         foreach (var rows in categories) rows.Changed += OnRows;
         replica.RemoteChanged += OnReplica;
-        replica.HostProtocolChanged += OnSource;
+        replica.ServerProtocolChanged += OnSource;
         replica.Told += OnTold;
     }
 
@@ -103,9 +103,9 @@ internal sealed class SharedListChanges : IDisposable
     }
 
     /// <summary>
-    /// The merges and labels the list draws, whose changes another device's left out are told (slice 5, <see cref="ChangedElsewhereNotice"/>). A merge left
+    /// The merges and labels the list draws, whose changes another device's left out are told (<see cref="ChangedElsewhereNotice"/>). A merge left
     /// out had taken the labels of its conversations (LabelStore.Merge, as the window merges): they are handed back to them, so none is left on a merge that
-    /// was never made. The read-here marks (slice 7) are re-read here too when the replica could not bring them to the host's row; the redraw applies them.
+    /// was never made. The read-here marks are re-read here too when the replica could not bring them to the server's row; the redraw applies them.
     /// </summary>
     public void Follows(MergedConversations merges, LabelStore labels, ReadHereMarks? marks = null)
     {
@@ -221,13 +221,13 @@ internal sealed class SharedListChanges : IDisposable
         // Another device's merges or labels: already held where the list reads them, so one redraw builds the merged rows and the pills again.
         var regroup = burst.Keys.Contains(SharedCategories.KeyOf(profile, SharedCategories.Merges, SharedCategories.MergesRow), StringComparer.Ordinal)
             || burst.Keys.Contains(SharedCategories.KeyOf(profile, SharedCategories.Labels, SharedCategories.LabelsRow), StringComparer.Ordinal);
-        // Another device's private reads (slice 7): ReadHereMarks holds them (the replica hands them over first, as it does the merges and labels), and the
+        // Another device's private reads: ReadHereMarks holds them (the replica hands them over first, as it does the merges and labels), and the
         // redraw applies them to every row (ChatListViewModel.Present), clearing the bold of a conversation read on another device. Nothing to read again.
         var readHere = burst.Keys.Contains(SharedCategories.ReadHereKey(profile), StringComparer.Ordinal);
         regroup |= readHere;
         // Quick replies, another profile's rows: nothing the list shows.
         if (chats.Count == 0 && names.Count == 0 && !pinnedOrder && !regroup && !burst.All) return;
-        // Merges or labels the replica could not bring to the host's (abandoned) read the row again here, before the redraw that shows it.
+        // Merges or labels the replica could not bring to the server's (abandoned) read the row again here, before the redraw that shows it.
         if (regroup)
             try
             {
@@ -326,7 +326,7 @@ internal sealed class SharedListChanges : IDisposable
         target = null;
         foreach (var rows in categories) rows.Changed -= OnRows;
         replica.RemoteChanged -= OnReplica;
-        replica.HostProtocolChanged -= OnSource;
+        replica.ServerProtocolChanged -= OnSource;
         replica.Told -= OnTold;
     }
 }

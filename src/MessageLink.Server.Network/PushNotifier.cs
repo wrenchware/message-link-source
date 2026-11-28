@@ -66,7 +66,7 @@ internal sealed class DevicePresence
 /// A connection's push service: what the server offers, and the registration of the device that connection belongs to. The setup is read at each call, so pushes
 /// turned on from the server's page are offered to a connection opened before.
 /// </summary>
-/// <param name="health">How pushes are doing, which the offer, a test's answer and the status read and feed (10.9); none on a host without the page's card.</param>
+/// <param name="health">How pushes are doing, which the offer, a test's answer and the status read and feed; none on a server without the page's card.</param>
 /// <param name="devices">The paired devices by name, for the status.</param>
 internal sealed class DevicePush(Func<PushSetup?> setupNow, PushRegistry registry, string deviceId, PushHealth? health = null, Func<IReadOnlyList<PairedDevice>>? devices = null,
     TimeProvider? time = null) : IPushService
@@ -84,7 +84,7 @@ internal sealed class DevicePush(Func<PushSetup?> setupNow, PushRegistry registr
     public async Task RegisterAsync(PushRegisterParams registration, CancellationToken cancellationToken = default)
     {
         if (setupNow() is not { } setup) throw new NotSupportedException();
-        // A phone saying the project has no app for its package (10.9): a report kept beside the device for the page, never an address to send to, and never in
+        // A phone saying the project has no app for its package: a report kept beside the device for the page, never an address to send to, and never in
         // place of a registration it has. Only for one of Messages' own packages, and one the project really lacks.
         if (string.IsNullOrEmpty(registration.Token))
         {
@@ -121,7 +121,7 @@ internal sealed class DevicePush(Func<PushSetup?> setupNow, PushRegistry registr
 }
 
 /// <summary>
-/// The server's notifications to phones (SWITCHBOARD.md 7.5): each new incoming message, judged as the PC's NotificationObserver judges one, goes to every
+/// The server's notifications to phones: each new incoming message, judged as the PC's NotificationObserver judges one, goes to every
 /// registered device paired now and not in front as a push sealed to that device's key, padded to one size; and a conversation read elsewhere that a phone
 /// was told of is withdrawn there by a quiet push. Logged by counts and outcomes only.
 /// </summary>
@@ -129,7 +129,7 @@ internal sealed class DevicePush(Func<PushSetup?> setupNow, PushRegistry registr
 /// <para><b>Judged as the PC judges.</b> Through the PC's own readers over the rows its clients share: LocalPreferenceChatReader (a mute set in Messages, or
 /// at the service as Messenger reports one unless it was set aside in Messages; a snooze; an Instagram archive kept in Messages, which an arrival lifts) and
 /// MergedConversations (a merge's mute, archive and snooze over its members'). A conversation archived at its service, or a merge, is judged as the inbox
-/// will show it once the arrival returns it there (the host's incoming unarchive, or the client that holds the merge), as the PC judges one its host is
+/// will show it once the arrival returns it there (the server's incoming unarchive, or the client that holds the merge), as the PC judges one its server is
 /// returning. Not for an outgoing, hidden, deleted, edited or system message, a Hermes repeat's prompt ("scheduled"), spam, a merged row, or one older than a few minutes. A row that cannot be read
 /// leaves the push to go.</para>
 /// <para><b>Off the log's reading.</b> Pushes wait in one bounded queue for Firebase, each send up to its timeout, so the log is read at its own pace;
@@ -173,9 +173,9 @@ internal sealed class PushNotifier : IAsyncDisposable
     private int sent, failed, dropped, resyncs;
     private long through, queued, finished;
 
-    /// <param name="localKey">The key the clients file their shared rows under (the host's state's identity), read when a conversation is judged.</param>
+    /// <param name="localKey">The key the clients file their shared rows under (the server's state's identity), read when a conversation is judged.</param>
     /// <param name="quietFor">Whether a device's message pushes go quiet now (<see cref="DevicePresence.AtAnotherDevice"/>); none are without it.</param>
-    /// <param name="health">Where each push's outcome is told, for the page's card (10.9).</param>
+    /// <param name="health">Where each push's outcome is told, for the page's card.</param>
     public PushNotifier(EventLog events, IChatReader chats, IMessageSender messages, PushRegistry registry, IPushTransport transport, Func<string, bool> inFront, Action<string> log,
         ISharedState? shared = null, Func<string?>? localKey = null, Func<string, bool>? quietFor = null, PushHealth? health = null)
     {
@@ -216,7 +216,7 @@ internal sealed class PushNotifier : IAsyncDisposable
             try { item = await feed.ReadAsync(token).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
             catch (ChannelClosedException) { return; }
-            // The log has ended: the host is stopping.
+            // The log has ended: the server is stopping.
             if (item is null) return;
             if (item.IsResync)
             {
@@ -407,7 +407,7 @@ internal sealed class PushNotifier : IAsyncDisposable
     }
 
     /// <summary>
-    /// Tells every phone signed up for notifications that the server has made no good backup for two days (stage 10): kind <c>backup</c>, with no conversation, at normal
+    /// Tells every phone signed up for notifications that the server has made no good backup for two days: kind <c>backup</c>, with no conversation, at normal
     /// priority. A phone built before it opens the push and shows nothing (it acts only on the kinds it knows), so it is sent as a quiet wake would be, never urgent.
     /// Returns how many were queued.
     /// </summary>
@@ -557,9 +557,9 @@ internal sealed class PushNotifier : IAsyncDisposable
         stopping.Dispose();
     }
 
-    // An arrival returns a conversation archived at its service to the inbox, a moment after this reads it: the host's incoming unarchive
-    // (HostIncomingUnarchive), or a client's. Judged as the inbox will show it, as the PC's NotificationObserver judges an arrival its host is returning
-    // (UnarchiveOutcome.LeftToHost): should that fail, it was still shown, the safer mistake.
+    // An arrival returns a conversation archived at its service to the inbox, a moment after this reads it: the server's incoming unarchive
+    // (ServerIncomingUnarchive), or a client's. Judged as the inbox will show it, as the PC's NotificationObserver judges an arrival its server is returning
+    // (UnarchiveOutcome.LeftToServer): should that fail, it was still shown, the safer mistake.
     private sealed class Arriving(IChatReader inner) : IChatReader
     {
         public async Task<ChatSummary> GetChatAsync(string chatId, CancellationToken cancellationToken = default) =>

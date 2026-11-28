@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The wire contract between a client (the Windows app, later Android) and the host that serves the backends:
-       frames, versioning, errors, JSON conventions and the method catalogue (SWITCHBOARD.md stage 2), the client, the
-       dispatcher a host serves it with, and the local transports (in-process and the named pipe, stage 3). No backend
+       frames, versioning, errors, JSON conventions and the method catalogue, the client, the
+       dispatcher a host serves it with, and the local transports (in-process and the named pipe). No backend
        lives here. -->
   <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
   <ItemGroup>

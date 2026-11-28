@@ -1,11 +1,11 @@
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The client's end of <c>client.state</c> (SWITCHBOARD.md 3.0b): tells the host whether anybody is looking, whether a dialog is open, which
+/// The client's end of <c>client.state</c>: tells the server whether anybody is looking, whether a dialog is open, which
 /// services are read privately and whether link previews may be fetched. It sends once when started, again after every reconnect, and
 /// whenever <see cref="Changed"/> is called because any of the four moved. Latest wins: changes that come while a call is on its way are
-/// sent as the one newest state, and a state the host already holds is not sent again. A call that fails is tried again after a growing
-/// pause, and at once when the client reconnects, until it lands; the host keeps the last it was told, so a lost call only leaves it
+/// sent as the one newest state, and a state the server already holds is not sent again. A call that fails is tried again after a growing
+/// pause, and at once when the client reconnects, until it lands; the server keeps the last it was told, so a lost call only leaves it
 /// behind, never ahead.
 /// </summary>
 public sealed class ClientStateReporter : IDisposable
@@ -59,7 +59,7 @@ public sealed class ClientStateReporter : IDisposable
         lock (gate)
         {
             held = null; dirty = true; reconnected = true; connection++;
-            // A backoff that is running was waiting for exactly this: the host is there again, so the state goes now.
+            // A backoff that is running was waiting for exactly this: the server is there again, so the state goes now.
             backoff?.TrySetResult();
         }
         Wake();
@@ -105,7 +105,7 @@ public sealed class ClientStateReporter : IDisposable
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { return; }
             catch (Exception)
             {
-                // Nothing here is the user's business: the host is behind, and the next try or the reconnect catches it up.
+                // Nothing here is the user's business: the server is behind, and the next try or the reconnect catches it up.
                 TaskCompletionSource? cut = null;
                 lock (gate)
                 {

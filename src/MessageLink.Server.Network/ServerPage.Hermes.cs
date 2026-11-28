@@ -5,12 +5,12 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server.Network;
 
 // Hermes Agent on the server's page (protocol 31): where its address and each profile's key are set, as every account is set up here rather than from a client
-// (HostHermesAccount refuses a server's clients). Its line sits after Instagram in Accounts and opens /manage/hermes, which says how each profile stands; the
+// (ServerHermesAccount refuses a server's clients). Its line sits after Instagram in Accounts and opens /manage/hermes, which says how each profile stands; the
 // form is a page of its own (/hermes) so the status page can look again by itself without wiping what is being typed. A key is never written back into a page,
 // a log line or an error: a saved one shows only as a placeholder, and a blank key keeps it.
 internal sealed partial class ServerPage
 {
-    /// <summary>Hermes as this page sets it up (<see cref="NetworkHostOptions.Hermes"/>); null shows none.</summary>
+    /// <summary>Hermes as this page sets it up (<see cref="NetworkServerOptions.Hermes"/>); null shows none.</summary>
     internal IHermesAccount? Hermes { get; set; }
 
     private const string HermesSection = "hermes";

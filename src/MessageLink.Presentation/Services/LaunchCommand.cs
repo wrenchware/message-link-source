@@ -5,7 +5,7 @@ namespace MessageLink.Presentation.Services;
 public enum LaunchAction { NewChat, Search, OpenChat, Settings, Unread, SignIn }
 
 // Command-line actions used by the taskbar jump list. A running app receives them through activation redirection. SignIn is the PC's own Messages Server asking
-// for an account's native sign-in window (SWITCHBOARD.md 10.7: Connect on its page on this PC); Service names the account by the server's own word.
+// for an account's native sign-in window (Connect on its page on this PC); Service names the account by the server's own word.
 public sealed record LaunchCommand(LaunchAction Action, string? ChatId = null, string? Service = null)
 {
     private const string SignInPrefix = "--sign-in=";

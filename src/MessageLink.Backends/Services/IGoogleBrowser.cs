@@ -3,8 +3,8 @@ using MessageLink.App.Services.GoogleMessages;
 namespace MessageLink.App.Services;
 
 // The browser that keeps each Google sign-in's profile, so a sign-in Google is about to refuse can be renewed without the
-// user. WebView2 in this app (WebViewGoogleBrowser); a server has no WebView2 and renews through its own browser instead
-// (SWITCHBOARD.md, step 4.3), which is why the backends reach it only through this.
+// user. WebView2 in this app (WebViewGoogleBrowser); a server has no WebView2 and renews through its own browser instead,
+// which is why the backends reach it only through this.
 internal interface IGoogleBrowser
 {
     // Copied WebView2 sign-ins expire at two hours; the server's own Chrome session survived days.

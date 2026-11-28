@@ -1,8 +1,8 @@
 namespace MessageLink.Protocol;
 
 // state.import (ProtocolMethods.StateImport.cs): a journaled mutation like any other, so a repeat of one operation id answers the first answer and a lost answer is
-// settled with ops.status. Only a connection that negotiated version 11 may ask: a client below it never does, and a host answers it as not supported rather
-// than take in rows its client cannot read back. What it does is the host's (HostStateImport); nothing is logged here.
+// settled with ops.status. Only a connection that negotiated version 11 may ask: a client below it never does, and a server answers it as not supported rather
+// than take in rows its client cannot read back. What it does is the server's (ServerStateImport); nothing is logged here.
 public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddStateImportRoutes(Dictionary<string, Route> routes)

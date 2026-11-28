@@ -40,13 +40,13 @@ public static class ProtocolErrorCodes
     public const string Internal = "internal";
 }
 
-/// <summary>Code words an <see cref="ProtocolErrorCodes.AccountFailed"/> error carries that come from the host itself rather than from a provider.</summary>
+/// <summary>Code words an <see cref="ProtocolErrorCodes.AccountFailed"/> error carries that come from the server itself rather than from a provider.</summary>
 public static class AccountFailureWords
 {
-    /// <summary>This host does not run the provider at all (the Linux server and Google Messages, Google Voice or Instagram): nothing was tried, and trying again will not help.</summary>
-    public const string NotOnThisHost = "not_on_this_host";
+    /// <summary>This server does not run the provider at all (the Linux server and Google Messages, Google Voice or Instagram): nothing was tried, and trying again will not help.</summary>
+    public const string NotOnThisServer = "not_on_this_host";
 
-    /// <summary>The account is not one this host runs now (an added account that was removed, ProviderAccounts): nothing was tried.</summary>
+    /// <summary>The account is not one this server runs now (an added account that was removed, ProviderAccounts): nothing was tried.</summary>
     public const string AccountMovedAway = "account_moved_away";
 }
 
@@ -95,7 +95,7 @@ public static class ProtocolErrors
     /// The exception a caller of a port would have seen had it called the backend directly. An error that says its
     /// outcome is unknown always becomes an unknown-outcome <see cref="SendException"/>, whatever its code, because
     /// treating a mutation that may have happened as one that did not is the mistake that resends it. A code this build
-    /// does not know becomes a <see cref="BackendFailure.ServerError"/>, so a newer host cannot crash an older client.
+    /// does not know becomes a <see cref="BackendFailure.ServerError"/>, so a newer server cannot crash an older client.
     /// </summary>
     public static Exception ToException(ProtocolError error)
     {

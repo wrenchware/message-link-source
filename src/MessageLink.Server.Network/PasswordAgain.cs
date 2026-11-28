@@ -35,7 +35,7 @@ internal sealed class PasswordAgain(TimeProvider time)
     /// <summary>How long the password, once typed, stands for the steps that ask for it again. Zero: every step asks.</summary>
     public TimeSpan Grace { get; set; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>A signed-in browser on this PC needs no password again (<see cref="NetworkHostOptions.DesktopTrust"/>).</summary>
+    /// <summary>A signed-in browser on this PC needs no password again (<see cref="NetworkServerOptions.DesktopTrust"/>).</summary>
     public bool DesktopTrust { get; set; }
 
     /// <summary>Whether <paramref name="session"/> (null: not signed in), from this PC or not, must type the password for <paramref name="purpose"/>.</summary>

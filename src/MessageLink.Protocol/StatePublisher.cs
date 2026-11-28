@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The host's side of pushed state (SWITCHBOARD.md 2.6b): builds the <see cref="HostState"/> and appends it to the <see cref="EventLog"/>
+/// The server's side of pushed state: builds the <see cref="ServerState"/> and appends it to the <see cref="EventLog"/>
 /// as a <c>state</c> event whenever it differs from the last one appended, compared as serialized JSON. It looks again
 /// <list type="bullet">
 /// <item>when a connection event is about to be recorded (<see cref="Watch"/>), so the state is in the log before the event that announced it;</item>
@@ -19,20 +19,20 @@ namespace MessageLink.Protocol;
 public sealed class StatePublisher : IDisposable
 {
     private readonly EventLog log;
-    private readonly Func<HostState> build;
+    private readonly Func<ServerState> build;
     private readonly Action<string>? write;
     private readonly object gate = new();
     private readonly List<Action> detach = [];
     private readonly Timer timer;
     private int messenger, instagram, google, voice;
     private string? lastJson;
-    private (HostState State, long Seq)? latest;
+    private (ServerState State, long Seq)? latest;
     private int queued;
     private bool disposed;
     private int appended;
 
-    /// <param name="interval">How often the host looks again with nothing to announce it; a few seconds in production.</param>
-    public StatePublisher(EventLog log, Func<HostState> build, TimeSpan? interval = null, Action<string>? write = null)
+    /// <param name="interval">How often the server looks again with nothing to announce it; a few seconds in production.</param>
+    public StatePublisher(EventLog log, Func<ServerState> build, TimeSpan? interval = null, Action<string>? write = null)
     {
         this.log = log;
         this.build = build;
@@ -46,7 +46,7 @@ public sealed class StatePublisher : IDisposable
     /// <summary>How many state events this publisher has appended.</summary>
     public int Appended => Volatile.Read(ref appended);
 
-    /// <summary>Takes the first look and starts the timer. Call once the log's host is ready and before a reader subscribes.</summary>
+    /// <summary>Takes the first look and starts the timer. Call once the log's server is ready and before a reader subscribes.</summary>
     public void Start()
     {
         Refresh();
@@ -62,7 +62,7 @@ public sealed class StatePublisher : IDisposable
         lock (gate)
         {
             if (disposed) return false;
-            HostState state;
+            ServerState state;
             try { state = build() with { Revisions = new AccountRevisions(messenger, instagram, google, voice) }; }
             catch (Exception)
             {
@@ -80,7 +80,7 @@ public sealed class StatePublisher : IDisposable
     }
 
     /// <summary>The newest state appended and the sequence number it was given, or none before the first look.</summary>
-    public (HostState State, long Seq)? Latest { get { lock (gate) return latest; } }
+    public (ServerState State, long Seq)? Latest { get { lock (gate) return latest; } }
 
     /// <summary>
     /// Wire this to <see cref="EventLog.BeforeSourceEvent"/>: a connection change looks again now, so the state precedes the event.
@@ -93,7 +93,7 @@ public sealed class StatePublisher : IDisposable
     /// <summary>
     /// Follows each account port's <c>Changed</c>: it counts as a change of that account, and the state is looked at again soon. The facts
     /// no state shows (the phone's SIMs changed, the default SMS app changed, the conversations were renumbered, Instagram stopped
-    /// reconnecting) are appended to the log as account signals, in the order they were raised (SWITCHBOARD.md 2.6c).
+    /// reconnecting) are appended to the log as account signals, in the order they were raised.
     /// </summary>
     public void Attach(IMessengerAccount messengerAccount, IInstagramAccount instagramAccount, IGoogleMessagesAccount googleAccount, IGoogleVoiceAccounts voiceAccounts)
     {

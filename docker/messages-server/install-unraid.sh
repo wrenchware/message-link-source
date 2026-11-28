@@ -7,13 +7,13 @@
 #   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr
 #   bash /mnt/user/tmp/messages-server/install-unraid.sh --ghcr --no-chrome-sandbox   # Chrome without its own sandbox (README, Chrome's sandbox)
 #
-# The one image is Debian with official Google Chrome (SWITCHBOARD.md stage 11; 4.3, 5.4): always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
+# The one image is Debian with official Google Chrome: always the newest stable at build time, which the server keeps running, signed in by hand, to renew Google's sign-in) and turns Google
 # Messages on. Chrome runs in its own sandbox by default since 2026-11-19 (security review; the owner's server had run it so
 # since 2026-10-14): it opens Google's, Facebook's and Instagram's sign-ins as the account that can read every key, so a page
 # that broke out of an unsandboxed renderer would have them all. --no-chrome-sandbox keeps the 5.4 test's choice
 # (2026-10-09, docs/research/google-linux-renewal.md) for a kernel without unprivileged user namespaces. It also runs Chromium headed, with a window on a virtual display (Xvfb, one
 # per browser run, inside the container): the headless browser loaded Google's page signed in but Google never rotated
-# its sign-in cookie (5.4, 2026-10-10). The log says headed=yes on `server google enabled` and each `google browser`
+# its sign-in cookie (2026-10-10). The log says headed=yes on `server google enabled` and each `google browser`
 # line, and the keeper's `browser early=` lines now appear in `docker logs`.
 #
 # It unpacks the source to /tmp, builds the image there, keeps the server's sealed data in appdata and its keys in the

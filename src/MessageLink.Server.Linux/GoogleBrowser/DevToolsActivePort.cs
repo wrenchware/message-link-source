@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// The file a browser started with <c>--remote-debugging-port=0</c> writes into its profile once DevTools is listening (SWITCHBOARD.md 5.4): the port it chose on the first line,
+/// The file a browser started with <c>--remote-debugging-port=0</c> writes into its profile once DevTools is listening: the port it chose on the first line,
 /// the browser's WebSocket path (<c>/devtools/browser/&lt;id&gt;</c>, a random id) on the second. The profile is new for the run, so a file there is this browser's own. Read here and used
 /// to connect to 127.0.0.1 only; neither is logged. The path is not protection: <c>GET /json/version</c> on the port gives it to any process in the same network namespace, and the
 /// browser only refuses clients that send an Origin. What keeps the port from others is the namespace itself (<see cref="HostNetwork"/>) and the session being short.

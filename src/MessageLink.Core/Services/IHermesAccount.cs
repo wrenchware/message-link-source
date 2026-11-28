@@ -66,7 +66,7 @@ public interface IHermesAccount
     Task<string> AnswerApprovalAsync(string chatId, string messageId, bool approve, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The server's repeats (<c>HostRepeats</c>) send their prompt this way, so the thread shows it as a small "Scheduled" label.</summary>
+/// <summary>The server's repeats (<c>ServerRepeats</c>) send their prompt this way, so the thread shows it as a small "Scheduled" label.</summary>
 public interface IHermesPrompts
 {
     bool Accepts(string chatId);

@@ -3,7 +3,7 @@ namespace MessageLink.Protocol;
 /// <summary>
 /// A client and a dispatcher joined by an in-process <see cref="LoopbackChannel"/>: every call is serialized to text,
 /// parsed on the other side, run against <see cref="ProtocolServices"/> and answered the same way, without leaving the
-/// process. It proves the protocol with no network (SWITCHBOARD.md 2.4). The host owns it and disposes it at shutdown,
+/// process. It proves the protocol with no network. The server owns it and disposes it at shutdown,
 /// which flushes the call measurements.
 /// </summary>
 public sealed class LoopbackProtocol : IDisposable
@@ -24,11 +24,11 @@ public sealed class LoopbackProtocol : IDisposable
     public ProtocolCallStats Served { get; }
 
     /// <summary>
-    /// <paramref name="journal"/> is the host's, which outlives this connection: pass the same one to a later connection so it
+    /// <paramref name="journal"/> is the server's, which outlives this connection: pass the same one to a later connection so it
     /// finds what this one started. Left out, the connection gets its own.
     /// </summary>
     public static LoopbackProtocol Start(ProtocolServices services, string appVersion, Action<string>? log = null, OperationJournal? journal = null,
-        HostStateCache? state = null)
+        ServerStateCache? state = null)
     {
         var (clientEnd, serverEnd) = LoopbackChannel.CreatePair();
         var calls = new ProtocolCallStats("protocol calls", log);

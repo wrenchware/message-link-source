@@ -11,7 +11,7 @@ namespace MessageLink.WindowsPlatform;
 // conversation ID is written the way notification records write theirs, protected to this Windows user.
 public sealed class ProtectedChatSnoozeStore : IChatSnoozes, IChatSnoozeFiles
 {
-    // The folder's name under the data root; the host composes the path (AppPaths is the backends' own).
+    // The folder's name under the data root; the server composes the path (AppPaths is the backends' own).
     public const string FolderName = "ChatSnoozes-v1";
     private readonly string directory;
     public ProtectedChatSnoozeStore(string directory) => this.directory = directory;

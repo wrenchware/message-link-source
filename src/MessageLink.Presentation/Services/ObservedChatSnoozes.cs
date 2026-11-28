@@ -4,7 +4,7 @@ namespace MessageLink.Presentation.Services;
 
 /// <summary>
 /// A snooze store whose snoozes can change without a <c>SetAsync</c> through it: a client of a Messages Server whose replica took another device's snooze,
-/// or that went from its host's store to its rows (ReplicaChatSnoozes). <see cref="ObservedChatSnoozes"/> passes it on, so the reminders follow.
+/// or that went from its server's store to its rows (ReplicaChatSnoozes). <see cref="ObservedChatSnoozes"/> passes it on, so the reminders follow.
 /// </summary>
 public interface IChangingChatSnoozes
 {

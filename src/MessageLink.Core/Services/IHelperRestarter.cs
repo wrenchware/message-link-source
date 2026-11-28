@@ -16,7 +16,7 @@ public sealed record HelperRestartResult(string Outcome, string? Code, long Wait
 /// already running or that its recovery budget does not allow (Instagram's).
 /// </summary>
 /// <remarks>
-/// A restart is two calls, because the wait for sends can take as long as the host's patience and only the caller knows, at the moment
+/// A restart is two calls, because the wait for sends can take as long as the server's patience and only the caller knows, at the moment
 /// the helper is stopped, whether it is signing in and which of its own controls to hold. A settle call waits and stops nothing; the
 /// stop call that follows never waits. Neither is a send, so a repeat of either is harmless.
 /// </remarks>
@@ -24,7 +24,7 @@ public interface IHelperRestarter
 {
     /// <summary>
     /// With <paramref name="settle"/>: waits for the contact-visible calls on that helper to be answered and ends <c>settled</c>, or, if
-    /// they outlast the host's patience, <c>asking</c> with a token naming them; nothing is stopped. Without it, the stop call: the helper
+    /// they outlast the server's patience, <c>asking</c> with a token naming them; nothing is stopped. Without it, the stop call: the helper
     /// is stopped and resumed at once if nothing is in flight, <c>waiting</c> answers a send that is, and the person's yes to
     /// <c>asking</c> is <paramref name="force"/> with that <paramref name="token"/>, which stops the helper under exactly those sends (their
     /// outcomes are then unknown and are never sent again). A send begun since the token was read is not covered by the yes: the answer is

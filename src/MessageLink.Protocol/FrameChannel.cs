@@ -22,7 +22,7 @@ public static class LoopbackChannel
 {
     /// <summary>
     /// Where <see cref="CreatePair"/> gets its ends instead of making them in memory. Only the conformance harness sets it, to run the
-    /// same suites over a real pipe (SWITCHBOARD.md 3.2); a host never does.
+    /// same suites over a real pipe; a server never does.
     /// </summary>
     internal static Func<(IFrameChannel Client, IFrameChannel Server)>? Transport { get; set; }
 

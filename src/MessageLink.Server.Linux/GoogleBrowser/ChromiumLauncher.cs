@@ -31,14 +31,14 @@ internal interface IChromiumSignInProcess : IAsyncDisposable
     void Kill();
 }
 
-/// <summary>Starts the sign-in browser (SWITCHBOARD.md 5.4). The real one is <see cref="ChromiumLauncher"/>; the harness gives a fake.</summary>
+/// <summary>Starts the sign-in browser. The real one is <see cref="ChromiumLauncher"/>; the harness gives a fake.</summary>
 internal interface IChromiumSignInLauncher
 {
     IChromiumSignInProcess LaunchSignIn(string profileFolder);
 }
 
 /// <summary>
-/// Chromium on Linux, one process per renewal and per profile (SWITCHBOARD.md 4.3: one browser per account, never a shared one switched between
+/// Chromium on Linux, one process per renewal and per profile (one browser per account, never a shared one switched between
 /// accounts), driven over <c>--remote-debugging-pipe</c>: the DevTools protocol on the browser's file descriptors 3 and 4, with no port at all.
 /// <para>
 /// .NET hands a child only its standard streams, so the browser is started through <c>/bin/sh</c>, which moves them: this process's pipe to the
@@ -53,7 +53,7 @@ internal interface IChromiumSignInLauncher
 /// volume) and nothing else of the server's, which includes where the helpers' keys are.
 /// </para>
 /// <para>
-/// Headed (<c>MESSAGES_CHROMIUM_HEADED=1</c>, SWITCHBOARD.md 5.4): the same browser without <c>--headless</c>, on a virtual X display made for this run
+/// Headed (<c>MESSAGES_CHROMIUM_HEADED=1</c>): the same browser without <c>--headless</c>, on a virtual X display made for this run
 /// alone (<see cref="HeadedShell"/>): one <c>Xvfb</c> per browser, in the browser's own process group, on a display number Xvfb picks itself, listening on
 /// no TCP port, and ended when the browser has. The display is named to the browser only; the rest of the environment is unchanged.
 /// </para>
@@ -76,7 +76,7 @@ internal sealed class ChromiumLauncher(string executable, bool noSandbox, bool h
     internal const string HeadedScript = "exec 3<&0 4>&1 0</dev/null 1>/dev/null 2>/dev/null\n" + ClosedDisplay;
 
     /// <summary>
-    /// The sign-in's form of <see cref="HeadedShell"/> (SWITCHBOARD.md 5.4): the same display and the same process group, but no DevTools descriptors. The browser is told a loopback
+    /// The sign-in's form of <see cref="HeadedShell"/>: the same display and the same process group, but no DevTools descriptors. The browser is told a loopback
     /// port instead (<see cref="Arguments"/> with <c>devToolsPort</c>), so nothing marks the page as driven through a pipe; the server's pipes go nowhere, as they do for the pipe form.
     /// </summary>
     internal const string SignInShell = "exec setsid /bin/sh -c '" + SignInScript + "' \"$0\" \"$@\"";
@@ -189,7 +189,7 @@ internal sealed class ChromiumLauncher(string executable, bool noSandbox, bool h
         return new Running(Start(profileFolder, HeadedShell, Arguments(profileFolder, noSandbox, headed), cookie), cookie);
     }
 
-    /// <summary>The sign-in's browser (SWITCHBOARD.md 5.4): always headed, on a display of its own, with DevTools on a loopback port; needs Xvfb, as the headed renewal does.</summary>
+    /// <summary>The sign-in's browser: always headed, on a display of its own, with DevTools on a loopback port; needs Xvfb, as the headed renewal does.</summary>
     public IChromiumSignInProcess LaunchSignIn(string profileFolder)
     {
         var cookie = Path.Combine(profileFolder, XAuthorityFile);

@@ -3,7 +3,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// Who is typing, for one reader, kept as the newest snapshot of each conversation (SWITCHBOARD.md 2.6d). A <see cref="TypingUpdate"/>
+/// Who is typing, for one reader, kept as the newest snapshot of each conversation. A <see cref="TypingUpdate"/>
 /// is the whole answer for its conversation, so a newer one replaces an older one that was not read yet instead of queueing behind it:
 /// a reader that falls behind skips to the present, and a burst in one conversation costs one slot. At most <c>capacity</c>
 /// conversations are held; past that the one waiting longest is dropped. Nothing here is a sequence, a ring or a log.
@@ -89,7 +89,7 @@ internal sealed class TypingSlot(int capacity = TypingSlot.DefaultCapacity)
     }
 }
 
-/// <summary>One connection's reading of the host's typing. Dispose it to stop.</summary>
+/// <summary>One connection's reading of the server's typing. Dispose it to stop.</summary>
 public sealed class TypingSubscription : IDisposable
 {
     private readonly TypingHub owner;

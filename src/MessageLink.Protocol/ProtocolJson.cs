@@ -6,7 +6,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The one set of JSON options every host and client uses. Conventions: camelCase property names, enums as camelCase
+/// The one set of JSON options every server and client uses. Conventions: camelCase property names, enums as camelCase
 /// strings (an integer is refused), ISO-8601 dates, null properties omitted, unknown properties ignored, no reference
 /// handling, and computed (get-only) properties never written.
 /// </summary>

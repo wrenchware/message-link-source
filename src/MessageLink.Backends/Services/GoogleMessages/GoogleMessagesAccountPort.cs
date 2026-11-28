@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services.GoogleMessages;
 
 // The Google Messages account behind IGoogleMessagesAccount, so a window (or a remote client, later) manages it without
-// holding GoogleMessagesBackend (SWITCHBOARD.md 2.6a). Every call is the backend's own; nothing here decides anything.
+// holding GoogleMessagesBackend. Every call is the backend's own; nothing here decides anything.
 // Renewal, pairing and reconnect behaviour stay in the backend and GoogleSignInKeeper.
 internal sealed class GoogleMessagesAccountPort(GoogleMessagesBackend google, GoogleMediaBackend media) : IGoogleMessagesAccount
 {

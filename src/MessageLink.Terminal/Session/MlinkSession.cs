@@ -53,7 +53,7 @@ public sealed class MlinkSession : IAsyncDisposable
     private Task? streamWorker, loading;
     private EventHandler? reconnected, mergesChanged;
     private EventHandler<string>? markedUnreadCleared, snoozeCleared;
-    private EventHandler<HostState>? stateChanged;
+    private EventHandler<ServerState>? stateChanged;
     private SharedListChanges? shared;
     private MergedConversations? merges;
     private int disposed;
@@ -98,8 +98,8 @@ public sealed class MlinkSession : IAsyncDisposable
         var kept = new KeptHistoryProxy(client);
         var feed = new RealtimeFeedProxy(client, state) { RetryDelay = FeedRetryDelay };
         var snoozeProxy = new SnoozeProxy(client);
-        var diagnostics = new HostDiagnosticsReader(new HostDiagnosticsProxy(client));
-        var logs = new HostLogsProxy(client);
+        var diagnostics = new ServerDiagnosticsReader(new ServerDiagnosticsProxy(client));
+        var logs = new ServerLogsProxy(client);
 
         // ---- The replica of the server's shared rows, and its companions (ClientPortRegistrations.AddLocal) ----
         replica = new ReplicatedStateStore(Path.Combine(serverFolder, ReplicatedStateStore.FileName), context.Protector, client, tokens, log);
@@ -222,12 +222,12 @@ public sealed class MlinkSession : IAsyncDisposable
     /// <summary>The most the console waits, as it opens, for the server's first state and then its conversation list.</summary>
     public static TimeSpan StartWait { get; set; } = TimeSpan.FromSeconds(10);
 
-    private static async Task WhenAsync(Func<bool> done, Action<EventHandler<HostState>> add, Action<EventHandler<HostState>> remove, TimeSpan bound,
+    private static async Task WhenAsync(Func<bool> done, Action<EventHandler<ServerState>> add, Action<EventHandler<ServerState>> remove, TimeSpan bound,
         CancellationToken cancellationToken)
     {
         if (done()) return;
         var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Changed(object? sender, HostState state) { if (done()) arrived.TrySetResult(); }
+        void Changed(object? sender, ServerState state) { if (done()) arrived.TrySetResult(); }
         add(Changed);
         try
         {

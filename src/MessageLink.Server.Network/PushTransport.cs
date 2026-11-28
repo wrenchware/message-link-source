@@ -46,7 +46,7 @@ public enum PushKeyCheck { Accepted, Refused, Unreachable, ApiDisabled, NotAllow
 public enum FirebaseFileKind { Unknown, AppSettings, ServiceAccount }
 
 /// <summary>
-/// Firebase Cloud Messaging's HTTP v1 API, as the owner's own project (SWITCHBOARD.md Decisions, 2026-10-15: no relay). Set up by two files the owner puts in
+/// Firebase Cloud Messaging's HTTP v1 API, as the owner's own project (2026-10-15: no relay). Set up by two files the owner puts in
 /// the server's push folder: <c>google-services.json</c> (the Android app's settings, which the server offers phones: none of it secret) and
 /// <c>service-account.json</c> (the project's private key, which only signs the server's requests for an access token and never leaves it). Nothing of a
 /// push but its sealed bytes reaches Firebase, and nothing of a token or key is logged.

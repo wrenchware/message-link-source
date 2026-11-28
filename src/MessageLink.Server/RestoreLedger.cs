@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Server;
 
 /// <summary>
-/// How often a Linux host may restore its saved accounts (each restore logs Messenger and Instagram in again), kept across starts in
+/// How often a Linux server may restore its saved accounts (each restore logs Messenger and Instagram in again), kept across starts in
 /// <c>&lt;data&gt;/Server/restores.protected</c>, sealed with the host's key. A container that keeps crashing is restarted by Docker within seconds, and
 /// without this every start would log in again: that is the loop that gets an account checkpointed.
 /// <list type="bullet">
@@ -13,8 +13,8 @@ namespace MessageLink.Server;
 /// <item>After a start that did not end cleanly (the run marker was left behind), the restore waits <see cref="FirstBackoff"/>, doubling with each unclean
 /// start in a row up to <see cref="LongestBackoff"/>: the 1 to 30 minutes of the resume pacing the server foundation never shortens. A clean stop resets it.</item>
 /// </list>
-/// The host starts and serves meanwhile; only the restore is held (<c>server restore held reason=paced wait_s=</c>). A restore is counted when it begins,
-/// so one that crashes the host still counts. A ledger that cannot be read is treated as the longest back-off, never as permission.
+/// The server starts and serves meanwhile; only the restore is held (<c>server restore held reason=paced wait_s=</c>). A restore is counted when it begins,
+/// so one that crashes the server still counts. A ledger that cannot be read is treated as the longest back-off, never as permission.
 /// </summary>
 internal sealed class RestoreLedger(string path, IStateProtector protector, TimeProvider time, Action<string> log)
 {
@@ -126,7 +126,7 @@ internal sealed class RestoreLedger(string path, IStateProtector protector, Time
         return null;
     }
 
-    // Written whole and moved over the old one. A ledger that cannot be written is said and reported as not saved; the host serves but restores nothing on its own that run.
+    // Written whole and moved over the old one. A ledger that cannot be written is said and reported as not saved; the server serves but restores nothing on its own that run.
     private async Task<bool> SaveAsync()
     {
         try

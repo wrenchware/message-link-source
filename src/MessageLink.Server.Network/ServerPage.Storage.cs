@@ -27,7 +27,7 @@ internal sealed partial class ServerPage
     }
 }
 
-/// <summary>What the server keeps in its data and keys folders, by kind (the host cannot see the Windows app's StorageUsage, so its rules are repeated here).</summary>
+/// <summary>What the server keeps in its data and keys folders, by kind (the server cannot see the Windows app's StorageUsage, so its rules are repeated here).</summary>
 internal sealed class ServerStorage(IReadOnlyList<string> folders, TimeProvider time, Action<string> log)
 {
     /// <summary>How long a measurement is shown before another is made in the background.</summary>

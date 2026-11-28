@@ -8,7 +8,7 @@ public sealed partial class ProtocolDispatcher
 {
     private static Dictionary<string, Route> AddDiagnosticsRoutes(Dictionary<string, Route> routes)
     {
-        routes[ProtocolMethods.HostDiagnosticsRead] = Of<IHostDiagnostics, HostDiagnostics>(s => s.Diagnostics, (port, ct) => port.ReadAsync(ct));
+        routes[ProtocolMethods.ServerDiagnosticsRead] = Of<IServerDiagnostics, ServerDiagnostics>(s => s.Diagnostics, (port, ct) => port.ReadAsync(ct));
         return routes;
     }
 }

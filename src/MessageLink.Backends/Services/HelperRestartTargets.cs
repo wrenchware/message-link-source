@@ -7,12 +7,12 @@ using MessageLink.Core.Services;
 namespace MessageLink.App.Services;
 
 // What the host itself is doing to an account that a restart must not race: a sign-in it runs (Messenger's or
-// Instagram's Connect, adding a Voice account). Google's invisible refresh is the keeper's, so it needs no host.
+// Instagram's Connect, adding a Voice account). Google's invisible refresh is the keeper's, so it needs no server.
 internal interface IRestartGuard
 {
     // service: google_messages, messenger, instagram or gvoice, the names the restart log uses.
     bool SigningIn(string service);
-    // Held while a restart runs, so the host's own Connect and Sign out for that service do nothing meanwhile.
+    // Held while a restart runs, so the server's own Connect and Sign out for that service do nothing meanwhile.
     IDisposable Hold(string service);
 }
 
@@ -49,19 +49,19 @@ internal static class HelperRestartTargets
     }
 }
 
-// Connection health's Restart as the host serves it (IHelperRestarter): the targets above under one HelperRestarts, which keeps
+// Connection health's Restart as the server serves it (IHelperRestarter): the targets above under one HelperRestarts, which keeps
 // the one-at-a-time rule and the restart log across every client of this host. Only the client knows whether a sign-in window of its own
-// is open, so that arrives as a flag; the host's own refusals (the backend's state, the keeper's recovery) are asked as before. The Hold
-// that keeps the client's Connect and Sign out still while a restart runs is the client's to take: its calls reach this host through
+// is open, so that arrives as a flag; the server's own refusals (the backend's state, the keeper's recovery) are asked as before. The Hold
+// that keeps the client's Connect and Sign out still while a restart runs is the client's to take: its calls reach this server through
 // their own (journaled) methods, and the backend refuses them while it restarts.
-internal sealed class HostHelperRestarter(GoogleMessagesBackend? google, GoogleSignInKeeper keeper, MessengerBackend messenger,
+internal sealed class ServerHelperRestarter(GoogleMessagesBackend? google, GoogleSignInKeeper keeper, MessengerBackend messenger,
     InstagramBackend instagram, GoogleVoiceAccounts voice, HelperRestarts restarts) : IHelperRestarter
 {
     // The scope is a client's string and goes no further than the table and the running set, so its size is all that is checked.
     internal const int MaxScopeLength = 128;
     internal ProviderAccounts? Accounts { get; set; }
 
-    public HostHelperRestarter(GoogleMessagesBackend? google, GoogleSignInKeeper keeper, MessengerBackend messenger,
+    public ServerHelperRestarter(GoogleMessagesBackend? google, GoogleSignInKeeper keeper, MessengerBackend messenger,
         InstagramBackend instagram, GoogleVoiceAccounts voice, Action<string> log)
         : this(google, keeper, messenger, instagram, voice, new HelperRestarts(TimeProvider.System, log)) { }
 
@@ -76,7 +76,7 @@ internal sealed class HostHelperRestarter(GoogleMessagesBackend? google, GoogleS
             target = HelperRestartTargets.For(native, account.Google ?? google, account.Keeper ?? keeper, account.Messenger ?? messenger, account.Instagram ?? instagram, voice, new ClientGuard(signingIn));
         }
         else target = scope.Length > MaxScopeLength ? null : HelperRestartTargets.For(scope, google, keeper, messenger, instagram, voice, new ClientGuard(signingIn));
-        // A scope no helper serves, or Google's backend missing from a host that was composed without it: said as the refusals the window already words.
+        // A scope no helper serves, or Google's backend missing from a server that was composed without it: said as the refusals the window already words.
         if (target is null) return new("refused", HelperRestartScope.Service(scope) is null ? "unknown_scope" : "not_started", 0);
         return await restarts.RunAsync(scope, target, settle, force, token).ConfigureAwait(false);
     }

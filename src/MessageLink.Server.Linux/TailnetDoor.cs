@@ -8,7 +8,7 @@ using MessageLink.Server.Network;
 namespace MessageLink.Server.Linux;
 
 /// <summary>
-/// The server's door on the owner's tailnet (SWITCHBOARD.md 4.7, chosen 2026-10-15): <c>messages-tailnet</c> beside the server, a Tailscale node of
+/// The server's door on the owner's tailnet (chosen 2026-10-15): <c>messages-tailnet</c> beside the server, a Tailscale node of
 /// its own in this container (helpers/Tailnet/door), run while <c>MESSAGES_TAILNET=1</c>. It passes each tailnet device's connection to the network host's relay
 /// socket behind a line naming the device (<see cref="TailnetRelay"/>), so Unraid publishes the port on the home network only and the
 /// server still tells devices apart.
@@ -131,7 +131,7 @@ internal sealed partial class TailnetDoor
     }
 
     /// <summary>
-    /// "Use another Tailscale account" (SWITCHBOARD.md 10.8): asks the running door to sign its node out (a <c>logout</c> line on its input); once it has ended, its state
+    /// "Use another Tailscale account": asks the running door to sign its node out (a <c>logout</c> line on its input); once it has ended, its state
     /// folder is removed and it starts again at once, with no identity, so it asks for a new sign-in link. False when no door is running to ask.
     /// Logged: <c>server tailnet sign_out asked</c>, then <c>server tailnet forgotten</c> or <c>server tailnet forget failed type=</c>.
     /// </summary>
@@ -185,7 +185,7 @@ internal sealed partial class TailnetDoor
     /// Starts the door for a server on <paramref name="port"/> whose relay socket is <paramref name="socket"/>, or says why not (<c>server tailnet refused
     /// reason=name|no_door</c>) and returns null. <paramref name="console"/> is the container's own output; <paramref name="launch"/> a check's stand-in for the
     /// process start (the server's is <see cref="HelperJob.Start"/>, from the one thread a parent-death signal may come from).
-    /// <paramref name="authKey"/> is <c>MESSAGES_TAILNET_AUTHKEY</c> (SWITCHBOARD.md 10.8, headless setups): written as the first line of each run's input and nowhere else, so
+    /// <paramref name="authKey"/> is <c>MESSAGES_TAILNET_AUTHKEY</c> (headless setups): written as the first line of each run's input and nowhere else, so
     /// the door's environment stays empty and no argument names it. One not of Tailscale's form is dropped (<c>server tailnet authkey refused reason=form</c>) and the
     /// sign-in link is offered as without one. Tailscale uses it only while the node has no identity yet.
     /// </summary>
@@ -244,7 +244,7 @@ internal sealed partial class TailnetDoor
         if (authKeyOnInput) start.ArgumentList.Add("--authkey-stdin");
         start.Environment.Clear();
         if (OperatingSystem.IsLinux()) start.Environment["MESSAGES_HELPER_PARENT_PID"] = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
-        // On Windows (the PC's own server, SWITCHBOARD.md 10.7) a Go program finds the system's own libraries through SystemRoot, a path and nothing secret; the job the
+        // On Windows (the PC's own server) a Go program finds the system's own libraries through SystemRoot, a path and nothing secret; the job the
         // server keeps its helpers in ends the door with the server, so it needs no parent watch.
         if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("SystemRoot") is { Length: > 0 } systemRoot) start.Environment["SystemRoot"] = systemRoot;
         return start;
@@ -372,7 +372,7 @@ internal sealed partial class TailnetDoor
     }
 
     /// <summary>
-    /// Ends the door: no new start, its input ended (the door closes its node and exits), and after <see cref="StopWait"/> a kill. Call it after the network host
+    /// Ends the door: no new start, its input ended (the door closes its node and exits), and after <see cref="StopWait"/> a kill. Call it after the network server
     /// has stopped, so the answers it drains still reach the devices through the door.
     /// </summary>
     public async Task StopAsync()

@@ -2,7 +2,7 @@ using MessageLink.Core.Messaging;
 
 namespace MessageLink.Protocol;
 
-// The server's whole copy of every conversation (SWITCHBOARD.md stage 8, protocol 24). The server keeps each conversation whole from its newest message
+// The server's whole copy of every conversation (protocol 24). The server keeps each conversation whole from its newest message
 // down to as far back as anyone has read, numbers every change it makes to it, and hands a client only what changed after the number the client holds, so
 // a client's copy is whole by construction and is drawn at once. A revision is "<epoch>.<number>": the epoch is new whenever the server's store starts
 // over, and a revision of another epoch, or older than the conversation's last reset, is answered with a reset (replace your copy, don't patch it).

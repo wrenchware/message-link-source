@@ -9,7 +9,7 @@ namespace MessageLink.Server;
 internal sealed record SharedSpaceRow<T>(string Id, T Value, long Rev, byte[] Bytes);
 
 /// <summary>
-/// One category of the server's shared space as the host's own features read and write it (the scheduled sends, the repeats, the records of unsettled sends,
+/// One category of the server's shared space as the server's own features read and write it (the scheduled sends, the repeats, the records of unsettled sends,
 /// the snoozes, the merges it reads and the Marketplace label): the profile the rows are filed under now (<see cref="SharedStateStore.ProfileAsync"/>), each
 /// row's key (<see cref="SharedCategories.KeyOf"/>, the profile and the row's id), its JSON, and one write path, the store's own batch
 /// (<see cref="SharedStateStore.WriteOwnBatchAsync"/>), held to a rev where a feature needs it. A feature names rows by id and never sees a key or a profile.
@@ -46,7 +46,7 @@ internal sealed class SharedSpaceView<T> where T : class
         catch (JsonException) { return null; }
     }
 
-    /// <summary>The category under the profile the space files the host's rows under now, or null while there is none.</summary>
+    /// <summary>The category under the profile the space files the server's rows under now, or null while there is none.</summary>
     public async Task<Filed?> FiledAsync(CancellationToken cancellationToken = default) =>
         await store.ProfileAsync(cancellationToken).ConfigureAwait(false) is { } profile ? new Filed(this, profile) : null;
 

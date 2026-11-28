@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace MessageLink.Protocol;
 
-// Keeping the journal across a host restart (SWITCHBOARD.md 3.0d).
+// Keeping the journal across a server restart.
 //
 // The blob, before the store protects it:
 //   {"v":1,"entries":[{"id":..,"fp":..,"state":"running|done|failed","at":<unix ms>,"result":<json>,"error":{"code":..,
@@ -82,7 +82,7 @@ public sealed partial class OperationJournal
         });
     }
 
-    /// <summary>Writes anything not yet written. A host disposes its journal when it stops.</summary>
+    /// <summary>Writes anything not yet written. A server disposes its journal when it stops.</summary>
     public void Dispose()
     {
         if (store is null) return;

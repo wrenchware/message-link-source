@@ -6,7 +6,7 @@ namespace MessageLink.Server.Backup;
 
 /// <summary>
 /// The record a restore leaves (<c>&lt;data&gt;/restored.protected</c>, sealed with the server's own key), so a device that joined after the backup was made is told
-/// what happened rather than only that its token is unknown (SWITCHBOARD.md stage 10, "Restore: every case").
+/// what happened rather than only that its token is unknown ("Restore: every case").
 /// </summary>
 /// <remarks>
 /// A device's token is checked against the list the backup brought back. One the list does not know was never in it: the device joined after the backup, or was forgotten

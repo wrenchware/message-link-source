@@ -102,7 +102,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
             problems == 0 ? ConsoleTone.Ok : ConsoleTone.Warn);
     }
 
-    // The server's check of its copies against the services (SWITCHBOARD.md stage 9): its newest results, and with "now" a check started.
+    // The server's check of its copies against the services: its newest results, and with "now" a check started.
     private async Task MirrorAsync(string rest)
     {
         var start = rest.Trim();
@@ -165,7 +165,7 @@ public sealed partial class ConsoleSessionViewModel : IConsoleAppHost
         };
         if (env is not null)
         {
-            // A host that cannot say (a terminal's server elsewhere) leaves the line out rather than print it empty.
+            // A server that cannot say (a terminal's server elsewhere) leaves the line out rather than print it empty.
             if (env.Os.Length > 0) info.Add(("OS", new ConsoleSpan((env.Os + " " + env.Architecture).TrimEnd())));
             if (env.Runtime.Length > 0) info.Add(("Runtime", new ConsoleSpan(env.Runtime)));
             info.Add(("UI", new ConsoleSpan("Terminal" + (env.AppSdk.Length > 0 ? " · " + env.AppSdk : ""))));

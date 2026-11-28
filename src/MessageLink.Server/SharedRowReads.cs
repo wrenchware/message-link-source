@@ -8,7 +8,7 @@ namespace MessageLink.Server;
 
 /// <summary>
 /// The clients' own rows of a server's shared state, read with <c>state.get</c> for the clients' own readers (LocalPreferenceChatReader, MergedConversations),
-/// so the server judges a conversation as a client would (the push notifier, SWITCHBOARD.md 7.5): each chat preference as LocalChatPreferenceStore decodes
+/// so the server judges a conversation as a client would (the push notifier): each chat preference as LocalChatPreferenceStore decodes
 /// it, each snooze, and any row a <see cref="Presentation.Services.PrivateState"/> reads (the merges). Nothing is written through them. A row, or a read, that
 /// fails counts as none, as a client reads a file it cannot: a notification that comes when it should not is noticed, one that never comes is not.
 /// </summary>
@@ -22,7 +22,7 @@ internal static class SharedRowReads
 
     private static async Task<IReadOnlyList<SharedRow>> GetAsync(ISharedState? shared, IReadOnlyList<string> keys, CancellationToken cancellationToken)
     {
-        // A host with no shared state has no rows: every conversation reads as its service has it.
+        // A server with no shared state has no rows: every conversation reads as its service has it.
         if (shared is null) return [];
         try { return (await shared.GetAsync(new StateGetParams(keys), cancellationToken: cancellationToken).ConfigureAwait(false)).Rows; }
         catch (Exception failure) when (failure is not OperationCanceledException || !cancellationToken.IsCancellationRequested) { return []; }

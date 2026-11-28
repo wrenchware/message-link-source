@@ -4,17 +4,17 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// Where a host keeps the files a client has sent up for a send that has not happened yet (<c>media.upload*</c>). One store serves
-/// every connection of a host. An upload is begun with its declared length (which is reserved at once), filled by chunks whose
+/// Where a server keeps the files a client has sent up for a send that has not happened yet (<c>media.upload*</c>). One store serves
+/// every connection of a server. An upload is begun with its declared length (which is reserved at once), filled by chunks whose
 /// offsets follow one another, and ended; only a finished upload can be claimed by a send, and a send that has run (however it
 /// ended) deletes what it claimed.
 /// <list type="bullet">
 /// <item>Bounds, each settable: <see cref="MaxUploadBytes"/> for one upload, <see cref="MaxTotalBytes"/> for everything held at once
 /// (declared lengths, so a client cannot open many large uploads and fill them later), and <see cref="MaxUploads"/> in number.</item>
 /// <item>An upload nobody has touched for <see cref="IdleLifetime"/> is deleted, unless a send holds it. Expiry is checked on every
-/// operation, so a host with no traffic holds nothing it was not asked to hold for longer than the next call.</item>
-/// <item>Where the bytes live: in memory up to <see cref="MemoryThreshold"/>, in a file under the folder the host gave above that.
-/// A host with no folder keeps everything in memory. The folder is the host's scratch space, never its protected data. A file holds
+/// operation, so a server with no traffic holds nothing it was not asked to hold for longer than the next call.</item>
+/// <item>Where the bytes live: in memory up to <see cref="MemoryThreshold"/>, in a file under the folder the server gave above that.
+/// A server with no folder keeps everything in memory. The folder is the server's scratch space, never its protected data. A file holds
 /// only ciphertext (<see cref="UploadCipher"/>) under a key made when the store was made and kept only in its memory, and is named by
 /// a random id. Every spill file already in the folder when the store is made is an earlier run's, unreadable now, and is deleted.</item>
 /// </list>
@@ -82,7 +82,7 @@ public sealed class UploadStore : IDisposable
     /// <summary>How long an upload that nobody touches is kept.</summary>
     public TimeSpan IdleLifetime { get; set; } = TimeSpan.FromHours(1);
 
-    /// <summary>Uploads up to this many bytes stay in memory even when the host gave a folder (photos then never touch the disk).</summary>
+    /// <summary>Uploads up to this many bytes stay in memory even when the server gave a folder (photos then never touch the disk).</summary>
     public long MemoryThreshold { get; set; } = 8L * 1024 * 1024;
 
     /// <summary>How many uploads are held now.</summary>
@@ -245,7 +245,7 @@ public sealed class UploadStore : IDisposable
             this.store = store; this.held = held; this.refs = refs;
         }
 
-        /// <summary>The file the host hands a backend: its bytes are the claimed upload's, read afresh by each <c>OpenRead</c>.</summary>
+        /// <summary>The file the server hands a backend: its bytes are the claimed upload's, read afresh by each <c>OpenRead</c>.</summary>
         public AttachmentFile FileAt(int index)
         {
             var reference = refs[index];

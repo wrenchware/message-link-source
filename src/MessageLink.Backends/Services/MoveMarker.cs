@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace MessageLink.App.Services;
 
-/// <summary>Which server this data root uses (SWITCHBOARD.md 10.7, "There is always a server"), as its record says.</summary>
+/// <summary>Which server this data root uses ("There is always a server"), as its record says.</summary>
 internal enum MoveState
 {
     /// <summary>No record: a root that has not been launched yet (ProtocolMode.Settle marks it as running its own server at its first launch).</summary>
@@ -84,7 +84,7 @@ internal static class MoveMarker
     }
 
     /// <summary>
-    /// The server a PC's own Message Link Server is named by in the marker (SWITCHBOARD.md 10.7): the same word the client's replica is filed under
+    /// The server a PC's own Message Link Server is named by in the marker: the same word the client's replica is filed under
     /// (<c>ReplicatedStateStore.LocalServer</c>), never a fingerprint, so a marker naming it is never mistaken for a server on the network.
     /// </summary>
     public const string LocalServer = "local";
@@ -96,7 +96,7 @@ internal static class MoveMarker
     public static bool RunsOwnServer(MoveMark mark) => mark.State == MoveState.Moved && IsLocalServer(mark);
 
     /// <summary>
-    /// Whether <c>MessageLinkServer.exe</c> may open the real data of <paramref name="dataRoot"/> (SWITCHBOARD.md 10.7, the lift of 3.2b): only a root that runs its own
+    /// Whether <c>MessageLinkServer.exe</c> may open the real data of <paramref name="dataRoot"/>: only a root that runs its own
     /// server (<see cref="RunsOwnServer"/>). Anything else, an unreadable marker included, stays refused.
     /// </summary>
     public static bool ServerMayOpen(string dataRoot) => RunsOwnServer(Read(dataRoot));

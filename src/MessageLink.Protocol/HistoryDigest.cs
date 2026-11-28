@@ -6,7 +6,7 @@ using MessageLink.Core.Messaging;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// One fingerprint of a run of messages, the same on every side (SWITCHBOARD.md stage 9): the server compares a service's newest page with its copy by it,
+/// One fingerprint of a run of messages, the same on every side: the server compares a service's newest page with its copy by it,
 /// and a client compares its copy with the server's. It covers what makes two copies of a message differ for a person (its id, time, edit mark, removal,
 /// reactions, how many attachments, and how long its words are), never the words. The Android client computes it the same way (<c>HistoryDigest.kt</c>):
 /// a line per message, the lines in the ordinal order of the ids, each field separated by a tab and each line ended by a newline, SHA-256 over the UTF-8,

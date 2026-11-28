@@ -8,7 +8,7 @@ namespace MessageLink.Server.Windows;
 /// The server's STA thread as the Google browser sees it (<see cref="IStaQueue"/>): a Windows.System.DispatcherQueue made on the thread that
 /// pumps the shell's window, with no Windows App SDK (the SDK's own dispatcher is one more package; CoreMessaging makes the same kind of queue without it).
 /// The shell's message loop drains it, so the renewal's WebView2 controllers live on the thread that also answers a quit, Restart Manager and
-/// the end of the session. Proved by a spike before it was built (SWITCHBOARD.md 3.1).
+/// the end of the session. Proved by a spike before it was built.
 /// </summary>
 internal sealed class ServerStaQueue : IStaQueue
 {

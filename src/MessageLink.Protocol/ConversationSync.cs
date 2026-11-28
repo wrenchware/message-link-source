@@ -18,7 +18,7 @@ public sealed record ChatsSyncResult(IReadOnlyList<ChatSummary> Items, IReadOnly
 
 /// <summary>
 /// A list revision is independent of the event ring and survives a nightly restart. Only ids and truncated SHA-256 fingerprints are retained, in the
-/// host's protected store. Comparing a fresh provider enumeration also catches changes while the host was down, which an event-only journal cannot do.
+/// server's protected store. Comparing a fresh provider enumeration also catches changes while the server was down, which an event-only journal cannot do.
 /// The expensive provider reads stay on the server; only changed rows cross the phone's connection. No provider mutation is involved.
 /// </summary>
 /// <param name="maxTransfers">Paged reads held at once; the sample server's --sync-transfers 0 holds none, so every page after the first says restart.</param>

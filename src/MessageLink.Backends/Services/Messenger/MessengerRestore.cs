@@ -12,7 +12,7 @@ internal static class MessengerRestore
     // The wait before the second try; the third waits twice as long. A property so the harness need not sit through it.
     internal static TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(3);
 
-    // stopped: the host is closing, so no further try starts. A failure on the last try is thrown, as before.
+    // stopped: the server is closing, so no further try starts. A failure on the last try is thrown, as before.
     public static Task<Outcome> RunAsync(MessengerBackend messenger, Func<bool> stopped) =>
         RunAsync(messenger.ReadSavedCookiesAsync, cookies => messenger.ConnectAsync(cookies, adoptLegacy: true), stopped);
 

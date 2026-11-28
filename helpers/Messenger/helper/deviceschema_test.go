@@ -10,7 +10,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-// The number the app compares a server's device database with (SWITCHBOARD.md slice 13, 2026-10-12) must be the one
+// The number the app compares a server's device database with (2026-10-12) must be the one
 // this build's store writes and the line past which it refuses to open one: read from a store the library made itself,
 // not from the upgrade list alone.
 func TestDeviceSchemaIsWhatTheStoreRecords(t *testing.T) {

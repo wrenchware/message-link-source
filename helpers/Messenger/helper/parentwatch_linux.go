@@ -11,7 +11,7 @@ import (
 )
 
 // A helper started by the Linux server ends with it however the server ends, a crash or a SIGKILL included, rather than
-// running on beside the next server on the same account's stores (SWITCHBOARD.md 4.2). End of input says the same, but
+// running on beside the next server on the same account's stores. End of input says the same, but
 // a helper inside a lifecycle call reads no input until that call ends (dispatch.go). The server names itself in
 // MESSAGES_HELPER_PARENT_PID; without it (tests, a helper started by hand) nothing here applies.
 func init() {

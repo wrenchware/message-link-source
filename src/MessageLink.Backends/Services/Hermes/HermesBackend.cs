@@ -926,7 +926,7 @@ internal sealed partial class HermesBackend : IChatReader, IRealtimeFeed, IMessa
         var chatId = HermesIds.Chat(profile);
         if (word == "connected") _ = GreetAsync(profile, chatId, generation >= 0 ? generation : Volatile.Read(ref this.generation));
         // No Connected, Disconnected or AuthenticationRequired event: a client reads those as a service connection (a sign-in banner, a phone's full
-        // re-read on catch-up). How a profile stands travels in the host's state (HermesAccountState) and, when a turn fails, as a line in its thread.
+        // re-read on catch-up). How a profile stands travels in the server's state (HermesAccountState) and, when a turn fails, as a line in its thread.
         realtime.TryWrite(new(RealtimeKind.ChatChanged, null, [chatId], null, clock.GetUtcNow()));
         Raise();
     }

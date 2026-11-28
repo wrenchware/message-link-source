@@ -5,18 +5,18 @@ using MessageLink.Protocol;
 
 namespace MessageLink.Server.Network;
 
-// The page of a Windows server on its own PC (SWITCHBOARD.md 10.7). Messages opens it signed in with a one-time code (LocalPageLink), and a browser on this PC that is
+// The page of a Windows server on its own PC. Messages opens it signed in with a one-time code (LocalPageLink), and a browser on this PC that is
 // signed in is the PC's own user, so a step that asks for the page's password again takes it as given. Only a browser on this PC (loopback, never a relayed tailnet
 // device, whose address is the device's own) has either; every other visitor gets the page exactly as on Linux.
 internal sealed partial class ServerPage
 {
-    /// <summary>Takes a one-time code from Messages (<see cref="NetworkHostOptions.OnceSignIn"/>); null on a host without one.</summary>
+    /// <summary>Takes a one-time code from Messages (<see cref="NetworkServerOptions.OnceSignIn"/>); null on a host without one.</summary>
     internal Func<string?, bool>? OnceSignIn { get; set; }
 
-    /// <summary>A signed-in browser on this PC needs no password again (<see cref="NetworkHostOptions.DesktopTrust"/>, decided in <see cref="PasswordAgain"/>).</summary>
+    /// <summary>A signed-in browser on this PC needs no password again (<see cref="NetworkServerOptions.DesktopTrust"/>, decided in <see cref="PasswordAgain"/>).</summary>
     internal bool DesktopTrust { get => passwordAgain.DesktopTrust; set => passwordAgain.DesktopTrust = value; }
 
-    /// <summary>Reset server signs the tailnet door's node out first (<see cref="NetworkHostOptions.ResetLeavesTailnet"/>).</summary>
+    /// <summary>Reset server signs the tailnet door's node out first (<see cref="NetworkServerOptions.ResetLeavesTailnet"/>).</summary>
     internal bool ResetLeavesTailnet { get; set; }
 
     private static bool OnThisPc(HttpContext context) => context.Connection.RemoteIpAddress is { } address && IPAddress.IsLoopback(address);
@@ -44,8 +44,8 @@ internal sealed partial class ServerPage
     }
 
     /// <summary>
-    /// Opens a service's sign-in on this PC's desktop (<see cref="NetworkHostOptions.DesktopSignIn"/>): the Windows server asks Messages, which owns the native sign-in
-    /// windows (owner D2). Null on every other host, whose page has no such buttons.
+    /// Opens a service's sign-in on this PC's desktop (<see cref="NetworkServerOptions.DesktopSignIn"/>): the Windows server asks Messages, which owns the native sign-in
+    /// windows (owner D2). Null on every other server, whose page has no such buttons.
     /// </summary>
     internal Func<string, bool>? DesktopSignIn { get; set; }
     internal Func<string, string?, Func<bool>, Task<MessageLink.App.Services.NativeAuthenticationStart>>? DesktopAccountSignIn { get; set; }

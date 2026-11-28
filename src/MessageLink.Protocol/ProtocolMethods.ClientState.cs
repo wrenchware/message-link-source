@@ -1,7 +1,7 @@
 namespace MessageLink.Protocol;
 
-// What only a client knows and a host's own code acts on (SWITCHBOARD.md 3.0b). Today the host's code reads these from in-process objects of the
-// window; a host in another process cannot, so the client states them.
+// What only a client knows and a server's own code acts on. Today the server's code reads these from in-process objects of the
+// window; a server in another process cannot, so the client states them.
 //
 //   presence       Some Messages window is shown and not minimized and the session is not locked (AppPresence). Instagram's poll slows while false.
 //   busy           A dialog is open in the main window (MainWindow.dialogOpen). The Google sign-in keeper puts a renewal off while true.
@@ -13,11 +13,11 @@ namespace MessageLink.Protocol;
 //                  client that cannot tell, and by every client before it, which reads as no.
 //
 // Idempotent and latest-wins: the client sends it once after connecting, again after every reconnect, and whenever any of these changes; the
-// host keeps the newest per connection and nothing is journaled. The first four must be stated: a field left out would otherwise read as its default
+// server keeps the newest per connection and nothing is journaled. The first four must be stated: a field left out would otherwise read as its default
 // and could loosen what the person chose, so a request that omits one is refused and the connection's previous state stands.
 //
-// The host combines its connections (HostClientState): present and busy if any is, a service private if any connection says so, link previews
-// only if every connection allows them. A connection that has said nothing yet adds nothing; with none the host keeps the last it knew.
+// The host combines its connections (ServerClientState): present and busy if any is, a service private if any connection says so, link previews
+// only if every connection allows them. A connection that has said nothing yet adds nothing; with none the server keeps the last it knew.
 public static partial class ProtocolMethods
 {
     public const string ClientStateSet = "client.state";
@@ -28,7 +28,7 @@ public static partial class ProtocolMethods
     ];
 }
 
-/// <summary>What a client says about itself (see <see cref="ProtocolMethods.ClientStateSet"/>). <paramref name="PrivateReading"/> holds service words; one the host does not know is ignored.</summary>
+/// <summary>What a client says about itself (see <see cref="ProtocolMethods.ClientStateSet"/>). <paramref name="PrivateReading"/> holds service words; one the server does not know is ignored.</summary>
 public sealed record ClientStateParams(bool Presence, bool Busy, IReadOnlyList<string> PrivateReading, bool LinkPreviews, bool? Active = null);
 
 /// <summary>Where a dispatcher puts what a connection states. <paramref name="connection"/> names the connection and is only ever compared by reference.</summary>

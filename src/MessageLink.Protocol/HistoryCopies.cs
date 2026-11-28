@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// A client's own copy of the conversations it reads, following the server's whole history (protocol 24, SWITCHBOARD.md stage 8): each copy holds a run of a
+/// A client's own copy of the conversations it reads, following the server's whole history (protocol 24): each copy holds a run of a
 /// conversation from its newest message down, with the server's revision of it, and takes every change the server makes from the event feed, where the change
 /// carries its messages. A read of the newest messages always asks <c>history.sync</c> for what changed since the copy's revision (one small answer instead of
 /// a page, and the server's cue to read a conversation again that it has not read for a while); older pages, a message, a peek and the held rows are answered
@@ -41,7 +41,7 @@ public sealed class HistoryCopies
         checker = new Timer(_ => _ = CheckSoonAsync(), null, CheckFirst, CheckEvery);
     }
 
-    // ---- The copies checked against the server's (SWITCHBOARD.md stage 9, B4) ----
+    // ---- The copies checked against the server's ----
 
     private readonly Timer checker;
     private int checking;
@@ -117,7 +117,7 @@ public sealed class HistoryCopies
     /// <summary>Whether the server keeps the whole history this way; below 24 every read goes to the server as before.</summary>
     public bool Enabled => client.Version >= ProtocolVersion.WholeHistory && Volatile.Read(ref unsupportedOn) != client.ConnectionNumber;
 
-    // The connection whose host answered that it keeps no whole history (the app's own in-process host, a Windows server without one): nothing is asked of
+    // The connection whose server answered that it keeps no whole history (the app's own in-process server, a Windows server without one): nothing is asked of
     // it again, and its reads go as they always did.
     private int unsupportedOn = -1;
 
@@ -240,7 +240,7 @@ public sealed class HistoryCopies
     }
 
     /// <summary>
-    /// A copy known current as a whole, for the conversation view to draw from it alone (stage 9, B3): its messages oldest first, whether more lie before them,
+    /// A copy known current as a whole, for the conversation view to draw from it alone: its messages oldest first, whether more lie before them,
     /// and the page position to read on from. Null when no copy is current.
     /// </summary>
     public (IReadOnlyList<ChatMessage> Messages, bool MoreOlder, string? Cursor)? Snapshot(string chatId)

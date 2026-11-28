@@ -8,7 +8,7 @@ using MessageLink.Protocol;
 
 namespace MessageLink.Server.Network;
 
-// Signing in to a service on the server's page (SWITCHBOARD.md 10.6): the server's own browser, shown on the page as the Windows app shows it, and driven from the page.
+// Signing in to a service on the server's page: the server's own browser, shown on the page as the Windows app shows it, and driven from the page.
 //
 // The view is a page of its own (SignInPath) whose few lines of script, allowed by their hash alone, open a socket to the page's own address (SignInSocketPath). The socket is the page's,
 // never the client door's: it takes the page's sign-in cookie, the page's form token and the page's own origin, all three, from the home network only (the door's FromTrustedNetwork),
@@ -46,7 +46,7 @@ internal sealed partial class ServerPage
 
     private void ConnectList(StringBuilder body, IReadOnlyList<ServerAccount>? accounts, bool walkthrough, HttpContext context, string token)
     {
-        // The Windows server (10.7) signs in with Messages' native windows on its own desktop (owner D2): Connect there, from a browser on that PC, and nowhere else.
+        // The Windows server signs in with Messages' native windows on its own desktop (owner D2): Connect there, from a browser on that PC, and nowhere else.
         if (DesktopSignIn is not null)
         {
             DesktopSignInForms(body, context, token, accounts);

@@ -15,7 +15,7 @@ namespace MessageLink.App.Services;
 // What is left unread on purpose: a JPEG scan's entropy-coded data is copied whole, because finding where its last block
 // ends means decoding every block; PNG and GIF palette entries no pixel uses (a BMP's are zeroed); and the unused low
 // bits at the end of a PNG row under 8 bits a pixel.
-// The decision of 2026-10-09 (SWITCHBOARD.md "Decisions") is that a Google Voice photo never carries its
+// The decision of 2026-10-09 is that a Google Voice photo never carries its
 // location; this is how a photo small enough to send as it is keeps its quality and still goes without it.
 //
 // What is kept is what drawing the picture needs, listed rather than everything except the known metadata, so that a

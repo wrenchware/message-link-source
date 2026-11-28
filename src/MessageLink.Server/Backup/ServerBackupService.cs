@@ -10,7 +10,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server.Backup;
 
 /// <summary>
-/// The server's own backup (SWITCHBOARD.md stage 10, step 10.2, D7 and D8): one encrypted file a day into a local folder or SMB share chosen on the page, with
+/// The server's own backup (D7 and D8): one encrypted file a day into a local folder or SMB share chosen on the page, with
 /// the server's data and identity and never a service's sign-in, on the PC backup's rules (<see cref="BackupSettings"/>): every 24 hours, an hour after a failure, the
 /// newest read back a day after it was written and weekly after that, five kept under the server's own tag (the newest holding each Messenger account's history never
 /// pruned), at below-normal priority and never in the first minutes after a start.
@@ -18,7 +18,7 @@ namespace MessageLink.Server.Backup;
 /// <remarks>
 /// The password is sealed with the server's own key (<c>Backup/password.protected</c>) so the schedule runs unattended; it is never logged, and where it is set the page
 /// says that a lost password means the backups are lost. A scheduled backup waits up to <see cref="MessengerPatience"/> for a Messenger that is signed in but not
-/// connected, then goes without its history. Each change in how the backup stands raises <see cref="Changed"/> (the host's <c>backup</c> signal), and two days without a
+/// connected, then goes without its history. Each change in how the backup stands raises <see cref="Changed"/> (the server's <c>backup</c> signal), and two days without a
 /// good backup while backups are on raises <see cref="StaleNotice"/> once (a push to the phones).
 /// Logged: <c>server backup written|failed|verify|cancelled|schedule ...</c> with fixed words, counts and milliseconds only.
 /// </remarks>

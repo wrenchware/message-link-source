@@ -1,8 +1,8 @@
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// A client's copy of answers it cannot ask for synchronously (SWITCHBOARD.md 2.6c). A synchronous port member on a window's thread
-/// must not wait for the host, so it reads what this holds, and a read of something missing or old asks the host in the background
+/// A client's copy of answers it cannot ask for synchronously. A synchronous port member on a window's thread
+/// must not wait for the server, so it reads what this holds, and a read of something missing or old asks the server in the background
 /// and keeps the answer for the next read. Until an answer arrives the member says the conservative thing (<c>unknown</c>: no SIM, not
 /// in memory, not readable), as an unknown capability is unavailable everywhere else.
 /// </summary>

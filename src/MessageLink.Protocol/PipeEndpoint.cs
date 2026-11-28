@@ -9,8 +9,8 @@ using System.Text;
 namespace MessageLink.Protocol;
 
 /// <summary>
-/// The local transport (SWITCHBOARD.md stage 3): a named pipe that carries one WebSocket, upgraded the way an HTTP client would
-/// (<see cref="PipeHandshake"/>). This is the pipe's name, the host's end with the access it grants, and the client's connector for
+/// The local transport: a named pipe that carries one WebSocket, upgraded the way an HTTP client would
+/// (<see cref="PipeHandshake"/>). This is the pipe's name, the server's end with the access it grants, and the client's connector for
 /// <see cref="ProtocolClient"/>.
 /// </summary>
 public static class PipeEndpoint
@@ -21,7 +21,7 @@ public static class PipeEndpoint
     private const int BufferBytes = 64 * 1024;
 
     /// <summary>
-    /// <c>Messages.Server.&lt;first 12 hex of SHA-256 of the user key&gt;&lt;suffix&gt;</c>. The suffix tells copies of the host on one PC apart
+    /// <c>Messages.Server.&lt;first 12 hex of SHA-256 of the user key&gt;&lt;suffix&gt;</c>. The suffix tells copies of the server on one PC apart
     /// (a development copy); it may hold letters, digits, dots, dashes and underscores.
     /// </summary>
     public static string PipeName(string userKey, string instanceSuffix = "")
@@ -40,9 +40,9 @@ public static class PipeEndpoint
         OperatingSystem.IsWindows() ? WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName : Environment.UserName;
 
     /// <summary>
-    /// A pipe instance for the host to listen on. Only the current user may open it, and the NETWORK group is denied outright, because a
+    /// A pipe instance for the server to listen on. Only the current user may open it, and the NETWORK group is denied outright, because a
     /// named pipe is reachable over SMB unless it says otherwise. <paramref name="first"/> fails if the name is already taken, so another
-    /// process cannot have created it ahead of the host.
+    /// process cannot have created it ahead of the server.
     /// </summary>
     /// <remarks>
     /// On Windows this is an explicit access list rather than <see cref="PipeOptions.CurrentUserOnly"/>, which the framework refuses to combine
@@ -72,7 +72,7 @@ public static class PipeEndpoint
 
     /// <summary>
     /// A connector for <see cref="ProtocolClient"/>: opens the pipe (only if it belongs to this user), sends the token with the upgrade and
-    /// returns the channel. It fails fast when nothing is listening or the host refuses, which <see cref="ProtocolClient"/> treats as a
+    /// returns the channel. It fails fast when nothing is listening or the server refuses, which <see cref="ProtocolClient"/> treats as a
     /// connection that is not there.
     /// </summary>
     public static Func<CancellationToken, Task<IFrameChannel>> Connector(string pipeName, ClientToken token, Action<string>? log = null, TimeSpan? connectTimeout = null)

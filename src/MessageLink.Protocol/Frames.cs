@@ -55,17 +55,17 @@ public sealed record ResponseFrame(string Id,
     public T? ResultAs<T>() => ProtocolJson.FromElement<T>(Result);
 }
 
-/// <summary>Asks the host to stop working on the outstanding request <paramref name="Id"/>. The request still gets its answer.</summary>
+/// <summary>Asks the server to stop working on the outstanding request <paramref name="Id"/>. The request still gets its answer.</summary>
 public sealed record CancelFrame(string Id) : Frame;
 
 /// <summary>
-/// One item of the event feed a connection asked for with <c>events.subscribe</c>. <paramref name="Seq"/> counts the host's
-/// events from 1 within one <paramref name="Epoch"/> (a new one each time the host starts), in the order the connection
+/// One item of the event feed a connection asked for with <c>events.subscribe</c>. <paramref name="Seq"/> counts the server's
+/// events from 1 within one <paramref name="Epoch"/> (a new one each time the server starts), in the order the connection
 /// receives them; a client that remembers the last pair it saw can resume with them. <paramref name="Kind"/> is
 /// <see cref="EventKinds.Realtime"/>, whose <paramref name="Payload"/> is a <c>RealtimeEvent</c>, or
 /// <see cref="EventKinds.Resync"/>, which has none and means "everything may have changed: read it all again". A resync
 /// carries the sequence number after which live events continue, so a client sets its cursor to it. <see cref="EventKinds.State"/>
-/// carries the host's current <c>HostState</c>; one follows every resync.
+/// carries the server's current <c>ServerState</c>; one follows every resync.
 /// </summary>
 public sealed record EventFrame(long Seq, string Epoch, string Kind,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] JsonElement Payload = default) : Frame
@@ -73,17 +73,17 @@ public sealed record EventFrame(long Seq, string Epoch, string Kind,
     public bool HasPayload => Payload.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
 }
 
-/// <summary>The kinds of <see cref="EventFrame"/>. A kind a client does not know is ignored, so a newer host may add more.</summary>
+/// <summary>The kinds of <see cref="EventFrame"/>. A kind a client does not know is ignored, so a newer server may add more.</summary>
 public static class EventKinds
 {
     public const string Realtime = "realtime";
     public const string Resync = "resync";
-    /// <summary>The host's pushed state (<c>HostState</c>): what the client's synchronous members answer from (SWITCHBOARD.md 2.6b).</summary>
+    /// <summary>The server's pushed state (<c>ServerState</c>): what the client's synchronous members answer from.</summary>
     public const string State = "state";
     /// <summary>
     /// A fact about an account that no state shows (<see cref="AccountSignal"/>: the phone's SIMs changed, the default SMS app changed, the
-    /// conversations were renumbered, Instagram stopped reconnecting). It sits in the host's sequence like any event, so a client that
-    /// resumes is given the ones it missed (SWITCHBOARD.md 2.6c).
+    /// conversations were renumbered, Instagram stopped reconnecting). It sits in the server's sequence like any event, so a client that
+    /// resumes is given the ones it missed.
     /// </summary>
     public const string Account = "account";
     /// <summary>
@@ -94,37 +94,37 @@ public static class EventKinds
     public const string Progress = "progress";
     /// <summary>
     /// Who is typing in one conversation (<c>TypingUpdate</c>, a snapshot of that conversation), sent to a connection that asked for typing
-    /// when it subscribed. Ephemeral: it has <c>seq</c> 0, is not in the host's sequence or ring, is never replayed to a client that
-    /// resumes, and a slow client sees only the newest snapshot of each conversation (SWITCHBOARD.md 2.6d).
+    /// when it subscribed. Ephemeral: it has <c>seq</c> 0, is not in the server's sequence or ring, is never replayed to a client that
+    /// resumes, and a slow client sees only the newest snapshot of each conversation.
     /// </summary>
     public const string Typing = "typing";
     /// <summary>
     /// A provider caught up on messages after connecting (<see cref="MessageLink.Core.Services.CaughtUpNotice"/>: the conversation, the
-    /// messages' ids and whether their own events follow), so a client can prepare their pictures before the conversation opens
-    /// (SWITCHBOARD.md 3.0b). It sits in the host's sequence like any event, and a client that does not know the kind ignores it.
+    /// messages' ids and whether their own events follow), so a client can prepare their pictures before the conversation opens.
+    /// It sits in the server's sequence like any event, and a client that does not know the kind ignores it.
     /// </summary>
     public const string CaughtUp = "caughtUp";
     /// <summary>
-    /// One commit to the host's shared state (<see cref="SharedChange"/>, SWITCHBOARD.md stage 6; protocol version 2). It sits in the host's sequence like any
+    /// One commit to the server's shared state (<see cref="SharedChange"/>, protocol version 2). It sits in the server's sequence like any
     /// event, so a client that resumes is given the commits it missed, and one that was handed a resync reads them with <c>state.sync</c> instead. A client
     /// applies it to its replica as the frame is read; it never reaches the application as an event.
     /// </summary>
     public const string Shared = "shared";
     /// <summary>
-    /// One change to the server's whole copy of a conversation (<see cref="HistoryChange"/>, SWITCHBOARD.md stage 8; protocol version 24), carrying the changed
-    /// messages themselves. It sits in the host's sequence like any event, just after the realtime event that caused it, so a client that resumes is given the ones
+    /// One change to the server's whole copy of a conversation (<see cref="HistoryChange"/>, protocol version 24), carrying the changed
+    /// messages themselves. It sits in the server's sequence like any event, just after the realtime event that caused it, so a client that resumes is given the ones
     /// it missed and one that was handed a resync reads them with <c>history.changes</c>. A connection below 24 is never sent one.
     /// </summary>
     public const string History = "history";
     /// <summary>
-    /// One conversation's list row as the server keeps it now (<c>HistoryRowChange</c>, protocol 25, SWITCHBOARD.md stage 9): built again on its own when its copy
+    /// One conversation's list row as the server keeps it now (<c>HistoryRowChange</c>, protocol 25): built again on its own when its copy
     /// changed (its last message) or an event named it, so a connected client's list follows without asking. A whole read of the list makes none: a client
     /// reads those changes with <c>history.feed</c>. A connection below 25 is never sent one.
     /// </summary>
     public const string Row = "row";
 
     /// <summary>
-    /// The version that brought each kind. A host sends a connection only the kinds its version has, and the place of one it holds back counts as sent.
+    /// The version that brought each kind. A server sends a connection only the kinds its version has, and the place of one it holds back counts as sent.
     /// <see cref="Typing"/> and <see cref="Progress"/> are not in the sequence and go only to a connection that asked for them.
     /// </summary>
     public static IReadOnlyDictionary<string, int> Since { get; } = new Dictionary<string, int>(StringComparer.Ordinal)
@@ -157,7 +157,7 @@ public static class AccountSignals
     /// takes it) or answered (a PC reads its results). Never sent to a connection below 29.</summary>
     public const string PhoneContacts = "phoneContacts";
 
-    /// <summary>The version that brought each signal. A host never sends a signal to a connection that negotiated less; its place in the sequence counts as sent.</summary>
+    /// <summary>The version that brought each signal. A server never sends a signal to a connection that negotiated less; its place in the sequence counts as sent.</summary>
     public static IReadOnlyDictionary<string, int> Since { get; } = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         [Sims] = ProtocolVersion.Original, [DefaultSmsApp] = ProtocolVersion.Original, [Renumbered] = ProtocolVersion.Original,
