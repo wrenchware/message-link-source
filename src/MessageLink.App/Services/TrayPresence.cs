@@ -16,7 +16,7 @@ internal static class TrayPresence
     public static string ServerShellTitle => "Message Link Server" + AppPaths.InstanceSuffix;
 
     /// <summary>Posted by the app to the server's window once its tray window is made: the server looks again and hides its icon.</summary>
-    public static uint AppArrivedMessage => RegisterWindowMessageW("Messages.Server.AppTray" + AppPaths.InstanceSuffix);
+    public static uint AppArrivedMessage => RegisterWindowMessageW("MessageLink.Server.AppTray" + AppPaths.InstanceSuffix);
 
     /// <summary>The process of the Message Link window open on this data root, by its tray window; null when there is none.</summary>
     public static int? FindApp()

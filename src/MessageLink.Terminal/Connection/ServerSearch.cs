@@ -75,7 +75,7 @@ public sealed record ServerSearch
     }
 
     internal const string ServerFolder = "Server";
-    private const string LockPrefix = @"Local\Messages.Server";
+    private const string LockPrefix = @"Local\MessageLink.Server";
 
     /// <summary>The Microsoft Store package's identity name (installer\Build-StorePackage.ps1, the Partner Center reservation).</summary>
     public const string StoreIdentityName = "Wrenchware.Switchboard-MessagesforWindows";

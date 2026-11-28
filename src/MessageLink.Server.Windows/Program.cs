@@ -140,7 +140,7 @@ public static class Program
     // Asks the server of this data root to quit and waits for it to end. 0 it ended, 1 none is running, 2 it is still running (it refused, or is slow).
     // The wait is the stop's own worst case (ServerStopBounds.WorstCase), so a stop that is working through its bounds is not reported as stuck while it
     // is still inside them; a refusal does not wait at all (the server answers the command with it), so a caller that asks again every few seconds
-    // (Stop-Messages.ps1) gets to.
+    // (Stop-MessageLink.ps1) gets to.
     private static int Quit()
     {
         var window = Native.FindWindowW(ServerShell.WindowClassName, ServerShell.WindowTitle);

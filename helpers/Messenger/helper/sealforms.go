@@ -7,11 +7,13 @@ import (
 )
 
 // Every form a kept cell has been sealed in, on either platform: this build's own (protectedPrefix), Windows' before
-// the seal was renamed (NBP 1, 2026-11), Windows' now (MLP 1) and the Linux server's (MSP 2). A store copied from
-// another platform or an older build can hold any of them. None of the others opens here, and none is plaintext either:
-// the startup migration leaves such a cell exactly as it is, and a read refuses it.
+// the seal was renamed (NBP 1, 2026-11), Windows' now (MLP 1), the Linux server's before its rename (MSP 2, until
+// 2026-11-28) and the Linux server's now (MLS 1). A store copied from another platform or an older build can hold any of
+// them. None of the others is plaintext: the startup migration leaves such a cell exactly as it is, and a read refuses
+// it. The one exception is this platform's previous seal (previousSealPrefix, the Linux server's MSP 2), which the
+// startup migration opens and seals again in this build's own form.
 var retiredSealPrefix = []byte{'N', 'B', 'P', 1}
-var knownSealPrefixes = [][]byte{{'M', 'L', 'P', 1}, retiredSealPrefix, {'M', 'S', 'P', 2}}
+var knownSealPrefixes = [][]byte{{'M', 'L', 'P', 1}, retiredSealPrefix, {'M', 'S', 'P', 2}, {'M', 'L', 'S', 1}}
 
 // What CryptProtectData output begins with: dwVersion 1, then the provider GUID df9d8cd0-1501-11d1-8c7a-00c04fc297eb.
 // A cell that carries it, bare or after a four-byte prefix, is a DPAPI seal of some form even when its prefix is unknown.
@@ -22,6 +24,8 @@ const (
 	sealPlain   = "plain"
 	sealRetired = "retired-seal"
 	sealUnknown = "unknown-seal"
+	// Read refuses it like any foreign seal; only the startup migration opens it.
+	sealPrevious = "previous-seal"
 )
 
 // Which form a cell is in: this build's own seal, plaintext (never sealed, or empty), or a refusal reason.
@@ -29,6 +33,8 @@ func sealForm(value []byte) string {
 	switch {
 	case bytes.HasPrefix(value, protectedPrefix):
 		return sealOwn
+	case previousSealPrefix != nil && bytes.HasPrefix(value, previousSealPrefix):
+		return sealPrevious
 	case bytes.HasPrefix(value, retiredSealPrefix):
 		return sealRetired
 	}

@@ -90,7 +90,8 @@ func TestSealFormsAreToldApart(t *testing.T) {
 	}{
 		{"own", own, sealOwn},
 		{"retired", append([]byte{'N', 'B', 'P', 1}, dpapi...), sealRetired},
-		{"server", []byte{'M', 'S', 'P', 2, 9, 9, 9}, sealUnknown},
+		{"server before the rename", []byte{'M', 'S', 'P', 2, 9, 9, 9}, sealUnknown},
+		{"server", []byte{'M', 'L', 'S', 1, 9, 9, 9}, sealUnknown},
 		{"bare dpapi", dpapi, sealUnknown},
 		{"dpapi under another prefix", append([]byte{'X', 'Y', 'Z', 1}, dpapi...), sealUnknown},
 		{"plaintext", []byte("plain synthetic text"), sealPlain},

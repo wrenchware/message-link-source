@@ -64,7 +64,7 @@ internal static class RunMarker
     // Only an unclean exit of this same build. Windows ending the session leaves "session" (session_unfinished) and a
     // finished close leaves nothing, so a restart, a sign-out, Quit and the installer's Restart Manager close never say
     // it. A different build, or none recorded, means an install came between: the forced stop before one (Release.ps1,
-    // or toolsStop-Messages.ps1 before Setup) is not a crash the person needs telling about.
+    // or tools\Stop-MessageLink.ps1 before Setup) is not a crash the person needs telling about.
     public static string CrashNotice(string previousExit, string? previousVersion, string version) =>
         previousExit != "unclean" ? "none" : string.Equals(previousVersion, version, StringComparison.Ordinal) ? "show" : "upgraded";
 

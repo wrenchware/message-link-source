@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -405,7 +406,7 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 	// session had an empty card_text, which carries no prefix and so looked like legacy plaintext.
 	sealsEmpty := map[string]bool{"encrypted_media.transport": true, "encrypted_share.payload": true, "thread_identity.identity": true}
 	started := time.Now()
-	sealedCells, emptyCells, foreignCells := 0, 0, 0
+	sealedCells, emptyCells, foreignCells, resealedCells := 0, 0, 0, 0
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -414,7 +415,7 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 	migrated := false
 	defer func() {
 		if err == nil {
-			logf("kept store protect sealed=%d empty=%d vacuum=%v ms=%d foreign=%d", sealedCells, emptyCells, migrated, time.Since(started).Milliseconds(), foreignCells)
+			logf("kept store protect sealed=%d empty=%d vacuum=%v ms=%d foreign=%d resealed=%d", sealedCells, emptyCells, migrated, time.Since(started).Milliseconds(), foreignCells, resealedCells)
 		}
 	}()
 	for table, columns := range specs {
@@ -426,6 +427,8 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 			type value struct {
 				row  int64
 				data []byte
+				// Opened from the previous seal: data is already sealed again in this build's form.
+				resealed bool
 			}
 			var pending []value
 			for rows.Next() {
@@ -445,6 +448,33 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 				}
 				switch {
 				case form == sealOwn:
+				case form == sealPrevious:
+					// The same key under the previous label: opened and sealed again in this transaction, so an
+					// interrupted start leaves every cell as it was and the next start does it again. One that does
+					// not open (another key) is left as it is and refused, as any foreign seal is.
+					plain, e := unprotectPrevious(item.data)
+					if e != nil {
+						refuseSeal(form)
+						foreignCells++
+						continue
+					}
+					// A build from before the rename, started over a migrated store (an image rolled back), takes
+					// this build's seal for text and seals it again in its own. Such a cell opens to one of this
+					// build's seals, which authenticates under this key, so it is unwrapped rather than kept doubled.
+					if bytes.HasPrefix(plain, protectedPrefix) {
+						if inner, e := unprotectLocal(plain); e == nil {
+							clear(plain)
+							plain = inner
+						}
+					}
+					// Sealed here, so no opened cell outlives this line whatever ends the scan or the transaction.
+					sealed, e := protectLocal(plain)
+					clear(plain)
+					if e != nil {
+						rows.Close()
+						return e
+					}
+					pending = append(pending, value{row: item.row, data: sealed, resealed: true})
 				case form != sealPlain:
 					refuseSeal(form)
 					foreignCells++
@@ -460,14 +490,21 @@ func (m *messageStore) protectExisting(ctx context.Context) (err error) {
 			}
 			rows.Close()
 			for _, item := range pending {
-				sealed, e := protectLocal(item.data)
-				if e != nil {
+				sealed := item.data
+				if !item.resealed {
+					var e error
+					if sealed, e = protectLocal(item.data); e != nil {
+						return e
+					}
+				}
+				if _, e := tx.ExecContext(ctx, `UPDATE `+table+` SET `+column+`=? WHERE rowid=?`, sealed, item.row); e != nil {
 					return e
 				}
-				if _, e = tx.ExecContext(ctx, `UPDATE `+table+` SET `+column+`=? WHERE rowid=?`, sealed, item.row); e != nil {
-					return e
+				if item.resealed {
+					resealedCells++
+				} else {
+					sealedCells++
 				}
-				sealedCells++
 				migrated = true
 			}
 		}

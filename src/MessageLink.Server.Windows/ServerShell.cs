@@ -42,7 +42,7 @@ internal sealed class ServerShell
 
     public static string WindowTitle => TrayPresence.ServerShellTitle;
     public static string MutexName => AppPaths.ServerLockName;
-    public static uint QuitMessage => Native.RegisterWindowMessageW("Messages.Server.Quit" + AppPaths.InstanceSuffix);
+    public static uint QuitMessage => Native.RegisterWindowMessageW("MessageLink.Server.Quit" + AppPaths.InstanceSuffix);
 
     // Held for the process: the window class keeps its pointer.
     private static readonly Native.WindowProcedure Procedure = Dispatch;

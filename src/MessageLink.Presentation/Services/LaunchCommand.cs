@@ -23,7 +23,7 @@ public sealed record LaunchCommand(LaunchAction Action, string? ChatId = null, s
     // command, so Parse returns null for it.
     public const string BackgroundArgument = "--background";
 
-    // Asked by tools (tools\Stop-Messages.ps1) before a build or an install: the running Messages quits as the tray's Quit
+    // Asked by tools (tools\Stop-MessageLink.ps1) before a build or an install: the running Messages quits as the tray's Quit
     // does, so the next launch does not take it for a crash. Not a command either; only Program.Main and App act on it.
     public const string QuitArgument = "--quit";
     // A person asking, from the taskbar's jump list: the tray's Quit, which shows what is keeping it open or asks about unsaved messages. --quit refuses those cases in the log

@@ -15,13 +15,13 @@ namespace MessageLink.Protocol;
 /// </summary>
 public static class PipeEndpoint
 {
-    public const string Prefix = "Messages.Server.";
+    public const string Prefix = "MessageLink.Server.";
 
     // With the default (zero) a write waits for the reader; a frame in flight should not.
     private const int BufferBytes = 64 * 1024;
 
     /// <summary>
-    /// <c>Messages.Server.&lt;first 12 hex of SHA-256 of the user key&gt;&lt;suffix&gt;</c>. The suffix tells copies of the server on one PC apart
+    /// <c>MessageLink.Server.&lt;first 12 hex of SHA-256 of the user key&gt;&lt;suffix&gt;</c>. The suffix tells copies of the server on one PC apart
     /// (a development copy); it may hold letters, digits, dots, dashes and underscores.
     /// </summary>
     public static string PipeName(string userKey, string instanceSuffix = "")

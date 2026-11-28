@@ -13,6 +13,11 @@ import (
 var protectedPrefix = []byte{'M', 'L', 'P', 1}
 var protectedEntropy = []byte("Message Link Messenger retained history v1")
 
+// Windows has no previous seal the startup migration opens: the retired NBP 1 was refused, not migrated (#122).
+var previousSealPrefix []byte
+
+func unprotectPrevious([]byte) ([]byte, error) { return nil, errUnknownSeal }
+
 var (
 	errNotProtected   = errors.New("value is not protected")
 	errRetiredSeal    = errors.New("value carries the retired NBP seal, which this helper no longer opens")

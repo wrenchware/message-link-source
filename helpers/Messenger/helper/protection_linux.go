@@ -14,8 +14,14 @@ import (
 // Linux server stores are intentionally distinct from Windows DPAPI stores; copying a Windows device is not a migration.
 // The prefix and associated data differ from the .NET host's sealed values (FileKeyStateProtector) so the two formats
 // can never be mistaken for each other.
-var protectedPrefix = []byte{'M', 'S', 'P', 2}
-var protectedEntropy = []byte("Messages server Messenger retained history v2")
+var protectedPrefix = []byte{'M', 'L', 'S', 1}
+var protectedEntropy = []byte("Message Link server Messenger retained history v1")
+
+// The seal before the Message Link name (2026-11-28): the same key and layout under another prefix and associated data.
+// Only the startup migration opens it (protectExisting), to seal each such cell again in the form above; a read refuses
+// it, since by then no store holds one.
+var previousSealPrefix = []byte{'M', 'S', 'P', 2}
+var previousEntropy = []byte("Messages server Messenger retained history v2")
 
 // The key is read for every operation and zeroed straight after, so the file's mode is checked on the open handle (not
 // by path): a loosened or swapped file takes effect at once and cannot change between the check and the read.
@@ -71,17 +77,31 @@ func protectLocal(value []byte) ([]byte, error) {
 
 func unprotectLocal(value []byte) ([]byte, error) {
 	if !bytes.HasPrefix(value, protectedPrefix) {
+		if bytes.HasPrefix(value, previousSealPrefix) {
+			refuseSeal(sealPrevious)
+		}
 		return nil, errors.New("value is not protected for this server")
 	}
+	return openSealed(value[len(protectedPrefix):], protectedEntropy)
+}
+
+// A cell in the previous seal, opened for the startup migration alone.
+func unprotectPrevious(value []byte) ([]byte, error) {
+	if !bytes.HasPrefix(value, previousSealPrefix) {
+		return nil, errors.New("value is not in the previous seal")
+	}
+	return openSealed(value[len(previousSealPrefix):], previousEntropy)
+}
+
+func openSealed(data, associated []byte) ([]byte, error) {
 	gcm, err := protectionAEAD()
 	if err != nil {
 		return nil, err
 	}
-	data := value[len(protectedPrefix):]
 	if len(data) < gcm.NonceSize()+gcm.Overhead() {
 		return nil, errors.New("protected value is incomplete")
 	}
-	plain, err := gcm.Open(nil, data[:gcm.NonceSize()], data[gcm.NonceSize():], protectedEntropy)
+	plain, err := gcm.Open(nil, data[:gcm.NonceSize()], data[gcm.NonceSize():], associated)
 	if err != nil {
 		return nil, errors.New("protected value failed authentication")
 	}

@@ -1,7 +1,7 @@
 namespace MessageLink.Presentation.Services;
 
 // "Is the app free to leave?" One snapshot of what the app is doing and one rule for every way of leaving it: the tray's Quit, closing the
-// window, a restart the person asked for (sample mode, a theme, a server change), a tool's quit (--quit, tools\Stop-Messages.ps1), and a
+// window, a restart the person asked for (sample mode, a theme, a server change), a tool's quit (--quit, tools\Stop-MessageLink.ps1), and a
 // Store update's restart, from its schedule or Settings' Restart to update. The Windows app reads the facts (MainWindow.Leaving.cs); each
 // caller shows the answer its own way.
 

@@ -6,7 +6,7 @@ namespace MessageLink.Server.Windows;
 
 /// <summary>
 /// How long a stop on <see cref="ShutdownBudget.Normal"/> can take at worst, which is what <c>MessageLinkServer.exe --quit</c> waits for and what
-/// <c>Stop-Messages.ps1</c> allows a server before it stops it by force: the restore's wait (the sends bound), the pipe (its listener, the clients' drain on
+/// <c>Stop-MessageLink.ps1</c> allows a server before it stops it by force: the restore's wait (the sends bound), the pipe (its listener, the clients' drain on
 /// the sends bound, and the closes: <see cref="PipeServer.WorstStop"/>), the providers' shutdown (<see cref="ShutdownBudget.Total"/>), the event log's close
 /// (2 s) and 5 s of slack. Forty-five seconds; a harness check fails if a bound changes without this.
 /// </summary>

@@ -65,7 +65,7 @@ internal static class NativeAuthenticationWire
         try
         {
             var ticket = JsonSerializer.Deserialize<NativeAuthenticationTicket>(plain) ?? throw new InvalidDataException();
-            if (ticket.Expires <= DateTimeOffset.UtcNow || ticket.Pipe != "messages-auth-" + id) throw new InvalidDataException();
+            if (ticket.Expires <= DateTimeOffset.UtcNow || ticket.Pipe != "messagelink-auth-" + id) throw new InvalidDataException();
             return ticket;
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
@@ -110,7 +110,7 @@ internal sealed class NativeAuthenticationHandoff(string root, IStateProtector p
             }
             step = "ticket";
             var id = Guid.NewGuid().ToString("N");
-            var ticket = new NativeAuthenticationTicket("messages-auth-" + id, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow + Lifetime);
+            var ticket = new NativeAuthenticationTicket("messagelink-auth-" + id, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)), DateTimeOffset.UtcNow + Lifetime);
             pipe = new(ticket.Pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
             path = NativeAuthenticationWire.TicketPath(root, id);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

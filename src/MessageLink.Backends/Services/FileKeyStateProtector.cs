@@ -5,7 +5,7 @@ namespace MessageLink.App.Services;
 
 // The server's counterpart to WindowsStateProtector: AES-256-GCM under a 32-byte key kept in a file the server names,
 // private to its owner. Layout: "MSK" 1 | 12-byte nonce | 16-byte tag | ciphertext. The prefix and associated data
-// differ from the Messenger helper's sealed values ("MSP" 2, protection_linux.go), so neither format opens as the other.
+// differ from the Messenger helper's sealed values ("MLS" 1, protection_linux.go), so neither format opens as the other.
 // The key is read for each operation and zeroed straight after, so a loosened or replaced file takes effect at once.
 // Generating a key is the server's job, and only where nothing sealed exists yet: a replacement key silently orphans
 // every sealed value (the server foundation's PrivateStore refuses to, and so should the server).

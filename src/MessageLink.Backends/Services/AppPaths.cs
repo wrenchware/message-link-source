@@ -140,7 +140,9 @@ internal static class AppPaths
         DataLockPrefix + Tag(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)).ToUpperInvariant());
     private const string DataLockPrefix = @"Local\MessageLink.Data";
     // Held by a running MessageLinkServer.exe for this data root (ServerShell). The app looks for it before it believes a held host lease means a server.
-    public static string ServerLockName => @"Local\Messages.Server" + InstanceSuffix;
+    // Local\Messages.Server until 2026-11-28, as the pipe (PipeEndpoint.Prefix) and the server's window messages were: as with the data lock, a copy from
+    // before neither sees nor answers this one, so an update stops the running copy first. The host lease, not this name, keeps two servers off one root.
+    public static string ServerLockName => @"Local\MessageLink.Server" + InstanceSuffix;
 }
 
 // The package identity Windows gave this process, if any. An unpackaged process gets APPMODEL_ERROR_NO_PACKAGE (15700) and

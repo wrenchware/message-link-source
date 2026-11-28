@@ -87,7 +87,10 @@ internal static class LocalStateBackup
     internal static readonly Regex PreferenceFile = new(@"^([0-9A-F]{64})\.(Pinned|Muted|MarkedUnread|Archived)\.json$", RegexOptions.CultureInvariant);
     internal static readonly Regex NameFile = new(@"^([0-9A-F]{64})\.name$", RegexOptions.CultureInvariant);
 
-    public static string ProfileTag(string profile) => NotificationIdentity.Hash("messages-backup\n" + profile);
+    public static string ProfileTag(string profile) => NotificationIdentity.Hash("message-link-backup\n" + profile);
+    // The tag's label until 2026-11-28. A backup made before says it, and is still this profile's on restore, until the
+    // owner no longer keeps any such backup.
+    internal static string EarlierProfileTag(string profile) => NotificationIdentity.Hash("messages-backup\n" + profile);
 
     /// <summary>Every id a local row could be stored under for these conversations: the conversation, its members,
     /// and the identities custom photos and names use for it and its people.</summary>
@@ -200,7 +203,7 @@ internal static class LocalStateBackup
     public static async Task<LocalRestoreResult> RestoreAsync(LocalStores stores, LocalStateSnapshot backup, string? profile,
         CancellationToken token = default)
     {
-        var same = profile is not null && backup.Profile is not null && backup.Profile == ProfileTag(profile);
+        var same = profile is not null && backup.Profile is not null && (backup.Profile == ProfileTag(profile) || backup.Profile == EarlierProfileTag(profile));
         int added = 0, skipped = 0, refused = 0, held = 0, rekeyed = 0;
         // Drafts, names and Saved Messages are deleted outright when the user sends, clears or unsaves them, so on a PC
         // that keeps some of its own a missing one may be one the user took away since the backup, and adding it back
