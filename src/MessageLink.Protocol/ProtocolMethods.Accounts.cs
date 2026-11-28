@@ -52,7 +52,7 @@ public static partial class ProtocolMethods
     public const string AccountsVoiceAdd = "accounts.voice.add";
     public const string AccountsVoiceSignOut = "accounts.voice.signOut";
 
-    // ---- The per-conversation answers the 2.6b proxies could only get from the object in this process ----
+    // ---- The per-conversation answers the proxies could only get from the object in this process ----
     public const string HistoryCanReadWindow = "history.canReadWindow";
     public const string ContactsFindDirect = "contacts.findDirect";
     public const string AttachmentsCanSendBatch = "attachments.canSendBatch";

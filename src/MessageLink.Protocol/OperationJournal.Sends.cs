@@ -17,7 +17,7 @@ public sealed partial class OperationJournal
 
     /// <summary>
     /// Publishes failed sends, including sends loaded as unknown after a server crash. A failed write leaves the metadata for the next signal or restart.
-    /// Nothing calls a provider; running sends stay per device (owner D5). The returned task ends when the publisher that took this signal stops;
+    /// Nothing calls a provider; running sends stay per device (the echo reaches the others in 0.2–1.5 s). The returned task ends when the publisher that took this signal stops;
     /// an operation's completion only signals and never waits for it.
     /// </summary>
     public Task PublishUnsettledSendsAsync()

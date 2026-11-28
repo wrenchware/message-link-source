@@ -1,6 +1,6 @@
 // Package tailnet is the Go half of Message Link for Android's own Tailscale node,
 // bound for Android with gomobile: the phone joins the owner's tailnet itself, without the Tailscale app or a VPN,
-// and reaches the server's door (messages-tailnet, 4.7) through it. The app's connections go through a local door of this
+// and reaches the server's door (messages-tailnet) through it. The app's connections go through a local door of this
 // package's (door.go), so the server's TLS, its pinned certificate and the device token stay the app's, end to end.
 //
 // What the tailnet test app (since removed) learned is kept here: Android denies Go the netlink socket, so the app

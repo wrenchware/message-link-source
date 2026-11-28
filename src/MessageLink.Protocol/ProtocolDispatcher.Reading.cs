@@ -5,7 +5,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Protocol;
 
-// The 2.6d methods of the host (ProtocolMethods.Reading.cs): mark read and typing out with the client's admission, link previews, and a
+// The reading methods of the host (ProtocolMethods.Reading.cs): mark read and typing out with the client's admission, link previews, and a
 // history window with the call that waits for its refresh. None is journaled; see ProtocolMethods.Reading.cs for why.
 public sealed partial class ProtocolDispatcher
 {

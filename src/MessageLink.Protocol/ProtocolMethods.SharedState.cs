@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace MessageLink.Protocol;
 
-// The shared state (docs/research/switchboard-stage6.md, protocol version 2): one replicated key–value space per server, holding
+// The shared state (protocol version 2): one replicated key–value space per server, holding
 // the user's choices that must look the same on every device. The server keeps the one authoritative copy (SharedStateStore, <root>\Server\shared.db);
 // each client keeps a replica it draws from and writes into, and sends its writes on behind it (ReplicatedStateStore).
 //
@@ -138,7 +138,7 @@ public static class SharedLimits
     public const int KeyLength = 256;
 }
 
-/// <summary>How the rows of a shared category settle two writes (docs/research/switchboard-stage6.md, "Conflict rule per kind").</summary>
+/// <summary>How the rows of a shared category settle two writes.</summary>
 public enum SharedConflictPolicy
 {
     /// <summary>The later in the server's commit order wins, whole row.</summary>
@@ -165,8 +165,8 @@ public enum SharedConflictPolicy
 public sealed record SharedCategory(string Category, string? Row, SharedConflictPolicy Policy, int Since, bool HostOwned = false);
 
 /// <summary>
-/// The allowlist of shared keys (slice 1 the quick replies, slice 3 the chat preferences, names, snoozes and pinned order, slice 5 the
-/// merges and labels, slice 6 the drafts and who owns them, slice 7 the read-here marks and the private reading choice, slice 8 the saved messages and the custom avatars). The server refuses every other key and a
+/// The allowlist of shared keys (protocol 2 the quick replies, 3 the chat preferences, names, snoozes and pinned order, 5 the
+/// merges and labels, 6 the drafts and who owns them, 7 the read-here marks and the private reading choice, 8 the saved messages and the custom avatars). The server refuses every other key and a
 /// client keeps every other key to itself, so anything not named here stays on the device that wrote it. Adding a category means raising
 /// <see cref="ProtocolVersion.Current"/> and giving the category that version (a harness check holds every category's version to at most the current one, and
 /// the newest to the last version that brought categories, <see cref="ProtocolVersion.SharedSaved"/>; version 4 brought none).
@@ -248,7 +248,7 @@ public static class SharedCategories
         // the same book. A write that lost to another device's is therefore made again from the server's row, never written over it.
         new(Merges, MergesRow, SharedConflictPolicy.CompareAndSet, ProtocolVersion.SharedMerges),
         new(Labels, LabelsRow, SharedConflictPolicy.CompareAndSet, ProtocolVersion.SharedMerges),
-        // Slice 7. The marks are one row whose entries are independent facts ("read here through this moment"), merged by the later moment per chat; compare-
+        // Protocol 7. The marks are one row whose entries are independent facts ("read here through this moment"), merged by the later moment per chat; compare-
         // and-set so that a write made from an older row is made again over the server's (ReadHereMarks), never over it. Each service's private reading is its own
         // row, last writer wins: one row for all four would lose a toggle of another service made at the same time, and a toggle is whole by itself.
         new(Preferences, ReadHereRow, SharedConflictPolicy.CompareAndSet, ProtocolVersion.SharedReading),
@@ -263,7 +263,7 @@ public static class SharedCategories
         // A send of unknown outcome, or failed, on the server: one row, written and removed by the server alone; every client draws it as "may not have sent".
         // Filed as outbox: until 35, and handed to a peer below 35 under that name (ToWire), which is why it keeps the version that brought it.
         new(Refused, null, SharedConflictPolicy.LastWriterWins, ProtocolVersion.ServerScheduled, HostOwned: true),
-        // Slice 8. A saved message is one row of its own. Saving it is a create-only write (ifRev 0: "already saved" counts as done, as it does on one device) made
+        // Protocol 8. A saved message is one row of its own. Saving it is a create-only write (ifRev 0: "already saved" counts as done, as it does on one device) made
         // by SavedMessages through ISharedRows.WriteIfAsync, and unsaving deletes; the reminder time and the moment it was raised are written without a condition,
         // last writer wins, except that the mark "raised" is conditional on the rev it was made from, so a stale mark never undoes a time set meanwhile. The
         // avatars are last writer wins; one over 64 KiB comes by its size and is read with state.get, which the replica does for any row.

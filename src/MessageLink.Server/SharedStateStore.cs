@@ -8,7 +8,7 @@ using MessageLink.Protocol;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The server's one authoritative copy of the shared state (docs/research/switchboard-stage6.md): <c>&lt;root&gt;\Server\shared.db</c>,
+/// The server's one authoritative copy of the shared state: <c>&lt;root&gt;\Server\shared.db</c>,
 /// served as <c>state.sync</c>, <c>state.get</c> and <c>state.put</c>. Only a server keeps one; the app's in-process server never makes the file.
 /// </summary>
 /// <remarks>
@@ -150,7 +150,7 @@ public sealed class SharedStateStore : ISharedState
         new(this, category, idOf, encode, decode);
 
     /// <summary>
-    /// Rows the server held elsewhere before this store kept them (slice 3: its own <c>ChatSnoozes-v1</c> files, <see cref="SharedChatSnoozes"/>), taken in once:
+    /// Rows the server held elsewhere before this store kept them (until protocol 3: its own <c>ChatSnoozes-v1</c> files, <see cref="SharedChatSnoozes"/>), taken in once:
     /// at the store's first use in a run, under its gate, so nothing is served before them. Each key is added only where the space holds no row for it (live or
     /// deleted: an end made here is never undone by the old copy), in one transaction (a rev for every SharedLimits.PutWrites rows), and the import is recorded with its counts in the same transaction, and
     /// then beside the store (<c>&lt;name&gt;.imported</c>, which outlives a shared.db made anew), so a later run, or a second import of the same name, adds
@@ -456,7 +456,7 @@ public sealed class SharedStateStore : ISharedState
     /// <summary>
     /// The value of one live row, or null: what the server's own <c>snoozes.get</c> reads (<see cref="SharedChatSnoozes"/>). Like <see cref="LiveRowsAsync"/> and
     /// <see cref="WriteOwnBatchAsync"/>, it is not judged under the space key: a snooze's key carries the profile its client gave, as its file's name did, and
-    /// <c>snoozes.*</c> answered whatever the server's sign-ins were before slice 3, so it still does.
+    /// <c>snoozes.*</c> answered whatever the server's sign-ins were before protocol 3, so it still does.
     /// </summary>
     internal async Task<byte[]?> ReadLiveAsync(string key, CancellationToken cancellationToken = default) =>
         (await LiveRowAsync(key, cancellationToken).ConfigureAwait(false)).Value;
@@ -1150,7 +1150,7 @@ public sealed class SharedStateStore : ISharedState
                         "CREATE TABLE IF NOT EXISTS applied (client_op_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, rev INTEGER NOT NULL, result BLOB NOT NULL, at INTEGER NOT NULL);" +
                         "CREATE INDEX IF NOT EXISTS applied_at ON applied(at);" +
                         // What was taken in once from elsewhere (ImportOnce). Made again where missing by the import itself, without a new user_version, for a
-                        // file from before slice 3, which the build that made it still opens.
+                        // file from before protocol 3, which the build that made it still opens.
                         ImportsTable + ";" +
                         "INSERT INTO meta(id, epoch, rev, horizon) VALUES(1, $epoch, 0, 0);" +
                         "PRAGMA user_version=1;";

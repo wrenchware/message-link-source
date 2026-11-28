@@ -4,7 +4,7 @@ using MessageLink.Core.Services;
 namespace MessageLink.Presentation.Services;
 
 /// <summary>
-/// Who returns which archived conversation to the inbox in the client modes (slices 9 and 5). A server takes group
+/// Who returns which archived conversation to the inbox in the client modes (protocols 4 and 5). A server takes group
 /// conversations (protocol 4), once for all its clients, since a group is never in a merge (<see cref="MergedConversations.NeverMember"/>); from protocol 5,
 /// when the merges are a row of its shared state it can read, it also takes the one-to-one conversations outside every merge. Each client takes the rest:
 /// its merges always (a merge's archive is the merges row's, which each client changes itself), and what its server does not take through <c>chats.set</c>, as

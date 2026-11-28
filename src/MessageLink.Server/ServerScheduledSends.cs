@@ -9,14 +9,13 @@ namespace MessageLink.Server;
 /// <summary>What a server needs to fire its clients' scheduled sends itself.</summary>
 /// <param name="Clock">The time the schedule runs by (the harness moves it by hand).</param>
 /// <param name="Custody">
-/// Whether this server holds the schedule (S9). A server's is always its own: its schedule is the only one that fires. Slice 13 (migration and rollback)
-/// replaces it with the custody marker, so that a schedule being moved, or handed back to a PC, fires nothing here; the engine already refuses to fire,
-/// hold or write without it.
+/// Whether this server holds the schedule. Null, as every server gives it: a server's is always its own, the only one that fires. The
+/// engine refuses to fire, hold or write without it.
 /// </param>
 internal sealed record ServerScheduled(TimeProvider? Clock = null, Func<ValueTask<bool>>? Custody = null);
 
 /// <summary>
-/// The server's scheduled sends (owner D6): the server keeps the schedule, fires it with every client closed, and answers its clients' four
+/// The server's scheduled sends (owner, 2026-10-09): the server keeps the schedule, fires it with every client closed, and answers its clients' four
 /// commands. It is the app's own <see cref="ScheduledSendEngine"/> over the host's ports, so a message goes by the rules it goes by on a PC: within ten
 /// minutes of its time, once, and never when the account is not the one it was written for.
 /// </summary>
@@ -24,7 +23,7 @@ internal sealed record ServerScheduled(TimeProvider? Clock = null, Func<ValueTas
 /// <para><b>Rows.</b> Each message is a row of the shared state, <c>scheduled:&lt;H(profile, id)&gt;</c> (<see cref="SharedCategories.Scheduled"/>, host-owned), so every
 /// client's replica draws it and none can write it. The engine saves its whole list; <see cref="Rows"/> turns each save into the rows that changed, in one
 /// commit. A command is made against the rev of the row its client drew.</para>
-/// <para><b>At most once (S4).</b> The engine commits the row <c>Sending</c> with <c>attempt: n</c> before it calls the outlet; the outlet then sends through the
+/// <para><b>At most once.</b> The engine commits the row <c>Sending</c> with <c>attempt: n</c> before it calls the outlet; the outlet then sends through the
 /// <see cref="OperationJournal"/> under the fixed id <c>sched:&lt;id&gt;:&lt;n&gt;</c>. A server that dies after the row was committed finds it <c>Sending</c> at its next
 /// start and records it as a send that may not have gone (a shared <c>refused:</c> row every client draws, unknown, and never sent again); the journal, which flushed the operation as running before the provider was asked,
 /// calls it <c>outcome_unknown</c> to <c>ops.status</c>. A Send now of a message that was refused is attempt <c>n + 1</c>, another id. Nothing here asks twice.</para>

@@ -190,7 +190,7 @@ public sealed partial class ProtocolDispatcher
         routes[ProtocolMethods.AccountsVoiceSignOut] = PageOnly(ProtocolMethods.AccountsVoiceSignOut, Mutation<IGoogleVoiceAccounts, VoiceSignOutParams, Done>(s => s.VoiceAccounts,
             (services, port, p, _, _) => Coded(async () => { await port.SignOutAsync(p.Key).ConfigureAwait(false); Ended(services, "voice", p.Key); return new Done(); }), null, true));
 
-        // ---- What 2.6b's proxies asked the object in this process ----
+        // ---- What the proxies once asked the object in this process ----
         routes[ProtocolMethods.HistoryCanReadWindow] = Of<IHistoryWindowReader, ChatIdParams, bool>(s => s.History, (port, p, _) => Task.FromResult(port.CanReadWindow(p.ChatId)));
         routes[ProtocolMethods.ContactsFindDirect] = Of<IDirectChatLookup, FindDirectParams, FindDirectResult>(s => s.Contacts as IDirectChatLookup, (port, p, _) =>
         {

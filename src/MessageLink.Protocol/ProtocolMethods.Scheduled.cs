@@ -1,6 +1,6 @@
 namespace MessageLink.Protocol;
 
-// Scheduled sends on the server (docs/research/switchboard-stage6.md S1-S9, protocol version 9). A server holds the
+// Scheduled sends on the server (protocol version 9). A server holds the
 // schedule and fires it itself, so a message goes at its time with every client closed, and goes once however many clients are looking at it. Its clients draw
 // the rows (`scheduled:<H(profile, id)>`, a SharedCategories category only the server writes) from their replica and change them only through these four
 // journaled methods; none of them ever queues offline, so a client that is not connected is refused as a send is.

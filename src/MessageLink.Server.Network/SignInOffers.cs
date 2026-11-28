@@ -32,7 +32,7 @@ internal enum SignInHost
     None,
     /// <summary>In its own browser, streamed to the page (Linux).</summary>
     Browser,
-    /// <summary>In Message Link's native windows on its own desktop (the Windows server, 10.7), from a browser on that PC.</summary>
+    /// <summary>In Message Link's native windows on its own desktop (the Windows server), from a browser on that PC.</summary>
     Desktop,
 }
 

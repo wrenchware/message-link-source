@@ -1,6 +1,6 @@
 namespace MessageLink.Presentation.Services;
 
-// What a client of a Messages Server schedules through (S2 and S6). The server holds the schedule and fires it; the client draws
+// What a client of a Messages Server schedules through. The server holds the schedule and fires it; the client draws
 // its rows from its replica and asks the server for the four commands. The Presentation library does not know the protocol: the app gives ScheduledSends a
 // link that does (ScheduledServerLink), and a harness gives it a fake.
 
@@ -77,7 +77,7 @@ public interface IScheduledSendServerLink
 {
     /// <summary>
     /// Whether the server fires this client's scheduled sends: true from a server of protocol 9, false from an older one (the client fires its own as before), and null while
-    /// no server has been heard at all. Unknown is neither: such a client fires nothing, since a server that may fire the same message is the one risk (S9).
+    /// no server has been heard at all. Unknown is neither: such a client fires nothing, since a server that may fire the same message is the one risk.
     /// </summary>
     ValueTask<bool?> ServerFiresAsync(CancellationToken cancellationToken = default);
     /// <summary>The answer of <see cref="ServerFiresAsync"/> may have changed. Raised on any thread.</summary>
@@ -115,7 +115,7 @@ public interface IScheduledSendServerLink
 }
 
 /// <summary>
-/// Custody of the client's own engine (S9) while a link says whether a server fires for it: the engine fires only when the server certainly does not
+/// Custody of the client's own engine while a link says whether a server fires for it: the engine fires only when the server certainly does not
 /// (an older server), never when it does and never while that is not known.
 /// </summary>
 internal sealed class ServerLinkCustody(IScheduledSendServerLink link) : IScheduledSendCustody
@@ -124,13 +124,13 @@ internal sealed class ServerLinkCustody(IScheduledSendServerLink link) : ISchedu
 }
 
 /// <summary>
-/// Send later as a client of a server that fires it (S2): the rows are the replica's, the alarm does not run here, and every change is a command to the server.
+/// Send later as a client of a server that fires it: the rows are the replica's, the alarm does not run here, and every change is a command to the server.
 /// Same surface as <see cref="ScheduledSendEngine"/>'s, so the interface does not know which it is drawing.
 /// </summary>
 /// <remarks>
 /// <para><b>Nothing here sends.</b> A message goes only when the server's engine fires it. A Send now is a command that asks it to; one that is refused,
 /// conflicting or lost is never made again by this class, and the next press is a new command against the row as it is drawn then.</para>
-/// <para><b>Optimistic create (S6).</b> The message is drawn at once as <see cref="ScheduledSendReason.Scheduling"/> while the server answers; the box keeps its
+/// <para><b>Optimistic create.</b> The message is drawn at once as <see cref="ScheduledSendReason.Scheduling"/> while the server answers; the box keeps its
 /// words until then, so a refusal needs nothing returned. Once kept it stays drawn from the answer until the replica holds the row (a few seconds at most).
 /// A cancel or edit that was done hides its row the same way. A lost answer is settled by the link against the server's journal, never asked again.</para>
 /// </remarks>

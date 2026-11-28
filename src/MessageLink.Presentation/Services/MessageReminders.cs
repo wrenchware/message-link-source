@@ -33,12 +33,12 @@ public sealed class MessageReminders : IDisposable
     private bool dirty = true, started, reschedule = true, rebuild;
     private DateTimeOffset readAt;
     private static readonly TimeSpan Reread = TimeSpan.FromMinutes(10);
-    // Slice 8, shared rows only. Owed: entries of `due` whose time another device raised (the row says so) and this device has not yet; Raised: the times this
+    // Protocol 8, shared rows only. Owed: entries of `due` whose time another device raised (the row says so) and this device has not yet; Raised: the times this
     // device has raised and marked itself, so the row's mark of them is not mistaken for another device's.
     private readonly List<SavedMessage> owed = [];
     private readonly HashSet<string> raisedHere = new(StringComparer.Ordinal);
     private static readonly TimeSpan OwedKept = TimeSpan.FromMinutes(10);
-    // When this device began running: a time raised elsewhere from then on is one it was running for (D7).
+    // When this device began running: a time raised elsewhere from then on is one it was running for.
     private readonly DateTimeOffset runningSince;
     private const int RaisedLimit = 1000;
     private static string RaisedKey(SavedMessage entry) => entry.Scope + "\n" + entry.Chat.Id + "\n" + entry.Message.Id + "\n" + entry.RemindAt!.Value.UtcTicks;

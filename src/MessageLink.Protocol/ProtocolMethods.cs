@@ -8,15 +8,15 @@ namespace MessageLink.Protocol;
 // The read-only members of the Core ports that can cross a wire as they are: async, plain data in and out, no mutation.
 // Results are the Core records themselves. Names are noun.verb, lowercase noun, camelCase verb.
 //
-// Left for 2.2, because they cannot cross as they are:
-//   bytes that are not media: IPrivateStateStore, ISavedPhotoStore. Since stage 6 the rows that must look the same everywhere cross as the shared state
+// Not here, because they cannot cross as they are:
+//   bytes that are not media: IPrivateStateStore, ISavedPhotoStore. Since protocol 2 the rows that must look the same everywhere cross as the shared state
 //     (ProtocolMethods.SharedState.cs), into a replica the client's IPrivateStateStore reads; the rest of IPrivateStateStore stays on each device.
-//   synchronous live state: has no request. Since 2.6b the server pushes it as a `state` event (ServerState) and the proxies answer from the
+//   synchronous live state: has no request. The server pushes it as a `state` event (ServerState) and the proxies answer from the
 //     client's cache; ProxyMembers lists every synchronous member and how it is answered. IAppPresence, the keeper's UserBusy, private reading and link previews are the client's own, stated to the host by client.state (ProtocolMethods.ClientState.cs).
 //   IRealtimeFeed.RunAsync is the events.subscribe stream (EventLog, RealtimeFeedProxy). ITypingService.WatchAsync is the same stream's
 //     `typing` frames (TypingHub, TypingProxy), which are not part of its sequence: typing is ephemeral and never replayed.
 //   ownership undecided (per profile, may stay on the client): ILocalChatPreferences.GetAsync, ILocalContactNames.GetAsync
-// 2.6d (ProtocolMethods.Reading.cs): mark read and typing out, which carry the private-reading admission explicitly; link previews; and a
+// Reading (ProtocolMethods.Reading.cs): mark read and typing out, which carry the private-reading admission explicitly; link previews; and a
 // history window with the call that waits for its refresh (HistoryWindow.Refreshed is a Task and cannot cross).
 // The mutations that are here carry a clientOpId and are served through the OperationJournal (at most once per id).
 // Media: a file to send goes up first, in chunks, under a handle (media.upload*, UploadStore), and the send names the handle

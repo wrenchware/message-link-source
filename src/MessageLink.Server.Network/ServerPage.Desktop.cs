@@ -45,7 +45,7 @@ internal sealed partial class ServerPage
 
     /// <summary>
     /// Opens a service's sign-in on this PC's desktop (<see cref="NetworkServerOptions.DesktopSignIn"/>): the Windows server asks Messages, which owns the native sign-in
-    /// windows (owner D2). Null on every other server, whose page has no such buttons.
+    /// windows. Null on every other server, whose page has no such buttons.
     /// </summary>
     internal Func<string, bool>? DesktopSignIn { get; set; }
     internal Func<string, string?, Func<bool>, Task<MessageLink.App.Services.NativeAuthenticationStart>>? DesktopAccountSignIn { get; set; }

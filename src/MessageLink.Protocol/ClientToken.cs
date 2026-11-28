@@ -8,7 +8,7 @@ namespace MessageLink.Protocol;
 /// 32 random bytes the first time it needs them and keeps them at <c>&lt;folder&gt;\client.token</c>, protected through
 /// <see cref="IStateProtector"/> (DPAPI on Windows), so only the same user on the same machine can read the file; the client reads it back
 /// each time it connects, so a token the server replaced is picked up. The pipe is already limited to this user; the token is for the
-/// admission the server believes it has given (<c>admitted</c>, 2.6d), and it is what a remote server's per-device tokens grow from.
+/// admission the server believes it has given (<c>admitted</c>), and it is what a remote server's per-device tokens grow from.
 /// A client of a remote server keeps the device token it was given at pairing the same way, under its own <paramref name="fileName"/>
 /// (<see cref="StoreAsync"/>); that one is never made here.
 /// </summary>

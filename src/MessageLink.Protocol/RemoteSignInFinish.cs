@@ -3,7 +3,7 @@ namespace MessageLink.Protocol;
 /// <summary>
 /// What follows the browser in a Messenger or Instagram sign-in made in the server's own browser (protocol 27): the account is connected with the cookies through the host's own port, exactly as
 /// <c>accounts.messenger.connect</c> and <c>accounts.instagram.connect</c> connect a sign-in handed up from a PC's window, and Messenger then turns its encrypted conversations on, once, as the PC does
-/// after a new sign-in (MessengerEncryptedAuto). Public so that every face of the one flow (the dispatcher now; the server page's socket, 10.6) finishes it the same way.
+/// after a new sign-in (MessengerEncryptedAuto). Public so that every face of the one flow (the dispatcher and the server page's socket) finishes it the same way.
 /// <para>
 /// Nothing is retried: a connect that fails ends the sign-in with its own fixed word, and the person starts again. The cookies are cleared however it ends. Log lines are the fixed
 /// <c>remote sign-in service= outcome= reason=</c> with code words only, never a cookie, a name or an id; nothing the person typed or saw ever reaches this class.

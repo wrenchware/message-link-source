@@ -31,7 +31,7 @@ namespace MessageLink.App.Services;
 /// <para><b>A root that was used in process.</b> When the replica is made, the one row of <c>state.db</c> a client must not lose is copied in, read-only:
 /// the sends whose outcome is unknown (<c>refused:</c>, InterruptedSends), so their warning stays and they are still asked about with <c>ops.status</c>.
 /// Scheduled sends are not copied: a copy would make two places that fire them.</para>
-/// <para><b>Versions.</b> The categories grow with the protocol version (slice 3 added the chat preferences, names, snoozes and pinned order at version 3). A
+/// <para><b>Versions.</b> The categories grow with the protocol version (version 3 added the chat preferences, names, snoozes and pinned order). A
 /// write of a category newer than the connection's version waits in the queue, unsent, for a server that keeps it (one sent now would be refused and give way
 /// to the server's row, or to none), and a snapshot drops only the rows of the categories its connection knows. The version the server last spoke is kept here
 /// (<see cref="ServerProtocolAsync"/>): the stores that were files draw from these rows only when it is 3 or more.</para>
@@ -106,7 +106,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     private int connectionSeen;
     // A connection has settled during this run: until one has, what the rows hold is last run's and the server may have changed since (ServerVersionNow).
     private int everSettled;
-    // The meta table has the column a replica made by slice 1 lacks, and the pending table those made before slice 5 lack (Open, once per instance).
+    // The meta table has the column a replica made at protocol 2 lacks, and the pending table those made before protocol 5 lack (Open, once per instance).
     private bool metaReady;
     private bool disposed;
     // What holds each compare-and-set row in memory (FollowAsync); how many times in a row each lost, this connection.
@@ -1036,7 +1036,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     }
 
     // At the end of every sync: a compare-and-set row this replica holds that the server never gave it and nothing here is sending (no rev, nothing queued) was
-    // made before the row was shared (a client from before slice 5, or a server below 5 then). It is offered to the server, create only: kept there if the server
+    // made before the row was shared (a client from before protocol 5, or a server below 5 then). It is offered to the server, create only: kept there if the server
     // has none, and if another device's is there first, that one wins and a copy of this one is kept (KeepReplacedAsync).
     private async Task OfferLocalAsync(string? profile, int version, CancellationToken token)
     {
@@ -1069,7 +1069,7 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
     // A compare-and-set row something holds in memory (FollowAsync).
     private bool Followed(string key, string? profile) => followers.ContainsKey(key) && SharedCategories.MayBeShared(key) && IsCompareAndSet(key, profile);
 
-    // By the category the key is under the profile, not by its prefix: since slice 7 the "preferences" category holds a compare-and-set row (the read-here marks)
+    // By the category the key is under the profile, not by its prefix: since protocol 7 the "preferences" category holds a compare-and-set row (the read-here marks)
     // beside the last-writer-wins ones (the pinned order, the quick replies, the private reading choice).
     private static bool IsCompareAndSet(string key, string? profile) =>
         SharedCategories.Match(key, profile) is { Policy: SharedConflictPolicy.CompareAndSet };
@@ -1581,9 +1581,9 @@ internal sealed class ReplicatedStateStore : IPrivateStateStore, ICompactableSto
             }
             if (!metaReady)
             {
-                // A replica made before slice 3 has no host_protocol column. Added in place, without a new user_version, so the build that made it still opens
+                // A replica made before protocol 3 has no host_protocol column. Added in place, without a new user_version, so the build that made it still opens
                 // it (it names its columns, so one more is nothing to it).
-                // Likewise a replica made before slice 5 has no condition or tag on its queued writes (none of them is of a compare-and-set row).
+                // Likewise a replica made before protocol 5 has no condition or tag on its queued writes (none of them is of a compare-and-set row).
                 // overtaken.priv: for a watched row (the private reading choice) passed over while a write was pending, whether the newest rev passed over said private (1) or not (0);
                 // see PassedOverPrivateAsync.
                 // pending.epoch: the space a queued write's condition was read in (Pending); text, which an INTEGER column would turn into a number when it looks like one.

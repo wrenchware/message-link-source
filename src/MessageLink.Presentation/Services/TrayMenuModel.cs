@@ -58,7 +58,7 @@ public static class TrayMenuModel
             }
         }
         items.Add(new(SettingsId, "Settings", TrayCommand.Settings));
-        // A PC that runs its own Message Link Server (owner, 2026-11-22, replacing D13's "Quit" and "Stop Messages Server"): the words say what keeps running.
+        // A PC that runs its own Message Link Server (owner, 2026-11-22, replacing "Quit" and "Stop Messages Server"): the words say what keeps running.
         // Close ends the app only, and the server goes on serving the phone and keeping Google signed in, under an icon of its own (ServerMenu); "Quit Message
         // Link and server" ends both, and the icon goes. The page is the server's own, on this PC.
         if (ownServer) items.Add(new(ServerPageId, "Manage server", TrayCommand.ServerPage));

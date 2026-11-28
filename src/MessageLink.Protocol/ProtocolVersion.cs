@@ -29,12 +29,12 @@ namespace MessageLink.Protocol;
 /// and the custom avatars (<c>avatar-v2:</c>, last writer wins; a value over 64 KiB is read with <c>state.get</c>). No method changes: a peer below 8 is never given those
 /// rows and keeps both on its own device. A server of 8 also keeps the originals of the saved messages' photos itself, and serves them through <c>media.read</c> to
 /// whichever device opens one, so a client connected at 8 keeps none of its own; one below 8 does as before.</para>
-/// <para>9 moves the firing of scheduled sends to the server (owner D6): a server runs them itself, even with every client closed,
+/// <para>9 moves the firing of scheduled sends to the server (owner, 2026-10-09): a server runs them itself, even with every client closed,
 /// and its clients draw them from rows (<c>scheduled:</c>, written by the server alone, <see cref="SharedCategory.HostOwned"/>) and ask it for the four typed,
 /// journaled commands <c>scheduled.create</c>, <c>edit</c>, <c>cancel</c> and <c>sendNow</c>. A send of unknown outcome or failed on the server is a host-owned
 /// row too (<c>outbox:</c>, <c>refused:</c> from 35), drawn by every client as "may not have sent", and <c>outbox.dismiss</c> removes it everywhere.
 /// A client below 9, or of a server below 9, keeps its own schedule and fires it itself as before; a client of 9 or later never fires one itself, which is
-/// what keeps one message from being sent by both (S2, S3).</para>
+/// what keeps one message from being sent by both.</para>
 /// <para>10 gives <c>scheduled.cancel</c> and <c>scheduled.edit</c> with <c>IfRev</c> 0 a meaning: discard a message the client never saw the row of (its
 /// stand-in for a create of unknown outcome). The server takes the message away if it made it and otherwise closes its id for good, so that the create can never make it. A client
 /// of 10 does not send it to a server below 10 (it keeps the stand-in and says so). A client below 10 of a server of 10 still answers a stand-in's cancel by asking the create again and
@@ -229,7 +229,7 @@ public static class ProtocolVersion
     /// <summary>
     /// Whether a client connected at <paramref name="negotiated"/> leaves its scheduled sends to its server: true from <see cref="ServerScheduled"/>, false below,
     /// and null while no version is known (never connected). Unknown is neither: such a client fires nothing itself, because a server that may fire the same
-    /// message is the one risk this has (S9).
+    /// message is the one risk this has.
     /// </summary>
     public static bool? ServerFiresScheduledAt(int negotiated) => negotiated <= 0 ? null : negotiated >= ServerScheduled;
     /// <summary>The first version that shares the saved messages and the custom avatars (<see cref="SharedCategories"/>), and whose server keeps the saved photos' originals.</summary>

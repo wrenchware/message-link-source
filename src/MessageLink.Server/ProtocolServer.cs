@@ -33,7 +33,7 @@ namespace MessageLink.Server;
 /// <param name="IncomingUnarchive">Given (the two servers), the server returns an archived conversation to the inbox when a message arrives in it, once for all its
 /// clients, and they do not (<see cref="ServerIncomingUnarchive"/>). Null (the app's in-process server, whose window does it) runs none.</param>
 /// <param name="Scheduled">Given (the two servers), with a shared state and an identity, the server keeps its clients' scheduled sends and fires them itself, with every
-/// client closed, and serves <c>scheduled.*</c> (owner D6, <see cref="ServerScheduledSends"/>). Null (the app's in-process host and the loopback, whose
+/// client closed, and serves <c>scheduled.*</c> (owner, 2026-10-09, <see cref="ServerScheduledSends"/>). Null (the app's in-process host and the loopback, whose
 /// window keeps and fires its own schedule) fires none.</param>
 /// <param name="RemoteSignIn">Given (the Linux server run with Google Messages and a headed browser), the host signs Google Messages in in a browser of its own, shown on the server's page.
 /// Null offers none.</param>

@@ -16,7 +16,7 @@ namespace MessageLink.Presentation.Services;
 /// Quitting while a message is only waiting sends nothing; it waits for the next run.</para>
 /// <para>Signing out of a service keeps its scheduled messages, unsent: while the service is away its messages cannot go,
 /// and once their window has passed they are held as not sent like any other, until the user decides.</para>
-/// <para>While the custody port says the schedule is not this engine's (S9), a pass sends, holds and saves nothing (and
+/// <para>While the custody port says the schedule is not this engine's, a pass sends, holds and saves nothing (and
 /// stops at once if custody goes during it), a load only reads, and Send now is refused. The answer to a send already
 /// handed over is still recorded.</para>
 /// <para>The log gets one line per step with a one-way tag of the message and its conversation: never the text, a name
@@ -55,7 +55,7 @@ public sealed class ScheduledSendEngine : IDisposable
 
     /// <summary>
     /// Counts hand-overs (<see cref="ScheduledSend.Attempt"/>): each one is written, with the row marked sending, as one more than the last, so a server can send
-    /// under the fixed id <c>sched:&lt;id&gt;:&lt;n&gt;</c> (S4). The in-process app leaves it off and its rows are as they always were.
+    /// under the fixed id <c>sched:&lt;id&gt;:&lt;n&gt;</c>. The in-process app leaves it off and its rows are as they always were.
     /// </summary>
     public bool NumbersAttempts { get; init; }
 
@@ -102,7 +102,7 @@ public sealed class ScheduledSendEngine : IDisposable
         var saved = store is null || current is null ? null : await store.ReadAsync(current);
         profile = current; loaded = true; waited.Clear(); heldAfterFailure.Clear();
         items = [.. saved ?? []];
-        // Not this engine's schedule (S9): read to be shown, nothing more. A message found sending is not called
+        // Not this engine's schedule: read to be shown, nothing more. A message found sending is not called
         // interrupted, an overdue one is not held and nothing is saved: whoever holds the schedule settles those, and this
         // copy is the one a rollback returns to. The in-process app's custody is always local, so this never stops it.
         judged = await custody.IsLocalAsync();
@@ -232,7 +232,7 @@ public sealed class ScheduledSendEngine : IDisposable
     public async Task<bool> SendNowAsync(string id)
     {
         if (Find(id) is not { State: not ScheduledSendState.Sending } item) return false;
-        // Not this engine's schedule (S9): refused, with nothing changed. Accepted, it would wait here and go by itself
+        // Not this engine's schedule: refused, with nothing changed. Accepted, it would wait here and go by itself
         // once custody came back, long after the person asked and without asking them again.
         if (!await custody.IsLocalAsync())
         {
@@ -313,7 +313,7 @@ public sealed class ScheduledSendEngine : IDisposable
         alarm.WakeAt(next);
     }
 
-    // Not this engine's schedule (S9): the pass stops where it is, before anything more is sent, held or saved, and
+    // Not this engine's schedule: the pass stops where it is, before anything more is sent, held or saved, and
     // custody is looked at again at the alarm's longest wait. Always false in the in-process app, whose custody is local.
     private async ValueTask<bool> CustodyLostAsync()
     {
@@ -386,9 +386,9 @@ public sealed class ScheduledSendEngine : IDisposable
         try { saved = await SaveAsync(); }
         catch (Exception) { saved = false; }
         if (Find(item.Id) != sending) return;
-        // Custody lost while Sending was being written (S9): the outlet is not called and nothing more is written. Saved as
+        // Custody lost while Sending was being written: the outlet is not called and nothing more is written. Saved as
         // sending, it stays sending, as a crash at this point would leave it. A load with custody (this engine's, or the
-        // export to the new custodian) then records it as an interrupted send, never sent (S4). Putting it back to waiting
+        // export to the new custodian) then records it as an interrupted send, never sent. Putting it back to waiting
         // instead would need a write this engine may no longer make, and a copy taken as waiting could then be fired by the
         // new custodian as well as by this engine once custody came back. Not judged, so a pass with custody again loads
         // and settles it. Not saved, the store still holds it as it was, and only this run's copy goes back.

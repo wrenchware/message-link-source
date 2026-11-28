@@ -12,7 +12,7 @@ using static MessageLink.Server.HistoryParts;
 namespace MessageLink.Server;
 
 /// <summary>
-/// The list rows the feed serves (B1 and B2): the services' own rows as last read, each built with its last message from the copy,
+/// The list rows the feed serves: the services' own rows as last read, each built with its last message from the copy,
 /// kept in the store and announced as they change. Rows are built again a moment after an event names them, and the whole list is read on a reconnect and
 /// by the walk.
 /// </summary>
@@ -293,7 +293,7 @@ internal sealed partial class HistoryRows(HistoryCopy copy, HistoryDatabase db, 
     }
 
     /// <summary>
-    /// A conversation's list row as served (owner's D1, 2026-10-30): the service's row, its last message from the copy, so the list never says what the thread
+    /// A conversation's list row as served (owner, 2026-10-30): the service's row, its last message from the copy, so the list never says what the thread
     /// does not hold. The service's own line stays where it says what no message does (a reaction, in the service's words), and where nothing is held yet.
     /// A line newer than anything held is the copy being behind: the row says what is held, and the conversation is read so the two meet.
     /// </summary>

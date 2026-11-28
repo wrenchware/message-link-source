@@ -46,7 +46,7 @@ internal sealed partial class ServerPage
 
     private void ConnectList(StringBuilder body, IReadOnlyList<ServerAccount>? accounts, bool walkthrough, HttpContext context, string token)
     {
-        // The Windows server signs in with Messages' native windows on its own desktop (owner D2): Connect there, from a browser on that PC, and nowhere else.
+        // The Windows server signs in with Messages' native windows on its own desktop (owner, 2026-10-30): Connect there, from a browser on that PC, and nowhere else.
         if (DesktopSignIn is not null)
         {
             DesktopSignInForms(body, context, token, accounts);

@@ -28,7 +28,7 @@ internal sealed partial class WindowsServerStartup : IDisposable
     public ServiceProvider Services => server.Services;
     public ProtocolServer Host => server.Host;
 
-    /// <summary>The server's own backup (on Windows 10.7): its schedule runs beside the server, into the folder the person chose.</summary>
+    /// <summary>The server's own backup (on Windows): its schedule runs beside the server, into the folder the person chose.</summary>
     public MessageLink.Server.Backup.ServerBackupService? Backup => server.Backup;
 
     /// <param name="log">Where the composition's words go.</param>

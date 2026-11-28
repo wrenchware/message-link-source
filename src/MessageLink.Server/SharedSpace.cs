@@ -18,7 +18,7 @@ public enum SpacePin
 }
 
 /// <summary>
-/// The key a server's shared space is filed under (docs/research/switchboard-stage6.md finding 2): <c>&lt;root&gt;\Server\space.protected</c>,
+/// The key a server's shared space is filed under: <c>&lt;root&gt;\Server\space.protected</c>,
 /// beside <c>shared.db</c>, sealed by the server's <see cref="IStateProtector"/>. A server serves it as its <c>LocalKey</c> once it exists, whatever its own
 /// Google pairing says later, because every shared row's key is a one-way digest of the profile made from it: a server that paired Google itself would
 /// otherwise get another key and orphan every row. Only a server's <see cref="SharedStateStore"/> has one, and only once the server attaches it
@@ -27,9 +27,9 @@ public enum SpacePin
 /// <remarks>
 /// <para><b>Pinned at the first write, not the first key served.</b> A key served while the store holds no row files nothing on the server, so nothing can be
 /// orphaned by its changing. Pinning at the first serve would fix an empty space to whatever the server happened to have when a client first connected
-/// (often the unpaired name), and migration could then no longer adopt the PC's key into it (D2). The first write's pin is made under the store's
+/// (often the unpaired name), and migration could then no longer adopt the PC's key into it. The first write's pin is made under the store's
 /// gate with the very key the write's keys were judged under, so the pin and the first row cannot disagree, and a row is never kept unless the pin holds.</para>
-/// <para><b>Never a new key over rows.</b> A store with fixed rows (one row per profile, such as the quick replies) and no file (one from before this slice)
+/// <para><b>Never a new key over rows.</b> A store with fixed rows (one row per profile, such as the quick replies) and no file (one from before the server kept the key)
 /// adopts the key the server has now only when one of those rows was made under it; rows keyed by conversation (snoozes, chat preferences, names) carry their
 /// profile inside their own digest, cannot be orphaned by a pin, and so neither decide nor block one. Otherwise the key they were made under cannot be known, and the space refuses rather than starting a second one beside them. A
 /// file that cannot be read refuses the same way, and is never written over. Refusing makes <c>state.*</c> answer unavailable and the server's identity
@@ -303,7 +303,7 @@ internal sealed class SpaceIdentity(IServerIdentity live, SharedSpace space) : I
         var key = await space.ServeAsync(now.LocalKey, cancellationToken).ConfigureAwait(false);
         if (string.Equals(key, now.LocalKey, StringComparison.Ordinal)) return now;
         // Google's saved messages are filed by a scope made from the key ("google:" and the key's profile, ServerIdentityPort), so a server that pairs Google as a new device
-        // would otherwise show none of the PC's: its own scope names the live key, and the saved rows (adopted verbatim by a move) name the pinned one (slice 13g). Only
+        // would otherwise show none of the PC's: its own scope names the live key, and the saved rows (adopted verbatim by a move) name the pinned one. Only
         // an entry that is exactly the live key's Google scope follows the pin; every other account's scope is its own, and nothing is added where Google is not paired.
         var liveScope = NotificationIdentity.ProfileOf(now.LocalKey) is { } from ? GoogleScopePrefix + from : null;
         var pinnedScope = NotificationIdentity.ProfileOf(key) is { } to ? GoogleScopePrefix + to : null;

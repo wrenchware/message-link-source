@@ -37,7 +37,7 @@ internal sealed class HistoryMirror(HistoryCopy copy, HistoryTimings timings, Ac
 
     /// <summary>
     /// Starts a check of each service that has none under way: its most recently active conversations held whole, each read once, a second apart per service
-    /// and Instagram's only while its budget allows (owner's D3).
+    /// and Instagram's only while its budget allows (owner, 2026-10-30).
     /// </summary>
     public void Start(IReadOnlyList<ChatSummary> rows, string why)
     {

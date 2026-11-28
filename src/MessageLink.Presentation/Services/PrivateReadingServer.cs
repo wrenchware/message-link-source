@@ -14,7 +14,7 @@ namespace MessageLink.Presentation.Services;
 /// <para><b>Trust boundary.</b> What the server trusts its authenticated client for is the one thing only the person can say: that this read was
 /// asked for by name (a notification's Mark read, Send read receipt, the console's /read). <c>admitted</c> alone is not enough. It says only
 /// that the client's gate, by the client's own view of the choice, did not withhold the read, and that view can be behind: private reading is one
-/// setting for every device (decision D4), so another device can have turned it on while this client has not heard.
+/// setting for every device (owner, 2026-10-09), so another device can have turned it on while this client has not heard.
 /// An automatic read from that client must not reach the service, so the server decides it by its own view (<c>ServerClientState</c>: the most
 /// private of what its connected clients state), which is what the routers behind this read. A client that sends only <c>admitted</c> (one
 /// from before <c>explicit</c>) is therefore treated as automatic; the worst that costs is a receipt asked for by name from such a client,

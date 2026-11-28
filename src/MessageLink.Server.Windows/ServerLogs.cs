@@ -26,7 +26,7 @@ internal static class ServerLogs
 }
 
 /// <summary>
-/// The PC backup handed over to the server's (owner D13: the PC backup retires once the PC runs its own server). The first time the server starts on a
+/// The PC backup handed over to the server's (owner, 2026-10-30: the PC backup retires once the PC runs its own server). The first time the server starts on a
 /// root whose PC backup had a folder, that folder becomes the server's, and the PC backup's password (sealed to this Windows user, as the server seals its own) becomes
 /// the server's backup password, so the person's backups go on where they were, under the password they know. Nothing is taken when the server has its own already,
 /// and the PC backup's own files are left as they are. Logged as fixed words.

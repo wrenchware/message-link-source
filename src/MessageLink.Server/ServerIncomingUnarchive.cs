@@ -12,12 +12,12 @@ namespace MessageLink.Server;
 /// <c>incoming-unarchive</c> watermarks are kept. Never the shared state: that is no shared category, so no client ever holds or writes these rows.</param>
 /// <param name="Merges">The clients' merges, read from the server's shared state: with them the server also takes the one-to-one conversations
 /// outside every merge, while every connection speaks <see cref="ProtocolVersion.ServerUnarchivesChats"/> or later. <see cref="ProtocolServer.Create"/> gives
-/// them to a server that keeps a shared state and an identity; without them the server takes groups alone, as in slice 9.</param>
+/// them to a server that keeps a shared state and an identity; without them the server takes groups alone, as at protocol 4.</param>
 internal sealed record ServerUnarchive(PrivateState State, TimeProvider? Clock = null, SharedMergeMembership? Merges = null);
 
 /// <summary>
 /// The incoming unarchive of the client modes for group conversations and, from protocol 5, for the one-to-one conversations outside every merge, run once
-/// by the server over the providers' feed rather than once by every client (finding 4: with two clients each would ask). It is the window's own
+/// by the server over the providers' feed rather than once by every client (with two clients each would ask). It is the window's own
 /// <see cref="IncomingMessageUnarchiver"/>, taking what <see cref="IncomingUnarchiveSplit.ServerTakes"/> gives the server, in the same queue the window runs it in
 /// (<see cref="NotificationRealtimeFeed"/>, without notifications). A client connected at <see cref="ProtocolVersion.ServerUnarchives"/> or later takes the
 /// rest (its merges always); the in-process app and the loopback take all.
@@ -29,7 +29,7 @@ internal sealed record ServerUnarchive(PrivateState State, TimeProvider? Clock =
 /// restart, never made again. Nothing here retries.</para>
 /// <para><b>Older clients.</b> A client below version 4 still returns groups to the inbox itself, and one below 5 its one-to-one conversations. While one is
 /// connected the server leaves those to it (groups below 4, one-to-one conversations below 5), so the two never both ask. What is left open: an older client
-/// connected but not running its unarchiver at that moment leaves a conversation archived, two older clients both ask (as before slice 9), and an arrival
+/// connected but not running its unarchiver at that moment leaves a conversation archived, two older clients both ask (as before protocol 4), and an arrival
 /// the server has begun as an older client connects can be asked for by both.</para>
 /// <para><b>What the window knew.</b> The provider's archive is the router's to say (<c>chats.settings</c>), as it was for the window. Instagram's "archive
 /// on this PC" (<c>chatpref:</c> rows) is never a provider archive and lifts itself when a client reads a newer arrival, so the server reads no preference row.

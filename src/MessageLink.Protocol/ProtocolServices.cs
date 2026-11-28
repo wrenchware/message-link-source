@@ -24,7 +24,7 @@ namespace MessageLink.Protocol;
 /// <paramref name="SharedState"/> serves <c>state.*</c>; only a server keeps one, and the app's in-process server, whose client keeps its own state, has none.
 /// <paramref name="Connections"/> is told each connection's negotiated version and its end, for a server whose duties depend on its clients' versions.
 /// <paramref name="AccountEnded"/> is told, once it has been done, of an account signed out (<c>messenger</c>, <c>instagram</c>, <c>voice</c> with the account's key) or
-/// of Google Messages' local data reset (<c>google-reset</c>), for a host that keeps something of its own for the account (slice 8: the saved photos' originals).
+/// of Google Messages' local data reset (<c>google-reset</c>), for a host that keeps something of its own for the account (the saved photos' originals).
 /// <paramref name="Scheduled"/> serves <c>scheduled.*</c> and <c>outbox.dismiss</c>; only a server fires its clients' scheduled sends, and the app's in-process host and the loopback leave it null.
 /// <paramref name="Imports"/> serves <c>state.import</c> (protocol 11): a PC's choices taken into the shared state once; only a server with a shared state has one.
 /// <paramref name="RemoteSignIn"/> serves <c>accounts.google.remoteSignIn*</c> (protocol 12): a Google sign-in made in the host's own browser; only the Linux server run with Google Messages and a headed browser has one.

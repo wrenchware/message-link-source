@@ -51,8 +51,8 @@ public sealed class ScheduledSends : IDisposable
 
     /// <param name="hostLink">
     /// Given by a client of a server (<c>local</c> and <c>remote</c>). The engine is then the older-host path only: its custody is local exactly while the
-    /// server certainly does not fire (a host below protocol 9), so it never fires beside a server that does (S9) and never while that is not known; with a host
-    /// of 9 or later every member goes to the server's schedule (<see cref="HostedScheduledSends"/>) and the alarm does not run here (S2).
+    /// server certainly does not fire (a host below protocol 9), so it never fires beside a server that does and never while that is not known; with a host
+    /// of 9 or later every member goes to the server's schedule (<see cref="HostedScheduledSends"/>) and the alarm does not run here.
     /// </param>
     public ScheduledSends(Outbox outbox, IMessageSender sender, IMessageActions? actions = null, PrivateState? state = null,
         InterruptedSends? interrupted = null, TimeProvider? clock = null, IUiDispatcher? dispatcher = null, Action<string>? log = null,

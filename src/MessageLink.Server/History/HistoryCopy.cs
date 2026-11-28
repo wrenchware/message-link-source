@@ -275,7 +275,7 @@ internal sealed class HistoryCopy
             {
                 var found = (await all.ConfigureAwait(false)).OfType<ChatMessage>().ToArray();
                 var missed = found.Length < reads.Length;
-                // A service whose event names only the newest of what arrived (Instagram's, between two of its polls: A1, server-mirror-paths.md) never says
+                // A service whose event names only the newest of what arrived (Instagram's, between two of its polls: server-mirror-paths.md) never says
                 // by it that the copy is whole up to it, and the conversation is read again, within the budget.
                 var partial = reason == HistoryReason.Event && !facts.FactsOf(chat.ChatId).EventsNameEveryArrival;
                 if (found.Length > 0) await KeepAsync(chat, found, whole: !missed && !partial).ConfigureAwait(false);

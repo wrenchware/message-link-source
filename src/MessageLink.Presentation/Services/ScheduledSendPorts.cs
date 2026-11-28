@@ -2,7 +2,7 @@ using MessageLink.Core.Services;
 
 namespace MessageLink.Presentation.Services;
 
-// What ScheduledSendEngine acts through (S3). The in-process app gives it PrivateState, the one
+// What ScheduledSendEngine acts through. The in-process app gives it PrivateState, the one
 // Outbox and the backends' send check (ScheduledSends); a server that fires for its clients gives it its own.
 
 /// <summary>Where scheduled messages are kept: one list per profile, written whole.</summary>
@@ -69,7 +69,7 @@ public interface IScheduledSendConditions
 }
 
 /// <summary>
-/// Whether this engine holds the schedule (S9). Only one firer may ever act on a message, so an engine whose schedule has
+/// Whether this engine holds the schedule. Only one firer may ever act on a message, so an engine whose schedule has
 /// been handed to a server, or is being moved there, fires nothing.
 /// </summary>
 public interface IScheduledSendCustody
@@ -79,7 +79,7 @@ public interface IScheduledSendCustody
 
 public static class ScheduledSendCustody
 {
-    /// <summary>Always this engine's: the in-process app, until a schedule can move to a server (slices 11 and 13).</summary>
+    /// <summary>Always this engine's: the in-process app, whose schedule never moves to a server.</summary>
     public static readonly IScheduledSendCustody Local = new Always();
     private sealed class Always : IScheduledSendCustody { public ValueTask<bool> IsLocalAsync() => ValueTask.FromResult(true); }
 }

@@ -26,7 +26,7 @@ public sealed record ProxyMember(SyncAnswer Answer, string Reason);
 /// <summary>
 /// Every synchronous member of the ports the proxies stand in for, and how each is answered. The members that are not async and not an
 /// event have no request to carry them, so each is part of the server's pushed state, a copy of the server's answer to a method, a rule the
-/// client applies itself, or an action sent without waiting. None asks an object in the server's process (since 2.6d there is no such
+/// client applies itself, or an action sent without waiting. None asks an object in the server's process (there is no such
 /// answer). The harness walks the ports by reflection and fails when a member is here and not on a port, or on a port and not here: a
 /// new synchronous member cannot appear without someone deciding which it is. Keys are <c>Interface.Member</c>.
 /// </summary>

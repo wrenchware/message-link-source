@@ -10,7 +10,7 @@ namespace MessageLink.App.Services;
 /// <summary>
 /// What another device changed reaching what this one shows, in a client of a Messages Server (<c>local</c> and <c>remote</c>)
 /// only: a pin, mute, marked unread, archive here, snooze or name (the rows of <see cref="ReplicaChatPreferences"/>, <see cref="ReplicaContactNames"/> and
-/// <see cref="ReplicaChatSnoozes"/>, once they hold the change), the pinned order, the merges and the labels (rows of the replica itself; slice 5 for the
+/// <see cref="ReplicaChatSnoozes"/>, once they hold the change), the pinned order, the merges and the labels (rows of the replica itself; protocol 5 for the
 /// last two, which also tells the list's notice when one of this device's changes was left out), and the move between this PC's files and the
 /// rows (<see cref="ReplicatedStateStore.ServerProtocolChanged"/>), which can change every row at once. The list and the open conversations' headers follow
 /// with no reload; Windows' snooze reminders already follow through ObservedChatSnoozes.
