@@ -200,9 +200,7 @@ func (a *adapter) startEncrypted(ctx context.Context, restore bool) string {
 	a.deviceID = device.ID.Device
 	a.mu.Unlock()
 	if !a.observeReceipts {
-		if moved := kept.absorb(ctx, path, a.chats); moved > 0 {
-			logf("e2ee moved %d kept messages out of the device file", moved)
-		}
+		kept.absorb(ctx, path, a.chats)
 	}
 	a.chats.setSecure(true)
 	// Each client's events carry which client they came from, so one given up on cannot change its replacement.

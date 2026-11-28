@@ -1052,16 +1052,37 @@ func (m *messageStore) absorb(ctx context.Context, path string, into *store) int
 	}
 	// Every message has to arrive in the new store before the old one is given up. These are delivered once by
 	// Facebook and never again, so a copy that failed and a source that was dropped anyway would lose them for good.
+	outcomes := map[absorbOutcome]int{}
 	for _, h := range all {
-		if err := m.rememberChecked(ctx, h.thread, h.id, h.sender, h.body, "", h.at); err != nil {
+		// A conversation deleted since the copy before keeps its messages out, by the rule every other write and the
+		// purge follow: nothing at or before its deletion comes back.
+		if cutoff := into.cutoffOf(h.thread); cutoff > 0 && h.at <= cutoff {
+			outcomes[absorbDeletedChat]++
+			continue
+		}
+		outcome, err := m.absorbOne(ctx, h.thread, h.id, h.sender, h.body, h.at)
+		if err != nil {
 			logf("e2ee migration stopped: a kept message could not be written, the old copy is left alone")
 			return 0
 		}
-		into.addEncrypted(h.thread, h.id, h.sender, h.body, "", h.at)
+		outcomes[outcome]++
+		// A row already kept was restored at login, with any edit since; only a new one joins its conversation here.
+		if outcome == absorbAdded {
+			into.addEncrypted(h.thread, h.id, h.sender, h.body, "", h.at)
+		}
 	}
 	if len(all) > 0 {
+		logf("e2ee migration added=%d held=%d deleted=%d deletedChat=%d unreadable=%d", outcomes[absorbAdded],
+			outcomes[absorbHeld], outcomes[absorbDeleted], outcomes[absorbDeletedChat], outcomes[absorbUnreadable])
+	}
+	if outcomes[absorbUnreadable] > 0 {
+		// A kept copy this build cannot open (a retired or foreign seal, refused and left as it is) makes the old row
+		// the only readable one. It is not resealed over the kept bytes, which are never rewritten, nor dropped: the
+		// table stays for a run that can open the kept copy, or for someone to decide.
+		logf("e2ee migration kept the old table: %d kept copies do not open", outcomes[absorbUnreadable])
+	} else if len(all) > 0 {
 		if _, err := old.ExecContext(ctx, `DROP TABLE encrypted_message`); err != nil {
-			// Harmless: the copy is safely in the new store, and the next start finds nothing left to move.
+			// Harmless: the copy is safely in the new store. The next start copies again, adding only what is missing.
 			logf("e2ee migration kept the old table, which is now a duplicate")
 		} else {
 			// DROP leaves the one-delivery plaintext in free pages. Rebuild the device database after the protected copy
@@ -1072,7 +1093,73 @@ func (m *messageStore) absorb(ctx context.Context, path string, into *store) int
 			}
 		}
 	}
-	return len(all)
+	return outcomes[absorbAdded]
+}
+
+// What became of one message from the device file.
+type absorbOutcome int
+
+const (
+	absorbAdded       absorbOutcome = iota // written into the kept store
+	absorbHeld                             // the kept store already holds it, readable
+	absorbDeleted                          // taken back since: its deletion record stands
+	absorbDeletedChat                      // its conversation was deleted since
+	absorbUnreadable                       // the kept store holds it in a seal this build does not open
+)
+
+// One message from the device file, written only if the store has never held it. A drop that failed after the copy
+// leaves the old table to be copied again at the next start, and by then the kept row may carry an edit: an upsert
+// would put the first words back. A message deleted in between stays deleted.
+func (m *messageStore) absorbOne(ctx context.Context, thread int64, id string, sender int64, body string, at int64) (absorbOutcome, error) {
+	var keptBody, keptReply, keptCard []byte
+	switch err := m.db.QueryRowContext(ctx, `SELECT body, reply, card_text FROM encrypted_message WHERE id = ?`, id).
+		Scan(&keptBody, &keptReply, &keptCard); {
+	case err == nil:
+		if keptCellsOpen(keptBody, keptReply, keptCard) {
+			return absorbHeld, nil
+		}
+		return absorbUnreadable, nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return 0, err
+	}
+	sealed, err := protectStrings(body, "")
+	if err != nil {
+		return 0, err
+	}
+	written, err := m.db.ExecContext(ctx,
+		`INSERT INTO encrypted_message (id, thread, sender, body, reply, at, encrypted)
+		 SELECT ?, ?, ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM deleted_message WHERE id = ?)
+		 ON CONFLICT(id) DO NOTHING`,
+		id, thread, sender, sealed[0], sealed[1], at, id)
+	if err != nil {
+		return 0, err
+	}
+	count, err := written.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if count == 0 {
+		return absorbDeleted, nil
+	}
+	m.wrote(thread)
+	return absorbAdded, nil
+}
+
+// Whether restore could open every cell of a kept row. A form this build refuses is judged by its prefix alone, so the
+// check does not count as a second refusal of what restore already refused and logged.
+func keptCellsOpen(cells ...[]byte) bool {
+	for _, cell := range cells {
+		if len(cell) == 0 {
+			continue
+		}
+		if sealForm(cell) != sealOwn {
+			return false
+		}
+		if _, err := unprotectString(cell); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // One reaction, written down alongside the message it belongs to. Reactions on the encrypted connection arrive once
