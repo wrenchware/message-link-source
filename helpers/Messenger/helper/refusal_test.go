@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,6 +49,38 @@ func TestRefusalSaysWhichReason(t *testing.T) {
 	orphan.folder = "e2ee_cutover_pending"
 	if line, _ := s.refusal(12); !strings.Contains(line, "folder=other") {
 		t.Fatalf("folder: %s", line)
+	}
+}
+
+// Announcements leave out conversations held as deleted, all but their deletion; one about nothing else is not sent.
+func TestAnnouncementsLeaveOutDeletedConversations(t *testing.T) {
+	var wire bytes.Buffer
+	o := &output{encoder: json.NewEncoder(&wire)}
+	a := newAdapter(o)
+	defer a.stop()
+	o.deleted = a.deletedChat
+	a.chats.get(7).deleted = true
+	a.chats.get(8)
+	both := &changes{Chats: []string{"7", "8"}, Messages: map[string][]string{"7": {"a"}, "8": {"b"}},
+		Receipts: map[string][]string{"7": {"c"}}, ChatsDeleted: []string{"7"}}
+	o.write(response{Event: "changed", Result: both})
+	if len(both.Chats) != 2 || len(both.Messages) != 2 {
+		t.Fatal("the announced changes were altered")
+	}
+	o.write(response{Event: "changed", Result: &changes{Chats: []string{"7"}, Messages: map[string][]string{"7": {"d"}}}})
+	lines := strings.Split(strings.TrimSpace(wire.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("written %d: %s", len(lines), wire.String())
+	}
+	var got struct {
+		Result changes `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Result.Chats, []string{"8"}) || len(got.Result.Messages) != 1 || got.Result.Messages["8"] == nil ||
+		len(got.Result.Receipts) != 0 || !slices.Equal(got.Result.ChatsDeleted, []string{"7"}) {
+		t.Fatalf("written %s", lines[0])
 	}
 }
 

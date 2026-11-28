@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -141,6 +142,53 @@ func (c *changes) markHistory(tbl *table.LSTable) {
 			}
 		}
 	}
+}
+
+// The same changes with nothing about the conversations deleted says are deleted, except their deletion itself
+// (ChatsDeleted). The receiver is left as it is: callers keep and reuse what they announced.
+func (c *changes) without(deleted func(chat string) bool) *changes {
+	named := func(chat string) bool { return deleted(chat) }
+	hit := slices.ContainsFunc(c.Chats, named)
+	for _, keyed := range []map[string][]string{c.Messages, c.Deleted, c.Receipts, c.History} {
+		for chat := range keyed {
+			hit = hit || named(chat)
+		}
+	}
+	if !hit {
+		return c
+	}
+	kept := func(keyed map[string][]string) map[string][]string {
+		if keyed == nil {
+			return nil
+		}
+		out := make(map[string][]string, len(keyed))
+		for chat, ids := range keyed {
+			if !named(chat) {
+				out[chat] = ids
+			}
+		}
+		return out
+	}
+	trimmed := *c
+	trimmed.Chats = slices.DeleteFunc(slices.Clone(c.Chats), named)
+	trimmed.Messages, trimmed.Deleted, trimmed.Receipts, trimmed.History = kept(c.Messages), kept(c.Deleted), kept(c.Receipts), kept(c.History)
+	return &trimmed
+}
+
+// Whether a conversation is held here as deleted, for the output's filter. TryLock, because some announcements are
+// written with the store's lock held; one written then goes out unfiltered, as every one did before.
+func (a *adapter) deletedChat(chat string) bool {
+	key, err := strconv.ParseInt(chat, 10, 64)
+	if err != nil {
+		return false
+	}
+	s := a.chats
+	if !s.mu.TryLock() {
+		return false
+	}
+	defer s.mu.Unlock()
+	current, ok := s.threads[key]
+	return ok && current.deleted
 }
 
 func (c *changes) empty() bool {
